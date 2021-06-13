@@ -10,6 +10,9 @@ type Indentation = Int
 class Outputable a where
     pretty :: Precedence -> a -> Doc
 
+instance OStreamObject Doc where
+    intoString = show
+
 instance Outputable Char where
     pretty _ = go . dispatch where
         dispatch :: Char -> String

@@ -75,11 +75,13 @@ viewText :: String -> Viewer
 viewText = mkVField . makeBoard where
     makeBoard :: String -> [String]
     makeBoard = go id where
+        tabsz :: Int
+        tabsz = 4
         go :: ShowS -> String -> [String]
         go buf [] = flush buf
         go buf (ch : str)
             | ch == '\n' = flush buf ++ makeBoard str
-            | ch == '\t' = go (buf . showString "    ") str
+            | ch == '\t' = go (buf . showString (replicate tabsz ' ')) str
             | otherwise = go (buf . showChar ch) str
         flush :: ShowS -> [String]
         flush buf = [buf ""]
