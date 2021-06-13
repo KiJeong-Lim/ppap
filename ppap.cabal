@@ -1,0 +1,22 @@
+name: ppap
+version: 0.0.0
+synopsis: pen-pineapple-apple-pen
+description: Please see README.md
+homepage: https://github.com/KiJeong-Lim/ppap
+license: BSD3
+license-file: LICENSE
+author: KiJeong Lim
+maintainer: gijungdduk@naver.com
+copyright: 2021, KiJeong Lim
+build-type: Simple
+cabal-version: >= 1.10
+
+executable ppap
+    hs-source-dirs: src
+    default-language: Haskell2010
+    build-depends: base >= 4.7 && < 5, containers >= 0.6, transformers >= 0.5, pretty-terminal >= 0.1
+    main-is: Main.hs
+    other-modules:
+        Z.Text.Doc
+        Z.Text.PM
+        Z.Utils
