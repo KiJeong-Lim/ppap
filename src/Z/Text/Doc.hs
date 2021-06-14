@@ -61,8 +61,8 @@ ppunc :: Doc -> [Doc] -> Doc
 ppunc doc0 [] = DocNull
 ppunc doc0 (doc1 : docs2) = doc1 +> foldr (\doc2 -> \acc -> doc0 +> doc2 +> acc) DocNull docs2
 
-pparen :: String -> String -> Doc -> Doc
-pparen left right doc = pstr left +> doc +> pstr right
+pparen :: Bool -> String -> String -> Doc -> Doc
+pparen b left right doc = if b then pstr left +> doc +> pstr right else doc
 
 plist :: [Doc] -> Doc
 plist [] = pstr "[]"
