@@ -4,7 +4,7 @@ import Data.IORef
 import Z.Text.Doc
 
 testDoc :: IO ()
-testDoc = go 4 where
+testDoc = go 5 where
     doc :: Int -> Doc
     doc 1 = vcat
         [ beam '-'
@@ -21,6 +21,11 @@ testDoc = go 4 where
     doc 2 = vcat []
     doc 3 = hcat []
     doc 4 = pcat []
+    doc 5 = vcat
+        [ beam '-'
+        , pstr " "
+        , beam '-'
+        ]
     str :: Int -> String
     str 1 = concat
         [ "--------------------------\n"
@@ -35,6 +40,11 @@ testDoc = go 4 where
     str 2 = ""
     str 3 = ""
     str 4 = ""
+    str 5 = concat
+        [ "-\n"
+        , " \n"
+        , "-\n"
+        ]
     go :: Int -> IO ()
     go ea = do
         faileds_ref <- newIORef []

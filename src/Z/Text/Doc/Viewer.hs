@@ -1,6 +1,5 @@
 module Z.Text.Doc.Viewer where
 
-import Data.Monoid
 import Text.Show
 
 data Doc_
@@ -20,18 +19,11 @@ data Viewer
     deriving (Eq, Show)
 
 instance Eq Doc_ where
-    DocNull == DocNull = True
-    DocText str == DocText str' = str == str'
-    DocHCat doc1 doc2 == DocHCat doc1' doc2' = doc1 == doc1' && doc2 == doc2'
-    DocVCat doc1 doc2 == DocVCat doc1' doc2' = doc1 == doc1' && doc2 == doc2'
-    DocBeam ch == DocBeam ch' = ch == ch'
-    DocNull == DocText str = null str
-    DocText str == DocNull = null str
-    _ == _ = False
+    doc1 == doc2 = show doc1 == show doc2
 
 instance Show Doc_ where
     showsPrec _ = showString . renderViewer . toViewer
-    showList = appEndo . mconcat . map (Endo . showsPrec 0)
+    showList = showsPrec 0 . foldr DocVCat DocNull
     show = flip (showsPrec 0) ""
 
 mkVE :: Viewer
@@ -77,19 +69,22 @@ toViewer (DocVCat doc1 doc2) = mkVV (toViewer doc1) (toViewer doc2)
 toViewer (DocBeam ch) = mkVB ch
 
 renderViewer :: Viewer -> String 
-renderViewer = unlines . intoStrings . normalizeV where
+renderViewer = alliance . intoStrings . normalizeV where
+    alliance :: [String] -> String
+    alliance [] = ""
+    alliance [str] = str
+    alliance strs = foldr (\str -> showString str . showChar '\n') "" strs
     getMaxHeight :: [Viewer] -> Int
     getMaxHeight vs = foldr max 0 [ col | VF row col field <- vs ]
     getMaxWidth :: [Viewer] -> Int
     getMaxWidth vs = foldr max 0 [ row | VF row col field <- vs ]
     expandHeight :: Int -> Viewer -> Viewer
     expandHeight col (VB ch) = mkVF 1 col (replicate col [ch])
-    expandHeight col (VE) = mkVF 0 col (replicate col "")
     expandHeight col (VF row col' field) = mkVF row col (field ++ replicate (col - col') "")
     expandHeight col v = v
     expandWidth :: Int -> Viewer -> Viewer
     expandWidth row (VB ch) = mkVF row 1 [replicate row ch]
-    expandWidth row (VE) = mkVF row 0 []
+    expandWidth row (VE) = mkVF row 0 [""]
     expandWidth row v = v
     horizontal :: Viewer -> [Viewer]
     horizontal (VB ch) = one (mkVB ch)
@@ -125,8 +120,8 @@ renderViewer = unlines . intoStrings . normalizeV where
     normalizeV :: Viewer -> Viewer
     normalizeV = merge . concat . map vertical . flatten where
         flatten :: Viewer -> [Viewer]
+        flatten (VV v1 (VE)) = flatten v1
         flatten (VV v1 v2) = flatten v1 ++ flatten v2
-        flatten (VE) = []
         flatten v1 = one v1
         merge :: [Viewer] -> Viewer
         merge vs = vsum (getMaxWidth vs) (map (expandWidth (getMaxWidth vs)) vs)
