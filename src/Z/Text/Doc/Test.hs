@@ -4,7 +4,7 @@ import Data.IORef
 import Z.Text.Doc
 
 testDoc :: IO ()
-testDoc = go 2 where
+testDoc = go 4 where
     doc :: Int -> Doc
     doc 1 = vcat
         [ beam '-'
@@ -51,8 +51,5 @@ testDoc = go 2 where
             | i <- [1 .. ea]
             ]
         faileds <- readIORef faileds_ref
-        if null faileds
-            then putStrLn ">>> all cases passed."
-            else do
-                putStrLn (">>> " ++ shows (length faileds) " cases failed: " ++ showList faileds "")
+        putStrLn (if null faileds then ">>> all cases passed." else ">>> " ++ shows (length faileds) " cases failed: " ++ showList faileds "")
         return ()
