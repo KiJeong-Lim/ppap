@@ -27,6 +27,9 @@ instance Outputable Char where
         go :: String -> Doc
         go str = pstr ("\'" ++ str ++ "\'")
 
+instance Outputable a => Outputable [a] where
+    pretty _ = plist . map (pretty 0)
+
 vcat :: [Doc] -> Doc
 vcat = foldr DocVCat DocNull
 

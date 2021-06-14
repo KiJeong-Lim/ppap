@@ -13,7 +13,6 @@ data Doc_
 
 data Viewer
     = VE
-    | VT String
     | VB Char
     | VV Viewer Viewer
     | VH Viewer Viewer
@@ -39,7 +38,21 @@ mkVE :: Viewer
 mkVE = VE
 
 mkVT :: String -> Viewer
-mkVT str1 = str1 `seq` VT str1
+mkVT = mkVField . makeBoard where
+    makeBoard :: String -> [String]
+    makeBoard = go id where
+        tabsz :: Int
+        tabsz = 4
+        go :: ShowS -> String -> [String]
+        go buf [] = flush buf
+        go buf (ch : str)
+            | ch == '\n' = flush buf ++ go id str
+            | ch == '\t' = go (showString (replicate tabsz ' ') . buf) str
+            | otherwise = go (buf . showChar ch) str
+        flush :: ShowS -> [String]
+        flush buf = one (buf "")
+    mkVField :: [String] -> Viewer
+    mkVField strs = mkVF (foldr max 0 (map length strs)) (length strs) strs
 
 mkVB :: Char -> Viewer
 mkVB = VB
@@ -63,25 +76,8 @@ toViewer (DocHCat doc1 doc2) = mkVH (toViewer doc1) (toViewer doc2)
 toViewer (DocVCat doc1 doc2) = mkVV (toViewer doc1) (toViewer doc2)
 toViewer (DocBeam ch) = mkVB ch
 
-viewText :: String -> Viewer
-viewText = mkVField . makeBoard where
-    makeBoard :: String -> [String]
-    makeBoard = go id where
-        tabsz :: Int
-        tabsz = 4
-        go :: ShowS -> String -> [String]
-        go buf [] = flush buf
-        go buf (ch : str)
-            | ch == '\n' = flush buf ++ go id str
-            | ch == '\t' = go (showString (replicate tabsz ' ') . buf) str
-            | otherwise = go (buf . showChar ch) str
-        flush :: ShowS -> [String]
-        flush buf = one (buf "")
-    mkVField :: [String] -> Viewer
-    mkVField strs = mkVF (foldr max 0 (map length strs)) (length strs) strs
-
 renderViewer :: Viewer -> String 
-renderViewer = unlines . linesFromVField . normalizeV where
+renderViewer = unlines . intoStrings . normalizeV where
     getMaxHeight :: [Viewer] -> Int
     getMaxHeight vs = foldr max 0 [ col | VF row col field <- vs ]
     getMaxWidth :: [Viewer] -> Int
@@ -89,7 +85,7 @@ renderViewer = unlines . linesFromVField . normalizeV where
     expandHeight :: Int -> Viewer -> Viewer
     expandHeight col (VB ch) = mkVF 1 col (replicate col [ch])
     expandHeight col (VE) = mkVF 0 col (replicate col "")
-    expandHeight col (VF row col' field) = mkVF row col (field ++ replicate (col - col') (replicate row ' '))
+    expandHeight col (VF row col' field) = mkVF row col (field ++ replicate (col - col') "")
     expandHeight col v = v
     expandWidth :: Int -> Viewer -> Viewer
     expandWidth row (VB ch) = mkVF row 1 [replicate row ch]
@@ -99,14 +95,12 @@ renderViewer = unlines . linesFromVField . normalizeV where
     horizontal (VB ch) = one (mkVB ch)
     horizontal (VE) = one mkVE
     horizontal (VF row col field) = one (mkVF row col field)
-    horizontal (VT str) = one (viewText str)
     horizontal (VV v1 v2) = one (normalizeV (mkVV v1 v2))
     horizontal (VH v1 v2) = horizontal v1 ++ horizontal v2
     vertical :: Viewer -> [Viewer]
     vertical (VB ch) = one (mkVB ch)
     vertical (VE) = one mkVE
     vertical (VF row col field) = one (mkVF row col field)
-    vertical (VT str) = one (viewText str)
     vertical (VV v1 v2) = vertical v1 ++ vertical v2
     vertical (VH v1 v2) = one (normalizeH (mkVH v1 v2))
     stretch :: Viewer -> Viewer
@@ -132,8 +126,9 @@ renderViewer = unlines . linesFromVField . normalizeV where
     normalizeV = merge . concat . map vertical . flatten where
         flatten :: Viewer -> [Viewer]
         flatten (VV v1 v2) = flatten v1 ++ flatten v2
+        flatten (VE) = []
         flatten v1 = one v1
         merge :: [Viewer] -> Viewer
         merge vs = vsum (getMaxWidth vs) (map (expandWidth (getMaxWidth vs)) vs)
-    linesFromVField :: Viewer -> [String]
-    linesFromVField (VF row col field) = field
+    intoStrings :: Viewer -> [String]
+    intoStrings (VF row col field) = field
