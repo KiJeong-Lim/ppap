@@ -32,7 +32,7 @@ getTSortedSCCs = runIdentity . go where
     go :: Ord node => Map.Map node (Set.Set node) -> Identity [(Bool, Set.Set node)]
     go getDigraph = do
         let getVertices = Set.toAscList (Map.keysSet getDigraph)
-            getOuts node = Set.toAscList (maybe (error "Z.Algorithm.Sort.getTSortedSCCs.go.getOuts") id (Map.lookup node getDigraph))
+            getOuts node = Set.toAscList (maybe (error "Z.Algo.Sorting.getTSortedSCCs.go.getOuts") id (Map.lookup node getDigraph))
             getIns node = [ node' | (node', nodes) <- Map.toAscList getDigraph, node `Set.member` nodes ]
         (sortedVertices, _) <- runReaderT (runStateT (sortByRel getVertices) Set.empty) getOuts
         (sortedSCCs, _) <- runReaderT (runStateT (splitByRel getVertices) Set.empty) getIns
@@ -43,7 +43,7 @@ sortByMerging = go where
     go :: (a -> a -> Bool) -> [a] -> [a]
     go leq [] = []
     go leq [x] = [x]
-    go leq xs = case (take (length xs `div` 2) xs, drop (length xs `div` 2) xs) of
+    go leq xs = case splitAt (length xs `div` 2) xs of
         (left, right) -> merge leq (go leq left) (go leq right)
     merge :: (a -> a -> Bool) -> [a] -> [a] -> [a]
     merge leq (x : xs) (y : ys) = if x `leq` y then x : merge leq xs (y : ys) else y : merge leq (x : xs) ys
