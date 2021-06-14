@@ -33,13 +33,11 @@ mkVT :: String -> Viewer
 mkVT = mkVField . makeBoard where
     makeBoard :: String -> [String]
     makeBoard = go id where
-        tabsz :: Int
-        tabsz = 4
         go :: ShowS -> String -> [String]
         go buf [] = flush buf
         go buf (ch : str)
             | ch == '\n' = flush buf ++ go id str
-            | ch == '\t' = go (showString (replicate tabsz ' ') . buf) str
+            | ch == '\t' = go (buf . showString (replicate tabsz ' ')) str
             | otherwise = go (buf . showChar ch) str
         flush :: ShowS -> [String]
         flush buf = one (buf "")
