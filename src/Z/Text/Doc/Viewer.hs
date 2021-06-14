@@ -8,6 +8,7 @@ data Doc_
     | DocHCat Doc_ Doc_
     | DocVCat Doc_ Doc_
     | DocBeam Char
+    | DocNemo [String]
     deriving ()
 
 data Viewer
@@ -22,7 +23,7 @@ instance Eq Doc_ where
     doc1 == doc2 = show doc1 == show doc2
 
 instance Show Doc_ where
-    showsPrec _ = showString . renderViewer . toViewer
+    showsPrec _ = showString . alliance . renderViewer . toViewer
     showList = showsPrec 0 . foldr DocVCat DocNull
     show = flip (showsPrec 0) ""
 
@@ -32,8 +33,11 @@ one x = x `seq` [x]
 mkVE :: Viewer
 mkVE = VE
 
+mkVN :: [String] -> Viewer
+mkVN strs = mkVF (foldr max 0 (map length strs)) (length strs) strs
+
 mkVT :: String -> Viewer
-mkVT = mkVField . makeBoard where
+mkVT = mkVN . makeBoard where
     tabsz :: Int
     tabsz = 4
     makeBoard :: String -> [String]
@@ -46,8 +50,6 @@ mkVT = mkVField . makeBoard where
             | otherwise = go (buf . showChar ch) str
         flush :: ShowS -> [String]
         flush buf = one (buf "")
-    mkVField :: [String] -> Viewer
-    mkVField strs = mkVF (foldr max 0 (map length strs)) (length strs) strs
 
 mkVB :: Char -> Viewer
 mkVB = VB
@@ -67,13 +69,54 @@ toViewer (DocText str) = mkVT str
 toViewer (DocHCat doc1 doc2) = mkVH (toViewer doc1) (toViewer doc2)
 toViewer (DocVCat doc1 doc2) = mkVV (toViewer doc1) (toViewer doc2)
 toViewer (DocBeam ch) = mkVB ch
+toViewer (DocNemo strs) = mkVN strs
 
-renderViewer :: Viewer -> String 
-renderViewer = alliance . intoStrings . normalizeV where
-    alliance :: [String] -> String
-    alliance [] = ""
-    alliance [str] = str
-    alliance strs = foldr (\str -> showString str . showChar '\n') "" strs
+calcRow :: String -> Int
+calcRow = flip go 0 where
+    go :: String -> Int -> Int
+    go [] res = res
+    go (ch : str) res
+        | ch == '\n' = go str 0
+        | ch == '\t' = go str (res + 4)
+        | otherwise = go str (res + 1)
+
+nemotext :: [String] -> String -> Doc_
+nemotext strs1 str2 = DocNemo (go strs1) where
+    go :: [String] -> [String]
+    go [] = [str2]
+    go [str] = [str ++ str2]
+    go (str : strs) = str : go strs
+
+textnemo :: String -> [String] -> Doc_
+textnemo str1 = DocText . showString str1 . go where
+    row1 :: Int
+    row1 = calcRow str1
+    go :: [String] -> String
+    go [] = ""
+    go [str] = str
+    go (str : strs) = str ++ "\n" ++ replicate row1 ' ' ++ go strs
+
+nemonemo :: [String] -> [String] -> Doc_
+nemonemo strs1 strs2
+    | col1 < col2 = DocNemo (zipWith (++) (strs1' ++ replicate (col2 - col1) (replicate row1 ' ')) strs2)
+    | otherwise = DocNemo (zipWith (++) strs1' (strs2 ++ replicate (col1 - col2) ""))
+    where
+        col1 :: Int
+        col1 = length strs1
+        col2 :: Int
+        col2 = length strs2
+        row1 :: Int
+        row1 = foldr max 0 (map length strs1)
+        strs1' :: [String]
+        strs1' = [ str1 ++ replicate (row1 - length str1) ' ' | str1 <- strs1 ]
+
+alliance :: [String] -> String
+alliance [] = ""
+alliance [str] = str
+alliance strs = foldr (\str -> showString str . showChar '\n') "" strs
+
+renderViewer :: Viewer -> [String]
+renderViewer = intoStrings . normalizeV where
     getMaxHeight :: [Viewer] -> Int
     getMaxHeight vs = foldr max 0 [ col | VF row col field <- vs ]
     getMaxWidth :: [Viewer] -> Int

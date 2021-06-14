@@ -49,6 +49,9 @@ pprint = pstr . show
 DocNull +> doc = doc
 doc +> DocNull = doc
 DocText str1 +> DocText str2 = DocText (str1 ++ str2)
+DocText str1 +> DocNemo strs2 = textnemo str1 strs2
+DocNemo strs1 +> DocText str2 = nemotext strs1 str2
+DocNemo strs1 +> DocNemo strs2 = nemonemo strs1 strs2
 doc1 +> doc2 = DocHCat doc1 doc2
 
 pcat :: [Doc] -> Doc
@@ -59,6 +62,9 @@ ptab = DocText "\t"
 
 pnl :: Doc
 pnl = DocText "\n"
+
+pblock :: Doc -> Doc
+pblock = DocNemo . renderViewer . toViewer
 
 ppunc :: Doc -> [Doc] -> Doc
 ppunc doc0 [] = DocNull
