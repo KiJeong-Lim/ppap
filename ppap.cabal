@@ -20,5 +20,6 @@ executable ppap
         Z.Text.Doc
         Z.Text.Doc.Test
         Z.Text.Doc.Viewer
+        Z.Text.PC
         Z.Text.PM
         Z.Utils

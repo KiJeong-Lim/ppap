@@ -72,8 +72,8 @@ toViewer (DocVCat doc1 doc2) = mkVV (toViewer doc1) (toViewer doc2)
 toViewer (DocBeam ch) = mkVB ch
 toViewer (DocNemo strs) = mkVN strs
 
-calcRow :: String -> Int
-calcRow = flip go 0 where
+calcIndentation :: String -> Int
+calcIndentation = flip go 0 where
     go :: String -> Int -> Int
     go [] res = res
     go (ch : str) res
@@ -90,12 +90,12 @@ nemotext strs1 str2 = DocNemo (go strs1) where
 
 textnemo :: String -> [String] -> Doc_
 textnemo str1 = DocText . showString str1 . go where
-    row1 :: Int
-    row1 = calcRow str1
+    indent :: Int
+    indent = calcIndentation str1
     go :: [String] -> String
     go [] = ""
     go [str] = str
-    go (str : strs) = str ++ "\n" ++ replicate row1 ' ' ++ go strs
+    go (str : strs) = str ++ "\n" ++ replicate indent ' ' ++ go strs
 
 nemonemo :: [String] -> [String] -> Doc_
 nemonemo strs1 strs2
