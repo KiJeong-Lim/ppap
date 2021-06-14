@@ -27,6 +27,9 @@ instance Show Doc_ where
     showList = showsPrec 0 . foldr DocVCat DocNull
     show = flip (showsPrec 0) ""
 
+tabsz :: Int
+tabsz = 4
+
 one :: a -> [a]
 one x = x `seq` [x]
 
@@ -38,8 +41,8 @@ mkVN strs = mkVF (foldr max 0 (map length strs)) (length strs) strs
 
 mkVT :: String -> Viewer
 mkVT = mkVN . makeBoard where
-    tabsz :: Int
-    tabsz = 4
+    flush :: ShowS -> [String]
+    flush buf = one (buf "")
     makeBoard :: String -> [String]
     makeBoard = go id where
         go :: ShowS -> String -> [String]
@@ -48,8 +51,6 @@ mkVT = mkVN . makeBoard where
             | ch == '\n' = flush buf ++ go id str
             | ch == '\t' = go (buf . showString (replicate tabsz ' ')) str
             | otherwise = go (buf . showChar ch) str
-        flush :: ShowS -> [String]
-        flush buf = one (buf "")
 
 mkVB :: Char -> Viewer
 mkVB = VB
@@ -77,7 +78,7 @@ calcRow = flip go 0 where
     go [] res = res
     go (ch : str) res
         | ch == '\n' = go str 0
-        | ch == '\t' = go str (res + 4)
+        | ch == '\t' = go str (res + tabsz)
         | otherwise = go str (res + 1)
 
 nemotext :: [String] -> String -> Doc_
