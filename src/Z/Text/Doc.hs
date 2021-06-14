@@ -7,10 +7,12 @@ infixr 9 +>
 
 type Indentation = Int
 
+type Doc = Doc_
+
 class Outputable a where
     pretty :: Precedence -> a -> Doc
 
-instance OStreamObject Doc where
+instance OStreamObject Doc_ where
     intoString = show
 
 instance Outputable Char where
@@ -31,7 +33,7 @@ vcat = foldr DocVCat DocNull
 hcat :: [Doc] -> Doc
 hcat = foldr DocHCat DocNull
 
-beam :: Doc
+beam :: Char -> Doc
 beam = DocBeam
 
 pstr :: String -> Doc
@@ -55,19 +57,19 @@ ptab = DocText "\t"
 pnl :: Doc
 pnl = DocText "\n"
 
-ppunc :: String -> [Doc] -> Doc
-ppunc str [] = DocNull
-ppunc str (doc1 : docs2) = doc1 +> foldr (\delta2 -> \acc -> pstr str +> delta2 +> acc) DocNull docs2
+ppunc :: Doc -> [Doc] -> Doc
+ppunc doc0 [] = DocNull
+ppunc doc0 (doc1 : docs2) = doc1 +> foldr (\doc2 -> \acc -> doc0 +> doc2 +> acc) DocNull docs2
 
 pparen :: String -> String -> Doc -> Doc
 pparen left right doc = pstr left +> doc +> pstr right
 
 plist :: [Doc] -> Doc
 plist [] = pstr "[]"
-plist (doc : docs) = pnl +> ptab +> pstr "[ " +> go doc docs where
+plist (doc : docs) = pstr "[ " +> go doc docs where
     go :: Doc -> [Doc] -> Doc
-    go doc1 [] = doc1 +> pnl +> ptab +> pstr "]"
-    go doc1 (doc2 : docs3) = doc1 +> pnl +> ptab +> pstr ", " +> go doc2 docs3
+    go doc1 [] = doc1 +> pnl +> pstr "]"
+    go doc1 (doc2 : docs3) = doc1 +> pnl +> pstr ", " +> go doc2 docs3
 
 pquote :: String -> Doc
 pquote str = pstr ("\""  ++ (str >>= dispatch) ++ "\"") where

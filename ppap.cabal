@@ -18,5 +18,7 @@ executable ppap
     main-is: Main.hs
     other-modules:
         Z.Text.Doc
+        Z.Text.Doc.Test
+        Z.Text.Doc.Viewer
         Z.Text.PM
         Z.Utils
