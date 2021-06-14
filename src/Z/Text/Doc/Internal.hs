@@ -46,11 +46,13 @@ mkVT = mkVN . makeBoard where
     makeBoard :: String -> [String]
     makeBoard = go "" where
         go :: String -> String -> [String]
-        go buf [] = [buf]
+        go buf [] = flush buf
         go buf (ch : str)
-            | ch == '\n' = buf : go "" str
-            | ch == '\t' = go (buf ++ replicate (calcTab (length buf)) ' ') str
-            | otherwise = go (buf ++ [ch]) str
+            | ch == '\n' = flush buf ++ go "" str
+            | ch == '\t' = go (replicate (calcTab (length buf)) ' ' ++ buf) str
+            | otherwise = go (ch : buf) str
+        flush :: String -> [String]
+        flush buf = one (reverse buf)
 
 mkVB :: Char -> Viewer
 mkVB = VB
