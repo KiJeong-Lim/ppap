@@ -26,6 +26,9 @@ instance Show Doc_ where
     showList = showsPrec 0 . foldr DocVCat DocNull
     show = flip (showsPrec 0) ""
 
+one :: a -> [a]
+one x = x `seq` [x]
+
 mkVE :: Viewer
 mkVE = VE
 
@@ -57,9 +60,6 @@ mkVH v1 v2 = v1 `seq` v2 `seq` VH v1 v2
 
 mkVF :: Int -> Int -> [String] -> Viewer
 mkVF row col field = row `seq` col `seq` VF row col field
-
-one :: a -> [a]
-one x = x `seq` [x]
 
 toViewer :: Doc_ -> Viewer
 toViewer (DocNull) = mkVE
