@@ -31,6 +31,8 @@ mkVE = VE
 
 mkVT :: String -> Viewer
 mkVT = mkVField . makeBoard where
+    tabsz :: Int
+    tabsz = 4
     makeBoard :: String -> [String]
     makeBoard = go id where
         go :: ShowS -> String -> [String]
