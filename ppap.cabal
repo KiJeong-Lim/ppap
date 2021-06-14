@@ -17,9 +17,10 @@ executable ppap
     build-depends: base >= 4.7 && < 5, containers >= 0.6, transformers >= 0.5, pretty-terminal >= 0.1
     main-is: Main.hs
     other-modules:
+        Z.Algo.Sorting
         Z.Text.Doc
+        Z.Text.Doc.Internal
         Z.Text.Doc.Test
-        Z.Text.Doc.Viewer
         Z.Text.PC
         Z.Text.PM
         Z.Utils

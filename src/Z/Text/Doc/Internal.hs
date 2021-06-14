@@ -1,4 +1,4 @@
-module Z.Text.Doc.Viewer where
+module Z.Text.Doc.Internal where
 
 import Text.Show
 
@@ -27,8 +27,10 @@ instance Show Doc_ where
     showList = showsPrec 0 . foldr DocVCat DocNull
     show = flip (showsPrec 0) ""
 
-tabsz :: Int
-tabsz = 4
+calcTab :: Int -> Int
+calcTab n = tabsz - (n `mod` tabsz) where
+    tabsz :: Int
+    tabsz = 4
 
 one :: a -> [a]
 one x = x `seq` [x]
@@ -41,16 +43,14 @@ mkVN strs = mkVF (foldr max 0 (map length strs)) (length strs) strs
 
 mkVT :: String -> Viewer
 mkVT = mkVN . makeBoard where
-    flush :: ShowS -> [String]
-    flush buf = one (buf "")
     makeBoard :: String -> [String]
-    makeBoard = go id where
-        go :: ShowS -> String -> [String]
-        go buf [] = flush buf
+    makeBoard = go "" where
+        go :: String -> String -> [String]
+        go buf [] = [buf]
         go buf (ch : str)
-            | ch == '\n' = flush buf ++ go id str
-            | ch == '\t' = go (buf . showString (replicate tabsz ' ')) str
-            | otherwise = go (buf . showChar ch) str
+            | ch == '\n' = buf : go "" str
+            | ch == '\t' = go (buf ++ replicate (calcTab (length buf)) ' ') str
+            | otherwise = go (buf ++ [ch]) str
 
 mkVB :: Char -> Viewer
 mkVB = VB
@@ -78,7 +78,7 @@ calcIndentation = flip go 0 where
     go [] res = res
     go (ch : str) res
         | ch == '\n' = go str 0
-        | ch == '\t' = go str (res + tabsz)
+        | ch == '\t' = go str (res + calcTab res)
         | otherwise = go str (res + 1)
 
 nemotext :: [String] -> String -> Doc_
@@ -98,18 +98,7 @@ textnemo str1 = DocText . showString str1 . go where
     go (str : strs) = str ++ "\n" ++ replicate indent ' ' ++ go strs
 
 nemonemo :: [String] -> [String] -> Doc_
-nemonemo strs1 strs2
-    | col1 < col2 = DocNemo (zipWith (++) (strs1' ++ replicate (col2 - col1) (replicate row1 ' ')) strs2)
-    | otherwise = DocNemo (zipWith (++) strs1' (strs2 ++ replicate (col1 - col2) ""))
-    where
-        col1 :: Int
-        col1 = length strs1
-        col2 :: Int
-        col2 = length strs2
-        row1 :: Int
-        row1 = foldr max 0 (map length strs1)
-        strs1' :: [String]
-        strs1' = [ str1 ++ replicate (row1 - length str1) ' ' | str1 <- strs1 ]
+nemonemo strs1 strs2 = nemotext strs1 (alliance strs2)
 
 alliance :: [String] -> String
 alliance [] = ""

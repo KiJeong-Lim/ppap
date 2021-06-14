@@ -1,6 +1,6 @@
 module Z.Text.Doc where
 
-import Z.Text.Doc.Viewer
+import Z.Text.Doc.Internal
 import Z.Utils
 
 infixr 9 +>
