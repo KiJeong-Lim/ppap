@@ -9,7 +9,9 @@ type Precedence = Int
 type OStream = Handle
 
 newtype FPath
-    = FPath { getFilePath :: FilePath }
+    = FPath
+        { getFilePath :: FilePath
+        }
     deriving ()
 
 class OStreamMaker seed where
@@ -62,7 +64,8 @@ int = fromInteger . toInteger
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
 splitUnless cond (x1 : x2 : xs)
-    | cond x1 x2 = case splitUnless cond (x2 : xs) of
+    | cond x1 x2
+    = case splitUnless cond (x2 : xs) of
         [] -> [[x1]]
         y : ys -> (x1 : y) : ys
 splitUnless cond [] = []

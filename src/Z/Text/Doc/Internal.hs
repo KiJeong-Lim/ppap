@@ -2,6 +2,10 @@ module Z.Text.Doc.Internal where
 
 import Text.Show
 
+type X = Int
+
+type Y = Int
+
 data Doc_
     = DocNull
     | DocText String
@@ -25,15 +29,23 @@ instance Eq Doc_ where
 instance Show Doc_ where
     showsPrec _ = showString . alliance . renderViewer . toViewer
     showList = showsPrec 0 . foldr DocVCat DocNull
-    show = flip (showsPrec 0) ""
 
-calcTab :: Int -> Int
-calcTab n = tabsz - (n `mod` tabsz) where
-    tabsz :: Int
-    tabsz = 4
+instance Semigroup Doc_ where
+    doc1 <> doc2 = DocHCat doc1 doc2
+
+instance Monoid Doc_ where
+    mempty = DocNull
+
+calcTab :: X -> X
+calcTab n = myTabSize - (n `mod` myTabSize) where
+    myTabSize :: Int
+    myTabSize = 4
+
+callWithStrictArg :: (a -> b) -> a -> b
+callWithStrictArg f x = x `seq` f x
 
 one :: a -> [a]
-one x = x `seq` [x]
+one = callWithStrictArg (\x -> [x])
 
 mkVE :: Viewer
 mkVE = VE
@@ -63,7 +75,7 @@ mkVV v1 v2 = v1 `seq` v2 `seq` VV v1 v2
 mkVH :: Viewer -> Viewer -> Viewer
 mkVH v1 v2 = v1 `seq` v2 `seq` VH v1 v2
 
-mkVF :: Int -> Int -> [String] -> Viewer
+mkVF :: X -> Y -> [String] -> Viewer
 mkVF row col field = row `seq` col `seq` VF row col field
 
 toViewer :: Doc_ -> Viewer
@@ -74,25 +86,25 @@ toViewer (DocVCat doc1 doc2) = mkVV (toViewer doc1) (toViewer doc2)
 toViewer (DocBeam ch) = mkVB ch
 toViewer (DocNemo strs) = mkVN strs
 
-calcIndentation :: String -> Int
+calcIndentation :: String -> X
 calcIndentation = flip go 0 where
-    go :: String -> Int -> Int
+    go :: String -> X -> X
     go [] res = res
     go (ch : str) res
-        | ch == '\n' = go str 0
-        | ch == '\t' = go str (res + calcTab res)
-        | otherwise = go str (res + 1)
+        | ch == '\n' = callWithStrictArg (go str) 0
+        | ch == '\t' = callWithStrictArg (go str) (res + calcTab res)
+        | otherwise = callWithStrictArg (go str) (res + 1)
 
 nemotext :: [String] -> String -> Doc_
 nemotext strs1 str2 = DocNemo (go strs1) where
     go :: [String] -> [String]
-    go [] = [str2]
-    go [str] = [str ++ str2]
-    go (str : strs) = str : go strs
+    go [] = one str2
+    go [str] = one (str ++ str2)
+    go (str : strs) = one str ++ go strs
 
 textnemo :: String -> [String] -> Doc_
 textnemo str1 = DocText . showString str1 . go where
-    indent :: Int
+    indent :: X
     indent = calcIndentation str1
     go :: [String] -> String
     go [] = ""
@@ -108,39 +120,35 @@ alliance [str] = str
 alliance strs = foldr (\str -> showString str . showChar '\n') "" strs
 
 renderViewer :: Viewer -> [String]
-renderViewer = intoStrings . normalizeV where
-    getMaxHeight :: [Viewer] -> Int
-    getMaxHeight vs = foldr max 0 [ col | VF row col field <- vs ]
-    getMaxWidth :: [Viewer] -> Int
+renderViewer = unVF . normalizeV where
+    getMaxWidth :: [Viewer] -> X
     getMaxWidth vs = foldr max 0 [ row | VF row col field <- vs ]
-    expandHeight :: Int -> Viewer -> Viewer
-    expandHeight col (VB ch) = mkVF 1 col (replicate col [ch])
-    expandHeight col (VF row col' field) = mkVF row col (field ++ replicate (col - col') "")
-    expandHeight col v = v
-    expandWidth :: Int -> Viewer -> Viewer
+    getMaxHeight :: [Viewer] -> Y
+    getMaxHeight vs = foldr max 0 [ col | VF row col field <- vs ]
+    expandWidth :: X -> Viewer -> Viewer
     expandWidth row (VB ch) = mkVF row 1 [replicate row ch]
     expandWidth row (VE) = mkVF row 0 [""]
     expandWidth row v = v
+    expandHeight :: Y -> Viewer -> Viewer
+    expandHeight col (VB ch) = mkVF 1 col (replicate col [ch])
+    expandHeight col (VF row col' field) = mkVF row col (field ++ replicate (col - col') "")
+    expandHeight col v = v
     horizontal :: Viewer -> [Viewer]
-    horizontal (VB ch) = one (mkVB ch)
-    horizontal (VE) = one mkVE
-    horizontal (VF row col field) = one (mkVF row col field)
     horizontal (VV v1 v2) = one (normalizeV (mkVV v1 v2))
     horizontal (VH v1 v2) = horizontal v1 ++ horizontal v2
+    horizontal v = one v
     vertical :: Viewer -> [Viewer]
-    vertical (VB ch) = one (mkVB ch)
-    vertical (VE) = one mkVE
-    vertical (VF row col field) = one (mkVF row col field)
     vertical (VV v1 v2) = vertical v1 ++ vertical v2
     vertical (VH v1 v2) = one (normalizeH (mkVH v1 v2))
+    vertical v = one v
     stretch :: Viewer -> Viewer
     stretch (VF row col strs) = mkVF row col [ str ++ replicate (row - length str) ' ' | str <- strs ]
-    hsum :: Int -> [Viewer] -> Viewer
+    stretch v = v
+    hsum :: Y -> [Viewer] -> Viewer
     hsum col [] = mkVF 0 col (replicate col "")
-    hsum col [v] = v
     hsum col (v : vs) = case (stretch v, hsum col vs) of
-        (VF row1 _ field1, VF row2 _ field2) -> mkVF (row1 + row2) col (zipWith (++) field1 field2)
-    vsum :: Int -> [Viewer] -> Viewer
+        (VF row1 _ field1, VF row2 _ field2) -> if row2 > 0 then mkVF (row1 + row2) col (zipWith (++) field1 field2) else v
+    vsum :: X -> [Viewer] -> Viewer
     vsum row [] = mkVF row 0 []
     vsum row (v : vs) = case (v, vsum row vs) of
         (VF _ col1 field1, VF _ col2 field2) -> mkVF row (col1 + col2) (field1 ++ field2)
@@ -160,5 +168,6 @@ renderViewer = intoStrings . normalizeV where
         flatten v1 = one v1
         merge :: [Viewer] -> Viewer
         merge vs = vsum (getMaxWidth vs) (map (expandWidth (getMaxWidth vs)) vs)
-    intoStrings :: Viewer -> [String]
-    intoStrings (VF row col field) = field
+    unVF :: Viewer -> [String]
+    unVF (VF row col field) = field
+    unVF _ = []

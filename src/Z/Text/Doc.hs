@@ -30,6 +30,12 @@ instance Outputable Char where
 instance Outputable a => Outputable [a] where
     pretty _ = plist . map (pretty 0)
 
+isEmptyDoc :: Doc -> Bool
+isEmptyDoc (DocNull) = True
+isEmptyDoc (DocText str) = null str
+isEmptyDoc (DocNemo strs) = null (alliance strs)
+isEmptyDoc _ = False
+
 vcat :: [Doc] -> Doc
 vcat = foldr DocVCat DocNull
 
