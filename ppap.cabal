@@ -22,5 +22,8 @@ executable ppap
         Z.Text.Doc.Internal
         Z.Text.Doc.Test
         Z.Text.PC
+        Z.Text.PC.Base
+        Z.Text.PC.Internal
+        Z.Text.PC.Test
         Z.Text.PM
         Z.Utils

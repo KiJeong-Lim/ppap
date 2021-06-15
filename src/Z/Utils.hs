@@ -77,3 +77,14 @@ splitBy x0 (x : xs)
     | x == x0 = [] : splitBy x0 xs
     | otherwise = case splitBy x0 xs of
         y : ys -> (x : y) : ys
+
+calcTab :: Int -> Int
+calcTab n = myTabSize - (n `mod` myTabSize) where
+    myTabSize :: Int
+    myTabSize = 4
+
+callWithStrictArg :: (a -> b) -> a -> b
+callWithStrictArg f x = x `seq` f x
+
+one :: a -> [a]
+one = callWithStrictArg (\x -> [x])

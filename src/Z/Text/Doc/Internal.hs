@@ -1,6 +1,7 @@
 module Z.Text.Doc.Internal where
 
 import Text.Show
+import Z.Utils
 
 type X = Int
 
@@ -35,17 +36,6 @@ instance Semigroup Doc_ where
 
 instance Monoid Doc_ where
     mempty = DocNull
-
-calcTab :: X -> X
-calcTab n = myTabSize - (n `mod` myTabSize) where
-    myTabSize :: Int
-    myTabSize = 4
-
-callWithStrictArg :: (a -> b) -> a -> b
-callWithStrictArg f x = x `seq` f x
-
-one :: a -> [a]
-one = callWithStrictArg (\x -> [x])
 
 mkVE :: Viewer
 mkVE = VE
@@ -127,7 +117,7 @@ renderViewer = unVF . normalizeV where
     getMaxHeight vs = foldr max 0 [ col | VF row col field <- vs ]
     expandWidth :: X -> Viewer -> Viewer
     expandWidth row (VB ch) = mkVF row 1 [replicate row ch]
-    expandWidth row (VE) = mkVF row 0 [""]
+    expandWidth row (VE) = mkVF row 1 [""]
     expandWidth row v = v
     expandHeight :: Y -> Viewer -> Viewer
     expandHeight col (VB ch) = mkVF 1 col (replicate col [ch])
