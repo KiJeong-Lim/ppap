@@ -45,10 +45,12 @@ testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n))
         [ regexPC "['a'-'z']"
         , regexPC "['0'-'9']*"
         , regexPC "['0'-'9']*" <* skipWhite
+        , regexPC "(['0'-'9']* \" \"*)*"
         ]
     getTestInput :: [String]
     getTestInput =
         [ "abcdefg"
         , "01234"
         , "01234      "
+        , "01 2  3   4"
         ]

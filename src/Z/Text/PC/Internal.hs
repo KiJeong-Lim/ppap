@@ -89,8 +89,8 @@ instance Read RegEx where
         suffix :: PM (RegEx -> RegEx)
         suffix = mconcat
             [ consumeStr "*" *> pure (\re -> mkReStar re)
-            , consumeStr "+" *> pure (\re -> mkReMult re (ReStar re))
-            , consumeStr "?" *> pure (\re -> mkRePlus re (ReWord ""))
+            , consumeStr "+" *> pure (\re -> mkReMult re (mkReStar re))
+            , consumeStr "?" *> pure (\re -> mkRePlus re (mkReWord ""))
             ]
         go :: Precedence -> PM RegEx
         go 0 = List.foldl' mkRePlus <$> go 1 <*> many (consumeStr " + " *> go 1)
@@ -189,7 +189,7 @@ mkErrMsg src lstr = show theMsg where
         ]
 
 runRegEx :: LocStr -> RegEx -> (LocStr, String)
-runRegEx = flip go "" where
+runRegEx = flip (curry go) "" where
     runCharSet :: CharSet -> Char -> Bool
     runCharSet (CsUniv) ch = True
     runCharSet (CsUnion chs1 chs2) ch = runCharSet chs1 ch || runCharSet chs2 ch
@@ -204,47 +204,72 @@ runRegEx = flip go "" where
     isNullable (ReMult re1 re2) = isNullable re1 && isNullable re2
     isNullable (ReStar re1) = True
     differentiate :: Char -> RegEx -> RegEx
-    differentiate ch (ReCSet chs) = if runCharSet chs ch then mkReWord "" else mkReZero
-    differentiate ch (ReWord str) = if [ch] == take 1 str then mkReWord (tail str) else mkReZero
-    differentiate ch (RePlus re1 re2) = mkRePlus (differentiate ch re1) (differentiate ch re2)
-    differentiate ch (ReZero) = mkReZero
-    differentiate ch (ReMult re1 re2) = if isNullable re1 then mkRePlus (mkReMult (differentiate ch re1) re2) (differentiate ch re2) else mkReMult (differentiate ch re1) re2
-    differentiate ch (ReStar re1) = differentiate ch (mkRePlus mkReZero (mkReMult re1 (mkReStar re1)))
-    canPlvsVltra :: RegEx -> Bool
-    canPlvsVltra (ReCSet chs) = True
-    canPlvsVltra (ReWord str) = not (null str)
-    canPlvsVltra (RePlus re1 re2) = canPlvsVltra re1 || canPlvsVltra re2
-    canPlvsVltra (ReZero) = False
-    canPlvsVltra (ReMult re1 re2) = if isNullable re1 then canPlvsVltra re1 || canPlvsVltra re2 else canPlvsVltra re1
-    canPlvsVltra (ReStar re1) = True
+    differentiate ch (ReCSet chs)
+        | runCharSet chs ch = mkReWord ""
+        | otherwise = mkReZero
+    differentiate ch (ReWord str)
+        | [ch] == take 1 str = mkReWord (tail str)
+        | otherwise = mkReZero
+    differentiate ch (RePlus re1 re2)
+        = mkRePlus (differentiate ch re1) (differentiate ch re2)
+    differentiate ch (ReZero)
+        = mkReZero
+    differentiate ch (ReMult re1 re2)
+        | isNullable re1 = mkRePlus (mkReMult (differentiate ch re1) re2) (differentiate ch re2)
+        | otherwise = mkReMult (differentiate ch re1) re2
+    differentiate ch (ReStar re1)
+        = mkReMult (differentiate ch re1) (mkReStar re1)
+    isNotEmpty :: CharSet -> Bool
+    isNotEmpty _ = True
+    mayPlvsVltra :: RegEx -> Bool
+    mayPlvsVltra (ReCSet chs) = isNotEmpty chs
+    mayPlvsVltra (ReWord str) = not (null str)
+    mayPlvsVltra (RePlus re1 re2) = or
+        [ mayPlvsVltra re1
+        , mayPlvsVltra re2
+        ]
+    mayPlvsVltra (ReZero) = False
+    mayPlvsVltra (ReMult re1 re2) = or
+        [ mayPlvsVltra re1 && mayPlvsVltra re2
+        , mayPlvsVltra re1 && isNullable re2
+        , isNullable re1 && mayPlvsVltra re2
+        ]
+    mayPlvsVltra (ReStar re1) = mayPlvsVltra re1
     repeatPlvsVltra :: String -> RegEx -> StateT LocStr Maybe (String, RegEx)
     repeatPlvsVltra output regex = do
         buffer <- get
         case buffer of
             [] -> if isNullable regex
                 then return (reverse output, regex)
-                else fail "cannot go further more"
+                else fail "It is impossible that I read the buffer further more and then accept the given regex."
             ((_, ch) : buffer') -> do
                 let regex' = differentiate ch regex
                     output' = ch : output
                 put buffer'
                 if isNullable regex'
                     then return (reverse output', regex')
-                    else if canPlvsVltra regex'
+                    else if mayPlvsVltra regex'
                         then repeatPlvsVltra output' regex'
-                        else fail "cannot go further more"
-    go :: LocStr -> String -> RegEx -> (LocStr, String)
-    go buffer_of_last_commit output_of_last_commit current_regex
-        = case runStateT (repeatPlvsVltra "" current_regex) buffer_of_last_commit of
-            Nothing -> (buffer_of_last_commit, output_of_last_commit)
-            Just ((fresh_output, next_regex), new_buffer)
-                | null new_buffer -> (new_buffer, output_of_last_commit ++ fresh_output)
-                | otherwise -> go new_buffer (output_of_last_commit ++ fresh_output) next_regex
+                        else fail "It is impossible that I read the buffer further more and then accept the given regex."
+    go :: (LocStr, String) -> RegEx -> (LocStr, String)
+    go last_commit current_regex
+        = case runStateT (repeatPlvsVltra "" current_regex) (getBuffer last_commit) of
+            Nothing -> last_commit
+            Just ((fresh_output, next_regex), new_buffer) ->
+                let new_commit = (new_buffer, getOutput last_commit ++ fresh_output) in
+                if null new_buffer
+                    then new_commit
+                    else go new_commit next_regex
+        where
+            getBuffer :: (LocStr, String) -> LocStr
+            getBuffer = fst
+            getOutput :: (LocStr, String) -> String
+            getOutput = snd
 
 parserOfRegularExpression :: RegExRep -> P String
-parserOfRegularExpression regex_rep = PC (go maybeRegEx) where
+parserOfRegularExpression regex_representation = PC (go maybeRegEx) where
     maybeRegEx :: Maybe RegEx
-    maybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_rep ] of
+    maybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_representation ] of
         [regex] -> Just regex
         _ -> Nothing
     go :: Maybe RegEx -> ParserBase LocChr String
