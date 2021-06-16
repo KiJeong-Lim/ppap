@@ -171,7 +171,7 @@ mkErrMsg src lstr = show theMsg where
         ((r, c), _) : _ -> c
     theMsg :: Doc
     theMsg = vcat
-        [ hcat
+        [ mconcat
             [ vcat
                 [ pstr ""
                 , pcat

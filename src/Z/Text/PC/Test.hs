@@ -44,8 +44,8 @@ testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n))
         , regexPC "['0'-'9']*" <* skipWhite
         , regexPC "(['0'-'9']* \" \"*)*"
         , acceptQuote
-        , undefined
-        , undefined
+        , acceptQuote
+        , acceptQuote
         ]
     getTestInput :: [String]
     getTestInput =
@@ -53,7 +53,7 @@ testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n))
         , "01234"
         , "01234      "
         , "01 2  3   4"
-        , "\"hello\""
-        , undefined
-        , undefined
+        , "\"hello\"\\\""
+        , "\"'\""
+        , "\"\\'\""
         ]

@@ -46,7 +46,7 @@ testDoc = go 8 where
     doc :: Int -> Doc
     doc 1 = vcat
         [ beam '-'
-        , hcat
+        , mconcat
             [ beam '|'
             , pstr " "
             , plist
@@ -57,7 +57,7 @@ testDoc = go 8 where
         , beam '^'
         ]
     doc 2 = vcat []
-    doc 3 = hcat []
+    doc 3 = mconcat []
     doc 4 = pcat []
     doc 5 = vcat
         [ beam '-'
@@ -80,7 +80,7 @@ testDoc = go 8 where
         ]
     doc 8 = vcat
         [ beam '-'
-        , hcat
+        , mconcat
             [ beam '|'
             , pstr " "
             , plist

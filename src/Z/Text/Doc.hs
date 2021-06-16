@@ -39,9 +39,6 @@ isEmptyDoc _ = False
 vcat :: [Doc] -> Doc
 vcat = foldr DocVCat DocNull
 
-hcat :: [Doc] -> Doc
-hcat = foldr DocHCat DocNull
-
 beam :: Char -> Doc
 beam = DocBeam
 
