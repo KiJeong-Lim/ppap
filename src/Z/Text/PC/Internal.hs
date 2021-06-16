@@ -36,7 +36,7 @@ data CharSet
     deriving ()
 
 data RegEx
-    = ReCharSet CharSet
+    = ReCSet CharSet
     | ReWord String
     | RePlus RegEx RegEx
     | ReZero
@@ -97,7 +97,7 @@ instance Read RegEx where
         go 1 = List.foldl' mkReMult <$> go 2 <*> many (consumeStr " " *> go 2)
         go 2 = List.foldl' (flip ($)) <$> go 3 <*> many suffix
         go 3 = mconcat
-            [ consumeStr "[" *> (mkReCharSet <$> autoPM 0) <* consumeStr "]"
+            [ consumeStr "[" *> (mkReCSet <$> autoPM 0) <* consumeStr "]"
             , pure mkReWord <* matchPrefix "\"" <*> autoPM 0
             , consumeStr "()" *> pure mkReZero
             , go 4
@@ -120,8 +120,8 @@ mkCsEnum ch1 ch2 = ch1 `seq` ch2 `seq` CsEnum ch1 ch2
 mkCsSingle :: Char -> CharSet
 mkCsSingle ch = ch `seq` CsSingle ch
 
-mkReCharSet :: CharSet -> RegEx
-mkReCharSet chs = chs `seq` ReCharSet chs
+mkReCSet :: CharSet -> RegEx
+mkReCSet chs = chs `seq` ReCSet chs
 
 mkReWord :: String -> RegEx
 mkReWord str = str `seq` ReWord str
@@ -191,39 +191,39 @@ mkErrMsg src lstr = show theMsg where
 runRegEx :: LocStr -> RegEx -> (LocStr, String)
 runRegEx = flip go "" where
     runCharSet :: CharSet -> Char -> Bool
-    runCharSet CsUniv ch = True
+    runCharSet (CsUniv) ch = True
     runCharSet (CsUnion chs1 chs2) ch = runCharSet chs1 ch || runCharSet chs2 ch
     runCharSet (CsDiff ch1 ch2) ch = runCharSet ch1 ch && not (runCharSet ch2 ch)
     runCharSet (CsEnum ch1 ch2) ch = ch1 <= ch && ch <= ch2
     runCharSet (CsSingle ch1) ch = ch == ch1
     isNullable :: RegEx -> Bool
-    isNullable (ReCharSet chs) = False
+    isNullable (ReCSet chs) = False
     isNullable (ReWord str) = null str
     isNullable (RePlus re1 re2) = isNullable re1 || isNullable re2
     isNullable (ReZero) = False
     isNullable (ReMult re1 re2) = isNullable re1 && isNullable re2
     isNullable (ReStar re1) = True
     differentiate :: Char -> RegEx -> RegEx
-    differentiate ch (ReCharSet chs) = if runCharSet chs ch then mkReWord "" else mkReZero
+    differentiate ch (ReCSet chs) = if runCharSet chs ch then mkReWord "" else mkReZero
     differentiate ch (ReWord str) = if [ch] == take 1 str then mkReWord (tail str) else mkReZero
     differentiate ch (RePlus re1 re2) = mkRePlus (differentiate ch re1) (differentiate ch re2)
     differentiate ch (ReZero) = mkReZero
     differentiate ch (ReMult re1 re2) = if isNullable re1 then mkRePlus (mkReMult (differentiate ch re1) re2) (differentiate ch re2) else mkReMult (differentiate ch re1) re2
     differentiate ch (ReStar re1) = differentiate ch (mkRePlus mkReZero (mkReMult re1 (mkReStar re1)))
     canPlvsVltra :: RegEx -> Bool
-    canPlvsVltra (ReCharSet chs) = True
-    canPlvsVltra (ReWord str) = True
+    canPlvsVltra (ReCSet chs) = True
+    canPlvsVltra (ReWord str) = not (null str)
     canPlvsVltra (RePlus re1 re2) = canPlvsVltra re1 || canPlvsVltra re2
     canPlvsVltra (ReZero) = False
-    canPlvsVltra (ReMult re1 re2) = canPlvsVltra re1
+    canPlvsVltra (ReMult re1 re2) = if isNullable re1 then canPlvsVltra re1 || canPlvsVltra re2 else canPlvsVltra re1
     canPlvsVltra (ReStar re1) = True
-    tryPlvsVltra :: String -> RegEx -> StateT LocStr Maybe (String, RegEx)
-    tryPlvsVltra output regex = do
+    repeatPlvsVltra :: String -> RegEx -> StateT LocStr Maybe (String, RegEx)
+    repeatPlvsVltra output regex = do
         buffer <- get
         case buffer of
             [] -> if isNullable regex
                 then return (reverse output, regex)
-                else fail "cannot go further"
+                else fail "cannot go further more"
             ((_, ch) : buffer') -> do
                 let regex' = differentiate ch regex
                     output' = ch : output
@@ -231,13 +231,15 @@ runRegEx = flip go "" where
                 if isNullable regex'
                     then return (reverse output', regex')
                     else if canPlvsVltra regex'
-                        then tryPlvsVltra output' regex'
-                        else fail "cannot go further"
+                        then repeatPlvsVltra output' regex'
+                        else fail "cannot go further more"
     go :: LocStr -> String -> RegEx -> (LocStr, String)
     go buffer_of_last_commit output_of_last_commit current_regex
-        = case runStateT (tryPlvsVltra "" current_regex) buffer_of_last_commit of
+        = case runStateT (repeatPlvsVltra "" current_regex) buffer_of_last_commit of
             Nothing -> (buffer_of_last_commit, output_of_last_commit)
-            Just ((new_output, next_regex), new_buffer) -> if null new_buffer then (new_buffer, output_of_last_commit ++ new_output) else go new_buffer (output_of_last_commit ++ new_output) next_regex
+            Just ((fresh_output, next_regex), new_buffer)
+                | null new_buffer -> (new_buffer, output_of_last_commit ++ fresh_output)
+                | otherwise -> go new_buffer (output_of_last_commit ++ fresh_output) next_regex
 
 parserOfRegularExpression :: RegExRep -> P String
 parserOfRegularExpression regex_rep = PC (go maybeRegEx) where
@@ -246,6 +248,6 @@ parserOfRegularExpression regex_rep = PC (go maybeRegEx) where
         [regex] -> Just regex
         _ -> Nothing
     go :: Maybe RegEx -> ParserBase LocChr String
-    go Nothing = error ("wrong regex: " ++ show regex_rep)
+    go Nothing = error ("In `Z.Text.PC.Internal.parserOfRegularExpression': input-regex-is-invalid, input-regex=`" ++ regex_rep ++ "'.")
     go (Just regex) = PAct $ \lstr0 -> case runRegEx lstr0 regex of
         (lstr1, str) -> PAlt [(PVal str, lstr1)]

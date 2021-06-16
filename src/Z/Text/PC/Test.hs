@@ -38,8 +38,8 @@ testParserBase = do
     quickBatch checkParserBaseIsMonadPlus
     return ()
 
-testPC :: Int -> String
-testPC n = either id show (zipWith runPC getTestPC getTestInput !! n) where
+testPC :: Int -> IO ()
+testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n)) where
     getTestPC :: [PC String]
     getTestPC =
         [ regexPC "['a'-'z']"
