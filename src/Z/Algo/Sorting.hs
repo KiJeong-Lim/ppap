@@ -36,7 +36,7 @@ getTSortedSCCs = runIdentity . go where
     go :: Ord node => Map.Map node (Set.Set node) -> Identity [(IsCircular, Set.Set node)]
     go getDigraph = do
         let getVertices = Set.toAscList (Map.keysSet getDigraph)
-            getOuts node = Set.toAscList (maybe (error "In `Z.Algo.Sorting.getTSortedSCCs': range-is-out-of-domain") id (Map.lookup node getDigraph))
+            getOuts node = Set.toAscList (maybe (error "In `Z.Algo.Sorting.getTSortedSCCs': an-element-is-out-of-domain") id (Map.lookup node getDigraph))
             getIns node = [ node' | (node', nodes) <- Map.toAscList getDigraph, node `Set.member` nodes ]
         (sortedVertices, _) <- runReaderT (runStateT (sortByRel getVertices) Set.empty) getOuts
         (sortedSCCs, _) <- runReaderT (runStateT (splitByRel getVertices) Set.empty) getIns

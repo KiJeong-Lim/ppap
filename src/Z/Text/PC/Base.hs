@@ -4,6 +4,7 @@ import Control.Applicative
 import Control.Monad
 import Data.Function
 import Z.Algo.Sorting
+import Z.Utils
 
 data ParserBase chr val
     = PVal val
@@ -43,7 +44,7 @@ unPB (PAlt alts1) str0 = alts1
 unPB (PAct act1) str0 = unPB (act1 str0) str0
 
 returnPB :: val -> ParserBase chr val
-returnPB val1 = PVal val1
+returnPB = PVal
 
 bindPB :: ParserBase chr val1 -> (val1 -> ParserBase chr val2) -> ParserBase chr val2
 bindPB (PVal val1) p2 = p2 val1
@@ -67,12 +68,12 @@ negPB p1 = PAct $ \str0 -> case unPB p1 str0 of
 runPB :: ParserBase chr val -> [chr] -> Either [chr] [(val, [chr])]
 runPB = go where
     findShortest :: [[chr]] -> [chr]
-    findShortest = head . sortByMerging (on (<=) length)
+    findShortest = head . sortByMerging ((<=) `on` length)
     go :: ParserBase chr val -> [chr] -> Either [chr] [(val, [chr])]
-    go (PVal val1) str0 = Right [(val1, str0)]
+    go (PVal val1) str0 = return [(val1, str0)]
     go (PAlt alts1) str0 = case [ go p1 str1 | (p1, str1) <- alts1 ] of
         [] -> Left str0
         results -> case [ (val2, str2) | Right pairs <- results, (val2, str2) <- pairs ] of
-            [] -> Left (findShortest [ str2 | Left str2 <- results ])
-            pairs -> Right pairs
+            [] -> callWithStrictArg Left (findShortest [ str2 | Left str2 <- results ])
+            pairs -> return pairs
     go (PAct act1) str0 = go (act1 str0) str0

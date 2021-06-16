@@ -30,6 +30,7 @@ instance Eq Doc_ where
 instance Show Doc_ where
     showsPrec _ = showString . alliance . renderViewer . toViewer
     showList = showsPrec 0 . foldr DocVCat DocNull
+    show = flip (showsPrec 0) ""
 
 instance Semigroup Doc_ where
     doc1 <> doc2 = DocHCat doc1 doc2
