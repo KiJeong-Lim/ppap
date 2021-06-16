@@ -36,7 +36,7 @@ eofPC = PC go where
     go = PAct $ \lstr0 -> if null lstr0 then PAlt [(PVal (), lstr0)] else PAlt []
 
 regexPC :: RegExRep -> PC String
-regexPC = parserOfRegularExpression
+regexPC = parserByRegularExpression
 
 negPC :: PC a -> PC ()
 negPC = PC . negPB . unPC

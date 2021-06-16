@@ -139,13 +139,17 @@ mkReStar :: RegEx -> RegEx
 mkReStar re1 = re1 `seq` ReStar re1
 
 addLoc :: Src -> LocStr
-addLoc = go 1 1 where
+addLoc = go initRow initCol where
+    initRow :: Row
+    initRow = 1
+    initCol :: Col
+    initCol = 1
     getNextRow :: Row -> Char -> Row
-    getNextRow r '\n' = r + 1
+    getNextRow r '\n' = r + initRow
     getNextRow r _ = r
     getNextCol :: Col -> Char -> Col
-    getNextCol c '\n' = 1
-    getNextCol c '\t' = c + calcTab (c - 1)
+    getNextCol c '\n' = initCol
+    getNextCol c '\t' = c + calcTab (c - initCol)
     getNextCol c _ = c + 1
     go :: Row -> Col -> String -> LocStr
     go r c [] = []
@@ -188,8 +192,8 @@ mkErrMsg src lstr = show theMsg where
             else pstr "?- parsing error at " +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr "."
         ]
 
-runRegEx :: LocStr -> RegEx -> (LocStr, String)
-runRegEx = flip (curry go) "" where
+acceptLongestStringMatchedToRegex :: LocStr -> RegEx -> (LocStr, String)
+acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
     runCharSet :: CharSet -> Char -> Bool
     runCharSet (CsUniv) ch = True
     runCharSet (CsUnion chs1 chs2) ch = runCharSet chs1 ch || runCharSet chs2 ch
@@ -251,28 +255,28 @@ runRegEx = flip (curry go) "" where
                     else if mayPlvsVltra regex'
                         then repeatPlvsVltra output' regex'
                         else fail "It is impossible that I read the buffer further more and then accept the given regex."
-    go :: (LocStr, String) -> RegEx -> (LocStr, String)
-    go last_commit current_regex
+    runRegEx :: (LocStr, String) -> RegEx -> (LocStr, String)
+    runRegEx last_commit current_regex
         = case runStateT (repeatPlvsVltra "" current_regex) (getBuffer last_commit) of
             Nothing -> last_commit
             Just ((fresh_output, next_regex), new_buffer) ->
                 let new_commit = (new_buffer, getOutput last_commit ++ fresh_output) in
                 if null new_buffer
                     then new_commit
-                    else go new_commit next_regex
+                    else runRegEx new_commit next_regex
         where
             getBuffer :: (LocStr, String) -> LocStr
             getBuffer = fst
             getOutput :: (LocStr, String) -> String
             getOutput = snd
 
-parserOfRegularExpression :: RegExRep -> P String
-parserOfRegularExpression regex_representation = PC (go maybeRegEx) where
+parserByRegularExpression :: RegExRep -> P String
+parserByRegularExpression regex_representation = PC (go maybeRegEx) where
     maybeRegEx :: Maybe RegEx
     maybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_representation ] of
         [regex] -> Just regex
         _ -> Nothing
     go :: Maybe RegEx -> ParserBase LocChr String
-    go Nothing = error ("In `Z.Text.PC.Internal.parserOfRegularExpression': input-regex-is-invalid, input-regex=`" ++ regex_rep ++ "'.")
-    go (Just regex) = PAct $ \lstr0 -> case runRegEx lstr0 regex of
+    go Nothing = error ("In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid, input-regex=`" ++ regex_representation ++ "'.")
+    go (Just regex) = PAct $ \lstr0 -> case acceptLongestStringMatchedToRegex lstr0 regex of
         (lstr1, str) -> PAlt [(PVal str, lstr1)]
