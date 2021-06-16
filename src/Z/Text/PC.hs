@@ -1,7 +1,6 @@
 module Z.Text.PC where
 
 import Control.Applicative
-import Control.Monad
 import Data.Function
 import Z.Algo.Sorting
 import Z.Text.PC.Base
@@ -23,12 +22,12 @@ acceptPC cond = PC go where
         _ -> PAlt []
 
 consumePC :: String -> PC ()
-consumePC expecteds = mapM_ acceptPC (map (==) expecteds)
+consumePC = mapM_ acceptPC . map (==)
 
 matchPC :: String -> PC ()
-matchPC expecteds = PC go where
-    go :: ParserBase LocChr ()
-    go = PAct $ \lstr0 -> if expecteds == map snd (take (length expecteds) lstr0) then PAlt [(PVal (), drop (length expecteds) lstr0)] else PAlt []
+matchPC = PC . go where
+    go :: String -> ParserBase LocChr ()
+    go expecteds = PAct $ \lstr0 -> if expecteds == map snd (take (length expecteds) lstr0) then PAlt [(PVal (), drop (length expecteds) lstr0)] else PAlt []
 
 eofPC :: PC ()
 eofPC = PC go where
@@ -42,46 +41,20 @@ negPC :: PC a -> PC ()
 negPC = PC . negPB . unPC
 
 runPC :: PC val -> Src -> Either String val
-runPC p str0 = case runPB (unPC p) (addLoc str0) of
-    Left lstr -> Left (mkErrMsg str0 lstr)
-    Right pairs -> case [ val | (val, lstr1) <- pairs, null lstr1 ] of
-        [] -> Left (mkErrMsg str0 (head (sortByMerging (on (<=) length) (map snd pairs))))
-        val : _ -> Right val
+runPC p str0
+    = case runPB (unPC p) (addLoc str0) of
+        Left lstr -> throwLeft (mkErrMsg str0 lstr)
+        Right pairs -> case [ val | (val, lstr1) <- pairs, null lstr1 ] of
+            [] -> throwLeft (mkErrMsg str0 (head (sortByMerging ((<=) `on` length) (map snd pairs))))
+            val : _ -> return val
+    where
+        throwLeft :: String -> Either String a
+        throwLeft str = str `seq` Left str
 
 acceptQuote :: PC String
-acceptQuote = PC go where
-    loop :: LocStr -> Either LocStr (String, LocStr)
-    loop lstr0 = case map snd (take 1 lstr0) of
-        [] -> Left lstr0
-        ['\\'] -> case map snd (take 1 (drop 1 lstr0)) of
-            ['\"'] -> do
-                (quote, lstr1) <- loop (drop 2 lstr0)
-                return ('\"' : quote, lstr1)
-            ['\''] -> do
-                (quote, lstr1) <- loop (drop 2 lstr0)
-                return ('\'' : quote, lstr1)
-            ['\\']  -> do
-                (quote, lstr1) <- loop (drop 2 lstr0)
-                return ('\\' : quote, lstr1)
-            ['\n']  -> do
-                (quote, lstr1) <- loop (drop 2 lstr0)
-                return ('\n' : quote, lstr1)
-            ['\t']  -> do
-                (quote, lstr1) <- loop (drop 2 lstr0)
-                return ('\t' : quote, lstr1)
-            _ -> Left lstr0
-        ['\n'] -> Left lstr0
-        ['\t'] -> Left lstr0
-        ['\"'] -> return ("", drop 1 lstr0)
-        [ch] -> do
-                (quote, lstr1) <- loop (drop 1 lstr0)
-                return (ch : quote, lstr1)
-    go :: ParserBase LocChr String
-    go = PAct $ \lstr0 -> case lstr0 of
-        (_, '\"') : lstr1 -> case loop lstr1 of
-            Left lstr2 -> PAlt []
-            Right (quote, lstr2) -> PAlt [(PVal quote, lstr2)]
-        lstr1 -> PAlt []
+acceptQuote = pure read <*> regexPC regexForQuote where
+    regexForQuote :: String
+    regexForQuote = "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'])* \"\\\"\""
 
 skipWhite :: PC ()
 skipWhite = PC go where

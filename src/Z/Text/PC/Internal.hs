@@ -138,19 +138,21 @@ mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
 mkReStar :: RegEx -> RegEx
 mkReStar re1 = re1 `seq` ReStar re1
 
+initRow :: Row
+initRow = 1
+
+initCol :: Col
+initCol = 1
+
 addLoc :: Src -> LocStr
 addLoc = go initRow initCol where
-    initRow :: Row
-    initRow = 1
-    initCol :: Col
-    initCol = 1
     getNextRow :: Row -> Char -> Row
-    getNextRow r '\n' = r + initRow
+    getNextRow r '\n' = succ r
     getNextRow r _ = r
     getNextCol :: Col -> Char -> Col
     getNextCol c '\n' = initCol
     getNextCol c '\t' = c + calcTab (c - initCol)
-    getNextCol c _ = c + 1
+    getNextCol c _ = succ c
     go :: Row -> Col -> String -> LocStr
     go r c [] = []
     go r c (ch : str) = ((r, c), ch) : go (getNextRow r ch) (getNextCol c ch) str
@@ -159,13 +161,13 @@ mkErrMsg :: Src -> LocStr -> ErrMsg
 mkErrMsg src lstr = show theMsg where
     stuckRow :: Row
     stuckRow = case lstr of
-        [] -> length (filter (\lch -> snd lch == '\n') lstr) + 1
+        [] -> length (filter (\lch -> snd lch == '\n') lstr) + initRow
         ((r, c), _) : _ -> r
     stuckLine :: Src
-    stuckLine = splitBy '\n' src !! (stuckRow - 1)
+    stuckLine = splitBy '\n' src !! (stuckRow - initRow)
     stuckCol :: Col
     stuckCol = case lstr of
-        [] -> length stuckLine + 1
+        [] -> length stuckLine + initCol
         ((r, c), _) : _ -> c
     theMsg :: Doc
     theMsg = vcat
@@ -277,6 +279,6 @@ parserByRegularExpression regex_representation = PC (go maybeRegEx) where
         [regex] -> Just regex
         _ -> Nothing
     go :: Maybe RegEx -> ParserBase LocChr String
-    go Nothing = error ("In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid, input-regex=`" ++ regex_representation ++ "'.")
+    go Nothing = error ("In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid,\ninput-regex={\n  " ++ regex_representation ++ "\n}.")
     go (Just regex) = PAct $ \lstr0 -> case acceptLongestStringMatchedToRegex lstr0 regex of
         (lstr1, str) -> PAlt [(PVal str, lstr1)]

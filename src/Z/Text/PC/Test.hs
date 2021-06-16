@@ -33,10 +33,7 @@ checkParserBaseIsMonadPlus = go undefined where
     go = monadPlus
 
 testParserBase :: IO ()
-testParserBase = do
-    quickBatch checkParserBaseIsMonad
-    quickBatch checkParserBaseIsMonadPlus
-    return ()
+testParserBase = quickBatch checkParserBaseIsMonad *> quickBatch checkParserBaseIsMonadPlus *> return ()
 
 testPC :: Int -> IO ()
 testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n)) where
@@ -46,6 +43,9 @@ testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n))
         , regexPC "['0'-'9']*"
         , regexPC "['0'-'9']*" <* skipWhite
         , regexPC "(['0'-'9']* \" \"*)*"
+        , acceptQuote
+        , undefined
+        , undefined
         ]
     getTestInput :: [String]
     getTestInput =
@@ -53,4 +53,7 @@ testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n))
         , "01234"
         , "01234      "
         , "01 2  3   4"
+        , "\"hello\""
+        , undefined
+        , undefined
         ]
