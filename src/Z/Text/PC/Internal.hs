@@ -105,39 +105,6 @@ instance Read RegEx where
         go _ = consumeStr "(" *> go 0 <* consumeStr ")"
     readList = undefined
 
-mkCsUniv :: CharSet
-mkCsUniv = CsUniv
-
-mkCsUnion :: CharSet -> CharSet -> CharSet
-mkCsUnion chs1 chs2 = chs1 `seq` chs2 `seq` CsUnion chs1 chs2
-
-mkCsDiff :: CharSet -> CharSet -> CharSet
-mkCsDiff chs1 chs2 = chs1 `seq` chs2 `seq` CsDiff chs1 chs2
-
-mkCsEnum :: Char -> Char -> CharSet
-mkCsEnum ch1 ch2 = ch1 `seq` ch2 `seq` CsEnum ch1 ch2
-
-mkCsSingle :: Char -> CharSet
-mkCsSingle ch = ch `seq` CsSingle ch
-
-mkReCSet :: CharSet -> RegEx
-mkReCSet chs = chs `seq` ReCSet chs
-
-mkReWord :: String -> RegEx
-mkReWord str = str `seq` ReWord str
-
-mkRePlus :: RegEx -> RegEx -> RegEx
-mkRePlus re1 re2 = re1 `seq` re2 `seq` RePlus re1 re2
-
-mkReZero :: RegEx
-mkReZero = ReZero
-
-mkReMult :: RegEx -> RegEx -> RegEx
-mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
-
-mkReStar :: RegEx -> RegEx
-mkReStar re1 = re1 `seq` ReStar re1
-
 initRow :: Row
 initRow = 1
 
@@ -193,6 +160,39 @@ mkErrMsg src lstr = show theMsg where
             then pstr "?- parsing error at EOF."
             else pstr "?- parsing error at " +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr "."
         ]
+
+mkCsUniv :: CharSet
+mkCsUniv = CsUniv
+
+mkCsUnion :: CharSet -> CharSet -> CharSet
+mkCsUnion chs1 chs2 = chs1 `seq` chs2 `seq` CsUnion chs1 chs2
+
+mkCsDiff :: CharSet -> CharSet -> CharSet
+mkCsDiff chs1 chs2 = chs1 `seq` chs2 `seq` CsDiff chs1 chs2
+
+mkCsEnum :: Char -> Char -> CharSet
+mkCsEnum ch1 ch2 = ch1 `seq` ch2 `seq` CsEnum ch1 ch2
+
+mkCsSingle :: Char -> CharSet
+mkCsSingle ch = ch `seq` CsSingle ch
+
+mkReCSet :: CharSet -> RegEx
+mkReCSet chs = chs `seq` ReCSet chs
+
+mkReWord :: String -> RegEx
+mkReWord str = str `seq` ReWord str
+
+mkRePlus :: RegEx -> RegEx -> RegEx
+mkRePlus re1 re2 = re1 `seq` re2 `seq` RePlus re1 re2
+
+mkReZero :: RegEx
+mkReZero = ReZero
+
+mkReMult :: RegEx -> RegEx -> RegEx
+mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
+
+mkReStar :: RegEx -> RegEx
+mkReStar re1 = re1 `seq` ReStar re1
 
 acceptLongestStringMatchedToRegex :: LocStr -> RegEx -> (LocStr, String)
 acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
@@ -268,17 +268,17 @@ acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
                     else runRegEx new_commit next_regex
         where
             getBuffer :: (LocStr, String) -> LocStr
-            getBuffer = fst
+            getBuffer commit = fst commit
             getOutput :: (LocStr, String) -> String
-            getOutput = snd
+            getOutput commit = snd commit
 
 parserByRegularExpression :: RegExRep -> P String
-parserByRegularExpression regex_representation = PC (go maybeRegEx) where
-    maybeRegEx :: Maybe RegEx
-    maybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_representation ] of
+parserByRegularExpression regex_representation = PC (go myMaybeRegEx) where
+    myMaybeRegEx :: Maybe RegEx
+    myMaybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_representation ] of
         [regex] -> Just regex
         _ -> Nothing
     go :: Maybe RegEx -> ParserBase LocChr String
-    go Nothing = error ("In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid,\ninput-regex={\n  " ++ regex_representation ++ "\n}.")
+    go Nothing = error ("In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid,\ninput-regex={\n    " ++ regex_representation ++ "\n}.")
     go (Just regex) = PAct $ \lstr0 -> case acceptLongestStringMatchedToRegex lstr0 regex of
         (lstr1, str) -> PAlt [(PVal str, lstr1)]

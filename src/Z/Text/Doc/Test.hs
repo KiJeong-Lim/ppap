@@ -141,7 +141,7 @@ testDoc = go 8 where
             | i <- [1 .. ea]
             ]
         faileds <- readIORef faileds_ref
-        putStrLn (if null faileds then ">>> all cases passed." else ">>> " ++ shows (length faileds) " cases failed: " ++ showList faileds "")
+        putStrLn (if null faileds then ">>> all cases passed." else ">>> " ++ shows (length faileds) (" cases failed: " ++ showList faileds ""))
 
 testDocIsMonoid :: IO ()
 testDocIsMonoid = quickBatch (monoid doc) where

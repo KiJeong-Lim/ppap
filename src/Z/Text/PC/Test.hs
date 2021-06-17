@@ -39,7 +39,7 @@ testPC :: Int -> IO ()
 testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n)) where
     getTestPC :: [PC String]
     getTestPC =
-        [ regexPC "['a'-'z']"
+        [ pure (++) <*> regexPC "\"abc\"" <*> regexPC "\"defg \""
         , regexPC "['0'-'9']*"
         , regexPC "['0'-'9']*" <* skipWhite
         , regexPC "(['0'-'9']* \" \"*)*"
