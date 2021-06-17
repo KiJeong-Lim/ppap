@@ -1,4 +1,4 @@
-module LGS.Main where
+module PGS.Main where
 
 import System.IO
 
