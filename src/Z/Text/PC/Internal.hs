@@ -138,7 +138,7 @@ mkErrMsg src lstr = show theMsg where
         ((r, c), _) : _ -> c
     theMsg :: Doc
     theMsg = vcat
-        [ mconcat
+        [ pcat
             [ vcat
                 [ pstr ""
                 , pcat
@@ -183,16 +183,25 @@ mkReWord :: String -> RegEx
 mkReWord str = str `seq` ReWord str
 
 mkRePlus :: RegEx -> RegEx -> RegEx
-mkRePlus re1 re2 = re1 `seq` re2 `seq` RePlus re1 re2
+mkRePlus (ReZero) re = re
+mkRePlus re (ReZero) = re
+mkRePlus (RePlus re1 re2) re = mkRePlus re1 (mkRePlus re2 re)
+mkRePlus re1 re2 = RePlus re1 re2
 
 mkReZero :: RegEx
 mkReZero = ReZero
 
 mkReMult :: RegEx -> RegEx -> RegEx
-mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
+mkReMult (ReWord "") re = re
+mkReMult re (ReWord "") = re
+mkReMult (ReWord str1) (ReWord str2) = mkReWord (str1 ++ str2)
+mkReMult (ReMult re1 re2) re = mkReMult re1 (mkReMult re2 re)
+mkReMult re1 re2 = ReMult re1 re2
 
 mkReStar :: RegEx -> RegEx
-mkReStar re1 = re1 `seq` ReStar re1
+mkReStar (ReZero) = mkReWord ""
+mkReStar (ReWord "") = mkReWord ""
+mkReStar re1 = ReStar re1
 
 acceptLongestStringMatchedToRegex :: LocStr -> RegEx -> (LocStr, String)
 acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
@@ -221,7 +230,7 @@ acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
     differentiate ch (ReZero)
         = mkReZero
     differentiate ch (ReMult re1 re2)
-        | isNullable re1 = mkRePlus (mkReMult (differentiate ch re1) re2) (differentiate ch re2)
+        | isNullable re1 = mkRePlus (differentiate ch re2) (mkReMult (differentiate ch re1) re2)
         | otherwise = mkReMult (differentiate ch re1) re2
     differentiate ch (ReStar re1)
         = mkReMult (differentiate ch re1) (mkReStar re1)
@@ -246,39 +255,45 @@ acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
         buffer <- get
         case buffer of
             [] -> if isNullable regex
-                then return (reverse output, regex)
+                then return (output, regex)
                 else fail "It is impossible that I read the buffer further more and then accept the given regex."
             ((_, ch) : buffer') -> do
                 let regex' = differentiate ch regex
                     output' = ch : output
                 put buffer'
                 if isNullable regex'
-                    then return (reverse output', regex')
+                    then return (output', regex')
                     else if mayPlvsVltra regex'
                         then repeatPlvsVltra output' regex'
                         else fail "It is impossible that I read the buffer further more and then accept the given regex."
+    getBuffer :: (LocStr, String) -> LocStr
+    getBuffer commit = fst commit
+    getOutput :: (LocStr, String) -> String
+    getOutput commit = snd commit
     runRegEx :: (LocStr, String) -> RegEx -> (LocStr, String)
     runRegEx last_commit current_regex
         = case runStateT (repeatPlvsVltra "" current_regex) (getBuffer last_commit) of
             Nothing -> last_commit
-            Just ((fresh_output, next_regex), new_buffer) ->
-                let new_commit = (new_buffer, getOutput last_commit ++ fresh_output) in
+            Just ((revesed_token, next_regex), new_buffer) ->
+                let new_commit = (new_buffer, getOutput last_commit ++ reverse revesed_token) in
                 if null new_buffer
                     then new_commit
                     else runRegEx new_commit next_regex
-        where
-            getBuffer :: (LocStr, String) -> LocStr
-            getBuffer commit = fst commit
-            getOutput :: (LocStr, String) -> String
-            getOutput commit = snd commit
 
 parserByRegularExpression :: RegExRep -> P String
 parserByRegularExpression regex_representation = PC (go myMaybeRegEx) where
     myMaybeRegEx :: Maybe RegEx
     myMaybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_representation ] of
-        [regex] -> Just regex
+        [regex] -> return regex
         _ -> Nothing
+    myErrMsg :: String
+    myErrMsg = concat
+        [ "In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid,\n"
+        , "input-regex={\n"
+        , "    " ++ regex_representation ++ "\n"
+        , "}.\n"
+        ]
     go :: Maybe RegEx -> ParserBase LocChr String
-    go Nothing = error ("In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid,\ninput-regex={\n    " ++ regex_representation ++ "\n}.")
+    go Nothing = error myErrMsg
     go (Just regex) = PAct $ \lstr0 -> case acceptLongestStringMatchedToRegex lstr0 regex of
         (lstr1, str) -> PAlt [(PVal str, lstr1)]
