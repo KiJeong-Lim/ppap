@@ -29,10 +29,10 @@ type RegExRep = String
 
 data CharSet
     = CsUniv
-    | CsUnion CharSet CharSet
+    | CsPlus CharSet CharSet
     | CsDiff CharSet CharSet
     | CsEnum Char Char
-    | CsSingle Char
+    | CsUnit Char
     deriving ()
 
 data RegEx
@@ -44,45 +44,59 @@ data RegEx
     | ReStar RegEx
     deriving ()
 
-newtype P val
-    = PC { unPC :: ParserBase LocChr val }
+newtype MyPC val
+    = MyPC { unMyPC :: ParserBase LocChr val }
     deriving ()
 
-instance Functor P where
-    fmap a2b = PC . fmap a2b . unPC
+instance Functor MyPC where
+    fmap a2b = MyPC . fmap a2b . unMyPC
 
-instance Applicative P where
-    pure = PC . pure
-    p1 <*> p2 = PC (unPC p1 <*> unPC p2)
+instance Applicative MyPC where
+    pure = MyPC . pure
+    p1 <*> p2 = MyPC (unMyPC p1 <*> unMyPC p2)
 
-instance Monad P where
-    p1 >>= p2 = PC (unPC p1 >>= unPC . p2)
+instance Monad MyPC where
+    p1 >>= p2 = MyPC (unMyPC p1 >>= unMyPC . p2)
 
-instance Alternative P where
-    empty = PC empty
-    p1 <|> p2 = PC (unPC p1 <|> unPC p2)
+instance Alternative MyPC where
+    empty = MyPC empty
+    p1 <|> p2 = MyPC (unMyPC p1 <|> unMyPC p2)
 
-instance MonadPlus P where
+instance MonadPlus MyPC where
 
-instance Semigroup (P val) where
-    p1 <> p2 = PC (unPC p1 <> unPC p2)
+instance MonadFail MyPC where
+    fail = const empty    
 
-instance Monoid (P val) where
-    mempty = PC mempty
+instance Semigroup (MyPC val) where
+    p1 <> p2 = MyPC (unMyPC p1 <> unMyPC p2)
+
+instance Monoid (MyPC val) where
+    mempty = MyPC mempty
 
 instance Read CharSet where
     readsPrec = unPM . go where
-        go :: Int -> PM CharSet
+        go :: Precedence -> PM CharSet
         go 0 = List.foldl' mkCsDiff <$> go 1 <*> many (consumeStr "\\" *> go 2)
-        go 1 = List.foldl' mkCsUnion <$> go 2 <*> many (consumeStr " " *> go 2)
+        go 1 = List.foldl' mkCsPlus <$> go 2 <*> many (consumeStr " " *> go 2)
         go 2 = mconcat
-            [ mkCsSingle <$> autoPM 0
+            [ mkCsUnit <$> autoPM 0
             , mkCsEnum <$> autoPM 0 <* consumeStr "-" <*> autoPM 0
             , consumeStr "." *> pure mkCsUniv
             , go 3
             ]
         go _ = consumeStr "(" *> go 0 <* consumeStr ")"
     readList = undefined
+
+instance Show CharSet where
+    showsPrec prec = dispatch where
+        myPrecIs :: Precedence -> ShowS -> ShowS
+        myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
+        dispatch :: CharSet -> ShowS
+        dispatch (CsDiff chs1 chs2) = myPrecIs 0 (showsPrec 0 chs1 . showString "\\" . showsPrec 2 chs2)
+        dispatch (CsPlus chs1 chs2) = myPrecIs 1 (showsPrec 1 chs1 . showString " " . showsPrec 2 chs2)
+        dispatch (CsUnit ch) = myPrecIs 2 (shows ch)
+        dispatch (CsEnum ch1 ch2) = myPrecIs 2 (shows ch1 . showString "-" . shows ch2)
+        dispatch (CsUniv) = myPrecIs 2 (showString ".")
 
 instance Read RegEx where
     readsPrec = unPM . go where
@@ -105,6 +119,18 @@ instance Read RegEx where
         go _ = consumeStr "(" *> go 0 <* consumeStr ")"
     readList = undefined
 
+instance Show RegEx where
+    showsPrec prec = dispatch where
+        myPrecIs :: Precedence -> ShowS -> ShowS
+        myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
+        dispatch :: RegEx -> ShowS
+        dispatch (ReCSet chs) = myPrecIs 3 (showString "[" . shows chs . showString "]")
+        dispatch (ReWord str) = myPrecIs 3 (shows str)
+        dispatch (RePlus re1 re2) = myPrecIs 0 (showsPrec 0 re1 . showString " + " . showsPrec 1 re2)
+        dispatch (ReZero) = myPrecIs 3 (showString "()")
+        dispatch (ReMult re1 re2) = myPrecIs 1 (showsPrec 1 re1 . showString " " . showsPrec 2 re2)
+        dispatch (ReStar re1) = myPrecIs 2 (showsPrec 2 re1 . showString "*")
+
 initRow :: Row
 initRow = 1
 
@@ -124,8 +150,8 @@ addLoc = go initRow initCol where
     go r c [] = []
     go r c (ch : str) = ((r, c), ch) : go (getNextRow r ch) (getNextCol c ch) str
 
-mkErrMsg :: Src -> LocStr -> ErrMsg
-mkErrMsg src lstr = show theMsg where
+makeMessageForParsingError :: Src -> LocStr -> ErrMsg
+makeMessageForParsingError src lstr = show theMsgDoc where
     stuckRow :: Row
     stuckRow = case lstr of
         [] -> length (filter (\lch -> snd lch == '\n') lstr) + initRow
@@ -136,8 +162,8 @@ mkErrMsg src lstr = show theMsg where
     stuckCol = case lstr of
         [] -> length stuckLine + initCol
         ((r, c), _) : _ -> c
-    theMsg :: Doc
-    theMsg = vcat
+    theMsgDoc :: Doc
+    theMsgDoc = vcat
         [ pcat
             [ vcat
                 [ pstr ""
@@ -164,8 +190,8 @@ mkErrMsg src lstr = show theMsg where
 mkCsUniv :: CharSet
 mkCsUniv = CsUniv
 
-mkCsUnion :: CharSet -> CharSet -> CharSet
-mkCsUnion chs1 chs2 = chs1 `seq` chs2 `seq` CsUnion chs1 chs2
+mkCsPlus :: CharSet -> CharSet -> CharSet
+mkCsPlus chs1 chs2 = chs1 `seq` chs2 `seq` CsPlus chs1 chs2
 
 mkCsDiff :: CharSet -> CharSet -> CharSet
 mkCsDiff chs1 chs2 = chs1 `seq` chs2 `seq` CsDiff chs1 chs2
@@ -173,8 +199,8 @@ mkCsDiff chs1 chs2 = chs1 `seq` chs2 `seq` CsDiff chs1 chs2
 mkCsEnum :: Char -> Char -> CharSet
 mkCsEnum ch1 ch2 = ch1 `seq` ch2 `seq` CsEnum ch1 ch2
 
-mkCsSingle :: Char -> CharSet
-mkCsSingle ch = ch `seq` CsSingle ch
+mkCsUnit :: Char -> CharSet
+mkCsUnit ch = ch `seq` CsUnit ch
 
 mkReCSet :: CharSet -> RegEx
 mkReCSet chs = chs `seq` ReCSet chs
@@ -185,31 +211,25 @@ mkReWord str = str `seq` ReWord str
 mkRePlus :: RegEx -> RegEx -> RegEx
 mkRePlus (ReZero) re = re
 mkRePlus re (ReZero) = re
-mkRePlus (ReCSet chs1) (ReCSet chs2) = mkReCSet (mkCsUnion chs1 chs2)
 mkRePlus re1 re2 = RePlus re1 re2
 
 mkReZero :: RegEx
 mkReZero = ReZero
 
 mkReMult :: RegEx -> RegEx -> RegEx
-mkReMult (ReWord "") re = re
-mkReMult re (ReWord "") = re
-mkReMult (ReWord str1) (ReWord str2) = mkReWord (str1 ++ str2)
-mkReMult re1 re2 = ReMult re1 re2
+mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
 
 mkReStar :: RegEx -> RegEx
-mkReStar (ReZero) = mkReWord ""
-mkReStar (ReWord "") = mkReWord ""
-mkReStar re1 = ReStar re1
+mkReStar re1 = re1 `seq` ReStar re1
 
-acceptLongestStringMatchedToRegex :: LocStr -> RegEx -> (LocStr, String)
-acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
+takeLongestStringMatchedWithRegexFromStream :: LocStr -> RegEx -> (LocStr, String)
+takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
     runCharSet :: CharSet -> Char -> Bool
     runCharSet (CsUniv) ch = True
-    runCharSet (CsUnion chs1 chs2) ch = runCharSet chs1 ch || runCharSet chs2 ch
+    runCharSet (CsPlus chs1 chs2) ch = runCharSet chs1 ch || runCharSet chs2 ch
     runCharSet (CsDiff ch1 ch2) ch = runCharSet ch1 ch && not (runCharSet ch2 ch)
     runCharSet (CsEnum ch1 ch2) ch = ch1 <= ch && ch <= ch2
-    runCharSet (CsSingle ch1) ch = ch == ch1
+    runCharSet (CsUnit ch1) ch = ch == ch1
     isNullable :: RegEx -> Bool
     isNullable (ReCSet chs) = False
     isNullable (ReWord str) = null str
@@ -273,27 +293,27 @@ acceptLongestStringMatchedToRegex = flip (curry runRegEx) "" where
     runRegEx last_commit current_regex
         = case runStateT (repeatPlvsVltra "" current_regex) (getBuffer last_commit) of
             Nothing -> last_commit
-            Just ((revesed_token, next_regex), new_buffer) ->
-                let new_commit = (new_buffer, getOutput last_commit ++ reverse revesed_token) in
+            Just ((revesed_token_of_output, next_regex), new_buffer) ->
+                let new_commit = (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output) in
                 if null new_buffer
                     then new_commit
                     else runRegEx new_commit next_regex
 
-parserByRegularExpression :: RegExRep -> P String
-parserByRegularExpression regex_representation = PC (go myMaybeRegEx) where
+myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression :: RegExRep -> MyPC String
+myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression regex_representation = MyPC (go myMaybeRegEx) where
     myMaybeRegEx :: Maybe RegEx
     myMaybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_representation ] of
         [regex] -> return regex
         _ -> Nothing
     myErrMsg :: String
     myErrMsg = concat
-        [ "In `Z.Text.PC.Internal.parserByRegularExpression':\n"
-        , "  input-regex-is-invalid,\n"
-        , "  input-regex={\n"
+        [ "In `Z.Text.PC.Internal.myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression':\n"
+        , "  invalid-regex-representation-is-given,\n"
+        , "  regex-representation={\n"
         , "    " ++ regex_representation ++ "\n"
         , "  }.\n"
         ]
     go :: Maybe RegEx -> ParserBase LocChr String
     go Nothing = error myErrMsg
-    go (Just regex) = PAct $ \lstr0 -> case acceptLongestStringMatchedToRegex lstr0 regex of
+    go (Just regex) = PAct $ \lstr0 -> case takeLongestStringMatchedWithRegexFromStream lstr0 regex of
         (lstr1, str) -> PAlt [(PVal str, lstr1)]
