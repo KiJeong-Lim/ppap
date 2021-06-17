@@ -185,7 +185,7 @@ mkReWord str = str `seq` ReWord str
 mkRePlus :: RegEx -> RegEx -> RegEx
 mkRePlus (ReZero) re = re
 mkRePlus re (ReZero) = re
-mkRePlus (RePlus re1 re2) re = mkRePlus re1 (mkRePlus re2 re)
+mkRePlus (ReCSet chs1) (ReCSet chs2) = mkReCSet (mkCsUnion chs1 chs2)
 mkRePlus re1 re2 = RePlus re1 re2
 
 mkReZero :: RegEx
@@ -195,7 +195,6 @@ mkReMult :: RegEx -> RegEx -> RegEx
 mkReMult (ReWord "") re = re
 mkReMult re (ReWord "") = re
 mkReMult (ReWord str1) (ReWord str2) = mkReWord (str1 ++ str2)
-mkReMult (ReMult re1 re2) re = mkReMult re1 (mkReMult re2 re)
 mkReMult re1 re2 = ReMult re1 re2
 
 mkReStar :: RegEx -> RegEx
@@ -288,10 +287,11 @@ parserByRegularExpression regex_representation = PC (go myMaybeRegEx) where
         _ -> Nothing
     myErrMsg :: String
     myErrMsg = concat
-        [ "In `Z.Text.PC.Internal.parserByRegularExpression': input-regex-is-invalid,\n"
-        , "input-regex={\n"
+        [ "In `Z.Text.PC.Internal.parserByRegularExpression':\n"
+        , "  input-regex-is-invalid,\n"
+        , "  input-regex={\n"
         , "    " ++ regex_representation ++ "\n"
-        , "}.\n"
+        , "  }.\n"
         ]
     go :: Maybe RegEx -> ParserBase LocChr String
     go Nothing = error myErrMsg

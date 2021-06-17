@@ -6,8 +6,6 @@ infixl 1 <<
 
 type Precedence = Int
 
-type OStream = Handle
-
 newtype FPath
     = FPath
         { getFilePath :: FilePath
@@ -15,7 +13,7 @@ newtype FPath
     deriving ()
 
 class OStreamMaker seed where
-    mkOStream :: seed -> IO OStream
+    mkOStream :: seed -> IO Handle
 
 class OStreamObject a where
     intoString :: a -> String
@@ -44,16 +42,16 @@ instance OStreamObject Double where
 instance OStreamObject Bool where
     intoString b = if b then "true" else "false"
 
-cout :: OStream
+cout :: Handle
 cout = stdout
 
-cerr :: OStream
+cerr :: Handle
 cerr = stderr
 
 endl :: Char
 endl = '\n'
 
-(<<) :: (OStreamMaker seed, OStreamObject a) => seed -> a -> IO OStream
+(<<) :: (OStreamMaker seed, OStreamObject a) => seed -> a -> IO Handle
 seed << x = do
     h <- mkOStream seed
     hPutStr h (intoString x)
@@ -62,10 +60,12 @@ seed << x = do
 int :: Integral a => a -> Int
 int = fromInteger . toInteger
 
+double :: Double -> Double
+double = id
+
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
 splitUnless cond (x1 : x2 : xs)
-    | cond x1 x2
-    = case splitUnless cond (x2 : xs) of
+    | cond x1 x2 = case splitUnless cond (x2 : xs) of
         y : ys -> (x1 : y) : ys
 splitUnless cond [] = []
 splitUnless cond (x1 : xs) = [x1] : splitUnless cond xs
@@ -86,4 +86,4 @@ callWithStrictArg :: (a -> b) -> a -> b
 callWithStrictArg f x = x `seq` f x
 
 one :: a -> [a]
-one = callWithStrictArg (\x -> [x])
+one = callWithStrictArg pure
