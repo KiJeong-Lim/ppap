@@ -5,6 +5,7 @@ import Data.Function
 import Z.Algo.Sorting
 import Z.Text.PC.Base
 import Z.Text.PC.Internal
+import Z.Utils
 
 type PC = P
 
@@ -43,31 +44,25 @@ negPC = PC . negPB . unPC
 runPC :: PC val -> Src -> Either String val
 runPC p str0
     = case runPB (unPC p) (addLoc str0) of
-        Left lstr -> throwLeft (mkErrMsg str0 lstr)
+        Left lstr -> callWithStrictArg Left (mkErrMsg str0 lstr)
         Right pairs -> case [ val | (val, lstr1) <- pairs, null lstr1 ] of
-            [] -> throwLeft (mkErrMsg str0 (head (sortByMerging ((<=) `on` length) (map snd pairs))))
+            [] -> callWithStrictArg Left (mkErrMsg str0 (head (sortByMerging ((<=) `on` length) (map snd pairs))))
             val : _ -> return val
-    where
-        throwLeft :: String -> Either String a
-        throwLeft str = str `seq` Left str
 
 acceptQuote :: PC String
-acceptQuote = pure read <*> regexPC regexForQuote where
-    regexForQuote :: String
-    regexForQuote = "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'])* \"\\\"\""
+acceptQuote = pure read <*> regexPC "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'])* \"\\\"\""
 
-skipWhite :: PC ()
+skipWhite :: PC Int
 skipWhite = PC go where
-    go :: ParserBase LocChr ()
-    go = PAct $ \lstr0 -> PAlt [(PVal (), dropWhile (\lch -> snd lch == ' ') lstr0)]
+    go :: ParserBase LocChr Int
+    go = PAct $ \lstr0 -> case span (\lch -> snd lch == ' ') lstr0 of
+        (ws, lstr1) -> PAlt [(PVal (length ws), lstr1)]
 
 lend :: PC ()
 lend = skipWhite *> consumePC "\n"
 
 indent :: Int -> PC ()
-indent n = consumePC space where
-    space :: String
-    space = replicate n ' '
+indent = consumePC . flip replicate ' '
 
 smallid :: PC String
 smallid = regexPC "[\'a\'-\'z\'] [\'a\'-\'z\' \'0\'-\'9\' \'_\']*"
