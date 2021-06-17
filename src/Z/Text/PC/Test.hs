@@ -40,7 +40,7 @@ testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n))
     getTestPC :: [PC String]
     getTestPC =
         [ pure (++) <*> regexPC "\"abc\"" <*> regexPC "\"defg \""
-        , regexPC "['0'-'9']*"
+        , regexPC "\"abcdefg \""
         , regexPC "['0'-'9']*" <* skipWhite
         , regexPC "(['0'-'9']* \" \"*)*"
         , acceptQuote
@@ -50,7 +50,7 @@ testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n))
     getTestInput :: [String]
     getTestInput =
         [ "abcdefg"
-        , "01234"
+        , "abcdefg  "
         , "01234      "
         , "01 2  3   4"
         , "\"hello\"\\\""
