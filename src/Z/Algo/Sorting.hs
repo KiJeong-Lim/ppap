@@ -9,12 +9,12 @@ import qualified Data.Set as Set
 
 type IsCircular = Bool
 
-type LessThanOrEqualTo a = a -> a -> Bool
+type IncreasingOrdering a = a -> a -> Bool
 
 getTSortedSCCs :: Ord node => Map.Map node (Set.Set node) -> [(IsCircular, Set.Set node)]
 getTSortedSCCs = runIdentity . go where
     whenMaybe :: Applicative m => Bool -> m a -> m (Maybe a)
-    whenMaybe cond ma = if cond then fmap Just ma else pure Nothing
+    whenMaybe cond m = if cond then pure Just <*> m else pure Nothing
     sortByRel :: Ord node => [node] -> StateT (Set.Set node) (ReaderT (node -> [node]) Identity) [node]
     sortByRel [] = return []
     sortByRel (cur : nexts) = do
@@ -42,18 +42,18 @@ getTSortedSCCs = runIdentity . go where
         (sortedSCCs, _) <- runReaderT (runStateT (splitByRel getVertices) Set.empty) getIns
         return sortedSCCs
 
-sortByMerging :: LessThanOrEqualTo a -> [a] -> [a]
+sortByMerging :: IncreasingOrdering a -> [a] -> [a]
 sortByMerging = go where
-    go :: LessThanOrEqualTo a -> [a] -> [a]
+    go :: IncreasingOrdering a -> [a] -> [a]
     go leq xs
-        | n < 2 = xs
-        | otherwise = case splitAt (n `div` 2) xs of
-            (left, right) -> merge leq (go leq left) (go leq right)
+        | n > 0 = case splitAt n xs of
+            (ys, zs) -> merge leq (go leq ys) (go leq zs)
+        | otherwise = xs
         where
             n :: Int
-            n = length xs
-    merge :: LessThanOrEqualTo a -> [a] -> [a] -> [a]
-    merge leq (x : xs) (y : ys)
-        | x `leq` y = x : merge leq xs (y : ys)
-        | otherwise = y : merge leq (x : xs) ys
-    merge leq xs ys = xs ++ ys
+            n = length xs `div` 2
+    merge :: IncreasingOrdering a -> [a] -> [a] -> [a]
+    merge leq (y : ys) (z : zs)
+        | y `leq` z = y : merge leq ys (z : zs)
+        | otherwise = z : merge leq (y : ys) zs
+    merge leq ys zs = ys ++ zs

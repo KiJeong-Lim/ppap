@@ -11,6 +11,10 @@ instance Arbitrary Doc_ where
     arbitrary = chooseInt (0, 10) >>= go where
         frequencyWith :: [Int] -> [Gen a] -> Gen a
         frequencyWith = curry (frequency . uncurry zip)
+        chars :: Gen Char
+        chars = elements ['a' .. 'z']
+        strings :: Gen String
+        strings = chooseInt (0, 100) >>= flip vectorOf (frequencyWith [90, 8, 2] [chars, pure '\n', pure '\t'])
         go :: Int -> Gen Doc
         go rank
             | rank > 0
@@ -23,20 +27,16 @@ instance Arbitrary Doc_ where
             = frequencyWith [8, 30, 10, 2]
                 [ pure DocNull
                 , pure DocText <*> strings
-                , pure DocNemo <*> liftArbitrary strings
+                , pure DocNemo <*> (chooseInt (0, 5) >>= flip vectorOf strings)
                 , pure DocBeam <*> chars
                 ]
-        chars :: Gen Char
-        chars = elements ['a' .. 'z']
-        strings :: Gen String
-        strings = chooseInt (0, 50) >>= flip vectorOf (frequencyWith [90, 8, 2] [chars, pure '\n', pure '\t'])
-    shrink = go where
-        go :: Doc -> [Doc]
-        go (DocNull) = []
-        go (DocText str) = [ DocText str' | str' <- shrink str ]
-        go (DocHCat doc1 doc2) = [doc1, doc2] ++ [ DocHCat doc1' doc2' | (doc1', doc2') <- shrink (doc1, doc2) ]
-        go (DocVCat doc1 doc2) = [doc1, doc2] ++ [ DocHCat doc1' doc2' | (doc1', doc2') <- shrink (doc1, doc2) ]
-        go (DocNemo strs) = [ DocNemo strs' | strs' <- shrink strs ]
+    shrink = tail . getSubDocs where
+        getSubDocs :: Doc -> [Doc]
+        getSubDocs (DocNull) = [DocNull]
+        getSubDocs (DocText str) = [DocText str]
+        getSubDocs (DocHCat doc1 doc2) = [DocHCat doc1 doc2] ++ getSubDocs doc1 ++ getSubDocs doc2
+        getSubDocs (DocVCat doc1 doc2) = [DocVCat doc1 doc2] ++ getSubDocs doc1 ++ getSubDocs doc2
+        getSubDocs (DocNemo strs) = [DocNemo strs]
 
 instance EqProp Doc_ where
     doc1 =-= doc2 = show doc1 =-= show doc2
@@ -135,13 +135,13 @@ testDoc = go 8 where
                     actual = show (doc i)
                 if expected == actual
                     then return ()
-                    else do
-                        faileds <- readIORef faileds_ref
-                        writeIORef faileds_ref (faileds ++ [i])
+                    else modifyIORef faileds_ref (\faileds -> faileds ++ [i])
             | i <- [1 .. ea]
             ]
         faileds <- readIORef faileds_ref
-        putStrLn (if null faileds then ">>> all cases passed." else ">>> " ++ shows (length faileds) (" cases failed: " ++ showList faileds ""))
+        if null faileds
+            then putStrLn (">>> " ++ "all-cases-passed.")
+            else putStrLn (">>> " ++ "{" ++ shows (length faileds) ("}-cases-failed={\n  " ++ showList faileds "\n}."))
 
 testDocIsMonoid :: IO ()
 testDocIsMonoid = quickBatch (monoid doc) where
