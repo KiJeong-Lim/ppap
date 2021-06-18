@@ -4,8 +4,10 @@ import Control.Applicative
 import Test.QuickCheck
 import Test.QuickCheck.Checkers
 import Test.QuickCheck.Classes
+import Z.Text.Doc
 import Z.Text.PC
 import Z.Text.PC.Base
+import Z.Utils
 
 instance (CoArbitrary chr, Arbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
     arbitrary = choose (0, 10) >>= go where
@@ -33,10 +35,13 @@ checkParserBaseIsMonadPlus = go undefined where
     go = monadPlus
 
 testParserBase :: IO ()
-testParserBase = quickBatch checkParserBaseIsMonad *> quickBatch checkParserBaseIsMonadPlus *> return ()
+testParserBase = do
+    quickBatch checkParserBaseIsMonad
+    quickBatch checkParserBaseIsMonadPlus
+    return ()
 
 testPC :: Int -> IO ()
-testPC n = putStrLn (either id show (zipWith runPC getTestPC getTestInput !! n)) where
+testPC n  = putStrLn (either id show (zipWith (runPC (mkFPath "Z\\Text\\PC\\Test.hs")) getTestPC getTestInput !! n)) where
     getTestPC :: [PC String]
     getTestPC =
         [ pure (++) <*> regexPC "\"abc\"" <*> regexPC "\"defg \""

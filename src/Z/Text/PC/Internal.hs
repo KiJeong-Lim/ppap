@@ -15,9 +15,7 @@ type Row = Int
 
 type Col = Int
 
-type Loc = (Row, Col)
-
-type LocChr = (Loc, Char)
+type LocChr = ((Row, Col), Char)
 
 type LocStr = [LocChr]
 
@@ -150,8 +148,8 @@ addLoc = go initRow initCol where
     go r c [] = []
     go r c (ch : str) = ((r, c), ch) : go (getNextRow r ch) (getNextCol c ch) str
 
-makeMessageForParsingError :: Src -> LocStr -> ErrMsg
-makeMessageForParsingError src lstr = show theMsgDoc where
+makeMessageForParsingError :: FPath -> Src -> LocStr -> ErrMsg
+makeMessageForParsingError fpath src lstr = show theMsgDoc where
     stuckRow :: Row
     stuckRow = case lstr of
         [] -> length (filter (\lch -> snd lch == '\n') lstr) + initRow
@@ -164,7 +162,11 @@ makeMessageForParsingError src lstr = show theMsgDoc where
         ((r, c), _) : _ -> c
     theMsgDoc :: Doc
     theMsgDoc = vcat
-        [ pcat
+        [ pprint fpath +> pstr ":" +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr ": error:"
+        , if null lstr
+            then pstr "    parse error at EOF."
+            else pstr "    parse error on input `" +> pstr [snd (head lstr)] +> pstr "'"
+        , pcat
             [ vcat
                 [ pstr ""
                 , pcat
@@ -181,10 +183,6 @@ makeMessageForParsingError src lstr = show theMsgDoc where
                 , pstr (replicate stuckCol ' ') +> pstr "^"
                 ]
             ]
-        , pstr ""
-        , if null lstr
-            then pstr "?- parsing error at EOF."
-            else pstr "?- parsing error at " +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr "."
         ]
 
 mkCsUniv :: CharSet
@@ -273,18 +271,16 @@ takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
     repeatPlvsVltra output regex = do
         buffer <- get
         case buffer of
-            [] -> if isNullable regex
-                then return (output, regex)
-                else fail "It is impossible that I read the buffer further more and then accept the given regex."
+            []
+                | isNullable regex -> return (output, regex)
+                | otherwise -> fail "It is impossible that I read the buffer further more and then accept the given regex."
             ((_, ch) : buffer') -> do
-                let regex' = differentiate ch regex
-                    output' = ch : output
                 put buffer'
-                if isNullable regex'
-                    then return (output', regex')
-                    else if mayPlvsVltra regex'
-                        then repeatPlvsVltra output' regex'
-                        else fail "It is impossible that I read the buffer further more and then accept the given regex."
+                case (differentiate ch regex, ch : output) of
+                    (regex', output')
+                        | isNullable regex' -> return (output', regex')
+                        | mayPlvsVltra regex' -> repeatPlvsVltra output' regex'
+                        | otherwise -> fail "It is impossible that I read the buffer further more and then accept the given regex."
     getBuffer :: (LocStr, String) -> LocStr
     getBuffer commit = fst commit
     getOutput :: (LocStr, String) -> String
@@ -293,18 +289,12 @@ takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
     runRegEx last_commit current_regex
         = case runStateT (repeatPlvsVltra "" current_regex) (getBuffer last_commit) of
             Nothing -> last_commit
-            Just ((revesed_token_of_output, next_regex), new_buffer) ->
-                let new_commit = (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output) in
-                if null new_buffer
-                    then new_commit
-                    else runRegEx new_commit next_regex
+            Just ((revesed_token_of_output, next_regex), new_buffer)
+                | null new_buffer -> (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output)
+                | otherwise -> runRegEx (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output) next_regex
 
 myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression :: RegExRep -> MyPC String
-myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression regex_representation = MyPC (go myMaybeRegEx) where
-    myMaybeRegEx :: Maybe RegEx
-    myMaybeRegEx = case [ regex | (regex, "") <- readsPrec 0 regex_representation ] of
-        [regex] -> return regex
-        _ -> Nothing
+myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression regex_representation = MyPC (go [ regex | (regex, "") <- readsPrec 0 regex_representation ]) where
     myErrMsg :: String
     myErrMsg = concat
         [ "In `Z.Text.PC.Internal.myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression':\n"
@@ -313,7 +303,7 @@ myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression 
         , "    " ++ regex_representation ++ "\n"
         , "  }.\n"
         ]
-    go :: Maybe RegEx -> ParserBase LocChr String
-    go Nothing = error myErrMsg
-    go (Just regex) = PAct $ \lstr0 -> case takeLongestStringMatchedWithRegexFromStream lstr0 regex of
+    go :: [RegEx] -> ParserBase LocChr String
+    go [regex] = PAct $ \lstr0 -> case takeLongestStringMatchedWithRegexFromStream lstr0 regex of
         (lstr1, str) -> PAlt [(PVal str, lstr1)]
+    go _ = error myErrMsg

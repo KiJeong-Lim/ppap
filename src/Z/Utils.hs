@@ -7,9 +7,7 @@ infixl 1 <<
 type Precedence = Int
 
 newtype FPath
-    = FPath
-        { getFilePath :: FilePath
-        }
+    = FPath { getFilePath :: FilePath }
     deriving ()
 
 class OStreamMaker seed where
@@ -17,6 +15,9 @@ class OStreamMaker seed where
 
 class OStreamObject a where
     intoString :: a -> String
+
+instance Show FPath where
+    showsPrec _ (FPath path) = showString path
 
 instance OStreamMaker Handle where
     mkOStream = pure
@@ -87,3 +88,8 @@ callWithStrictArg f x = x `seq` f x
 
 one :: a -> [a]
 one = callWithStrictArg pure
+
+mkFPath :: FilePath -> FPath
+mkFPath = callWithStrictArg FPath . go where
+    go :: String -> String
+    go = map (\ch -> if ch == '\\' then '/' else ch)

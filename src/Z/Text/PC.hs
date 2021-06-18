@@ -41,12 +41,12 @@ regexPC = myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularE
 negPC :: PC a -> PC ()
 negPC = MyPC . negPB . unMyPC
 
-runPC :: PC val -> Src -> Either String val
-runPC p str0
+runPC :: FPath -> PC val -> Src -> Either String val
+runPC fpath p str0
     = case runPB (unMyPC p) (addLoc str0) of
-        Left lstr -> callWithStrictArg Left (makeMessageForParsingError str0 lstr)
+        Left lstr -> callWithStrictArg Left (makeMessageForParsingError fpath str0 lstr)
         Right pairs -> case [ val | (val, lstr1) <- pairs, null lstr1 ] of
-            [] -> callWithStrictArg Left (makeMessageForParsingError str0 (head (sortByMerging ((<=) `on` length) (map snd pairs))))
+            [] -> callWithStrictArg Left (makeMessageForParsingError fpath str0 (head (sortByMerging ((<=) `on` length) (map snd pairs))))
             val : _ -> return val
 
 acceptQuote :: PC String
