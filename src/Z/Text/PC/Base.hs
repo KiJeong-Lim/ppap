@@ -1,13 +1,13 @@
 module Z.Text.PC.Base where
 
 import Control.Applicative
-import Control.Monad
 import Data.Function
+
+type PB = ParserBase
 
 data ParserBase chr val
     = PVal val
-    | PAlt [(ParserBase chr val, [chr])]
-    | PAct ([chr] -> ParserBase chr val)
+    | PAct ([chr] -> [(ParserBase chr val, [chr])])
     deriving ()
 
 instance Functor (ParserBase chr) where
@@ -21,29 +21,19 @@ instance Monad (ParserBase chr) where
     p1 >>= p2 = bindPB p1 p2
 
 instance Alternative (ParserBase chr) where
-    empty = PAlt []
-    p1 <|> p2 = PAct $ \str -> PAlt [(p1, str), (p2, str)]
+    empty = PAct $ \str -> []
+    p1 <|> p2 = PAct $ \str -> [(p1, str), (p2, str)]
 
-instance MonadPlus (ParserBase chr) where
+returnPB :: val -> PB chr val
+returnPB val1 = PVal val1
 
-instance Semigroup (ParserBase chr val) where
-    (<>) = (<|>)
-
-instance Monoid (ParserBase chr val) where
-    mempty = empty
-
-returnPB :: val -> ParserBase chr val
-returnPB = PVal
-
-bindPB :: ParserBase chr val1 -> (val1 -> ParserBase chr val2) -> ParserBase chr val2
+bindPB :: PB chr val -> (val -> PB chr val') -> PB chr val'
 bindPB (PVal val1) p2 = p2 val1
-bindPB (PAlt alts1) p2 = PAlt [ (bindPB p1 p2, str1) | (p1, str1) <- alts1 ]
-bindPB (PAct act1) p2 = PAct $ \str0 -> bindPB (act1 str0) p2
+bindPB (PAct act1) p2 = PAct $ \str0 -> [ (bindPB p1 p2, str1) | (p1, str1) <- act1 str0 ]
 
-mkPB :: ([chr] -> [(val, [chr])]) -> ParserBase chr val
-mkPB _ReadS = PAct $ \str0 -> PAlt [ (PVal val1, str1) | (val1, str1) <- _ReadS str0 ]
+mkPB :: ([chr] -> [(val, [chr])]) -> PB chr val
+mkPB givenReadS = PAct $ \str0 -> [ (PVal val1, str1) | (val1, str1) <- givenReadS str0 ]
 
-runPB :: ParserBase chr val -> [chr] -> [(val, [chr])]
-runPB (PVal val) str = return (val, str)
-runPB (PAlt alts) str = alts >>= uncurry runPB
-runPB (PAct act) str = runPB (act str) str
+runPB :: PB chr val -> [chr] -> [(val, [chr])]
+runPB (PVal val1) str = curry return val1 str
+runPB (PAct act1) str = act1 str >>= uncurry runPB

@@ -10,20 +10,18 @@ import Z.Text.PC.Internal
 import Z.Utils
 
 instance (CoArbitrary chr, Arbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
-    arbitrary = choose (0, 10) >>= go where
+    arbitrary = choose (0, 5) >>= go where
         go :: (CoArbitrary chr, Arbitrary chr, Arbitrary val) => Int -> Gen (ParserBase chr val)
         go rank
             | rank > 0 = oneof
                 [ go (rank - 1)
-                , pure PAct <*> liftArbitrary (go (rank - 1))
-                , pure PAlt <*> (choose (0, 5) >>= flip vectorOf (pure (,) <*> go (rank - 1) <*> (choose (0, 5) >>= flip vectorOf arbitrary)))
+                , pure PAct <*> liftArbitrary (choose (0, 5) >>= flip vectorOf (pure (,) <*> go (rank - 1) <*> (choose (0, 5) >>= flip vectorOf arbitrary)))
                 ]
             | otherwise = pure PVal <*> arbitrary
     shrink = const []
 
-instance Show (ParserBase chr val) where
+instance Show (MyPC val) where
     showsPrec prec = const id
-    showList = const id
 
 instance (Show chr, Arbitrary chr, EqProp val, EqProp chr) => EqProp (ParserBase chr val) where
     p1 =-= p2 = runPB p1 =-= runPB p2
@@ -33,26 +31,26 @@ instance Arbitrary val => Arbitrary (MyPC val) where
     shrink = map MyPC . shrink . unMyPC
 
 instance EqProp val => EqProp (MyPC val) where
-    p1 =-= p2 = unMyPC p1 =-= unMyPC p2
+    p1 =-= p2 = execPC p1 =-= execPC p2
 
-checkParserBaseIsMonad :: TestBatch
-checkParserBaseIsMonad = ("check-`ParserBase'-is-`Moand'", map (fmap (withMaxSuccess 100)) (snd (go undefined))) where
-    go :: ParserBase Char (Int, Int, Int) -> TestBatch
+checkMonad :: TestBatch
+checkMonad = ("check-`MyPC'-is-`Monad'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
+    go :: PC (Int, Int, Int) -> TestBatch
     go = monad
 
-checkParserBaseIsMonadPlus :: TestBatch
-checkParserBaseIsMonadPlus = ("check-`ParserBase'-is-`MoandPlus'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
-    go :: ParserBase Char (Int, Int) -> TestBatch
+checkMonadPlus :: TestBatch
+checkMonadPlus = ("check-`MyPC'-is-`MonadPlus'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
+    go :: PC (Int, Int) -> TestBatch
     go = monadPlus
 
-testParserBase :: IO ()
-testParserBase = do
-    quickBatch checkParserBaseIsMonad
-    quickBatch checkParserBaseIsMonadPlus
+testPropPC :: IO ()
+testPropPC = do
+    quickBatch checkMonadPlus
+    quickBatch checkMonad
     return ()
 
 testPC :: Int -> IO ()
-testPC n = putStrLn (either id show (zipWith (execPC (mkFPath "Z\\Text\\PC\\Test.hs")) getTestPC getTestInput !! n)) where
+testPC n = putStrLn (either id show (zipWith (runPC (mkFPath "Z\\Text\\PC\\Test.hs")) getTestPC getTestInput !! n)) where
     getTestPC :: [PC String]
     getTestPC =
         [ pure (++) <*> regexPC "\"abc\"" <*> regexPC "\"defg \""
@@ -62,6 +60,7 @@ testPC n = putStrLn (either id show (zipWith (execPC (mkFPath "Z\\Text\\PC\\Test
         , acceptQuote
         , acceptQuote
         , acceptQuote
+        , undefined
         , undefined
         , undefined
         ]
@@ -74,6 +73,7 @@ testPC n = putStrLn (either id show (zipWith (execPC (mkFPath "Z\\Text\\PC\\Test
         , "\"hello\"\\\""
         , "\"'\""
         , "\"\\'\""
+        , undefined
         , undefined
         , undefined
         ]

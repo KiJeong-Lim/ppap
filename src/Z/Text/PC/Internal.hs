@@ -69,10 +69,10 @@ instance MonadFail MyPC where
     fail = const empty    
 
 instance Semigroup (MyPC val) where
-    p1 <> p2 = MyPC (unMyPC p1 <> unMyPC p2)
+    p1 <> p2 = p1 <> p2
 
 instance Monoid (MyPC val) where
-    mempty = MyPC mempty
+    mempty = empty
 
 instance Read CharSet where
     readsPrec = unPM . go where
@@ -223,8 +223,8 @@ mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
 mkReStar :: RegEx -> RegEx
 mkReStar re1 = re1 `seq` ReStar re1
 
-takeLongestStringMatchedWithRegexFromStream :: RegEx -> LocStr -> [(String, LocStr)]
-takeLongestStringMatchedWithRegexFromStream = go where
+takeStringMatchedWithRegexFromStreamByMaximalMunchRule :: RegEx -> LocStr -> Maybe (String, LocStr)
+takeStringMatchedWithRegexFromStreamByMaximalMunchRule = go where
     runCharSet :: CharSet -> (Char -> Bool)
     runCharSet (CsUniv) ch = True
     runCharSet (CsPlus chs1 chs2) ch = runCharSet chs1 ch || runCharSet chs2 ch
@@ -300,9 +300,9 @@ takeLongestStringMatchedWithRegexFromStream = go where
                 where
                     commit :: (LocStr, String)
                     commit = (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output)
-    go :: RegEx -> LocStr -> [(String, LocStr)]
+    go :: RegEx -> LocStr -> Maybe (String, LocStr)
     go regex lstr0 = case runRegEx (lstr0, "") regex of
-        (lstr1, output) -> if not (null output) || isNullable regex then one (output, lstr1) else []
+        (lstr1, output) -> if not (null output) || isNullable regex then return (output, lstr1) else Nothing
 
 myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression :: RegExRep -> MyPC String
 myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression regex_representation = MyPC (go [ regex | (regex, "") <- readsPrec 0 regex_representation ]) where
@@ -315,5 +315,5 @@ myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression 
         , "  }.\n"
         ]
     go :: [RegEx] -> ParserBase LocChr String
-    go [regex] = mkPB (takeLongestStringMatchedWithRegexFromStream regex)
+    go [regex] = mkPB (maybe [] return . takeStringMatchedWithRegexFromStreamByMaximalMunchRule regex)
     go _ = error myErrMsg
