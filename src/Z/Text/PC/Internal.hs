@@ -5,7 +5,6 @@ import Control.Monad
 import Control.Monad.Trans.State.Strict
 import qualified Data.List as List
 import Z.Algo.Sorting
-import Test.QuickCheck
 import Z.Text.Doc
 import Z.Text.PC.Base
 import Z.Text.PM
@@ -24,6 +23,10 @@ type Src = String
 type ErrMsg = String
 
 type RegExRep = String
+
+type DoesMyCharSetAcceptSomeChar = CharSet -> Bool
+
+type IsItPossibleThatMyRegexAcceptNonemptyString = RegEx -> Bool
 
 data CharSet
     = CsUniv
@@ -95,6 +98,7 @@ instance Show CharSet where
         dispatch (CsUnit ch) = myPrecIs 2 (shows ch)
         dispatch (CsEnum ch1 ch2) = myPrecIs 2 (shows ch1 . showString "-" . shows ch2)
         dispatch (CsUniv) = myPrecIs 2 (showString ".")
+    showList = undefined
 
 instance Read RegEx where
     readsPrec = unPM . go where
@@ -128,6 +132,7 @@ instance Show RegEx where
         dispatch (ReZero) = myPrecIs 3 (showString "()")
         dispatch (ReMult re1 re2) = myPrecIs 1 (showsPrec 1 re1 . showString " " . showsPrec 2 re2)
         dispatch (ReStar re1) = myPrecIs 2 (showsPrec 2 re1 . showString "*")
+    showList = undefined
 
 initRow :: Row
 initRow = 1
@@ -148,8 +153,8 @@ addLoc = go initRow initCol where
     go r c [] = []
     go r c (ch : str) = ((r, c), ch) : go (getNextRow r ch) (getNextCol c ch) str
 
-makeMessageForParsingError :: FPath -> Src -> LocStr -> ErrMsg
-makeMessageForParsingError fpath src lstr = show theMsgDoc where
+makeMessageForParsingError :: FilePath -> Src -> LocStr -> ErrMsg
+makeMessageForParsingError path src lstr = show theMsgDoc where
     stuckRow :: Row
     stuckRow = case lstr of
         [] -> length (filter (\lch -> snd lch == '\n') lstr) + initRow
@@ -162,10 +167,8 @@ makeMessageForParsingError fpath src lstr = show theMsgDoc where
         ((r, c), _) : _ -> c
     theMsgDoc :: Doc
     theMsgDoc = vcat
-        [ pprint fpath +> pstr ":" +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr ": error:"
-        , if null lstr
-            then pstr "    parse error at EOF."
-            else pstr "    parse error on input `" +> pstr [snd (head lstr)] +> pstr "'"
+        [ pstr path +> pstr ":" +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr ": error:"
+        , pstr "    parse error " +> (if null lstr then pstr "at EOF" else  pstr "on input `" +> pstr (one (snd (head lstr))) +> pstr "'")
         , pcat
             [ vcat
                 [ pstr ""
@@ -178,9 +181,9 @@ makeMessageForParsingError fpath src lstr = show theMsgDoc where
                 ]
             , beam '|'
             , vcat
-                [ pstr ""
+                [ pstr " "
                 , pstr " " +> pstr stuckLine
-                , pstr (replicate stuckCol ' ') +> pstr "^"
+                , pstr " " +> pstr (replicate (stuckCol - initCol) ' ') +> pstr "^"
                 ]
             ]
         ]
@@ -220,9 +223,9 @@ mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
 mkReStar :: RegEx -> RegEx
 mkReStar re1 = re1 `seq` ReStar re1
 
-takeLongestStringMatchedWithRegexFromStream :: LocStr -> RegEx -> (LocStr, String)
-takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
-    runCharSet :: CharSet -> Char -> Bool
+takeLongestStringMatchedWithRegexFromStream :: RegEx -> LocStr -> [(String, LocStr)]
+takeLongestStringMatchedWithRegexFromStream = go where
+    runCharSet :: CharSet -> (Char -> Bool)
     runCharSet (CsUniv) ch = True
     runCharSet (CsPlus chs1 chs2) ch = runCharSet chs1 ch || runCharSet chs2 ch
     runCharSet (CsDiff ch1 ch2) ch = runCharSet ch1 ch && not (runCharSet ch2 ch)
@@ -235,7 +238,7 @@ takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
     isNullable (ReZero) = False
     isNullable (ReMult re1 re2) = isNullable re1 && isNullable re2
     isNullable (ReStar re1) = True
-    differentiate :: Char -> RegEx -> RegEx
+    differentiate :: Char -> (RegEx -> RegEx)
     differentiate ch (ReCSet chs)
         | runCharSet chs ch = mkReWord ""
         | otherwise = mkReZero
@@ -251,9 +254,9 @@ takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
         | otherwise = mkReMult (differentiate ch re1) re2
     differentiate ch (ReStar re1)
         = mkReMult (differentiate ch re1) (mkReStar re1)
-    isNotEmpty :: CharSet -> Bool
+    isNotEmpty :: DoesMyCharSetAcceptSomeChar -- Fix me!
     isNotEmpty _ = True
-    mayPlvsVltra :: RegEx -> Bool
+    mayPlvsVltra :: IsItPossibleThatMyRegexAcceptNonemptyString
     mayPlvsVltra (ReCSet chs) = isNotEmpty chs
     mayPlvsVltra (ReWord str) = not (null str)
     mayPlvsVltra (RePlus re1 re2) = or
@@ -271,16 +274,18 @@ takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
     repeatPlvsVltra output regex = do
         buffer <- get
         case buffer of
-            []
-                | isNullable regex -> return (output, regex)
-                | otherwise -> fail "It is impossible that I read the buffer further more and then accept the given regex."
+            [] -> if isNullable regex
+                then return (output, regex)
+                else fail "It is impossible that I read the buffer further more and then accept the given regex."
             ((_, ch) : buffer') -> do
                 put buffer'
-                case (differentiate ch regex, ch : output) of
-                    (regex', output')
-                        | isNullable regex' -> return (output', regex')
-                        | mayPlvsVltra regex' -> repeatPlvsVltra output' regex'
-                        | otherwise -> fail "It is impossible that I read the buffer further more and then accept the given regex."
+                let regex' = differentiate ch regex
+                    output' = ch : output
+                if isNullable regex'
+                    then return (output', regex')
+                    else if mayPlvsVltra regex'
+                        then repeatPlvsVltra output' regex'
+                        else fail "It is impossible that I read the buffer further more and then accept the given regex."
     getBuffer :: (LocStr, String) -> LocStr
     getBuffer commit = fst commit
     getOutput :: (LocStr, String) -> String
@@ -290,12 +295,18 @@ takeLongestStringMatchedWithRegexFromStream = flip (curry runRegEx) "" where
         = case runStateT (repeatPlvsVltra "" current_regex) (getBuffer last_commit) of
             Nothing -> last_commit
             Just ((revesed_token_of_output, next_regex), new_buffer)
-                | null new_buffer -> (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output)
-                | otherwise -> runRegEx (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output) next_regex
+                | null new_buffer -> commit
+                | otherwise -> runRegEx commit next_regex
+                where
+                    commit :: (LocStr, String)
+                    commit = (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output)
+    go :: RegEx -> LocStr -> [(String, LocStr)]
+    go regex lstr0 = case runRegEx (lstr0, "") regex of
+        (lstr1, output) -> if not (null output) || isNullable regex then one (output, lstr1) else []
 
 myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression :: RegExRep -> MyPC String
 myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression regex_representation = MyPC (go [ regex | (regex, "") <- readsPrec 0 regex_representation ]) where
-    myErrMsg :: String
+    myErrMsg :: ErrMsg
     myErrMsg = concat
         [ "In `Z.Text.PC.Internal.myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression':\n"
         , "  invalid-regex-representation-is-given,\n"
@@ -304,6 +315,5 @@ myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression 
         , "  }.\n"
         ]
     go :: [RegEx] -> ParserBase LocChr String
-    go [regex] = PAct $ \lstr0 -> case takeLongestStringMatchedWithRegexFromStream lstr0 regex of
-        (lstr1, str) -> PAlt [(PVal str, lstr1)]
+    go [regex] = mkPB (takeLongestStringMatchedWithRegexFromStream regex)
     go _ = error myErrMsg

@@ -4,9 +4,9 @@ import Control.Applicative
 import Test.QuickCheck
 import Test.QuickCheck.Checkers
 import Test.QuickCheck.Classes
-import Z.Text.Doc
 import Z.Text.PC
 import Z.Text.PC.Base
+import Z.Text.PC.Internal
 import Z.Utils
 
 instance (CoArbitrary chr, Arbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
@@ -21,16 +21,27 @@ instance (CoArbitrary chr, Arbitrary chr, Arbitrary val) => Arbitrary (ParserBas
             | otherwise = pure PVal <*> arbitrary
     shrink = const []
 
+instance Show (ParserBase chr val) where
+    showsPrec prec = const id
+    showList = const id
+
 instance (Show chr, Arbitrary chr, EqProp val, EqProp chr) => EqProp (ParserBase chr val) where
-    parser1 =-= parser2 = runPB parser1 =-= runPB parser2
+    p1 =-= p2 = runPB p1 =-= runPB p2
+
+instance Arbitrary val => Arbitrary (MyPC val) where
+    arbitrary = fmap MyPC arbitrary
+    shrink = map MyPC . shrink . unMyPC
+
+instance EqProp val => EqProp (MyPC val) where
+    p1 =-= p2 = unMyPC p1 =-= unMyPC p2
 
 checkParserBaseIsMonad :: TestBatch
-checkParserBaseIsMonad = go undefined where
+checkParserBaseIsMonad = ("check-`ParserBase'-is-`Moand'", map (fmap (withMaxSuccess 100)) (snd (go undefined))) where
     go :: ParserBase Char (Int, Int, Int) -> TestBatch
     go = monad
 
 checkParserBaseIsMonadPlus :: TestBatch
-checkParserBaseIsMonadPlus = go undefined where
+checkParserBaseIsMonadPlus = ("check-`ParserBase'-is-`MoandPlus'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
     go :: ParserBase Char (Int, Int) -> TestBatch
     go = monadPlus
 
@@ -41,7 +52,7 @@ testParserBase = do
     return ()
 
 testPC :: Int -> IO ()
-testPC n  = putStrLn (either id show (zipWith (runPC (mkFPath "Z\\Text\\PC\\Test.hs")) getTestPC getTestInput !! n)) where
+testPC n = putStrLn (either id show (zipWith (execPC (mkFPath "Z\\Text\\PC\\Test.hs")) getTestPC getTestInput !! n)) where
     getTestPC :: [PC String]
     getTestPC =
         [ pure (++) <*> regexPC "\"abc\"" <*> regexPC "\"defg \""
@@ -51,6 +62,8 @@ testPC n  = putStrLn (either id show (zipWith (runPC (mkFPath "Z\\Text\\PC\\Test
         , acceptQuote
         , acceptQuote
         , acceptQuote
+        , undefined
+        , undefined
         ]
     getTestInput :: [String]
     getTestInput =
@@ -61,4 +74,6 @@ testPC n  = putStrLn (either id show (zipWith (runPC (mkFPath "Z\\Text\\PC\\Test
         , "\"hello\"\\\""
         , "\"'\""
         , "\"\\'\""
+        , undefined
+        , undefined
         ]
