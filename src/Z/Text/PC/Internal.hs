@@ -66,10 +66,10 @@ instance Alternative MyPC where
 instance MonadPlus MyPC where
 
 instance MonadFail MyPC where
-    fail = const empty    
+    fail = const empty
 
 instance Semigroup (MyPC val) where
-    p1 <> p2 = p1 <> p2
+    p1 <> p2 = p1 <|> p2
 
 instance Monoid (MyPC val) where
     mempty = empty
