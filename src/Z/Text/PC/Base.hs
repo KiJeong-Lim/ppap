@@ -36,10 +36,10 @@ bindPB (PVal val1) p2 = p2 val1
 bindPB (PAct act1) p2 = PAct $ \str0 -> [ (bindPB p1 p2, str1) | (p1, str1) <- act1 str0 ]
 
 emptyPB :: PB chr val
-emptyPB = PAct $ \str -> []
+emptyPB = PAct $ \str0 -> []
 
 appendPB :: PB chr val -> PB chr val -> PB chr val
-appendPB p1 p2 = PAct $ \str -> [(p1, str), (p2, str)]
+appendPB p1 p2 = PAct $ \str0 -> [(p1, str0), (p2, str0)]
 
 mkPB :: ([chr] -> [(val, [chr])]) -> PB chr val
 mkPB givenReadS = PAct $ \str0 -> [ (PVal val1, str1) | (val1, str1) <- givenReadS str0 ]

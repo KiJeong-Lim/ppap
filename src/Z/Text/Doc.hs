@@ -16,16 +16,10 @@ instance OStreamObject Doc_ where
     intoString = show
 
 instance Outputable Char where
-    pretty _ = go . dispatch where
-        dispatch :: Char -> String
-        dispatch '\n' = "\\n"
-        dispatch '\t' = "\\t"
-        dispatch '\\' = "\\\\"
-        dispatch '\"' = "\\\""
-        dispatch '\'' = "\\\'"
-        dispatch ch = [ch]
-        go :: String -> Doc
-        go str = pstr ("\'" ++ str ++ "\'")
+    pretty _ ch = pstr ("\'" ++ dispatchChar ch ++ "\'")
+
+instance Outputable Int where
+    pretty _ i = pstr (showsPrec 0 i "")
 
 instance Outputable a => Outputable [a] where
     pretty _ = plist . map (pretty 0)
@@ -76,19 +70,15 @@ ppunc doc0 (doc1 : docs2) = doc1 +> foldr (\doc2 -> \acc -> doc0 +> doc2 +> acc)
 pparen :: Bool -> String -> String -> Doc -> Doc
 pparen b left right doc = if b then pstr left +> doc +> pstr right else doc
 
-plist :: [Doc] -> Doc
-plist [] = pstr "[]"
-plist (doc : docs) = pstr "[ " +> go doc docs where
+plist' :: [Doc] -> Doc
+plist' [] = pstr "[]"
+plist' (doc : docs) = pstr "[ " +> go doc docs where
     go :: Doc -> [Doc] -> Doc
     go doc1 [] = doc1 +> pnl +> pstr "]"
     go doc1 (doc2 : docs3) = doc1 +> pnl +> pstr ", " +> go doc2 docs3
 
 pquote :: String -> Doc
-pquote str = pstr ("\""  ++ (str >>= dispatch) ++ "\"") where
-    dispatch :: Char -> String
-    dispatch '\n' = "\\n"
-    dispatch '\t' = "\\t"
-    dispatch '\\' = "\\\\"
-    dispatch '\"' = "\\\""
-    dispatch '\'' = "\\\'"
-    dispatch ch = [ch]
+pquote str = pstr ("\""  ++ (str >>= dispatchChar) ++ "\"")
+
+plist :: [Doc] -> Doc
+plist docs = if null docs then pstr "[]" else ptab +> pblock (plist' docs)

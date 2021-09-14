@@ -40,8 +40,12 @@ instance OStreamObject Int where
 instance OStreamObject Double where
     intoString x = shows x ""
 
+instance OStreamObject Integer where
+    intoString n = shows n ""
+
 instance OStreamObject Bool where
-    intoString b = if b then "true" else "false"
+    intoString True = "true"
+    intoString False = "false"
 
 cout :: Handle
 cout = stdout

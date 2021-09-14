@@ -10,17 +10,11 @@ import Z.Utils
 
 type PC = MyPC
 
-autoPC :: Read val => PC val
-autoPC = MyPC go where
-    go :: Read val => PB LocChr val
-    go = mkPB $ \lstr0 -> [ (val1, drop (length lstr0 - length str1) lstr0) | (val1, str1) <- readsPrec 0 (map snd lstr0) ]
-
 acceptPC :: (Char -> Bool) -> PC Char
-acceptPC = MyPC . go where
-    go :: (Char -> Bool) -> ParserBase LocChr Char
-    go cond = mkPB $ \lstr -> case lstr of
-        [] -> []
-        ((r, c), ch) : lstr' -> if cond ch then [(ch, lstr')] else []
+acceptPC cond = MyPC (mkPB go) where
+    go :: LocStr -> [(Char, LocStr)]
+    go [] = []
+    go (((r, c), ch) : lstr') = if cond ch then [(ch, lstr')] else []
 
 consumePC :: String -> PC ()
 consumePC = mapM_ acceptPC . map (==)
@@ -38,6 +32,9 @@ eofPC = MyPC go where
 
 regexPC :: RegExRep -> PC String
 regexPC = myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression
+
+intPC :: PC Int
+intPC = read <$> regexPC "['-']? ['0'-'9']+"
 
 negPC :: PC val -> PC ()
 negPC = MyPC . go . unMyPC where
@@ -67,3 +64,6 @@ largeid = regexPC "[\'A\'-\'Z\'] [\'a\'-\'z\' \'0\'-\'9\' \'A\'-\'Z\']*"
 
 puncPC :: String -> PC val -> PC [val]
 puncPC str p = (pure (:) <*> p <*> many (consumePC str *> p)) <|> pure []
+
+parenPC :: Char -> Char -> PC val -> PC val
+parenPC ch1 ch2 p = acceptPC (\ch -> ch == ch1) *> p <* acceptPC (\ch -> ch == ch2)

@@ -23,8 +23,51 @@ executable ppap
     , checkers >= 0.5
   main-is: Main.hs
   other-modules:
-    LGS.Main
-    PGS.Main
+    Aladdin.Main
+    Aladdin.Back.BackEnd
+    Aladdin.Back.Base.Constant
+    Aladdin.Back.Base.Labeling
+    Aladdin.Back.Base.TermNode
+    Aladdin.Back.Base.TermNode.Read
+    Aladdin.Back.Base.TermNode.Show
+    Aladdin.Back.Base.TermNode.Util
+    Aladdin.Back.Base.VarBinding
+    Aladdin.Back.Converter.Main
+    Aladdin.Back.Converter.Scheme
+    Aladdin.Back.Converter.Util
+    Aladdin.Back.HOPU.Bind
+    Aladdin.Back.HOPU.Main
+    Aladdin.Back.HOPU.MkSubst
+    Aladdin.Back.HOPU.Select
+    Aladdin.Back.HOPU.Simplify
+    Aladdin.Back.HOPU.Util
+    Aladdin.Back.Runtime.Instantiation
+    Aladdin.Back.Runtime.LogicalOperator
+    Aladdin.Back.Runtime.Main
+    Aladdin.Back.Runtime.Transition
+    Aladdin.Back.Runtime.Util
+    Aladdin.Front.Analyzer.Grammar
+    Aladdin.Front.Analyzer.Lexer
+    Aladdin.Front.Analyzer.Main
+    Aladdin.Front.Analyzer.Parser
+    Aladdin.Front.Desugarer.ForKind
+    Aladdin.Front.Desugarer.ForTerm
+    Aladdin.Front.Desugarer.ForType
+    Aladdin.Front.Desugarer.Main
+    Aladdin.Front.Header
+    Aladdin.Front.TypeChecker.Main
+    Aladdin.Front.TypeChecker.Util
+    Lib.Algorithm.Sorting
+    Lib.Base
+    Lib.Text.PC
+    Lib.Text.PC.Base
+    Lib.Text.PC.Check
+    Lib.Text.PC.Expansion
+    Lib.Text.PC.Loc
+    Lib.Text.PC.Regex
+    Lib.Text.Ppr
+    Lib.Text.Ppr.Viewer
+    PGS.Util
     Z.Algo.Sorting
     Z.Text.Doc
     Z.Text.Doc.Internal

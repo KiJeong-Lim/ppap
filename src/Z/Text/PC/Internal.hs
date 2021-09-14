@@ -290,18 +290,18 @@ takeStringMatchedWithRegexFromStreamByMaximalMunchRule = go where
     getBuffer commit = fst commit
     getOutput :: (LocStr, String) -> String
     getOutput commit = snd commit
-    runRegEx :: (LocStr, String) -> RegEx -> (LocStr, String)
-    runRegEx last_commit current_regex
+    runRegEx :: RegEx -> (LocStr, String) -> (LocStr, String)
+    runRegEx current_regex last_commit
         = case runStateT (repeatPlvsVltra "" current_regex) (getBuffer last_commit) of
             Nothing -> last_commit
             Just ((revesed_token_of_output, next_regex), new_buffer)
                 | null new_buffer -> commit
-                | otherwise -> runRegEx commit next_regex
+                | otherwise -> runRegEx next_regex commit
                 where
                     commit :: (LocStr, String)
                     commit = (new_buffer, getOutput last_commit ++ reverse revesed_token_of_output)
     go :: RegEx -> LocStr -> Maybe (String, LocStr)
-    go regex lstr0 = case runRegEx (lstr0, "") regex of
+    go regex lstr0 = case runRegEx regex (lstr0, "") of
         (lstr1, output) -> if not (null output) || isNullable regex then return (output, lstr1) else Nothing
 
 myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression :: RegExRep -> MyPC String
@@ -311,9 +311,9 @@ myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression 
         [ "In `Z.Text.PC.Internal.myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression':\n"
         , "  invalid-regex-representation-is-given,\n"
         , "  regex-representation={\n"
-        , "    " ++ regex_representation ++ "\n"
+        , "    " ++ show regex_representation ++ "\n"
         , "  }.\n"
         ]
     go :: [RegEx] -> ParserBase LocChr String
-    go [regex] = mkPB (maybe [] return . takeStringMatchedWithRegexFromStreamByMaximalMunchRule regex)
+    go [regex] = mkPB (maybe [] pure . takeStringMatchedWithRegexFromStreamByMaximalMunchRule regex)
     go _ = error myErrMsg
