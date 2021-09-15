@@ -1,7 +1,6 @@
 module Z.Text.PC where
 
 import Control.Applicative
-import Data.Function
 import Z.Algo.Sorting
 import Z.Text.Doc
 import Z.Text.PC.Base
@@ -48,7 +47,7 @@ runPC :: FPath -> PC val -> Src -> Either ErrMsg val
 runPC (FPath { getFilePath = path }) p src = either (callWithStrictArg Left . makeMessageForParsingError path src) (callWithStrictArg return) (execPC p src)
 
 acceptQuote :: PC String
-acceptQuote = pure read <*> regexPC "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'])* \"\\\"\""
+acceptQuote = pure read <*> regexPC "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\'])* \"\\\"\""
 
 skipWhite :: PC Int
 skipWhite = MyPC go where
@@ -67,3 +66,9 @@ puncPC str p = (pure (:) <*> p <*> many (consumePC str *> p)) <|> pure []
 
 parenPC :: Char -> Char -> PC val -> PC val
 parenPC ch1 ch2 p = acceptPC (\ch -> ch == ch1) *> p <* acceptPC (\ch -> ch == ch2)
+
+lend :: PC ()
+lend = skipWhite *> consumePC "\n"
+
+indent :: Int -> PC ()
+indent n = consumePC (replicate n ' ')

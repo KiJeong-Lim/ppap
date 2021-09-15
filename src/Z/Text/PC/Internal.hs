@@ -168,7 +168,7 @@ makeMessageForParsingError path src lstr = show theMsgDoc where
     theMsgDoc :: Doc
     theMsgDoc = vcat
         [ pstr path +> pstr ":" +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr ": error:"
-        , pstr "    parse error " +> (if null lstr then pstr "at EOF" else  pstr "on input `" +> pstr (one (snd (head lstr))) +> pstr "'")
+        , pstr "parse error " +> (if null lstr then pstr "at EOF" else  pstr "on input `" +> pstr (one (snd (head lstr))) +> pstr "'")
         , pcat
             [ vcat
                 [ pstr ""
