@@ -62,15 +62,15 @@ executable ppap
     LGS.Read
     LGS.Show
     LGS.Util
-    Lib.Algorithm.Sorting
-    Lib.Base
-    Lib.Text.Ppr
-    Lib.Text.Ppr.Viewer
     PGS.Main
     PGS.Make
     PGS.Read
     PGS.Show
     PGS.Util
+    Y.Algorithm.Sorting
+    Y.Base
+    Y.Text.Ppr
+    Y.Text.Ppr.Viewer
     Z.Algo.Sorting
     Z.Text.Doc
     Z.Text.Doc.Internal

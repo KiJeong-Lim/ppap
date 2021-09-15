@@ -11,7 +11,7 @@ import Data.Functor.Identity
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Lib.Base
+import Y.Base
 
 data Fixity extra
     = Prefix String extra

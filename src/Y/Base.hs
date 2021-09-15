@@ -1,4 +1,4 @@
-module Lib.Base where
+module Y.Base where
 
 import Control.Applicative
 import Control.Monad

@@ -10,10 +10,10 @@ import Data.Functor.Identity
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Lib.Algorithm.Sorting
-import Lib.Base
 import PGS.Make
 import PGS.Util
+import Y.Algorithm.Sorting
+import Y.Base
 import Z.Text.PC
 
 instance Show Conflict where

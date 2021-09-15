@@ -5,7 +5,7 @@ import Aladdin.Front.Header
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Lib.Base
+import Y.Base
 
 makeKindEnv :: [(SLoc, (TypeConstructor, KindRep))] -> KindEnv -> Either ErrMsg KindEnv
 makeKindEnv = go where

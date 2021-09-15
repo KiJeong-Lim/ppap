@@ -6,7 +6,7 @@ import Control.Monad
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Lib.Base
+import Y.Base
 
 makeTypeEnv :: KindEnv -> [(SLoc, (DataConstructor, TypeRep))] -> TypeEnv -> Either ErrMsg TypeEnv
 makeTypeEnv kind_env = go where

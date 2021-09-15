@@ -8,9 +8,9 @@ import Data.Functor.Identity
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Lib.Base
 import LGS.Make
 import LGS.Util
+import Y.Base
 
 modifyCSinRE :: (CharSet -> ExceptT ErrMsg Identity CharSet) -> (RegEx -> ExceptT ErrMsg Identity RegEx)
 modifyCSinRE modify = go where

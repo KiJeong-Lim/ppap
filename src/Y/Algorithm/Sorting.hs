@@ -1,4 +1,4 @@
-module Lib.Algorithm.Sorting where
+module Y.Algorithm.Sorting where
 
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict

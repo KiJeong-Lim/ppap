@@ -1,4 +1,4 @@
-module Lib.Text.Ppr
+module Y.Text.Ppr
     ( Doc
     , happend
     , vappend
@@ -18,8 +18,8 @@ module Lib.Text.Ppr
     , pprintString
     ) where
 
-import Lib.Base
-import Lib.Text.Ppr.Viewer
+import Y.Base
+import Y.Text.Ppr.Viewer
 import System.Console.Pretty
 
 data Doc

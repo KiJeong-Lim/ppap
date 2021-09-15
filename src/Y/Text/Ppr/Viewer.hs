@@ -1,4 +1,4 @@
-module Lib.Text.Ppr.Viewer where
+module Y.Text.Ppr.Viewer where
 
 import System.Console.Pretty
 

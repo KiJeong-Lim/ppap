@@ -9,7 +9,7 @@ import Control.Monad.Trans.State.Strict
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Lib.Base
+import Y.Base
 
 inferType :: GenUniqueM m => TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
 inferType type_env = flip runStateT Map.empty . infer where

@@ -2,7 +2,7 @@ module Aladdin.Back.Base.TermNode where
 
 import Aladdin.Back.Base.Constant
 import Aladdin.Front.Header
-import Lib.Base
+import Y.Base
 
 type DeBruijn = Int
 

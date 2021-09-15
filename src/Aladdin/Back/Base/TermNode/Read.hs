@@ -5,7 +5,7 @@ import Aladdin.Back.Base.TermNode
 import Aladdin.Front.Header
 import Control.Applicative
 import qualified Data.List as List
-import Lib.Base
+import Y.Base
 
 instance Read TermNode where
     readsPrec = runPM . flip go [] where

@@ -1,7 +1,7 @@
 module Aladdin.Back.Base.Constant where
 
 import Aladdin.Front.Header
-import Lib.Base
+import Y.Base
 
 data Constant
     = DC DataConstructor
