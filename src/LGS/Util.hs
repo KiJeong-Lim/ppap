@@ -79,8 +79,8 @@ instance Outputable CharSet where
     pprint 1 (CsUnion chs1 chs2) = pprint 1 chs1 . strstr " " . pprint 2 chs2
     pprint 1 chs = pprint 2 chs
     pprint 2 (CsVar var) = strstr "$" . strstr var
-    pprint 2 (CsSingle ch1) = pchar ch1
-    pprint 2 (CsEnum ch1 ch2) = pchar ch1 . strstr "-" . pchar ch2
+    pprint 2 (CsSingle ch1) = formalChar ch1
+    pprint 2 (CsEnum ch1 ch2) = formalChar ch1 . strstr "-" . formalChar ch2
     pprint 2 (CsUniv) = strstr "."
     pprint 2 chs = pprint 3 chs
     pprint _ chs = strstr "(" . pprint 0 chs . strstr ")"
@@ -124,11 +124,6 @@ instance Show DFA where
     showList = undefined
 
 formalChar :: Char -> ShowS
-formalChar '\"' = strstr "\\\""
-formalChar '\'' = strstr "\\\'"
-formalChar '\t' = strstr "\\t"
-formalChar '\n' = strstr "\\n"
+formalChar '\"' = strstr "\'\\\"\'"
+formalChar '\'' = strstr "\'\\\'\'"
 formalChar ch = showsPrec 0 ch
-
-pchar :: Char -> ShowS
-pchar ch = strstr "\'" . formalChar ch . strstr "\'"
