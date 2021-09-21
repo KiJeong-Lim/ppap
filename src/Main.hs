@@ -12,3 +12,4 @@ main = do
         "Aladdin" -> Aladdin.main
         "LGS" -> LGS.main
         "PGS" -> PGS.main
+        _ -> return ()
