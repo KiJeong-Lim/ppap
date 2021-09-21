@@ -8,9 +8,6 @@ import qualified Data.Set as Set
 import LGS.Util
 import Z.Text.PC
 
-charPC :: PC Char
-charPC = pure read <*> regexPC "\"\\\'\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\']) \"\\\'\""
-
 readCharSet :: PC CharSet
 readCharSet = go 0 where
     go :: Int -> PC CharSet

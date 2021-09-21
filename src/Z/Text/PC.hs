@@ -1,7 +1,6 @@
 module Z.Text.PC where
 
 import Control.Applicative
-import Z.Algo.Sorting
 import Z.Text.Doc
 import Z.Text.PC.Base
 import Z.Text.PC.Internal
@@ -72,3 +71,9 @@ lend = skipWhite *> consumePC "\n"
 
 indent :: Int -> PC ()
 indent n = consumePC (replicate n ' ')
+
+charPC :: PC Char
+charPC = pure read <*> regexPC "\"\\\'\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\']) \"\\\'\""
+
+acceptList :: PC a -> PC [a]
+acceptList pc = consumePC "[" *> (skipWhite *> (pure [] <|> (pure (:) <*> pc <*> many (consumePC "," *> skipWhite *> pc)))) <* consumePC "]"

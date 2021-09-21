@@ -9,9 +9,6 @@ import PGS.Util
 import Z.Text.PC
 import Z.Utils
 
-acceptList :: PC a -> PC [a]
-acceptList pc = consumePC "[" *> (skipWhite *> (pure [] <|> (pure (:) <*> pc <*> many (consumePC "," *> skipWhite *> pc)))) <* consumePC "]"
-
 readTSym :: PC TSym
 readTSym = mconcat
     [ consumePC "\\$" *> pure TSEOF
