@@ -3,6 +3,7 @@ module Main where
 import qualified Aladdin.Main as Aladdin
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
+import Z.Utils
 
 main :: IO ()
 main = do
@@ -12,4 +13,6 @@ main = do
         "Aladdin" -> Aladdin.main
         "LGS" -> LGS.main
         "PGS" -> PGS.main
-        _ -> return ()
+        invalid_command -> do
+            cout << "invalid-command = " << show invalid_command << endl
+            return ()

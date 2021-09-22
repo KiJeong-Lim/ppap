@@ -79,6 +79,7 @@ flatten (VarBinding mapsto) = go where
 
 (+->) :: LogicVar -> TermNode -> Maybe VarBinding
 v +-> t
+    | LVar v == t = return (VarBinding Map.empty)
     | v `Set.member` getFreeLVs t' = Nothing
     | otherwise = return (VarBinding (Map.singleton v t'))
     where
