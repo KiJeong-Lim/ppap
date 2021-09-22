@@ -30,6 +30,14 @@ quitWithMsg str = do
     putStrLn str
     exitSuccess
 
+eraseTrivialBinding :: LVarSubst -> LVarSubst
+eraseTrivialBinding = VarBinding . (foldr go <*> Map.toAscList) . unVarBinding where
+    go :: (LogicVar, TermNode) -> Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
+    go (v1, LVar v2)
+        | LV_Unique _ <- v2
+        = Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v1
+    go _ = id
+
 runREPL :: Program TermNode -> UniqueGenT IO ()
 runREPL program = lift (newIORef False) >>= go where
     mkRuntimeEnv :: IORef Debugging -> TermNode -> IO RuntimeEnv
@@ -57,13 +65,15 @@ runREPL program = lift (newIORef False) >>= go where
                 putStrLn "The answer substitution is:"
                 sequence
                     [ putStrLn ("  " ++ v ++ " := " ++ showsPrec 0 t ".")
-                    | (LV_Named v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
+                    | (LV_Named v, t) <- Map.toList (unVarBinding finalBinding)
                     ]
                 askToRunMore
             | otherwise = do
                 printDisagreements
                 askToRunMore
             where
+                finalBinding :: LVarSubst
+                finalBinding = eraseTrivialBinding (_TotalVarBinding final_ctx)
                 isShort :: Bool
                 isShort = Set.null (getFreeLVs query)
                 isClear :: Bool
@@ -85,7 +95,7 @@ runREPL program = lift (newIORef False) >>= go where
                     putStrLn "The binding is:"
                     sequence
                         [ putStrLn ("  " ++ showsPrec 0 (mkLVar v) (" := " ++ showsPrec 0 t "."))
-                        | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
+                        | (v, t) <- Map.toList (unVarBinding finalBinding)
                         ]
                     return ()
     go :: IORef Debugging -> UniqueGenT IO ()
