@@ -85,7 +85,7 @@ runREPL program = lift (newIORef False) >>= go where
                 isClear = List.null (_LeftConstraints final_ctx)
                 askToRunMore :: IO RunMore
                 askToRunMore = do
-                    putStrLn "Find more solutions? [y/n]"
+                    putStrLn "Find more solutions? [Y/n]"
                     str <- getLine
                     if List.null str
                         then askToRunMore
@@ -105,8 +105,8 @@ runREPL program = lift (newIORef False) >>= go where
                     return ()
     go :: IORef Debugging -> UniqueGenT IO ()
     go isDebugging = do
-        query0 <- lift $ getLine
-        case query0 of
+        query <- lift $ getLine
+        case query of
             "" -> lift $ quitWithMsg ""
             ":q" -> lift $ quitWithMsg "Bye~"
             ":d" -> do
