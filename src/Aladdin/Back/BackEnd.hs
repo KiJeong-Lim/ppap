@@ -80,7 +80,7 @@ runREPL program = lift (newIORef False) >>= go where
                 isClear = List.null (_LeftConstraints final_ctx)
                 askToRunMore :: IO RunMore
                 askToRunMore = do
-                    putStrLn "Find more solutions?"
+                    putStrLn "Find more solutions? [y/n]"
                     str <- getLine
                     if str == "Y" || str == "y"
                         then return True

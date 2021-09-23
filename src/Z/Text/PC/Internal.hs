@@ -218,10 +218,13 @@ mkReZero :: RegEx
 mkReZero = ReZero
 
 mkReMult :: RegEx -> RegEx -> RegEx
-mkReMult re1 re2 = re1 `seq` re2 `seq` ReMult re1 re2
+mkReMult (ReZero) re = ReZero
+mkReMult re (ReZero) = ReZero
+mkReMult re1 re2 = ReMult re1 re2
 
 mkReStar :: RegEx -> RegEx
-mkReStar re1 = re1 `seq` ReStar re1
+mkReStar (ReZero) = ReWord ""
+mkReStar re = ReStar re
 
 takeStringMatchedWithRegexFromStreamByMaximalMunchRule :: RegEx -> LocStr -> Maybe (String, LocStr)
 takeStringMatchedWithRegexFromStreamByMaximalMunchRule = go where
