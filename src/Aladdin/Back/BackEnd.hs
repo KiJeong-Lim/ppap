@@ -65,15 +65,13 @@ runREPL program = lift (newIORef False) >>= go where
                 putStrLn "The answer substitution is:"
                 sequence
                     [ putStrLn ("  " ++ v ++ " := " ++ showsPrec 0 t ".")
-                    | (LV_Named v, t) <- Map.toList (unVarBinding finalBinding)
+                    | (LV_Named v, t) <- Map.toList (unVarBinding (eraseTrivialBinding (_TotalVarBinding final_ctx)))
                     ]
                 askToRunMore
             | otherwise = do
                 printDisagreements
                 askToRunMore
             where
-                finalBinding :: LVarSubst
-                finalBinding = eraseTrivialBinding (_TotalVarBinding final_ctx)
                 isShort :: Bool
                 isShort = Set.null (getFreeLVs query)
                 isClear :: Bool
@@ -82,9 +80,9 @@ runREPL program = lift (newIORef False) >>= go where
                 askToRunMore = do
                     putStrLn "Find more solutions? [y/n]"
                     str <- getLine
-                    if str == "Y" || str == "y"
-                        then return True
-                        else return False
+                    if null str
+                        then askToRunMore
+                        else return (str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ])
                 printDisagreements :: IO ()
                 printDisagreements = do
                     putStrLn "The remaining disagreements are:"
@@ -95,7 +93,7 @@ runREPL program = lift (newIORef False) >>= go where
                     putStrLn "The binding is:"
                     sequence
                         [ putStrLn ("  " ++ showsPrec 0 (mkLVar v) (" := " ++ showsPrec 0 t "."))
-                        | (v, t) <- Map.toList (unVarBinding finalBinding)
+                        | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
                         ]
                     return ()
     go :: IORef Debugging -> UniqueGenT IO ()
