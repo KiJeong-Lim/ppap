@@ -10,6 +10,7 @@ main = do
     putStrLn "ppap"
     command <- getLine
     case command of
+        "" -> return ()
         "Aladdin" -> Aladdin.main
         "LGS" -> LGS.main
         "PGS" -> PGS.main
