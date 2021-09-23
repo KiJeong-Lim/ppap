@@ -162,7 +162,7 @@ renderViewer = unVF . normalizeV where
     unVF :: Viewer -> [String]
     unVF (VF row col field) = field
     unVF _ = []
-    
+
 dispatchChar :: Char -> String
 dispatchChar '\"' = "\\\""
 dispatchChar '\'' = "\\\'"
