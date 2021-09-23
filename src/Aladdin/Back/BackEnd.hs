@@ -31,11 +31,16 @@ quitWithMsg str = do
     exitSuccess
 
 eraseTrivialBinding :: LVarSubst -> LVarSubst
-eraseTrivialBinding = VarBinding . (foldr go <*> Map.toAscList) . unVarBinding where
+eraseTrivialBinding = VarBinding . loop . unVarBinding where
+    hasName :: LogicVar -> Bool
+    hasName (LV_Named _) = True
+    hasName _ = False
+    loop :: Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
+    loop = foldr go <*> Map.toAscList
     go :: (LogicVar, TermNode) -> Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
     go (v1, LVar v2)
-        | LV_Unique _ <- v2
-        = Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v1
+        | hasName v2 = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
+        | otherwise = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v2
     go _ = id
 
 runREPL :: Program TermNode -> UniqueGenT IO ()
@@ -65,22 +70,24 @@ runREPL program = lift (newIORef False) >>= go where
                 putStrLn "The answer substitution is:"
                 sequence
                     [ putStrLn ("  " ++ v ++ " := " ++ showsPrec 0 t ".")
-                    | (LV_Named v, t) <- Map.toList (unVarBinding (eraseTrivialBinding (_TotalVarBinding final_ctx)))
+                    | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
             | otherwise = do
                 printDisagreements
                 askToRunMore
             where
+                theAnswerSubst :: [(LargeId, TermNode)]
+                theAnswerSubst = [ (v, t) | (LV_Named v, t) <- Map.toList (unVarBinding ((eraseTrivialBinding (_TotalVarBinding final_ctx)))) ]
                 isShort :: Bool
-                isShort = Set.null (getFreeLVs query)
+                isShort = List.null theAnswerSubst
                 isClear :: Bool
                 isClear = List.null (_LeftConstraints final_ctx)
                 askToRunMore :: IO RunMore
                 askToRunMore = do
                     putStrLn "Find more solutions? [y/n]"
                     str <- getLine
-                    if null str
+                    if List.null str
                         then askToRunMore
                         else return (str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ])
                 printDisagreements :: IO ()
