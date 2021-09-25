@@ -5,6 +5,12 @@ import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import Z.Utils
 
+showCopyright :: String
+showCopyright = concat
+    [ "Copyright (c) 2020-2021, Kijeong Lim\n"
+    , "All rights reserved.\n"
+    ]
+
 main :: IO ()
 main = do
     putStrLn "ppap"

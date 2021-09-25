@@ -23,51 +23,40 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
 
-showCopyright :: String
-showCopyright = concat
-    [ "Copyright (c) 2020-2021, KiJeong Lim\n"
-    , "All rights reserved.\n"
-    ]
-
-sequence' :: Monad m => [m a] -> m [a]
-sequence' [] = return []
-sequence' (x : xs) = do
-    y <- x
-    ys <- y `seq` sequence' xs
-    ys `seq` return (y : ys)
-
 runAladdin :: UniqueGenT IO ()
 runAladdin = do
+    let eq_facts = [mkNApp (mkNCon LO_ty_pi) (mkNAbs (mkNApp (mkNCon LO_pi) (mkNAbs (mkNApp (mkNApp (mkNApp (mkNCon DC_Eq) (mkNIdx 2)) (mkNIdx 1)) (mkNIdx 1)))))]
     lift $ putStrLn "Enter the path of the aladdin file to execute:"
     dir <- lift $ getLine
-    src <- lift $ readFile dir
-    case runAnalyzer src of
-        Left err_msg -> do
-            lift $ putStrLn err_msg
-            runAladdin
-        Right output -> case output of
-            Left query1 -> do
-                lift $ putStrLn "parsing-error: it is not a program."
-                runAladdin
-            Right program1 -> do
-                result <- runExceptT $ do
-                    module1 <- desugarProgram theInitialKindEnv theInitialTypeEnv program1
-                    facts2 <- sequence' [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
-                    facts3 <- sequence' [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
-                    let kind_env = _KindDecls module1
-                        type_env = _TypeDecls module1
-                        eq_fact = mkNApp (mkNCon LO_ty_pi) (mkNAbs (mkNApp (mkNCon LO_pi) (mkNAbs (mkNApp (mkNApp (mkNApp (mkNCon DC_Eq) (mkNIdx 2)) (mkNIdx 1)) (mkNIdx 1)))))
-                    kind_env `seq` type_env `seq` facts3 `seq` return (Program { _KindDecls = kind_env, _TypeDecls = type_env, _FactDecls = eq_fact : facts3 })
-                case result of
-                    Left err_msg -> do
-                        lift $ putStrLn err_msg
+    if dir == ""
+        then do
+            lift $ putStrLn "No module loaded"
+            runREPL (Program{ _KindDecls = theInitialKindEnv, _TypeDecls = theInitialTypeEnv, _FactDecls = eq_facts })
+        else do
+            src <- lift $ readFile dir
+            case runAnalyzer src of
+                Left err_msg -> do
+                    lift $ putStrLn err_msg
+                    runAladdin
+                Right output -> case output of
+                    Left query1 -> do
+                        lift $ putStrLn "*** parsing-error: it is not a program."
                         runAladdin
-                    Right program2 -> do
-                        lift $ putStrLn ("Loaded: " ++ dir)
-                        runREPL program2
+                    Right program1 -> do
+                        result <- runExceptT $ do
+                            module1 <- desugarProgram theInitialKindEnv theInitialTypeEnv program1
+                            facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
+                            facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
+                            return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = eq_facts ++ facts3 })
+                        case result of
+                            Left err_msg -> do
+                                lift $ putStrLn err_msg
+                                runAladdin
+                            Right program2 -> do
+                                lift $ putStrLn ("Loaded: " ++ dir)
+                                runREPL program2
 
 main :: IO ()
 main = do
-    putStrLn showCopyright
     runUniqueGenT runAladdin
     return ()
