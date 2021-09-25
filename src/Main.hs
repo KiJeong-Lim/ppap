@@ -36,7 +36,7 @@ ppap = do
             PGS.runPGS "src/Aladdin/Front/Analyzer/Parser"
             putStrLn "ppap> Quit."
         "TEST" -> do
-            cout << "ppap> Eval (TEST.main)." << endl
+            cout << "ppap> Exec (TEST.main)." << endl
             TEST.main
         invalid_command -> do
             cout << "ppap> Print (invalid-command=" << show invalid_command << ")." << endl
