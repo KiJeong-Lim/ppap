@@ -61,10 +61,12 @@ runAladdin = do
     dir <- lift $ do
         putStr "Aladdin<<< "
         hFlush stdout
-        getLine
+        str <- getLine
+        putStrLn ""
+        return str
     if dir == ""
         then do
-            lift $ putStrLn "Aladdin> Print (No module loaded)."
+            lift $ putStrLn "Aladdin> Print (No module loaded).\n"
             runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls })
         else do
             src <- lift $ readFile dir
@@ -87,7 +89,7 @@ runAladdin = do
                                 lift $ putStrLn err_msg
                                 runAladdin
                             Right program2 -> do
-                                lift $ putStrLn ("Aladdin> Print (One module loaded: " ++ dir ++ ").")
+                                lift $ putStrLn ("Aladdin> Print (One module loaded: " ++ dir ++ ").\n")
                                 runREPL program2
 
 main :: IO ()

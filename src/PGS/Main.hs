@@ -25,16 +25,17 @@ runPGS dir = do
         Right yblocks -> case runIdentity (runExceptT (genParser yblocks)) of
             Left err -> do
                 writeFile (dir ++ ".failed") err
-                putStrLn "PGS> Print (Generating failed...)."
+                putStrLn "PGS> Print (Generating failed...).\n"
                 return ()
             Right delta -> do
                 writeFile (dir ++ ".hs") (delta "")
-                putStrLn "PGS> Print (The parser has been generated.)."
+                putStrLn "PGS> Print (The parser has been generated.).\n"
                 return ()
 
 main :: IO ()
 main = do
     cout << "PGS<<< "
     dir <- getLine
+    putStrLn ""
     runPGS dir
-    putStrLn "PGS> Quit."
+    putStrLn "PGS> Quit.\n"
