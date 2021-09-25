@@ -9,22 +9,22 @@ import Z.Text.PC.Base
 import Z.Text.PC.Internal
 import Z.Utils
 
-instance (Arbitrary chr, Eq chr, CoArbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
+instance (Arbitrary chr, CoArbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
     arbitrary = choose (0, 10) >>= go where
-        go :: (Arbitrary chr, Eq chr, CoArbitrary chr, Arbitrary val) => Int -> Gen (ParserBase chr val)
+        go :: (Arbitrary chr, CoArbitrary chr, Arbitrary val) => Int -> Gen (ParserBase chr val)
         go rank
             | rank > 0 = frequency
                 [ (8, go (rank - 1))
                 , (2, pure PAct <*> genPAct (go (rank - 1)))
                 ]
             | otherwise = pure PVal <*> arbitrary
-        genPAct :: (Arbitrary chr, CoArbitrary chr, Eq chr) => Gen (ParserBase chr val) -> Gen ([chr] -> [(ParserBase chr val, [chr])])
+        genPAct :: (Arbitrary chr, CoArbitrary chr) => Gen (ParserBase chr val) -> Gen ([chr] -> [(ParserBase chr val, [chr])])
         genPAct seed = do
             n <- choose (0, 5)
             conds <- vectorOf n arbitrary
             p <- seed
             return (parsing p conds)
-        parsing :: Eq chr => val -> [chr -> Bool] -> ([chr] -> [(val, [chr])])
+        parsing :: val -> [chr -> Bool] -> ([chr] -> [(val, [chr])])
         parsing val [] str = [(val, str)]
         parsing val (cond : conds) (ch : str) = if cond ch then parsing val conds str else []
         parsing val _ _ = []
