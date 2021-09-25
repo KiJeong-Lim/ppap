@@ -15,6 +15,7 @@ import PGS.Util
 import Y.Base
 import Z.Algo.Sorting
 import Z.Text.PC
+import Z.Utils
 
 instance Show Conflict where
     show = flip (showsPrec 0) ""
@@ -39,7 +40,7 @@ instance Show Conflict where
                     )
             formatedEdges :: [(ParserS, [(Sym, ParserS)])]
             formatedEdges = do
-                triples <- split' (\triple1 -> \triple2 -> fst (fst triple1) == fst (fst triple2)) (Map.toAscList edges)
+                triples <- splitUnless (\triple1 -> \triple2 -> fst (fst triple1) == fst (fst triple2)) (Map.toAscList edges)
                 case triples of
                     [] -> []
                     ((q, sym), p) : triples' -> return

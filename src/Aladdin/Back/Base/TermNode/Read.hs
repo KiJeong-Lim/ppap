@@ -6,9 +6,11 @@ import Aladdin.Front.Header
 import Control.Applicative
 import qualified Data.List as List
 import Y.Base
+import Z.Text.PM
+import Z.Utils
 
 instance Read TermNode where
-    readsPrec = runPM . flip go [] where
+    readsPrec = unPM . flip go [] where
         readVar :: [LargeId] -> PM TermNode
         readVar env = do
             ch1 <- acceptCharIf (\ch -> ch `elem` ['A' .. 'Z'])

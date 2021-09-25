@@ -11,6 +11,7 @@ import qualified Data.Set as Set
 import LGS.Make
 import LGS.Util
 import Y.Base
+import Z.Utils
 
 modifyCSinRE :: (CharSet -> ExceptT ErrMsg Identity CharSet) -> (RegEx -> ExceptT ErrMsg Identity RegEx)
 modifyCSinRE modify = go where
@@ -128,7 +129,7 @@ genLexer xblocks = do
         tellLine (strstr "    theDFA = DFA")
         tellLine (strstr "        { getInitialQOfDFA = " . showsPrec 0 (getInitialQOfDFA theDFA))
         tellLine (strstr "        , getFinalQsOfDFA = XMap.fromAscList [" . ppunc ", " [ strstr "(" . showsPrec 0 q . strstr ", " . showsPrec 0 p . strstr ")" | (q, p) <- Map.toAscList (getFinalQsOfDFA theDFA) ] . strstr "]")
-        tellLine (strstr "        , getTransitionsOfDFA = XMap.fromAscList " . plist 12 [ ppunc ", " [ strstr "((" . showsPrec 0 q . strstr ", " . showsPrec 0 ch . strstr "), " . showsPrec 0 p . strstr ")" | ((q, ch), p) <- deltas ] | deltas <- split' (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList (getTransitionsOfDFA theDFA)) ])
+        tellLine (strstr "        , getTransitionsOfDFA = XMap.fromAscList " . plist 12 [ ppunc ", " [ strstr "((" . showsPrec 0 q . strstr ", " . showsPrec 0 ch . strstr "), " . showsPrec 0 p . strstr ")" | ((q, ch), p) <- deltas ] | deltas <- splitUnless (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList (getTransitionsOfDFA theDFA)) ])
         tellLine (strstr "        , getMarkedQsOfDFA = XMap.fromAscList " . plist 12 [ strstr "(" . showsPrec 0 q . strstr ", XSet.fromAscList [" . ppunc ", " [ showsPrec 0 p | p <- Set.toAscList ps ] . strstr "])" | (q, ps) <- Map.toAscList (getMarkedQsOfDFA theDFA) ])
         tellLine (strstr "        }")
         tellLine (strstr "    runDFA :: DFA -> (ch -> Char) -> [ch] -> ((Maybe Int, [ch]), [ch])")

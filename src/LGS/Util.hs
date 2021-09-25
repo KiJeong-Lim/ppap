@@ -10,6 +10,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Y.Base
 import Y.Text.Ppr
+import Z.Utils
 
 type ErrMsg = String
 
@@ -117,7 +118,7 @@ instance Show DFA where
         [ strstr "DFA" . nl
         , strstr "    { getInitialQOfDFA = " . showsPrec 0 q0 . nl
         , strstr "    , getFinalQsOfDFA = XMap.fromAscList [" . ppunc ", " [ strstr "(" . showsPrec 0 q . strstr ", " . showsPrec 0 p . strstr ")" | (q, p) <- Map.toAscList qfs ] . strstr "]" . nl
-        , strstr "    , getTransitionsOfDFA = XMap.fromAscList " . plist 8 [ ppunc ", " [ strstr "((" . showsPrec 0 q . strstr ", " . showsPrec 0 ch . strstr "), " . showsPrec 0 p . strstr ")" | ((q, ch), p) <- deltas ] | deltas <- split' (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList deltas) ] . nl
+        , strstr "    , getTransitionsOfDFA = XMap.fromAscList " . plist 8 [ ppunc ", " [ strstr "((" . showsPrec 0 q . strstr ", " . showsPrec 0 ch . strstr "), " . showsPrec 0 p . strstr ")" | ((q, ch), p) <- deltas ] | deltas <- splitUnless (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList deltas) ] . nl
         , strstr "    , getMarkedQsOfDFA = XMap.fromAscList " . plist 8 [ strstr "(" . showsPrec 0 q . strstr ", XSet.fromAscList [" . ppunc ", " [ showsPrec 0 p | p <- Set.toAscList ps ] . strstr "])" | (q, ps) <- Map.toAscList markeds ] . nl
         , strstr "    }"
         ]

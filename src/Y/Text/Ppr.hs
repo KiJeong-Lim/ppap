@@ -18,9 +18,10 @@ module Y.Text.Ppr
     , pprintString
     ) where
 
+import System.Console.Pretty
 import Y.Base
 import Y.Text.Ppr.Viewer
-import System.Console.Pretty
+import Z.Utils
 
 data Doc
     = DE
