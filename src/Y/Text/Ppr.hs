@@ -1,22 +1,4 @@
-module Y.Text.Ppr
-    ( Doc
-    , happend
-    , vappend
-    , text
-    , textbf
-    , textit
-    , hconcat
-    , vconcat
-    , mkBeam
-    , white
-    , blue
-    , red
-    , indent
-    , putDoc
-    , renderDoc
-    , pprintChar
-    , pprintString
-    ) where
+module Y.Text.Ppr where
 
 import System.Console.Pretty
 import Y.Base
@@ -25,7 +7,7 @@ import Z.Utils
 
 data Doc
     = DE
-    | DT (String -> String)
+    | DT String
     | DS Style Doc
     | DC Color Doc
     | DB
@@ -57,7 +39,7 @@ instance Show Doc where
     showsPrec 6 doc1 str = showsPrec 7 doc1 str
     showsPrec 7 doc1 str = showsPrec 8 doc1 str
     showsPrec 8 doc1 str = showsPrec 9 doc1 str
-    showsPrec 9 (DT strstr1) str = "DT (" ++ showsPrec 0 (strstr1 "") (" ++ )" ++ str)
+    showsPrec 9 (DT str1) str = "DT " ++ showsPrec 0 str1 str
     showsPrec 9 (DS style1 doc1) str = "DS " ++ showStyle style1 (" " ++ showsPrec 10 doc1 str) where
         showStyle :: Style -> String -> String
         showStyle Normal str = "Normal" ++ str
@@ -104,7 +86,7 @@ vappend :: Doc -> Doc -> Doc
 vappend doc1 doc2 = doc1 `seq` doc2 `seq` DV doc1 doc2
 
 text :: String -> Doc
-text str = DT (\str' -> str ++ str')
+text = DT
 
 textit :: String -> Doc
 textit str = DS Italic (text str)
@@ -136,28 +118,28 @@ indent n docs1
     | otherwise = white n <> vconcat docs1
 
 putDoc :: Show a => Precedence -> a -> Doc
-putDoc prec = DT . showsPrec prec
+putDoc prec = DT . flip (showsPrec prec) ""
 
 renderDoc :: Doc -> String
 renderDoc = render . toViewer . reduce where
     reduce :: Doc -> Doc
-    reduce DE = DE
-    reduce (DT strstr1) = DT strstr1
+    reduce (DE) = DE
+    reduce (DT str1) = DT str1
     reduce (DS style1 doc1) = DS style1 (reduce doc1)
     reduce (DC color1 doc1) = DC color1 (reduce doc1)
-    reduce DB = DB
+    reduce (DB) = DB
     reduce (DV doc1 doc2) = DV (reduce doc1) (reduce doc2)
     reduce (DH doc1 doc2) = case (reduce doc1, reduce doc2) of
         (DE, doc2') -> doc2'
         (doc1', DE) -> doc1'
-        (DT strstr1, DT strstr2) -> DT (strstr1 . strstr2)
+        (DT str1, DT str2) -> DT (str1 ++ str2)
         (doc1', doc2') -> DH doc1' doc2'
     toViewer :: Doc -> Viewer
-    toViewer DE = mkVE
-    toViewer (DT strstr1) = mkVT (strstr1 "")
+    toViewer (DE) = mkVE
+    toViewer (DT str1) = mkVT str1
     toViewer (DS style1 doc1) = mkVS style1 (toViewer doc1)
     toViewer (DC color1 doc1) = mkVC color1 (toViewer doc1)
-    toViewer DB = mkVB
+    toViewer (DB) = mkVB
     toViewer (DV doc1 doc2) = mkVV (toViewer doc1) (toViewer doc2)
     toViewer (DH doc1 doc2) = mkVH (toViewer doc1) (toViewer doc2)
 
