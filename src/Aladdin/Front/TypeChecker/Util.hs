@@ -37,10 +37,10 @@ instance IsInt Int where
     toInt = id
 
 instance IsInt tvar => HasMTVar (MonoType tvar) where
-    getFreeMTVs (TyMTV mtv) mtvs = Set.insert mtv mtvs
-    getFreeMTVs (TyVar tvar) mtvs = mtvs
-    getFreeMTVs (TyCon tcon) mtvs = mtvs
-    getFreeMTVs (TyApp typ1 typ2) mtvs = getFreeMTVs typ1 (getFreeMTVs typ2 mtvs)
+    getFreeMTVs (TyMTV mtv) = Set.insert mtv
+    getFreeMTVs (TyVar tvar) = id
+    getFreeMTVs (TyCon tcon) = id
+    getFreeMTVs (TyApp typ1 typ2) = getFreeMTVs typ1 . getFreeMTVs typ2
     substMTVars (TypeSubst { getTypeSubst = mapsto }) = go where
         convert :: IsInt tvar => MonoType Int -> MonoType tvar
         convert (TyVar tvar) = TyVar (fromInt tvar)
@@ -49,9 +49,7 @@ instance IsInt tvar => HasMTVar (MonoType tvar) where
         convert (TyMTV mtv) = TyMTV mtv
         go :: IsInt tvar => MonoType tvar -> MonoType tvar
         go typ = case typ of
-            TyMTV mtv -> case Map.lookup mtv mapsto of
-                Nothing -> typ
-                Just typ' -> convert typ'
+            TyMTV mtv -> maybe typ convert (Map.lookup mtv mapsto)
             TyApp typ1 typ2 -> TyApp (go typ1) (go typ2)
             TyVar tvar -> TyVar tvar
             TyCon tcon -> TyCon tcon
@@ -85,7 +83,7 @@ getFMTVs :: HasMTVar a => a -> Set.Set MetaTVar
 getFMTVs = flip getFreeMTVs Set.empty
 
 getKind :: MonoType Int -> KindExpr
-getKind = maybe undefined id . go where
+getKind = maybe (error "`getKind\'") id . go where
     go :: MonoType Int -> Maybe KindExpr
     go (TyVar _) = return Star
     go (TyCon (TCon _ kin)) = return kin
