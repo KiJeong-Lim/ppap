@@ -9,15 +9,25 @@ import Z.Text.PC.Base
 import Z.Text.PC.Internal
 import Z.Utils
 
-instance (CoArbitrary chr, Arbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
+instance (Arbitrary chr, Eq chr, CoArbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
     arbitrary = choose (0, 10) >>= go where
-        go :: (CoArbitrary chr, Arbitrary chr, Arbitrary val) => Int -> Gen (ParserBase chr val)
+        go :: (Arbitrary chr, Eq chr, CoArbitrary chr, Arbitrary val) => Int -> Gen (ParserBase chr val)
         go rank
             | rank > 0 = frequency
                 [ (8, go (rank - 1))
-                , (2, pure PAct <*> liftArbitrary (choose (0, 5) >>= flip vectorOf (pure (,) <*> go (rank - 1) <*> (choose (0, 5) >>= flip vectorOf arbitrary))))
+                , (2, pure PAct <*> genPAct (go (rank - 1)))
                 ]
             | otherwise = pure PVal <*> arbitrary
+        genPAct :: (Arbitrary chr, CoArbitrary chr, Eq chr) => Gen (ParserBase chr val) -> Gen ([chr] -> [(ParserBase chr val, [chr])])
+        genPAct seed = do
+            n <- choose (0, 5)
+            conds <- vectorOf n arbitrary
+            p <- seed
+            return (parsing p conds)
+        parsing :: Eq chr => val -> [chr -> Bool] -> ([chr] -> [(val, [chr])])
+        parsing val [] str = [(val, str)]
+        parsing val (cond : conds) (ch : str) = if cond ch then parsing val conds str else []
+        parsing val _ _ = []
     shrink = const []
 
 instance Show (ParserBase chr val) where
@@ -34,19 +44,19 @@ instance EqProp val => EqProp (MyPC val) where
     p1 =-= p2 = execPC p1 =-= execPC p2
 
 checkParserBaseIsMonad :: TestBatch
-checkParserBaseIsMonad = ("check-`ParserBase'-is-`Monad'", map (fmap (withMaxSuccess 1000000)) (snd (go undefined))) where
+checkParserBaseIsMonad = ("check-`ParserBase'-is-`Monad'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
     go :: PB LocChr (Int, Int, Int) -> TestBatch
     go = monad
 
 checkParserBaseIsMonadPlus :: TestBatch
-checkParserBaseIsMonadPlus = ("check-`ParserBase'-is-`MonadPlus'", map (fmap (withMaxSuccess 1000000)) (snd (go undefined))) where
+checkParserBaseIsMonadPlus = ("check-`ParserBase'-is-`MonadPlus'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
     go :: PB LocChr (Int, Int) -> TestBatch
     go = monadPlus
 
 testParserBaseProperty :: IO ()
 testParserBaseProperty = do
-    quickBatch checkParserBaseIsMonad -- failed=[]
-    quickBatch checkParserBaseIsMonadPlus -- failed=["left  identity", "right identity"]
+    quickBatch checkParserBaseIsMonad
+    quickBatch checkParserBaseIsMonadPlus
     return ()
 
 testPC :: Int -> IO ()

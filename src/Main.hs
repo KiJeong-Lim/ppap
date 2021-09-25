@@ -3,6 +3,7 @@ module Main where
 import qualified Aladdin.Main as Aladdin
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
+import qualified Test.Main as Test
 import Z.Utils
 
 showCopyright :: String
@@ -20,6 +21,7 @@ main = do
         "Aladdin" -> Aladdin.main
         "LGS" -> LGS.main
         "PGS" -> PGS.main
+        "Test" -> Test.main
         invalid_command -> do
             cout << "invalid-command = " << show invalid_command << endl
             return ()
