@@ -8,11 +8,10 @@ main = do
     cout << "TEST<<< "
     query <- getLine
     case query of
-        "" -> return ()
+        "" -> putStrLn "TEST> Quit."
         "Z" -> do
-            testZ    
-            putStrLn "TEST> Quit"
-            return ()
+            cout << "TEST> Call (testZ)." << endl
+            testZ
         invalid_query -> do
-            cout << "TEST> invalid-query=" << show invalid_query << endl
-            return ()
+            cout << "TEST> Print (invalid-query=" << show invalid_query << ")." << endl
+            putStrLn "TEST> Quit."

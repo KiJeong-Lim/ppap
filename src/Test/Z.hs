@@ -5,10 +5,8 @@ import Z.Text.PC.Test
 
 testZ :: IO ()
 testZ = do
-    putStrLn "TEST> testDoc"
+    putStrLn "TEST.testZ> Eval (testDoc)."
     testDoc
-    putStrLn "TEST> mapM testPC [0 .. 6]"
-    mapM testPC [0 .. 6]
-    putStrLn "TEST> testParserBaseProperty"
+    putStrLn "TEST.testZ> Eval (testParserBaseProperty)."
     testParserBaseProperty
-    return ()
+    putStrLn "TEST.testZ> Quit."

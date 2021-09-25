@@ -23,10 +23,13 @@ runLGS dir = do
     case runPC (FPath dir) (many (readBlock <* many lend) <* eofPC) x_src of
         Left err -> putStrLn err
         Right xblocks -> case runIdentity (runExceptT (genLexer xblocks)) of
-            Left err -> writeFile (dir ++ ".failed") err
+            Left err -> do
+                writeFile (dir ++ ".failed") err
+                putStrLn "LGS> Print (Generating failed...)."
+                return ()
             Right delta -> do
                 writeFile (dir ++ ".hs") (delta "")
-                putStrLn "The lexer has been generated."
+                putStrLn "LGS> Print (The lexer has been generated.)."
                 return ()
 
 main :: IO ()
@@ -34,4 +37,4 @@ main = do
     cout << "LGS<<< "
     dir <- getLine
     runLGS dir
-    putStrLn "LGS> Quit"
+    putStrLn "LGS> Quit."
