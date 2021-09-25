@@ -12,8 +12,8 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import PGS.Make
 import PGS.Util
-import Y.Algorithm.Sorting
 import Y.Base
+import Z.Algo.Sorting
 import Z.Text.PC
 
 instance Show Conflict where

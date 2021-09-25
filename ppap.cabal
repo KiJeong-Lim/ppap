@@ -67,7 +67,6 @@ executable ppap
     PGS.Read
     PGS.Show
     PGS.Util
-    Y.Algorithm.Sorting
     Y.Base
     Y.Text.Ppr
     Y.Text.Ppr.Viewer
