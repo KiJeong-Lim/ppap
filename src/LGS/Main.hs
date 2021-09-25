@@ -23,7 +23,7 @@ runLGS dir = do
     case runPC (FPath dir) (many (readBlock <* many lend) <* eofPC) x_src of
         Left err -> putStrLn err
         Right xblocks -> case runIdentity (runExceptT (genLexer xblocks)) of
-            Left err -> putStrLn err
+            Left err -> writeFile (dir ++ ".failed") err
             Right delta -> do
                 writeFile (dir ++ ".hs") (delta "")
                 putStrLn "The lexer has been generated."

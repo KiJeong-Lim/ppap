@@ -1,4 +1,4 @@
--- natural deduction checker
+% natural deduction checker
 
 kind parity (type -> type -> type).
 type pair (A -> B -> parity A B).
