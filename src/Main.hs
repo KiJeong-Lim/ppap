@@ -19,17 +19,17 @@ ppap = do
     case command of
         "" -> putStrLn "ppap> Quit."
         "Aladdin" -> do
-            cout << "ppap> Eval (Aladdin.main)." << endl
+            cout << "ppap> Exec (Aladdin.main)." << endl
             Aladdin.main
         "LGS" -> do
-            cout << "ppap> Eval (LGS.main)." << endl
+            cout << "ppap> Exec (LGS.main)." << endl
             LGS.main
         "LGS --default" -> do
             cout << "ppap> Eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")." << endl
             LGS.runLGS "src/Aladdin/Front/Analyzer/Lexer"
             putStrLn "ppap> Quit."
         "PGS" -> do
-            cout << "ppap> Eval (PGS.main)." << endl
+            cout << "ppap> Exec (PGS.main)." << endl
             PGS.main
         "PGS --default" -> do
             cout << "ppap> Eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")." << endl
