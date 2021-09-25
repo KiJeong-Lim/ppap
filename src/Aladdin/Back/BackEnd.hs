@@ -148,5 +148,5 @@ runREPL program = lift (newIORef False) >>= go where
                                     Right sat -> lift $ putStrLn (if sat then "yes." else "no.")
                                 go isDebugging
                     Right src1 -> do
-                        lift $ putStrLn "parsing-error: it is not a query."
+                        lift $ putStrLn "*** parsing-error: it is not a query."
                         go isDebugging
