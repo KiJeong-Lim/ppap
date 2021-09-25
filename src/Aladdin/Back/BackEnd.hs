@@ -39,8 +39,10 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
     loop = foldr go <*> Map.toAscList
     go :: (LogicVar, TermNode) -> Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
     go (v1, LVar v2)
-        | hasName v2 = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
-        | otherwise = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v2
+        | v1 == v2 = loop . Map.delete v1
+        | hasName v1 && not (hasName v2) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v2
+        | not (hasName v1) && hasName v2 = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
+        | otherwise = id
     go _ = id
 
 runREPL :: Program TermNode -> UniqueGenT IO ()
@@ -66,6 +68,7 @@ runREPL program = lift (newIORef False) >>= go where
         printAnswer :: Context -> IO RunMore
         printAnswer final_ctx
             | isShort && isClear = return False
+            | isClear && List.null theAnswerSubst = return False
             | isClear = do
                 putStrLn "The answer substitution is:"
                 sequence
@@ -80,7 +83,7 @@ runREPL program = lift (newIORef False) >>= go where
                 theAnswerSubst :: [(LargeId, TermNode)]
                 theAnswerSubst = [ (v, t) | (LV_Named v, t) <- Map.toList (unVarBinding ((eraseTrivialBinding (_TotalVarBinding final_ctx)))) ]
                 isShort :: Bool
-                isShort = List.null theAnswerSubst
+                isShort = Set.null (getFreeLVs query)
                 isClear :: Bool
                 isClear = List.null (_LeftConstraints final_ctx)
                 askToRunMore :: IO RunMore
@@ -134,8 +137,8 @@ runREPL program = lift (newIORef False) >>= go where
                                 answer <- runExceptT (execRuntime runtime_env (_FactDecls program) query4)
                                 case answer of
                                     Left runtime_err -> case runtime_err of
-                                        BadGoalGiven _ -> lift $ putStrLn "runtime-error: bad goal given!"
-                                        BadFactGiven _ -> lift $ putStrLn "runtime-error: bad fact given!"
+                                        BadGoalGiven _ -> lift $ putStrLn "*** runtime-error: bad goal given!"
+                                        BadFactGiven _ -> lift $ putStrLn "*** runtime-error: bad fact given!"
                                     Right sat -> lift $ putStrLn (if sat then "yes." else "no.")
                                 go isDebugging
                     Right src1 -> do

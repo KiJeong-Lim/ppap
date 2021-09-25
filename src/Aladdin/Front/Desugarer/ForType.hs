@@ -20,13 +20,13 @@ makeTypeEnv kind_env = go where
         RTyVar loc tvrep -> return (Star, TyVar tvrep)
         RTyCon loc (TC_Named "string") -> return (Star, mkTyList mkTyChr)
         RTyCon loc type_constructor -> case Map.lookup type_constructor kind_env of
-            Nothing -> Left ("desugaring-error[" ++ pprint 0 loc ("]:\n  ? the type constructor `" ++ showsPrec 0 type_constructor "hasn't declared.\n"))
+            Nothing -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? the type constructor `" ++ showsPrec 0 type_constructor "hasn't declared.\n"))
             Just kin -> return (kin, TyCon (TCon type_constructor kin))
         RTyApp loc trep1 trep2 -> do
             (kin1, typ1) <- unRep trep1
             (kin2, typ2) <- unRep trep2
             case applyModusPonens kin1 kin2 of
-                Left msg -> Left ("desugaring-error[" ++ pprint 0 loc ("]:\n " ++ msg ++ ".\n"))
+                Left msg -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n " ++ msg ++ ".\n"))
                 Right kin -> return (kin, TyApp typ1 typ2)
         RTyPrn loc trep -> unRep trep
     generalize :: MonoType LargeId -> PolyType
@@ -66,6 +66,6 @@ makeTypeEnv kind_env = go where
             if kin == Star
                 then if hasValidHead typ
                     then go triples (Map.insert con (generalize typ) type_env)
-                    else Left ("desugaring-error[" ++ pprint 0 loc ("]:\n  ? the head of the type `" ++ showsPrec 0 con "\' is invalid."))
-                else Left ("desugaring-error[" ++ pprint 0 loc ("]:\n  ? couldn't solve `" ++ pprint 0 kin "\' ~ `type\'."))
-        _ -> Left ("desugaring-error[" ++ pprint 0 loc ("]:\n  ? it is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "\'."))
+                    else Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? the head of the type `" ++ showsPrec 0 con "\' is invalid."))
+                else Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? couldn't solve `" ++ pprint 0 kin "\' ~ `type\'."))
+        _ -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? it is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "\'."))
