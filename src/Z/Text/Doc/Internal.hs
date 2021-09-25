@@ -51,7 +51,7 @@ mkVT = mkVN . makeBoard where
         go :: String -> String -> [String]
         go buf [] = flush buf
         go buf (ch : str)
-            | ch == '\n' = flush buf ++ go "" str
+            | ch == '\n' = flush buf ++ makeBoard str
             | ch == '\t' = go (replicate (calcTab (length buf)) ' ' ++ buf) str
             | otherwise = go (ch : buf) str
         flush :: String -> [String]
