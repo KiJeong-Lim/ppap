@@ -31,6 +31,7 @@ runPGS dir = do
 
 main :: IO ()
 main = do
-    putStrLn "Enter the path:"
+    cout << "PGS<<< "
     dir <- getLine
     runPGS dir
+    putStrLn "PGS> Quit"

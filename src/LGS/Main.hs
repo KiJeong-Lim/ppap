@@ -31,6 +31,7 @@ runLGS dir = do
 
 main :: IO ()
 main = do
-    putStrLn "Enter the path:"
+    cout << "LGS<<< "
     dir <- getLine
     runLGS dir
+    putStrLn "LGS> Quit"

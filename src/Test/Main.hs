@@ -9,7 +9,10 @@ main = do
     query <- getLine
     case query of
         "" -> return ()
-        "Z" -> testZ
+        "Z" -> do
+            testZ    
+            putStrLn "TEST> Quit"
+            return ()
         invalid_query -> do
             cout << "TEST> invalid-query=" << show invalid_query << endl
             return ()
