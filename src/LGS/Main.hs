@@ -25,17 +25,16 @@ runLGS dir = do
         Right xblocks -> case runIdentity (runExceptT (genLexer xblocks)) of
             Left err -> do
                 writeFile (dir ++ ".failed") err
-                putStrLn "LGS> Print (Generating failed...).\n"
+                putStrLn "LGS> Print (Generating failed...)."
                 return ()
             Right delta -> do
                 writeFile (dir ++ ".hs") (delta "")
-                putStrLn "LGS> Print (The lexer has been generated.).\n"
+                putStrLn "LGS> Print (The lexer has been generated.)."
                 return ()
 
 main :: IO ()
 main = do
     cout << "LGS<<< "
     dir <- getLine
-    putStrLn ""
     runLGS dir
-    putStrLn "LGS> Quit.\n"
+    putStrLn "LGS> Quit."

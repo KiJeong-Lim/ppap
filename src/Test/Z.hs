@@ -5,8 +5,7 @@ import Z.Text.PC.Test
 
 testZ :: IO ()
 testZ = do
-    putStrLn "TEST.testZ> Call (testDoc).\n"
+    putStrLn "TEST.testZ> Call (testDoc)."
     testDoc
-    putStrLn "TEST.testZ> Eval (testParserBaseProperty).\n"
+    putStrLn "TEST.testZ> Eval (testParserBaseProperty)."
     testParserBaseProperty
-    putStrLn "TEST.testZ> Quit.\n"

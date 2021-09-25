@@ -16,32 +16,31 @@ ppap :: IO ()
 ppap = do
     cout << "ppap<<< "
     command <- getLine
-    putStrLn ""
     case command of
-        "" -> putStrLn "ppap> Quit.\n"
+        "" -> putStrLn "ppap> Quit."
         "Aladdin" -> do
-            cout << "ppap> Eval (Aladdin.main).\n" << endl
+            cout << "ppap> Eval (Aladdin.main)." << endl
             Aladdin.main
         "LGS" -> do
-            cout << "ppap> Eval (LGS.main).\n" << endl
+            cout << "ppap> Eval (LGS.main)." << endl
             LGS.main
         "LGS --default" -> do
-            cout << "ppap> Eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\").\n" << endl
+            cout << "ppap> Eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")." << endl
             LGS.runLGS "src/Aladdin/Front/Analyzer/Lexer"
-            putStrLn "ppap> Quit.\n"
+            putStrLn "ppap> Quit."
         "PGS" -> do
-            cout << "ppap> Eval (PGS.main).\n" << endl
+            cout << "ppap> Eval (PGS.main)." << endl
             PGS.main
         "PGS --default" -> do
-            cout << "ppap> Eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\").\n" << endl
+            cout << "ppap> Eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")." << endl
             PGS.runPGS "src/Aladdin/Front/Analyzer/Parser"
-            putStrLn "ppap> Quit.\n"
+            putStrLn "ppap> Quit."
         "TEST" -> do
-            cout << "ppap> Eval (TEST.main).\n" << endl
+            cout << "ppap> Eval (TEST.main)." << endl
             TEST.main
         invalid_command -> do
-            cout << "ppap> Print (invalid-command=" << show invalid_command << ").\n" << endl
-            putStrLn "ppap> Quit.\n"
+            cout << "ppap> Print (invalid-command=" << show invalid_command << ")." << endl
+            putStrLn "ppap> Quit."
 
 main :: IO ()
 main = ppap

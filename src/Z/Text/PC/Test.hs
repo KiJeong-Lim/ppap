@@ -44,12 +44,12 @@ instance EqProp val => EqProp (MyPC val) where
     p1 =-= p2 = execPC p1 =-= execPC p2
 
 checkParserBaseIsMonad :: TestBatch
-checkParserBaseIsMonad = ("check-`ParserBase'-is-`Monad'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
+checkParserBaseIsMonad = ("check-`ParserBase'-is-`Monad'", map (fmap (withMaxSuccess 50000)) (snd (go undefined))) where
     go :: PB LocChr (Int, Int, Int) -> TestBatch
     go = monad
 
 checkParserBaseIsMonadPlus :: TestBatch
-checkParserBaseIsMonadPlus = ("check-`ParserBase'-is-`MonadPlus'", map (fmap (withMaxSuccess 10000)) (snd (go undefined))) where
+checkParserBaseIsMonadPlus = ("check-`ParserBase'-is-`MonadPlus'", map (fmap (withMaxSuccess 50000)) (snd (go undefined))) where
     go :: PB LocChr (Int, Int) -> TestBatch
     go = monadPlus
 
