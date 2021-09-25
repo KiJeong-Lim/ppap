@@ -5,14 +5,14 @@ import Z.Utils
 
 main :: IO ()
 main = do
-    cout << "TEST<<< "
+    shelly "TEST<<< "
     query <- getLine
     case query of
         "" -> return ()
         "Z" -> do
-            cout << "TEST> call (testZ)." << endl
+            shelly "TEST> call (testZ)."
             testZ
         invalid_query -> do
-            cout << "TEST> tell (invalid-query=" << show invalid_query << ")." << endl
+            shelly ("TEST> said (invalid-query=" ++ show invalid_query ++ ").")
             return ()
-    putStrLn "TEST> quit."
+    shelly "TEST> quit."

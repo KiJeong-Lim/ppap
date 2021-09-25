@@ -23,6 +23,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
 import System.IO
+import Z.Utils
 
 theInitialKindDecls :: KindEnv
 theInitialKindDecls = Map.fromList
@@ -64,7 +65,7 @@ runAladdin = do
         getLine
     if dir == ""
         then do
-            lift $ putStrLn "Aladdin> tell (No-module-loaded)."
+            lift $ shelly "Aladdin> said (no-module-loaded)."
             runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls })
         else do
             src <- lift $ readFile dir
@@ -87,7 +88,7 @@ runAladdin = do
                                 lift $ putStrLn err_msg
                                 runAladdin
                             Right program2 -> do
-                                lift $ putStrLn ("Aladdin> tell (One-module-loaded=" ++ show dir ++ ").")
+                                lift $ shelly ("Aladdin> said (one-module-loaded=" ++ show dir ++ ").")
                                 runREPL program2
 
 main :: IO ()

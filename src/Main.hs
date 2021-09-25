@@ -14,33 +14,33 @@ showCopyright = concat
 
 ppap :: IO ()
 ppap = do
-    cout << "ppap<<< "
+    shelly "ppap<<< "
     command <- getLine
     case command of
-        "" -> putStrLn "ppap> quit."
+        "" -> shelly "ppap> quit."
         "Aladdin" -> do
-            cout << "ppap> exec (Aladdin.main)." << endl
+            shelly "ppap> exec (Aladdin.main)."
             Aladdin.main
         "LGS" -> do
-            cout << "ppap> exec (LGS.main)." << endl
+            shelly "ppap> exec (LGS.main)."
             LGS.main
         "LGS --default" -> do
-            cout << "ppap> eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")." << endl
+            shelly "ppap> eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")."
             LGS.runLGS "src/Aladdin/Front/Analyzer/Lexer"
-            putStrLn "ppap> quit."
+            shelly "ppap> quit."
         "PGS" -> do
-            cout << "ppap> exec (PGS.main)." << endl
+            shelly "ppap> exec (PGS.main)."
             PGS.main
         "PGS --default" -> do
-            cout << "ppap> eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")." << endl
+            shelly "ppap> eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")."
             PGS.runPGS "src/Aladdin/Front/Analyzer/Parser"
-            putStrLn "ppap> quit."
+            shelly "ppap> quit."
         "TEST" -> do
-            cout << "ppap> exec (TEST.main)." << endl
+            shelly "ppap> exec (TEST.main)."
             TEST.main
         invalid_command -> do
-            cout << "ppap> tell (invalid-command=" << show invalid_command << ")." << endl
-            putStrLn "ppap> quit."
+            shelly ("ppap> said (invalid-command=" ++ show invalid_command ++ ").")
+            shelly "ppap> quit."
 
 main :: IO ()
 main = ppap

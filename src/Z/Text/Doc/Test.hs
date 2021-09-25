@@ -6,6 +6,7 @@ import Test.QuickCheck.Checkers
 import Test.QuickCheck.Classes
 import Z.Text.Doc
 import Z.Text.Doc.Internal
+import Z.Utils
 
 instance Arbitrary Doc_ where
     arbitrary = chooseInt (0, 10) >>= go where
@@ -140,8 +141,8 @@ testDoc = go 8 where
             ]
         faileds <- readIORef faileds_ref
         if null faileds
-            then putStrLn ("TEST.testZ.testDoc> " ++ "tell (all-cases-passed).")
-            else putStrLn ("TEST.testZ.testDoc> " ++ "tell ({" ++ shows (length faileds) ("}-cases-failed={\n  " ++ showList faileds "\n})."))
+            then shelly ("TEST.testZ.testDoc> " ++ "said (all-cases-passed).")
+            else shelly ("TEST.testZ.testDoc> " ++ "said ({" ++ shows (length faileds) ("}-cases-failed={\n  " ++ showList faileds "\n})."))
 
 testDocIsMonoid :: IO ()
 testDocIsMonoid = quickBatch (monoid doc) where

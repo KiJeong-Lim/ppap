@@ -2,10 +2,11 @@ module TEST.Z where
 
 import Z.Text.Doc.Test
 import Z.Text.PC.Test
+import Z.Utils
 
 testZ :: IO ()
 testZ = do
-    putStrLn "TEST.testZ> call (testDoc)."
+    shelly "TEST.testZ> call (testDoc)."
     testDoc
-    putStrLn "TEST.testZ> eval (testParserBaseProperty)."
+    shelly "TEST.testZ> eval (testParserBaseProperty)."
     testParserBaseProperty

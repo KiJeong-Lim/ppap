@@ -22,13 +22,9 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
+import Z.Utils
 
 type Debugging = Bool
-
-quitWithMsg :: String -> IO ()
-quitWithMsg str = do
-    putStrLn str
-    exitSuccess
 
 eraseTrivialBinding :: LVarSubst -> LVarSubst
 eraseTrivialBinding = VarBinding . loop . unVarBinding where
@@ -64,7 +60,7 @@ runREPL program = lift (newIORef False) >>= go where
                     putStrLn "Press the enter key to go to next state:"
                     response <- getLine
                     case response of
-                        ":q" -> quitWithMsg "Aladdin> quit."
+                        ":q" -> shelly "Aladdin> quit."
                         ":d" -> do
                             modifyIORef isDebugging not
                             debugging <- readIORef isDebugging
@@ -116,8 +112,8 @@ runREPL program = lift (newIORef False) >>= go where
     go isDebugging = do
         query <- lift $ getLine
         case query of
-            "" -> lift $ quitWithMsg "Aladdin> quit."
-            ":q" -> lift $ quitWithMsg "Aladdin> quit."
+            "" -> lift $ shelly "Aladdin> quit."
+            ":q" -> lift $ shelly "Aladdin> quit."
             ":d" -> do
                 lift $ do
                     modifyIORef isDebugging not
