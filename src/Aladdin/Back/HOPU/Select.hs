@@ -9,6 +9,7 @@ import Aladdin.Front.Header
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
+import Data.Foldable
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -45,7 +46,7 @@ zs `down` ts = if downable then return indices else lift (throwE DownFail) where
     indices = map mkNIdx
         [ length ts - i
         | z <- zs
-        , i <- fromMaybeToList (z `List.elemIndex` ts)
+        , i <- toList (z `List.elemIndex` ts)
         ]
 
 up :: Monad m => [TermNode] -> LogicVar -> StateT Labeling (ExceptT HopuFail m) [TermNode]

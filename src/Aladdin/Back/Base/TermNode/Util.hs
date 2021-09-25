@@ -51,9 +51,7 @@ unfoldlNApp = flip go [] where
     go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
     go (NCon (DC (DC_NatL n))) ts
         | n == 0 = (mkNCon (DC_NatL 0), ts)
-        | n > 0 =
-            let n' = n - 1
-            in n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
+        | n > 0 = let n' = n - 1 in n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
         | otherwise = error "`unfoldlNApp\': negative integer"
     go (NApp t1 t2) ts = go t1 (t2 : ts)
     go t ts = (t, ts)

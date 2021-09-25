@@ -5,6 +5,7 @@ import Aladdin.Back.Base.TermNode
 import Aladdin.Back.Base.TermNode.Util
 import Aladdin.Back.Base.VarBinding
 import Aladdin.Front.Header
+import Data.Foldable
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -44,7 +45,7 @@ instance ZonkLVar Labeling where
                         [ level'
                         | (v', t') <- Map.toList mapsto
                         , v `Set.member` getFreeLVs t'
-                        , level' <- fromMaybeToList (Map.lookup v' varlabel)
+                        , level' <- toList (Map.lookup v' varlabel)
                         ]
                     )
                 | v <- Set.toAscList (Map.keysSet mapsto `Set.union` Map.keysSet varlabel)
@@ -57,10 +58,6 @@ instance ZonkLVar Labeling where
             varlabel = _VarLabel labeling
             mkstrict :: (LogicVar, ScopeLevel) -> (LogicVar, ScopeLevel)
             mkstrict pair = snd pair `seq` pair
-
-fromMaybeToList :: Maybe a -> [a]
-fromMaybeToList Nothing = []
-fromMaybeToList (Just x) = [x]
 
 theDefaultLevel :: DataConstructor -> ScopeLevel
 theDefaultLevel (DC_Unique uni) = maxBound
