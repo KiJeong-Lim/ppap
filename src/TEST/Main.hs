@@ -10,9 +10,9 @@ main = do
     case query of
         "" -> return ()
         "Z" -> do
-            cout << "TEST> Call (testZ)." << endl
+            cout << "TEST> call (testZ)." << endl
             testZ
         invalid_query -> do
-            cout << "TEST> Print (invalid-query=" << show invalid_query << ")." << endl
+            cout << "TEST> tell (invalid-query=" << show invalid_query << ")." << endl
             return ()
-    putStrLn "TEST> Quit."
+    putStrLn "TEST> quit."

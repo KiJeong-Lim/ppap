@@ -140,8 +140,8 @@ testDoc = go 8 where
             ]
         faileds <- readIORef faileds_ref
         if null faileds
-            then putStrLn ("TEST.testZ.testDoc> " ++ "Print (all-cases-passed.).")
-            else putStrLn ("TEST.testZ.testDoc> " ++ "Print ({" ++ shows (length faileds) ("}-cases-failed={\n  " ++ showList faileds "\n}.)."))
+            then putStrLn ("TEST.testZ.testDoc> " ++ "tell (all-cases-passed).")
+            else putStrLn ("TEST.testZ.testDoc> " ++ "tell ({" ++ shows (length faileds) ("}-cases-failed={\n  " ++ showList faileds "\n})."))
 
 testDocIsMonoid :: IO ()
 testDocIsMonoid = quickBatch (monoid doc) where
