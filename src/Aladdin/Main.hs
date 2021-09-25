@@ -22,12 +22,15 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
+import System.IO
 
 runAladdin :: UniqueGenT IO ()
 runAladdin = do
     let eq_facts = [mkNApp (mkNCon LO_ty_pi) (mkNAbs (mkNApp (mkNCon LO_pi) (mkNAbs (mkNApp (mkNApp (mkNApp (mkNCon DC_Eq) (mkNIdx 2)) (mkNIdx 1)) (mkNIdx 1)))))]
-    lift $ putStrLn "Enter the path of the aladdin file to execute:"
-    dir <- lift $ getLine
+    dir <- lift $ do
+        putStr "Aladdin<<< "
+        hFlush stdout
+        getLine
     if dir == ""
         then do
             lift $ putStrLn "No module loaded"

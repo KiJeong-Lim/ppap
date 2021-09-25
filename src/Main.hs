@@ -12,8 +12,8 @@ showCopyright = concat
     , "All rights reserved.\n"
     ]
 
-main :: IO ()
-main = do
+ppap :: IO ()
+ppap = do
     cout << "ppap<<< "
     command <- getLine
     case command of
@@ -25,17 +25,22 @@ main = do
             cout << "ppap> LGS.main" << endl
             LGS.main
         "LGS --default" -> do
-            cout << "ppap> runLGS \"src/Aladdin/Front/Analyzer/Lexer\"" << endl
+            cout << "ppap> LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\"" << endl
             LGS.runLGS "src/Aladdin/Front/Analyzer/Lexer"
+            return ()
         "PGS" -> do
             cout << "ppap> PGS.main" << endl
             PGS.main
         "PGS --default" -> do
-            cout << "ppap> runPGS \"src/Aladdin/Front/Analyzer/Parser\"" << endl
+            cout << "ppap> PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\"" << endl
             PGS.runPGS "src/Aladdin/Front/Analyzer/Parser"
+            return ()
         "TEST" -> do
             cout << "ppap> TEST.main" << endl
             TEST.main
         invalid_command -> do
             cout << "ppap> invalid-command=" << show invalid_command << endl
             return ()
+
+main :: IO ()
+main = ppap
