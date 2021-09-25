@@ -3,7 +3,7 @@ module Main where
 import qualified Aladdin.Main as Aladdin
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
-import qualified TEST.Main as TEST
+import qualified X.Main as X
 import Z.Utils
 
 showCopyright :: String
@@ -37,7 +37,7 @@ ppap = do
             putStrLn "ppap> Quit."
         "TEST" -> do
             cout << "ppap> Eval (TEST.main)." << endl
-            TEST.main
+            X.main
         invalid_command -> do
             cout << "ppap> Print (invalid-command=" << show invalid_command << ")." << endl
             putStrLn "ppap> Quit."

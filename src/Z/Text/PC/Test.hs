@@ -20,8 +20,7 @@ instance (Arbitrary chr, CoArbitrary chr, Arbitrary val) => Arbitrary (ParserBas
             | otherwise = pure PVal <*> arbitrary
         genPAct :: (Arbitrary chr, CoArbitrary chr) => Gen (ParserBase chr val) -> Gen ([chr] -> [(ParserBase chr val, [chr])])
         genPAct seed = do
-            n <- choose (0, 5)
-            conds <- vectorOf n arbitrary
+            conds <- listOf arbitrary
             p <- seed
             return (parsing p conds)
         parsing :: val -> [chr -> Bool] -> ([chr] -> [(val, [chr])])

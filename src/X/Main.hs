@@ -1,6 +1,6 @@
-module TEST.Main where
+module X.Main where
 
-import TEST.Z
+import X.Z
 import Z.Utils
 
 main :: IO ()
