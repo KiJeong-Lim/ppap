@@ -43,10 +43,6 @@ instance OStreamObject Double where
 instance OStreamObject Integer where
     intoString n = shows n ""
 
-instance OStreamObject Bool where
-    intoString True = "true"
-    intoString False = "false"
-
 cout :: Handle
 cout = stdout
 
@@ -60,6 +56,7 @@ endl = '\n'
 seed << x = do
     h <- mkOStream seed
     hPutStr h (intoString x)
+    hFlush h
     return h
 
 int :: Integral a => a -> Int
@@ -94,6 +91,4 @@ one :: a -> [a]
 one = callWithStrictArg pure
 
 mkFPath :: FilePath -> FPath
-mkFPath = callWithStrictArg FPath . go where
-    go :: String -> String
-    go = map (\ch -> if ch == '\\' then '/' else ch)
+mkFPath = callWithStrictArg FPath . map (\ch -> if ch == '\\' then '/' else ch)

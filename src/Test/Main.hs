@@ -1,14 +1,15 @@
-module Test.Main where
+module TEST.Main where
 
-import Z.Text.Doc.Test
-import Z.Text.PC.Test
+import TEST.Z
+import Z.Utils
 
 main :: IO ()
 main = do
-    putStrLn "<<< testDoc"
-    testDoc
-    putStrLn "<<< mapM testPC [0 .. 6]"
-    mapM testPC [0 .. 6]
-    putStrLn "<<< testParserBaseProperty"
-    testParserBaseProperty
-    return ()
+    cout << "TEST<<< "
+    query <- getLine
+    case query of
+        "" -> return ()
+        "Z" -> testZ
+        invalid_query -> do
+            cout << "TEST> invalid-query=" << show invalid_query << endl
+            return ()
