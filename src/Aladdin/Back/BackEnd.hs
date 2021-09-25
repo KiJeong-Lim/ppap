@@ -38,12 +38,18 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
     loop :: Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
     loop = foldr go <*> Map.toAscList
     go :: (LogicVar, TermNode) -> Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
-    go (v1, LVar v2)
+    go (v, t) = maybe id (dispatch v) (tryMatchLVar t)
+    dispatch :: LogicVar -> LogicVar -> Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
+    dispatch v1 v2
         | v1 == v2 = loop . Map.delete v1
         | hasName v1 && not (hasName v2) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v2
-        | not (hasName v1) && hasName v2 = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
+        | not (hasName v1) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
         | otherwise = id
-    go _ = id
+    tryMatchLVar :: TermNode -> Maybe LogicVar
+    tryMatchLVar t = case viewNestedNAbs (rewrite NF t) of
+        (n, t') -> case unfoldlNApp t' of
+            (LVar v, ts) -> if ts == map mkNIdx [1 .. n] then Just v else Nothing
+            _ -> Nothing
 
 runREPL :: Program TermNode -> UniqueGenT IO ()
 runREPL program = lift (newIORef False) >>= go where
