@@ -69,7 +69,7 @@ runAladdin = do
         getLine
     case matchFileDirWithExtension file_dir of
         ("", "") -> do
-            lift $ shelly "aladdin> No module loaded."
+            lift $ shelly "aladdin> Ok, no module loaded."
             runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
         (file_name, ".aladdin") -> do
             src <- lift $ readFile file_dir
