@@ -49,6 +49,8 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
 
 runREPL :: Program TermNode -> UniqueGenT IO ()
 runREPL program = lift (newIORef False) >>= go where
+    promptify :: String -> IO ()
+    promptify str = shelly ("Aladdin> " ++ str)
     mkRuntimeEnv :: IORef Debugging -> TermNode -> IO RuntimeEnv
     mkRuntimeEnv isDebugging query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer }) where
         runInteraction :: String -> IO ()
@@ -57,14 +59,14 @@ runREPL program = lift (newIORef False) >>= go where
             if debugging
                 then do
                     putStrLn str
-                    putStrLn "Press the enter key to go to next state:"
+                    promptify "Press the enter key to go to next state: "
                     response <- getLine
                     case response of
                         ":q" -> shelly "Aladdin >>= quit"
                         ":d" -> do
                             modifyIORef isDebugging not
                             debugging <- readIORef isDebugging
-                            putStrLn "Debugging mode off."
+                            promptify "Debugging mode off."
                         _ -> return ()
                 else return ()
         printAnswer :: Context -> IO RunMore
@@ -72,9 +74,9 @@ runREPL program = lift (newIORef False) >>= go where
             | isShort && isClear = return False
             | isClear && List.null theAnswerSubst = return False
             | isClear = do
-                putStrLn "The answer substitution is:"
+                promptify "The answer substitution is:"
                 sequence
-                    [ putStrLn ("  " ++ v ++ " := " ++ showsPrec 0 t ".")
+                    [ promptify ("  " ++ v ++ " := " ++ showsPrec 0 t ".")
                     | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
@@ -90,26 +92,27 @@ runREPL program = lift (newIORef False) >>= go where
                 isClear = List.null (_LeftConstraints final_ctx)
                 askToRunMore :: IO RunMore
                 askToRunMore = do
-                    putStrLn "Find more solutions? [Y/n]"
+                    promptify "Find more solutions? [Y/n] "
                     str <- getLine
                     if List.null str
                         then askToRunMore
                         else return (str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ])
                 printDisagreements :: IO ()
                 printDisagreements = do
-                    putStrLn "The remaining disagreements are:"
+                    promptify "The remaining disagreements are:"
                     sequence
-                        [ putStrLn ("  " ++ showsPrec 0 lhs (" =?= " ++ showsPrec 0 rhs "."))
+                        [ promptify ("  " ++ showsPrec 0 lhs (" =?= " ++ showsPrec 0 rhs "."))
                         | lhs :=?=: rhs <- _LeftConstraints final_ctx
                         ]
-                    putStrLn "The binding is:"
+                    promptify "The binding is:"
                     sequence
-                        [ putStrLn ("  " ++ showsPrec 0 (mkLVar v) (" := " ++ showsPrec 0 t "."))
+                        [ promptify ("  " ++ showsPrec 0 (mkLVar v) (" := " ++ showsPrec 0 t "."))
                         | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
                         ]
                     return ()
     go :: IORef Debugging -> UniqueGenT IO ()
     go isDebugging = do
+        lift $ promptify ""
         query <- lift $ getLine
         case query of
             "" -> lift $ shelly "Aladdin >>= quit"
@@ -118,7 +121,7 @@ runREPL program = lift (newIORef False) >>= go where
                 lift $ do
                     modifyIORef isDebugging not
                     debugging <- readIORef isDebugging
-                    putStrLn ("Debugging mode " ++ (if debugging then "on" else "off") ++ ".")
+                    promptify ("Debugging mode " ++ (if debugging then "on" else "off") ++ ".")
                 go isDebugging
             query0 -> case runAnalyzer query0 of
                 Left err_msg -> do
@@ -141,7 +144,7 @@ runREPL program = lift (newIORef False) >>= go where
                                     Left runtime_err -> case runtime_err of
                                         BadGoalGiven _ -> lift $ putStrLn "*** runtime-error: bad goal given!"
                                         BadFactGiven _ -> lift $ putStrLn "*** runtime-error: bad fact given!"
-                                    Right sat -> lift $ putStrLn (if sat then "yes." else "no.")
+                                    Right sat -> lift $ promptify (if sat then "yes." else "no.")
                                 go isDebugging
                     Right src1 -> do
                         lift $ putStrLn "*** parsing-error: it is not a query."
