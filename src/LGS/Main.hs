@@ -34,7 +34,7 @@ runLGS dir = do
 
 main :: IO ()
 main = do
-    shelly "LGS<<< "
+    shelly "LGS=<< "
     dir <- getLine
     runLGS dir
     shelly "LGS> quit."

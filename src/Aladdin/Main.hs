@@ -60,7 +60,7 @@ theInitialFactDecls =
 runAladdin :: UniqueGenT IO ()
 runAladdin = do
     dir <- lift $ do
-        putStr "Aladdin<<< "
+        putStr "Aladdin=<< "
         hFlush stdout
         getLine
     if dir == ""

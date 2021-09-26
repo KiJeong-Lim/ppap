@@ -14,7 +14,7 @@ showCopyright = concat
 
 ppap :: IO ()
 ppap = do
-    shelly "ppap<<< "
+    shelly "ppap=<< "
     command <- getLine
     case command of
         "" -> shelly "ppap> quit."

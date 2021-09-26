@@ -10,3 +10,4 @@ testZ = do
     testDoc
     shelly "TEST.testZ> eval (testParserBaseProperty)."
     testParserBaseProperty
+    shelly "TEST.testZ> quit."

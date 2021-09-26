@@ -34,7 +34,7 @@ runPGS dir = do
 
 main :: IO ()
 main = do
-    shelly "PGS<<< "
+    shelly "PGS=<< "
     dir <- getLine
     runPGS dir
     shelly "PGS> quit."
