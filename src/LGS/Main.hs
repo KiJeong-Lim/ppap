@@ -14,6 +14,7 @@ import LGS.Read
 import LGS.Show
 import LGS.Util
 import Y.Base
+import Z.System.Pretty
 import Z.Text.PC
 import Z.Utils
 
@@ -26,13 +27,15 @@ runLGS dir = do
             Left err -> do
                 writeFile (dir ++ ".failed") err
                 shelly "LGS >>= tell (generating-failed)"
+                return ()
             Right delta -> do
                 writeFile (dir ++ ".hs") (delta "")
                 shelly "LGS >>= tell (the-lexer-has-been-generated)"
+                return ()
 
 main :: IO ()
 main = do
-    shelly "LGS =<< "
-    dir <- getLine
+    dir <- shelly "LGS =<< "
     runLGS dir
     shelly "LGS >>= quit"
+    return ()

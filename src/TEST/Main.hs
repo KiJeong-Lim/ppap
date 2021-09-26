@@ -1,17 +1,20 @@
 module TEST.Main where
 
 import TEST.Z
+import Z.System.Pretty
 import Z.Utils
 
 main :: IO ()
 main = do
-    shelly "TEST =<< "
-    query <- getLine
+    query <- shelly "TEST =<< "
     case query of
-        "" -> shelly "TEST >>= quit"
+        "" -> do
+            shelly "TEST >>= quit"
+            return ()
         "Z" -> do
             shelly "TEST >>= exec (TEST.testZ)"
             testZ
         invalid_query -> do
             shelly ("TEST >>= tell (invalid-query=" ++ show invalid_query ++ ")")
             shelly "TEST >>= quit"
+            return ()

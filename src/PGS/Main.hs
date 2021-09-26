@@ -14,6 +14,7 @@ import PGS.Read
 import PGS.Show
 import PGS.Util
 import Y.Base
+import Z.System.Pretty
 import Z.Text.PC
 import Z.Utils
 
@@ -26,13 +27,15 @@ runPGS dir = do
             Left err -> do
                 writeFile (dir ++ ".failed") err
                 shelly "PGS >>= tell (generating-failed)"
+                return ()
             Right delta -> do
                 writeFile (dir ++ ".hs") (delta "")
                 shelly "PGS >>= tell (the-parser-has-been-generated)"
+                return ()
 
 main :: IO ()
 main = do
-    shelly "PGS =<< "
-    dir <- getLine
+    dir <- shelly "PGS =<< "
     runPGS dir
     shelly "PGS >>= quit"
+    return ()

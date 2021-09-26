@@ -4,6 +4,7 @@ import Data.IORef
 import Test.QuickCheck
 import Test.QuickCheck.Checkers
 import Test.QuickCheck.Classes
+import Z.System.Pretty
 import Z.Text.Doc
 import Z.Text.Doc.Internal
 import Z.Utils
@@ -143,6 +144,7 @@ testDoc = go 8 where
         if null faileds
             then shelly (">>> " ++ "\"ALL CASES PASSED.\"")
             else shelly (">>> " ++ "({" ++ shows (length faileds) ("}-cases-failed={\n      " ++ showList faileds "\n    })."))
+        return ()
 
 testDocIsMonoid :: IO ()
 testDocIsMonoid = quickBatch (monoid doc) where

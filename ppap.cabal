@@ -73,7 +73,8 @@ executable ppap
     Y.Text.Ppr
     Y.Text.Ppr.Viewer
     Z.Algo.Sorting
-    Z.Path
+    Z.System.Path
+    Z.System.Pretty
     Z.Text.Doc
     Z.Text.Doc.Internal
     Z.Text.Doc.Test

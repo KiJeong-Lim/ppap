@@ -24,7 +24,8 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
 import System.IO
-import Z.Path
+import Z.System.Path
+import Z.System.Pretty
 import Z.Utils
 
 theInitialKindDecls :: KindEnv
@@ -65,10 +66,7 @@ theDefaultModuleName = "aladdin"
 runAladdin :: UniqueGenT IO ()
 runAladdin = do
     consistency_ptr <- lift $ newIORef ""
-    file_dir <- lift $ do
-        shelly "Aladdin =<< "
-        hFlush stdout
-        getLine
+    file_dir <- lift $ shelly "Aladdin =<< "
     maybe_file_name <- case matchFileDirWithExtension file_dir of
         ("", "") -> return Nothing
         (file_name, ".aladdin") -> return (Just file_name)

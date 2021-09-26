@@ -45,6 +45,9 @@ instance OStreamObject Double where
 instance OStreamObject Integer where
     intoString n = shows n ""
 
+instance OStreamObject Bool where
+    intoString b = if b then "true" else "false"
+
 cout :: Handle
 cout = stdout
 
@@ -53,6 +56,12 @@ cerr = stderr
 
 endl :: Char
 endl = '\n'
+
+int :: Integral a => a -> Int
+int = fromInteger . toInteger
+
+double :: Double -> Double
+double = id
 
 (<<) :: (OStreamMaker seed, OStreamObject a) => seed -> a -> IO Handle
 seed << x = do
@@ -88,12 +97,3 @@ one = callWithStrictArg pure
 
 mkFPath :: FilePath -> FPath
 mkFPath = callWithStrictArg FPath . map (\ch -> if ch == '\\' then '/' else ch)
-
-shelly :: String -> IO ()
-shelly console_log = if not (null console_log) && last console_log == ' ' then putStr console_log >> hFlush stdout else putStrLn console_log
-
-matchFileDirWithExtension :: String -> (String, String)
-matchFileDirWithExtension dir
-    = case span (\ch -> ch /= '.') (reverse dir) of
-        (reversed_extension, '.' : reversed_filename) -> (reverse reversed_filename, '.' : reverse reversed_extension)
-        (reversed_filename, must_be_null) -> (reverse reversed_filename, [])

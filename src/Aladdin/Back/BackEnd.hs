@@ -22,6 +22,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
+import Z.System.Pretty
 import Z.Utils
 
 type Debugging = Bool
@@ -49,7 +50,7 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
 
 runREPL :: Program TermNode -> UniqueGenT IO ()
 runREPL program = lift (newIORef False) >>= go where
-    promptify :: String -> IO ()
+    promptify :: String -> IO String
     promptify str = shelly (moduleName program ++ "> " ++ str)
     mkRuntimeEnv :: IORef Debugging -> TermNode -> IO RuntimeEnv
     mkRuntimeEnv isDebugging query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer }) where
@@ -59,14 +60,16 @@ runREPL program = lift (newIORef False) >>= go where
             if debugging
                 then do
                     putStrLn str
-                    promptify "Press the enter key to go to next state: "
-                    response <- getLine
+                    response <- promptify "Press the enter key to go to next state: "
                     case response of
-                        ":q" -> shelly "Aladdin >>= quit"
+                        ":q" -> do
+                            shelly "Aladdin >>= quit"
+                            return ()
                         ":d" -> do
                             modifyIORef isDebugging not
                             debugging <- readIORef isDebugging
                             promptify "Debugging mode off."
+                            return ()
                         _ -> return ()
                 else return ()
         printAnswer :: Context -> IO RunMore
@@ -92,8 +95,7 @@ runREPL program = lift (newIORef False) >>= go where
                 isClear = List.null (_LeftConstraints final_ctx)
                 askToRunMore :: IO RunMore
                 askToRunMore = do
-                    promptify "Find more solutions? [Y/n] "
-                    str <- getLine
+                    str <- promptify "Find more solutions? [Y/n] "
                     if List.null str
                         then askToRunMore
                         else return (str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ])
@@ -112,11 +114,14 @@ runREPL program = lift (newIORef False) >>= go where
                     return ()
     go :: IORef Debugging -> UniqueGenT IO ()
     go isDebugging = do
-        lift $ promptify ""
-        query <- lift $ getLine
+        query <- lift $ promptify ""
         case query of
-            "" -> lift $ shelly "Aladdin >>= quit"
-            ":q" -> lift $ shelly "Aladdin >>= quit"
+            "" -> do
+                lift $ shelly "Aladdin >>= quit"
+                return ()
+            ":q" -> do
+                lift $ shelly "Aladdin >>= quit"
+                return ()
             ":d" -> do
                 lift $ do
                     modifyIORef isDebugging not
@@ -144,7 +149,9 @@ runREPL program = lift (newIORef False) >>= go where
                                     Left runtime_err -> case runtime_err of
                                         BadGoalGiven _ -> lift $ putStrLn "*** runtime-error: bad goal given!"
                                         BadFactGiven _ -> lift $ putStrLn "*** runtime-error: bad fact given!"
-                                    Right sat -> lift $ promptify (if sat then "yes." else "no.")
+                                    Right sat -> do
+                                        lift $ promptify (if sat then "yes." else "no.")
+                                        return ()
                                 go isDebugging
                     Right src1 -> do
                         lift $ putStrLn "*** parsing-error: it is not a query."
