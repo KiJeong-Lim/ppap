@@ -22,7 +22,7 @@ ppap = do
             shelly "ppap >>= exec (Aladdin.main)"
             Aladdin.main
         "LGS" -> do
-            shelly "ppap >>= exec (LGS.main)."
+            shelly "ppap >>= exec (LGS.main)"
             LGS.main
         "LGS --default" -> do
             shelly "ppap >>= eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")"
