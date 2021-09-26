@@ -5,13 +5,13 @@ import Z.Utils
 
 main :: IO ()
 main = do
-    shelly "TEST=<< "
+    shelly "TEST =<< "
     query <- getLine
     case query of
-        "" -> shelly "TEST> quit."
+        "" -> shelly "TEST >>= quit"
         "Z" -> do
-            shelly "TEST> exec (TEST.testZ)."
+            shelly "TEST >>= exec (TEST.testZ)"
             testZ
         invalid_query -> do
-            shelly ("TEST> said (invalid-query=" ++ show invalid_query ++ ").")
-            shelly "TEST> quit."
+            shelly ("TEST >>= said (invalid-query=" ++ show invalid_query ++ ")")
+            shelly "TEST >>= quit"

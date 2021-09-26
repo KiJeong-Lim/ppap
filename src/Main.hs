@@ -14,33 +14,33 @@ showCopyright = concat
 
 ppap :: IO ()
 ppap = do
-    shelly "ppap=<< "
+    shelly "ppap =<< "
     command <- getLine
     case command of
-        "" -> shelly "ppap> quit."
+        "" -> shelly "ppap >>= quit"
         "Aladdin" -> do
-            shelly "ppap> exec (Aladdin.main)."
+            shelly "ppap >>= exec (Aladdin.main)"
             Aladdin.main
         "LGS" -> do
-            shelly "ppap> exec (LGS.main)."
+            shelly "ppap >>= exec (LGS.main)."
             LGS.main
         "LGS --default" -> do
-            shelly "ppap> eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")."
+            shelly "ppap >>= eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")"
             LGS.runLGS "src/Aladdin/Front/Analyzer/Lexer"
-            shelly "ppap> quit."
+            shelly "ppap >>= quit"
         "PGS" -> do
-            shelly "ppap> exec (PGS.main)."
+            shelly "ppap >>= exec (PGS.main)"
             PGS.main
         "PGS --default" -> do
-            shelly "ppap> eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")."
+            shelly "ppap >>= eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")"
             PGS.runPGS "src/Aladdin/Front/Analyzer/Parser"
-            shelly "ppap> quit."
+            shelly "ppap >>= quit"
         "TEST" -> do
-            shelly "ppap> exec (TEST.main)."
+            shelly "ppap >>= exec (TEST.main)"
             TEST.main
         invalid_command -> do
-            shelly ("ppap> said (invalid-command=" ++ show invalid_command ++ ").")
-            shelly "ppap> quit."
+            shelly ("ppap >>= said (invalid-command=" ++ show invalid_command ++ ")")
+            shelly "ppap >>= quit"
 
 main :: IO ()
 main = ppap

@@ -96,4 +96,4 @@ mkFPath :: FilePath -> FPath
 mkFPath = callWithStrictArg FPath . map (\ch -> if ch == '\\' then '/' else ch)
 
 shelly :: String -> IO ()
-shelly console_log = if null console_log || last console_log == ' ' then putStr console_log >> hFlush stdout else putStrLn console_log
+shelly console_log = if not (null console_log) && last console_log == ' ' then putStr console_log >> hFlush stdout else putStrLn console_log

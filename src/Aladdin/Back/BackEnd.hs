@@ -60,7 +60,7 @@ runREPL program = lift (newIORef False) >>= go where
                     putStrLn "Press the enter key to go to next state:"
                     response <- getLine
                     case response of
-                        ":q" -> shelly "Aladdin> quit."
+                        ":q" -> shelly "Aladdin >>= quit"
                         ":d" -> do
                             modifyIORef isDebugging not
                             debugging <- readIORef isDebugging
@@ -112,8 +112,8 @@ runREPL program = lift (newIORef False) >>= go where
     go isDebugging = do
         query <- lift $ getLine
         case query of
-            "" -> lift $ shelly "Aladdin> quit."
-            ":q" -> lift $ shelly "Aladdin> quit."
+            "" -> lift $ shelly "Aladdin >>= quit"
+            ":q" -> lift $ shelly "Aladdin >>= quit"
             ":d" -> do
                 lift $ do
                     modifyIORef isDebugging not
