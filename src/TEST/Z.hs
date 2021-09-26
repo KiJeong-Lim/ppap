@@ -6,7 +6,7 @@ import Z.Utils
 
 testZ :: IO ()
 testZ = do
-    shelly "TEST.testZ> call (testDoc)."
+    shelly "TEST.testZ> eval (testDoc)."
     testDoc
     shelly "TEST.testZ> eval (testParserBaseProperty)."
     testParserBaseProperty
