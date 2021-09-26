@@ -13,5 +13,5 @@ main = do
             shelly "TEST >>= exec (TEST.testZ)"
             testZ
         invalid_query -> do
-            shelly ("TEST >>= said (invalid-query=" ++ show invalid_query ++ ")")
+            shelly ("TEST >>= tell (invalid-query=" ++ show invalid_query ++ ")")
             shelly "TEST >>= quit"

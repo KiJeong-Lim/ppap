@@ -65,7 +65,7 @@ runAladdin = do
         getLine
     if dir == ""
         then do
-            lift $ shelly "Aladdin >>= said (no-module-loaded)"
+            lift $ shelly "Aladdin >>= tell (no-module-loaded)"
             runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls })
         else do
             src <- lift $ readFile dir
@@ -88,7 +88,7 @@ runAladdin = do
                                 lift $ putStrLn err_msg
                                 runAladdin
                             Right program2 -> do
-                                lift $ shelly ("Aladdin >>= said (one-module-loaded=" ++ show dir ++ ")")
+                                lift $ shelly ("Aladdin >>= tell (one-module-loaded=" ++ show dir ++ ")")
                                 runREPL program2
 
 main :: IO ()

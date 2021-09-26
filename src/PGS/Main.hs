@@ -25,10 +25,10 @@ runPGS dir = do
         Right yblocks -> case runIdentity (runExceptT (genParser yblocks)) of
             Left err -> do
                 writeFile (dir ++ ".failed") err
-                shelly "PGS >>= said (generating-failed)"
+                shelly "PGS >>= tell (generating-failed)"
             Right delta -> do
                 writeFile (dir ++ ".hs") (delta "")
-                shelly "PGS >>= said (the-parser-has-been-generated)"
+                shelly "PGS >>= tell (the-parser-has-been-generated)"
 
 main :: IO ()
 main = do

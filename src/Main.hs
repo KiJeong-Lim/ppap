@@ -39,7 +39,7 @@ ppap = do
             shelly "ppap >>= exec (TEST.main)"
             TEST.main
         invalid_command -> do
-            shelly ("ppap >>= said (invalid-command=" ++ show invalid_command ++ ")")
+            shelly ("ppap >>= tell (invalid-command=" ++ show invalid_command ++ ")")
             shelly "ppap >>= quit"
 
 main :: IO ()
