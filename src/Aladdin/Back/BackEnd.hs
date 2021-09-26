@@ -50,7 +50,7 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
 runREPL :: Program TermNode -> UniqueGenT IO ()
 runREPL program = lift (newIORef False) >>= go where
     promptify :: String -> IO ()
-    promptify str = shelly ("Aladdin> " ++ str)
+    promptify str = shelly (moduleName program ++ "> " ++ str)
     mkRuntimeEnv :: IORef Debugging -> TermNode -> IO RuntimeEnv
     mkRuntimeEnv isDebugging query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer }) where
         runInteraction :: String -> IO ()

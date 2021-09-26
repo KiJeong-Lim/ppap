@@ -109,7 +109,8 @@ data TermExpr dcon annot
 
 data Program term
     = Program
-        { _KindDecls :: KindEnv
+        { moduleName :: String
+        , _KindDecls :: KindEnv
         , _TypeDecls :: TypeEnv
         , _FactDecls :: [term]
         }
