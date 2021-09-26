@@ -1,6 +1,6 @@
 module TEST.Z where
 
-import Z.System.Pretty
+import Z.System.Shelly
 import Z.Text.Doc.Test
 import Z.Text.PC.Test
 import Z.Utils

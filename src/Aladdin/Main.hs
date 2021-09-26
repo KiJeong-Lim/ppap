@@ -25,7 +25,7 @@ import qualified Data.Set as Set
 import System.Exit
 import System.IO
 import Z.System.Path
-import Z.System.Pretty
+import Z.System.Shelly
 import Z.Utils
 
 theInitialKindDecls :: KindEnv

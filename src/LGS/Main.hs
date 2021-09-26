@@ -14,7 +14,7 @@ import LGS.Read
 import LGS.Show
 import LGS.Util
 import Y.Base
-import Z.System.Pretty
+import Z.System.Shelly
 import Z.Text.PC
 import Z.Utils
 

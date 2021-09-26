@@ -4,7 +4,7 @@ import Data.IORef
 import Test.QuickCheck
 import Test.QuickCheck.Checkers
 import Test.QuickCheck.Classes
-import Z.System.Pretty
+import Z.System.Shelly
 import Z.Text.Doc
 import Z.Text.Doc.Internal
 import Z.Utils

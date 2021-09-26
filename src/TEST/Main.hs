@@ -1,7 +1,7 @@
 module TEST.Main where
 
 import TEST.Z
-import Z.System.Pretty
+import Z.System.Shelly
 import Z.Utils
 
 main :: IO ()

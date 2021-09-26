@@ -4,7 +4,7 @@ import qualified Aladdin.Main as Aladdin
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
-import Z.System.Pretty
+import Z.System.Shelly
 import Z.Utils
 
 showCopyright :: String

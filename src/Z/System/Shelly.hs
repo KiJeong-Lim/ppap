@@ -1,4 +1,4 @@
-module Z.System.Pretty where
+module Z.System.Shelly where
 
 import Control.Applicative
 import Control.Monad
@@ -8,20 +8,7 @@ import Z.Text.PM
 import Z.Utils
 
 shelly :: String -> IO String
-shelly msg = do
-    can_prettify <- supportsPretty
-    let msg' = if can_prettify then makeupShelly msg else msg
-    if not (null msg) && last msg == ' '
-        then do
-            putStr msg'
-            hFlush stdout
-            getLine
-        else do
-            putStrLn msg'
-            return ""
-
-makeupShelly :: String -> String
-makeupShelly = elaborate where
+shelly = go where
     identifierPM :: PM String
     identifierPM = pure (:) <*> acceptCharIf (\ch -> ch `elem` ['$'] ++ ['a' .. 'z'] ++ ['A' .. 'Z']) <*> many (acceptCharIf (\ch -> ch `elem` ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ ['.', '_', '-']))
     numberPM :: PM String
@@ -60,7 +47,7 @@ makeupShelly = elaborate where
                 lhs <- identifierPM
                 consumeStr "="
                 rhs <- litPM <|> argPM False
-                return (color Magenta lhs ++ "=" ++ rhs)
+                return (lhs ++ "=" ++ rhs)
             , do
                 fun <- identifierPM
                 skipWhite
@@ -77,14 +64,17 @@ makeupShelly = elaborate where
         lhs <- identifierPM
         skipWhite
         bind <- readDirectedBind <|> readReversedBind
-        skipWhite
+        let my_colorize = if bind == "=<<" then color Magenta else color Yellow
         stmt <- mconcat
             [ do
+                skipWhite
                 fun <- identifierPM
                 skipWhite
                 args <- many (atomPM True <* skipWhite)
-                return ([color Yellow lhs, " ", bind, " ", color Green fun] ++ args)
-            , return ([color Yellow lhs, " ", bind, " "])
+                return ([my_colorize lhs, " ", bind, " ", color Green fun] ++ args)
+            , do
+                skipWhite
+                return ([my_colorize lhs, " ", bind, " "])
             ]
         mconcat
             [ do
@@ -93,7 +83,17 @@ makeupShelly = elaborate where
                 return (stmt ++ ["."])
             , return stmt
             ]
-    parse :: String -> Maybe [String]
-    parse str = foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ]
     elaborate :: String -> String
-    elaborate str = maybe str concat (parse str)
+    elaborate str = maybe str concat (foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ])
+    go :: String -> IO String
+    go msg = do
+        can_prettify <- supportsPretty
+        let msg' = if can_prettify then elaborate msg else msg
+        if not (null msg) && last msg == ' '
+            then do
+                putStr msg'
+                hFlush stdout
+                getLine
+            else do
+                putStrLn msg'
+                return ""
