@@ -22,6 +22,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
+import System.Environment
 import System.IO
 import Z.Utils
 
@@ -60,23 +61,19 @@ theInitialFactDecls =
 theDefaultModuleName :: String
 theDefaultModuleName = "aladdin"
 
-matchFileDirWithExtension :: String -> (String, String)
-matchFileDirWithExtension dir = case span (\ch -> ch /= '.') (reverse dir) of
-    (reversed_extension, '.' : reversed_filename) -> (reverse reversed_filename, reverse reversed_extension)
-    (reversed_filename, must_be_null) -> (reverse reversed_filename, [])
-
 runAladdin :: UniqueGenT IO ()
 runAladdin = do
-    dir <- lift $ do
+    file_dir <- lift $ do
         putStr "Aladdin =<< "
         hFlush stdout
         getLine
-    case matchFileDirWithExtension dir of
+    case matchFileDirWithExtension file_dir of
         ("", "") -> do
-            lift $ shelly "Aladdin >>= tell (no-module-loaded)"
+            lift $ shelly "aladdin> No module loaded."
             runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
-        (file_name, "aladdin") -> do
-            src <- lift $ readFile dir
+        (file_name, ".aladdin") -> do
+            src <- lift $ readFile file_dir
+            lift $ shelly ("aladdin> Compiling " ++ file_name ++ " (" ++ file_dir ++ ")")
             case runAnalyzer src of
                 Left err_msg -> do
                     lift $ putStrLn err_msg
@@ -96,10 +93,34 @@ runAladdin = do
                                 lift $ putStrLn err_msg
                                 runAladdin
                             Right program2 -> do
-                                lift $ shelly ("Aladdin >>= tell (one-module-loaded=" ++ show dir ++ ")")
+                                lift $ shelly (file_name ++ "> Ok, one module loaded.")
                                 runREPL program2
-        (file_name, wrong_extension) -> do
-            lift $ shelly ("Aladdin >>= tell (wrong-extension=" ++ shows wrong_extension ")")
+        (file_name, "") -> do
+            src <- lift $ readFile (file_name ++ ".aladdin")
+            lift $ shelly ("aladdin> Compiling " ++ file_name ++ " (" ++ file_name ++ ".aladdin)")
+            case runAnalyzer src of
+                Left err_msg -> do
+                    lift $ putStrLn err_msg
+                    runAladdin
+                Right output -> case output of
+                    Left query1 -> do
+                        lift $ putStrLn "*** parsing-error: it is not a program."
+                        runAladdin
+                    Right program1 -> do
+                        result <- runExceptT $ do
+                            module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
+                            facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
+                            facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
+                            return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = file_name })
+                        case result of
+                            Left err_msg -> do
+                                lift $ putStrLn err_msg
+                                runAladdin
+                            Right program2 -> do
+                                lift $ shelly (file_name ++ "> Ok, one module loaded.")
+                                runREPL program2
+        (file_name, '.' : wrong_extension) -> do
+            lift $ shelly ("aladdin> " ++ shows wrong_extension " is a non-executable file extension.")
             lift $ shelly ("Aladdin >>= quit")
             return ()
 

@@ -61,12 +61,6 @@ seed << x = do
     hFlush h
     return h
 
-int :: Integral a => a -> Int
-int = fromInteger . toInteger
-
-double :: Double -> Double
-double = id
-
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
 splitUnless cond (x1 : x2 : xs)
     | cond x1 x2 = case splitUnless cond (x2 : xs) of
@@ -97,3 +91,9 @@ mkFPath = callWithStrictArg FPath . map (\ch -> if ch == '\\' then '/' else ch)
 
 shelly :: String -> IO ()
 shelly console_log = if not (null console_log) && last console_log == ' ' then putStr console_log >> hFlush stdout else putStrLn console_log
+
+matchFileDirWithExtension :: String -> (String, String)
+matchFileDirWithExtension dir
+    = case span (\ch -> ch /= '.') (reverse dir) of
+        (reversed_extension, '.' : reversed_filename) -> (reverse reversed_filename, '.' : reverse reversed_extension)
+        (reversed_filename, must_be_null) -> (reverse reversed_filename, [])
