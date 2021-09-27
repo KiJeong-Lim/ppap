@@ -59,6 +59,7 @@ executable ppap
     Aladdin.Front.TypeChecker.Util
     Calc.ControlSystem.Main
     Calc.ControlSystem.Read
+    Calc.ControlSystem.Test
     Calc.ControlSystem.Util
     Calc.Main
     Calc.Runtime.Main
