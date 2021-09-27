@@ -1,6 +1,7 @@
 module Main where
 
 import qualified Aladdin.Main as Aladdin
+import qualified CTRL.Main as CTRL
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
@@ -23,10 +24,13 @@ ppap = do
         "Aladdin" -> do
             shelly "ppap >>= exec (Aladdin.main)"
             Aladdin.main
+        "CTRL" -> do
+            shelly "ppap >>= exec (CTRL.main)"
+            CTRL.main
         "LGS" -> do
             shelly "ppap >>= exec (LGS.main)"
             LGS.main
-        "LGS --default" -> do
+        "LGS --quick" -> do
             shelly "ppap >>= eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")"
             LGS.runLGS "src/Aladdin/Front/Analyzer/Lexer"
             shelly "ppap >>= quit"
@@ -34,7 +38,7 @@ ppap = do
         "PGS" -> do
             shelly "ppap >>= exec (PGS.main)"
             PGS.main
-        "PGS --default" -> do
+        "PGS --quick" -> do
             shelly "ppap >>= eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")"
             PGS.runPGS "src/Aladdin/Front/Analyzer/Parser"
             shelly "ppap >>= quit"

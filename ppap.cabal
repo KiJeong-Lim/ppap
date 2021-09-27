@@ -57,6 +57,8 @@ executable ppap
     Aladdin.Front.Header
     Aladdin.Front.TypeChecker.Main
     Aladdin.Front.TypeChecker.Util
+    CTRL.Main
+    CTRL.TransferAnalysis
     LGS.Main
     LGS.Make
     LGS.Read
@@ -73,6 +75,8 @@ executable ppap
     Y.Text.Ppr
     Y.Text.Ppr.Viewer
     Z.Algo.Sorting
+    Z.Math.Scalar
+    Z.System.File
     Z.System.Path
     Z.System.Shelly
     Z.Text.Doc
