@@ -57,8 +57,11 @@ executable ppap
     Aladdin.Front.Header
     Aladdin.Front.TypeChecker.Main
     Aladdin.Front.TypeChecker.Util
-    CTRL.Main
-    CTRL.TransferAnalysis
+    Calc.ControlSystem.Main
+    Calc.ControlSystem.Read
+    Calc.ControlSystem.Util
+    Calc.Main
+    Calc.Runtime.Main
     LGS.Main
     LGS.Make
     LGS.Read

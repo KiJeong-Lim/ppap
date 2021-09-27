@@ -1,7 +1,7 @@
 module Main where
 
 import qualified Aladdin.Main as Aladdin
-import qualified CTRL.Main as CTRL
+import qualified Calc.Main as Calc
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
@@ -24,9 +24,14 @@ ppap = do
         "Aladdin" -> do
             shelly "ppap >>= exec (Aladdin.main)"
             Aladdin.main
-        "CTRL" -> do
-            shelly "ppap >>= exec (CTRL.main)"
-            CTRL.main
+        "Calc" -> do
+            shelly "ppap >>= exec (Calc.main)"
+            Calc.main
+        "Calc --quick" -> do
+            shelly "ppap >>= eval (Calc.runCalc \"calc-example1.calc\")"
+            Calc.runCalc "calc-example1.calc"
+            shelly "ppap >>= quit"
+            return ()
         "LGS" -> do
             shelly "ppap >>= exec (LGS.main)"
             LGS.main

@@ -1,0 +1,15 @@
+# file-name="CalcExample1.calc"
+
+str := ""
+str << "                                      +-----------[H2]--------+           " << endl
+str << "                                      |                       |           " << endl
+str << "                                     \|/                      |           " << endl
+str << "                                      -                       |           " << endl
+str << " R >---> + x >---> + x >---[G1]---> + x >---[G2]---+---[G3]---+---+---> C " << endl
+str << "           -         +                             |              |       " << endl
+str << "          /|\       /|\                            |              |       " << endl
+str << "           |         |                             |              |       " << endl
+str << "           |         +-------------[H1]------------+              |       " << endl
+str << "           +------------------------------------------------------+       " << endl
+system := makeControlSystem(str)
+<<< system.deriveRelation()
