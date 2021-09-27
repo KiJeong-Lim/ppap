@@ -60,11 +60,13 @@ test1OfControlSystem = makeJumpTable "R" testcase1 Map.! "C"
 test2OfControlSystemAux :: Double -> Double -> Double -> Double -> Double -> IO ()
 test2OfControlSystemAux _G1 _G2 _G3 _H1 _H2
     = do
-        print $ wanted
-        print $ evalElemExpr (Map.fromList [("G1", _G1), ("G2", _G2), ("G3", _G3), ("H1", _H1), ("H2", _H2)]) test1OfControlSystem
+        putStrLn ("expected = " ++ show expected)
+        putStrLn ("actual   = " ++ show actual)
     where
-        wanted :: Double
-        wanted = _G1 * _G2 * _G3 / (1 - _G1 * _G2 * _H1 + _G2 * _G3 * _H2 + _G1 * _G2 * _G3)
+        expected :: Double
+        expected = _G1 * _G2 * _G3 / (1 - _G1 * _G2 * _H1 + _G2 * _G3 * _H2 + _G1 * _G2 * _G3)
+        actual :: Double
+        actual = evalElemExpr (Map.fromList [("G1", _G1), ("G2", _G2), ("G3", _G3), ("H1", _H1), ("H2", _H2)]) test1OfControlSystem
 
 test2OfControlSystem :: IO ()
 test2OfControlSystem = test2OfControlSystemAux 0.1 0.2 0.3 0.4 0.5
