@@ -6,14 +6,14 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import Z.Math.Scalar
 
-makeJumpTable :: MyNode -> ControlSystem -> Map.Map MyNode MyExpr
-makeJumpTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q))) | q <- qs ] where
+makePathTable :: MyNode -> ControlSystem -> Map.Map MyNode MyExpr
+makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q))) | q <- qs ] where
     qs :: [MyNode]
     qs = Set.toAscList theSetOfNodes where
         theSetOfNodes :: Set.Set MyNode
         theSetOfNodes = Set.unions
             [ Set.singleton q0
-            , Set.unions [ Set.fromList [q, p] | ((q, p), e) <- Map.toAscList table0 ]
+            , Set.unions [ Set.fromList [q, p] | (q, p) <- Set.toAscList (Map.keysSet table0) ]
             ]
     lookTable :: Map.Map (MyNode, MyNode) MyExpr -> (MyNode, MyNode) -> MyExpr
     lookTable table = maybe nullRE id . flip Map.lookup table
