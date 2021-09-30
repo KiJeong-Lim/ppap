@@ -1,8 +1,10 @@
 # ppap
 
+- Project putting all power
+
 - In `Windows 10`, everything works fine.
 
-- Quick Start:
+# Quick Start:
 
 ```
 git clone https://github.com/KiJeong-Lim/ppap.git
@@ -20,14 +22,18 @@ ndc> :q
 Aladdin >>= quit
 ```
 
-## Aladdin
+# Aladdin
 
 - My dialect of lambda-Prolog
 
-## LGS
+# LGS
 
 - My lexer generator
 
-## PGS
+# PGS
 
 - My parser generator
+
+# Calc
+
+- My calculator
