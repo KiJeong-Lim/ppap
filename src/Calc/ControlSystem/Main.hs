@@ -4,7 +4,7 @@ import Calc.ControlSystem.Read
 import Calc.ControlSystem.Util
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Z.Math.Scalar
+import Z.Math.Temp
 
 makePathTable :: MyNode -> ControlSystem -> Map.Map MyNode MyExpr
 makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q))) | q <- qs ] where

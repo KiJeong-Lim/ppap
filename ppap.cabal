@@ -1,5 +1,5 @@
 name: ppap
-version: 0.4.0
+version: 0.4.1
 description: Please see README.md
 homepage: https://github.com/KiJeong-Lim/ppap
 license: BSD3
@@ -21,6 +21,8 @@ executable ppap
     , QuickCheck >= 2.13
     , checkers >= 0.5
     , pathtype >= 0.8
+    , vector >= 0.12
+    , math-functions >= 0.3
   main-is: Main.hs
   other-modules:
     Aladdin.Main
@@ -79,7 +81,7 @@ executable ppap
     Y.Text.Ppr
     Y.Text.Ppr.Viewer
     Z.Algo.Sorting
-    Z.Math.Scalar
+    Z.Math.Temp
     Z.System.File
     Z.System.Path
     Z.System.Shelly

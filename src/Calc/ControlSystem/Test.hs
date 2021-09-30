@@ -5,7 +5,7 @@ import Calc.ControlSystem.Read
 import Calc.ControlSystem.Util
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Z.Math.Scalar
+import Z.Math.Temp
 
 testcase1 :: ControlSystem
 testcase1 = Map.fromList
@@ -34,4 +34,3 @@ test1OfControlSystemAux _G1 _G2 _G3 _H1 _H2
 
 test1OfControlSystem :: IO ()
 test1OfControlSystem = test1OfControlSystemAux 0.1 0.2 0.3 0.4 0.5
-

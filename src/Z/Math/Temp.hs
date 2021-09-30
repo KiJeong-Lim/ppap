@@ -1,4 +1,4 @@
-module Z.Math.Scalar where
+module Z.Math.Temp where
 
 import qualified Data.Map as Map
 import Y.Base
