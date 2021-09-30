@@ -1,6 +1,6 @@
 # ppap
 
-- Project putting all power
+- Project putting all power!
 
 - In `Windows 10`, everything works fine.
 
