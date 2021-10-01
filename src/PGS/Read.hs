@@ -197,7 +197,7 @@ readBlock = mconcat
         skipWhite
         consumePC "{"
         lend
-        hshead <-  many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend *> pure ""))
+        hshead <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend *> pure ""))
         consumePC "}"
         lend
         return (HsHead hshead)
