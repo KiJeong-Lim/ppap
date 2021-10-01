@@ -6,20 +6,15 @@ infixl 1 <<
 
 type Precedence = Int
 
-newtype FPath
-    = FPath
-        { getFilePath :: FilePath
-        }
+data Flush
+    = Flush
     deriving ()
 
 class OStreamMaker seed where
     mkOStream :: seed -> IO Handle
 
 class OStreamObject a where
-    intoString :: a -> String
-
-instance Show FPath where
-    showsPrec _ (FPath path) = showString path
+    hput :: Handle -> a -> IO ()
 
 instance OStreamMaker Handle where
     mkOStream = pure
@@ -27,26 +22,26 @@ instance OStreamMaker Handle where
 instance OStreamMaker a => OStreamMaker (IO a) where
     mkOStream m = m >>= mkOStream
 
-instance OStreamMaker FPath where
-    mkOStream (FPath path) = openFile path WriteMode
+instance OStreamObject Flush where
+    hput h _ = hFlush h
 
 instance OStreamObject Char where
-    intoString ch = return ch
+    hput h ch = hPutChar h ch
 
 instance OStreamObject a => OStreamObject [a] where
-    intoString xs = xs >>= intoString
+    hput h = mapM_ (hput h)
 
 instance OStreamObject Int where
-    intoString i = shows i ""
+    hput h = hput h . show
 
 instance OStreamObject Double where
-    intoString x = shows x ""
+    hput h = hput h . show
 
 instance OStreamObject Integer where
-    intoString n = shows n ""
+    hput h = hput h . show
 
 instance OStreamObject Bool where
-    intoString b = if b then "true" else "false"
+    hput h b = hput h (if b then "true" else "false")
 
 cout :: Handle
 cout = stdout
@@ -57,17 +52,10 @@ cerr = stderr
 endl :: Char
 endl = '\n'
 
-int :: Integral a => a -> Int
-int = fromInteger . toInteger
-
-double :: Double -> Double
-double = id
-
 (<<) :: (OStreamMaker seed, OStreamObject a) => seed -> a -> IO Handle
 seed << x = do
     h <- mkOStream seed
-    hPutStr h (intoString x)
-    hFlush h
+    hput h x
     return h
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
@@ -94,6 +82,3 @@ callWithStrictArg f x = x `seq` f x
 
 one :: a -> [a]
 one = callWithStrictArg pure
-
-mkFPath :: FilePath -> FPath
-mkFPath = callWithStrictArg FPath . map (\ch -> if ch == '\\' then '/' else ch)

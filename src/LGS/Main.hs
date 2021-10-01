@@ -14,14 +14,15 @@ import LGS.Read
 import LGS.Show
 import LGS.Util
 import Y.Base
+import Z.System.File
 import Z.System.Shelly
 import Z.Text.PC
 import Z.Utils
 
 runLGS :: FilePath -> IO ()
 runLGS dir = do
-    x_src <- readFile dir
-    case runPC (FPath dir) (many (readBlock <* many lend) <* eofPC) x_src of
+    x_src <- readFileNow dir
+    case maybe (Left ("cannot open file: " ++ dir)) (runPC dir (many (readBlock <* many lend) <* eofPC)) x_src of
         Left err -> putStrLn err
         Right xblocks -> case runIdentity (runExceptT (genLexer xblocks)) of
             Left err -> do

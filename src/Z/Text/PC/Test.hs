@@ -59,7 +59,7 @@ testParserBaseProperty = do
     return ()
 
 testPC :: Int -> IO ()
-testPC n = putStrLn (either id show (zipWith (runPC (mkFPath "Z\\Text\\PC\\Test.hs")) getTestPC getTestInput !! n)) where
+testPC n = putStrLn (either id show (zipWith (runPC "Z\\Text\\PC\\Test.hs") getTestPC getTestInput !! n)) where
     getTestPC :: [PC String]
     getTestPC =
         [ pure (++) <*> regexPC "\"abc\"" <*> regexPC "\"defg \""

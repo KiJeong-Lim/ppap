@@ -14,14 +14,15 @@ import PGS.Read
 import PGS.Show
 import PGS.Util
 import Y.Base
+import Z.System.File
 import Z.System.Shelly
 import Z.Text.PC
 import Z.Utils
 
 runPGS :: FilePath -> IO ()
 runPGS dir = do
-    y_src <- readFile dir
-    case runPC (FPath dir) (many (readBlock <* many lend) <* eofPC) y_src of
+    y_src <- readFileNow dir
+    case maybe (Left ("cannot open file: " ++ dir)) (runPC dir (many (readBlock <* many lend) <* eofPC)) y_src of
         Left err -> putStrLn err
         Right yblocks -> case runIdentity (runExceptT (genParser yblocks)) of
             Left err -> do

@@ -42,8 +42,8 @@ negPC = MyPC . go . unMyPC where
 execPC :: PC val -> Src -> Either LocStr val
 execPC p str = execPB (unMyPC p) (addLoc str)
 
-runPC :: FPath -> PC val -> Src -> Either ErrMsg val
-runPC (FPath { getFilePath = path }) p src = either (callWithStrictArg Left . makeMessageForParsingError path src) (callWithStrictArg return) (execPC p src)
+runPC :: FilePath -> PC val -> Src -> Either ErrMsg val
+runPC path p src = either (callWithStrictArg Left . makeMessageForParsingError path src) (callWithStrictArg return) (execPC p src)
 
 acceptQuote :: PC String
 acceptQuote = pure read <*> regexPC "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\'])* \"\\\"\""

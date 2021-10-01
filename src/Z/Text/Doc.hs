@@ -13,7 +13,7 @@ class Outputable a where
     pretty :: Precedence -> a -> Doc
 
 instance OStreamObject Doc_ where
-    intoString = show
+    hput h = hput h . show
 
 instance Outputable Char where
     pretty _ ch = pstr ("\'" ++ dispatchChar ch ++ "\'")
