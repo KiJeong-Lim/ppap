@@ -43,56 +43,57 @@ instance Arbitrary Doc_ where
 instance EqProp Doc_ where
     doc1 =-= doc2 = show doc1 =-= show doc2
 
-testDoc :: IO ()
-testDoc = go 8 where
-    doc :: Int -> Doc
-    doc 1 = vcat
-        [ beam '-'
-        , mconcat
-            [ beam '|'
-            , pstr " "
-            , plist'
-                [ pstr "Point" +> pnl +> pparen True "\t{ " "\n\t}" (ppunc (pnl +> pstr "\t, ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2])
-                , pstr "Point " +> pparen True "{ " " }" (ppunc (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
-                ]
-            ]
-        , beam '^'
-        ]
-    doc 2 = vcat []
-    doc 3 = mconcat []
-    doc 4 = pcat []
-    doc 5 = vcat
-        [ beam '-'
+docshunt :: Int -> Doc
+docshunt 1 = vcat
+    [ beam '-'
+    , mconcat
+        [ beam '|'
         , pstr " "
-        , beam '-'
+        , plist'
+            [ pstr "Point" +> pnl +> pparen True "\t{ " "\n\t}" (ppunc (pnl +> pstr "\t, ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2])
+            , pstr "Point " +> pparen True "{ " " }" (ppunc (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
+            ]
         ]
-    doc 6 = vcat
+    , beam '^'
+    ]
+docshunt 2 = vcat []
+docshunt 3 = mconcat []
+docshunt 4 = pcat []
+docshunt 5 = vcat
+    [ beam '-'
+    , pstr " "
+    , beam '-'
+    ]
+docshunt 6 = vcat
+    [ pstr ""
+    , vcat
         [ pstr ""
-        , vcat
-            [ pstr ""
-            , pstr ""
-            ]
-        ]
-    doc 7 = vcat
-        [ vcat
-            [ pstr ""
-            , pstr ""
-            ]
         , pstr ""
         ]
-    doc 8 = vcat
-        [ beam '-'
-        , mconcat
-            [ beam '|'
-            , pstr " "
-            , plist'
-                [ pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc (pnl +> pstr ", ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2]))
-                , pstr "Point " +> pparen True "{ " " }" (ppunc (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
-                , pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc (pnl +> pstr ", ") [pstr "x = " +> pprint 5, pstr "y = " +> pprint 6]))
-                ]
-            ]
-        , beam '^'
+    ]
+docshunt 7 = vcat
+    [ vcat
+        [ pstr ""
+        , pstr ""
         ]
+    , pstr ""
+    ]
+docshunt 8 = vcat
+    [ beam '-'
+    , mconcat
+        [ beam '|'
+        , pstr " "
+        , plist'
+            [ pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc (pnl +> pstr ", ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2]))
+            , pstr "Point " +> pparen True "{ " " }" (ppunc (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
+            , pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc (pnl +> pstr ", ") [pstr "x = " +> pprint 5, pstr "y = " +> pprint 6]))
+            ]
+        ]
+    , beam '^'
+    ]
+
+testDoc :: IO ()
+testDoc = go 8 where
     str :: Int -> String
     str 1 = concat
         [ "--------------------------\n"
@@ -134,7 +135,7 @@ testDoc = go 8 where
         sequence
             [ do
                 let expected = str i
-                    actual = show (doc i)
+                    actual = show (docshunt i)
                 if expected == actual
                     then return ()
                     else modifyIORef faileds_ref (\faileds -> faileds ++ [i])

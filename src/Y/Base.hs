@@ -7,6 +7,14 @@ type Indentation = Int
 class Outputable a where
     pprint :: Precedence -> a -> ShowS
 
+instance Outputable Int where
+    pprint prec = if prec == 0 then by3digits else shows where
+        by3digits :: Int -> ShowS
+        by3digits n
+            | n < 0 = strstr "-" . by3digits (abs n)
+            | n >= 1000 = by3digits (n `div` 1000) . shows (n `mod` 1000)
+            | otherwise = shows n
+
 strstr :: String -> ShowS
 strstr str1 str2 = str1 ++ str2
 

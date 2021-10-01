@@ -5,8 +5,6 @@ import Z.Utils
 
 infixr 9 +>
 
-type Indentation = Int
-
 type Doc = Doc_
 
 class Outputable a where
@@ -14,15 +12,6 @@ class Outputable a where
 
 instance OStreamObject Doc_ where
     hput h = hput h . show
-
-instance Outputable Char where
-    pretty _ ch = pstr ("\'" ++ dispatchChar ch ++ "\'")
-
-instance Outputable Int where
-    pretty _ i = pstr (showsPrec 0 i "")
-
-instance Outputable a => Outputable [a] where
-    pretty _ = plist . map (pretty 0)
 
 isEmptyDoc :: Doc -> Bool
 isEmptyDoc (DocNull) = True
@@ -45,7 +34,7 @@ pprint = pstr . show
 (+>) :: Doc -> Doc -> Doc
 DocNull +> doc = doc
 doc +> DocNull = doc
-DocText str1 +> DocText str2 = DocText (str1 ++ str2)
+DocText str1 +> DocText str2 = pstr (str1 ++ str2)
 DocText str1 +> DocNemo strs2 = textnemo str1 strs2
 DocNemo strs1 +> DocText str2 = nemotext strs1 str2
 DocNemo strs1 +> DocNemo strs2 = nemonemo strs1 strs2
@@ -71,11 +60,7 @@ pparen :: Bool -> String -> String -> Doc -> Doc
 pparen b left right doc = if b then pstr left +> doc +> pstr right else doc
 
 plist' :: [Doc] -> Doc
-plist' [] = pstr "[]"
-plist' (doc : docs) = pstr "[ " +> go doc docs where
-    go :: Doc -> [Doc] -> Doc
-    go doc1 [] = doc1 +> pnl +> pstr "]"
-    go doc1 (doc2 : docs3) = doc1 +> pnl +> pstr ", " +> go doc2 docs3
+plist' docs = pstr "[ " +> ppunc (pstr "\n, ") docs +> pstr "\n]"
 
 pquote :: String -> Doc
 pquote str = pstr ("\""  ++ (str >>= dispatchChar) ++ "\"")

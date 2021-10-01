@@ -84,7 +84,7 @@ runAladdin = do
                 let my_file_dir = file_name ++ ".aladdin"
                 src <- lift $ readFile my_file_dir
                 file_abs_dir <- fmap (maybe my_file_dir id) (lift $ makePathAbsolutely my_file_dir)
-                lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ file_name ++ "  ( " ++ file_abs_dir ++ " )")
+                lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ file_name ++ "    ( " ++ file_abs_dir ++ ", interpreted )")
                 case runAnalyzer src of
                     Left err_msg -> do
                         lift $ putStrLn err_msg

@@ -141,9 +141,9 @@ data Conflict
     deriving ()
 
 instance Semigroup TerminalSet where
-    ts1 <> ts2
-        | Nothing `Set.member` unTerminalSet ts1 = TerminalSet (Set.delete Nothing (unTerminalSet ts1) `Set.union` unTerminalSet ts2)
-        | otherwise = ts1
+    ts1 <> ts2 = if isNullable ts1 then TerminalSet (Set.delete Nothing (unTerminalSet ts1) `Set.union` unTerminalSet ts2) else ts1 where
+        isNullable :: TerminalSet -> Bool
+        isNullable = Set.member Nothing . unTerminalSet
 
 instance Monoid TerminalSet where
     mempty = TerminalSet (Set.singleton Nothing)
