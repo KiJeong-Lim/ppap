@@ -66,7 +66,7 @@ shelly = go where
         lhs <- identifierPM
         skipWhite
         bind <- readDirectedBind <|> readReversedBind
-        let my_colorize = if bind == "=<<" then color Yellow else id
+        let my_colorize = if bind == "=<<" then color Yellow else color Green
         stmt <- mconcat
             [ do
                 skipWhite
@@ -74,14 +74,12 @@ shelly = go where
                 skipWhite
                 args <- many (atomPM True <* skipWhite)
                 return ([my_colorize lhs, " ", bind, " ", color Green fun] ++ args)
-            , do
-                skipWhite
-                return ([my_colorize lhs, " ", bind, " "])
+            , return [my_colorize lhs, " ", bind, " "]
             ]
+        skipWhite
         mconcat
             [ do
                 consumeStr "."
-                skipWhite
                 return (stmt ++ ["."])
             , return stmt
             ]

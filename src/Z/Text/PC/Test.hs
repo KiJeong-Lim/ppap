@@ -35,13 +35,6 @@ instance Show (ParserBase chr val) where
 instance (Show chr, Arbitrary chr, EqProp val, EqProp chr) => EqProp (ParserBase chr val) where
     p1 =-= p2 = execPB p1 =-= execPB p2
 
-instance Arbitrary val => Arbitrary (MyPC val) where
-    arbitrary = fmap MyPC arbitrary
-    shrink = map MyPC . shrink . unMyPC
-
-instance EqProp val => EqProp (MyPC val) where
-    p1 =-= p2 = execPC p1 =-= execPC p2
-
 checkParserBaseIsMonad :: TestBatch
 checkParserBaseIsMonad = (">>> checking=\"Monad ParserBase\"", map (fmap (withMaxSuccess 100000)) (snd (go undefined))) where
     go :: PB LocChr (Int, Int, Int) -> TestBatch
@@ -69,9 +62,8 @@ testPC n = putStrLn (either id show (zipWith (runPC "Z\\Text\\PC\\Test.hs") getT
         , acceptQuote
         , acceptQuote
         , acceptQuote
-        , undefined
-        , undefined
-        , undefined
+        , acceptQuote
+        , acceptQuote
         ]
     getTestInput :: [String]
     getTestInput =
@@ -79,10 +71,9 @@ testPC n = putStrLn (either id show (zipWith (runPC "Z\\Text\\PC\\Test.hs") getT
         , "abcdefg  "
         , "01234      "
         , "01 2  3   4"
+        , "acceptQuote"
+        , "ppap"
         , "\"hello\"\\\""
         , "\"'\""
         , "\"\\'\""
-        , undefined
-        , undefined
-        , undefined
         ]
