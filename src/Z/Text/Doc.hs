@@ -16,8 +16,13 @@ instance OStreamObject Doc_ where
 isEmptyDoc :: Doc -> Bool
 isEmptyDoc (DocNull) = True
 isEmptyDoc (DocText str) = null str
+isEmptyDoc (DocHCat doc1 doc2) = isEmptyDoc doc1 && isEmptyDoc doc2
+isEmptyDoc (DocVCat doc1 doc2) = False
+isEmptyDoc (DocBeam ch) = False
 isEmptyDoc (DocNemo strs) = null (alliance strs)
-isEmptyDoc _ = False
+
+hcat :: [Doc] -> Doc
+hcat = foldr DocHCat DocNull
 
 vcat :: [Doc] -> Doc
 vcat = foldr DocVCat DocNull
@@ -38,7 +43,7 @@ DocText str1 +> DocText str2 = pstr (str1 ++ str2)
 DocText str1 +> DocNemo strs2 = textnemo str1 strs2
 DocNemo strs1 +> DocText str2 = nemotext strs1 str2
 DocNemo strs1 +> DocNemo strs2 = nemonemo strs1 strs2
-doc1 +> doc2 = DocHCat doc1 doc2
+doc1 +> doc2 = doc1 <> doc2
 
 pcat :: [Doc] -> Doc
 pcat = foldr (+>) DocNull
@@ -63,7 +68,7 @@ plist' :: [Doc] -> Doc
 plist' docs = pstr "[ " +> ppunc (pstr "\n, ") docs +> pstr "\n]"
 
 pquote :: String -> Doc
-pquote str = pstr ("\""  ++ (str >>= dispatchChar) ++ "\"")
+pquote str = pstr ("\"" ++ (str >>= dispatchChar) ++ "\"")
 
 plist :: [Doc] -> Doc
 plist docs = if null docs then pstr "[]" else ptab +> pblock (plist' docs)
