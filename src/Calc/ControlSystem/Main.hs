@@ -17,7 +17,7 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
             , Set.unions [ Set.fromList [q, p] | (q, p) <- Set.toAscList (Map.keysSet table0) ]
             ]
     theClosure :: Map.Map (MyNode, MyNode) MyExpr
-    theClosure = Map.fromList (foldNat (length qs) init loop) where
+    theClosure = Map.fromList (recNat (length qs) init step) where
         init :: [((MyNode, MyNode), MyExpr)]
         init = do
             q_i <- qs
@@ -26,8 +26,8 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
                 ( (q_i, q_j)
                 , maybe nullRE id (Map.lookup (q_i, q_j) table0)
                 )
-        loop :: Int -> [((MyNode, MyNode), MyExpr)] -> [((MyNode, MyNode), MyExpr)]
-        loop k mapsto = do
+        step :: Int -> [((MyNode, MyNode), MyExpr)] -> [((MyNode, MyNode), MyExpr)]
+        step k mapsto = do
             let q_k = qs !! k
                 table = Map.fromList mapsto
                 at idx = table Map.! idx
