@@ -3,7 +3,7 @@ module Calc.ControlSystem.Test where
 import Calc.ControlSystem.Main
 import Calc.ControlSystem.Read
 import Calc.ControlSystem.Util
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Z.Math.Temp
 
@@ -28,7 +28,7 @@ test1OfControlSystemAux _G1 _G2 _G3 _H1 _H2
         putStrLn ("actual   = " ++ show actual)
     where
         expected :: Double
-        expected = _G1 * _G2 * _G3 / (1 - _G1 * _G2 * _H1 + _G2 * _G3 * _H2 + _G1 * _G2 * _G3)
+        expected = (_G1 * _G2 * _G3) / (1 - _G1 * _G2 * _H1 + _G2 * _G3 * _H2 + _G1 * _G2 * _G3)
         actual :: Double
         actual = evalElemExpr (Map.fromList [("G1", _G1), ("G2", _G2), ("G3", _G3), ("H1", _H1), ("H2", _H2)]) (makePathTable "R" testcase1 Map.! "C")
 

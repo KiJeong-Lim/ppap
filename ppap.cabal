@@ -83,6 +83,7 @@ executable ppap
     Y.Text.Ppr.Viewer
     Y.Text.Ppr
     Y.Base
+    Z.Algo.Function
     Z.Algo.Sorting
     Z.Math.Temp
     Z.System.File
