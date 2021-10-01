@@ -18,15 +18,14 @@ readFileNow = go where
         my_handle <- openFile path ReadMode
         my_handle_is_open <- hIsOpen my_handle
         my_handle_is_okay <- if my_handle_is_open then hIsReadable my_handle else return False
-        if my_handle_is_okay
+        res <- if my_handle_is_okay
             then do
                 contents <- readNow my_handle
-                hClose my_handle
                 let content = unlines contents
                 content `seq` return (Just content)
-            else do
-                hClose my_handle
-                return Nothing
+            else return Nothing
+        hClose my_handle
+        return res
 
 writeFileNow :: FilePath -> String -> IO Bool
 writeFileNow = go where
@@ -40,11 +39,6 @@ writeFileNow = go where
         my_handle <- openFile path WriteMode
         my_handle_is_open <- hIsOpen my_handle
         my_handle_is_okay <- if my_handle_is_open then hIsWritable my_handle else return False
-        if my_handle_is_okay
-            then do
-                writeNow my_handle (lines content)
-                hClose my_handle
-                return True
-            else do
-                hClose my_handle
-                return False
+        if my_handle_is_okay then writeNow my_handle (lines content) else return ()
+        hClose my_handle
+        return my_handle_is_okay
