@@ -25,15 +25,15 @@ executable ppap
     , vector >= 0.12
     , math-functions >= 0.3
   main-is: Main.hs
+  ghc-options:
+    -O3
   other-modules:
-    Aladdin.Main
-    Aladdin.Back.BackEnd
-    Aladdin.Back.Base.Constant
-    Aladdin.Back.Base.Labeling
-    Aladdin.Back.Base.TermNode
     Aladdin.Back.Base.TermNode.Read
     Aladdin.Back.Base.TermNode.Show
     Aladdin.Back.Base.TermNode.Util
+    Aladdin.Back.Base.Constant
+    Aladdin.Back.Base.Labeling
+    Aladdin.Back.Base.TermNode
     Aladdin.Back.Base.VarBinding
     Aladdin.Back.Converter.Main
     Aladdin.Back.Converter.Scheme
@@ -49,6 +49,7 @@ executable ppap
     Aladdin.Back.Runtime.Main
     Aladdin.Back.Runtime.Transition
     Aladdin.Back.Runtime.Util
+    Aladdin.Back.BackEnd
     Aladdin.Front.Analyzer.Grammar
     Aladdin.Front.Analyzer.Lexer
     Aladdin.Front.Analyzer.Main
@@ -57,15 +58,16 @@ executable ppap
     Aladdin.Front.Desugarer.ForTerm
     Aladdin.Front.Desugarer.ForType
     Aladdin.Front.Desugarer.Main
-    Aladdin.Front.Header
     Aladdin.Front.TypeChecker.Main
     Aladdin.Front.TypeChecker.Util
+    Aladdin.Front.Header
+    Aladdin.Main
     Calc.ControlSystem.Main
     Calc.ControlSystem.Read
     Calc.ControlSystem.Test
     Calc.ControlSystem.Util
-    Calc.Main
     Calc.Runtime.Main
+    Calc.Main
     LGS.Main
     LGS.Make
     LGS.Read
@@ -78,20 +80,20 @@ executable ppap
     PGS.Util
     TEST.Main
     TEST.Z
-    Y.Base
-    Y.Text.Ppr
     Y.Text.Ppr.Viewer
+    Y.Text.Ppr
+    Y.Base
     Z.Algo.Sorting
     Z.Math.Temp
     Z.System.File
     Z.System.Path
     Z.System.Shelly
-    Z.Text.Doc
     Z.Text.Doc.Internal
     Z.Text.Doc.Test
-    Z.Text.PC
     Z.Text.PC.Base
     Z.Text.PC.Internal
     Z.Text.PC.Test
+    Z.Text.Doc
+    Z.Text.PC
     Z.Text.PM
     Z.Utils
