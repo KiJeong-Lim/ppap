@@ -10,9 +10,17 @@ matchFileDirWithExtension dir
         (reversed_extension, '.' : reversed_filename) -> (reverse reversed_filename, '.' : reverse reversed_extension)
         (reversed_filename, must_be_null) -> (reverse reversed_filename, [])
 
-makePathAbsolutely :: String -> IO (Maybe String)
-makePathAbsolutely = maybe (return Nothing) (fmap (Just . toString) . Directory.canonicalizePath) . fromString where
-    toString :: Windows.AbsDir -> String
-    toString = Windows.toString
+toAbsPathWindows :: String -> IO (Maybe String)
+toAbsPathWindows = maybe (return Nothing) (fmap toString . Directory.canonicalizePath) . fromString where
+    toString :: Windows.AbsDir -> Maybe String
+    toString = uncurry go . span (\ch -> ch /= ':') . Windows.toString where
+        go :: String -> String -> Maybe String
+        go drive path
+            | take 3 path == ":\\\\" = return (drive ++ path)
+            | take 2 path == ":\\" = return (drive ++ ":\\\\" ++ drop 2 path)
+            | otherwise = fail ""
     fromString :: String -> Maybe Windows.RelDir
     fromString = Windows.maybe
+
+makePathAbsolutely :: String -> IO (Maybe String)
+makePathAbsolutely = toAbsPathWindows
