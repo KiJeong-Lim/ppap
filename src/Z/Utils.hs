@@ -23,13 +23,13 @@ instance OStreamMaker a => OStreamMaker (IO a) where
     mkOStream m = m >>= mkOStream
 
 instance OStreamObject Flush where
-    hput h _ = hFlush h
+    hput = const . hFlush
 
 instance OStreamObject Char where
-    hput h ch = hPutChar h ch
+    hput = hPutChar
 
 instance OStreamObject a => OStreamObject [a] where
-    hput h = mapM_ (hput h)
+    hput = mapM_ . hput
 
 instance OStreamObject Int where
     hput h = hput h . show
