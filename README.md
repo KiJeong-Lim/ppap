@@ -21,6 +21,11 @@ aladdin> Compiling ndc    ( C:\\Users\user\Repository\ppap\ndc.aladdin, interpre
 ndc> Ok, one module loaded.
 ndc> ?- example1.
 ndc> yes.
+ndc> ?- X = s Y.
+ndc> The answer substitution is:
+ndc> X := s Y.
+ndc> Find more solutions? [Y/n] Y
+ndc> no.
 ndc> :q
 Aladdin >>= quit
 ```

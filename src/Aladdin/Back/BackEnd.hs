@@ -79,7 +79,7 @@ runREPL program = lift (newIORef False) >>= go where
             | isClear = do
                 promptify "The answer substitution is:"
                 sequence
-                    [ promptify ("  " ++ v ++ " := " ++ showsPrec 0 t ".")
+                    [ promptify ("" ++ v ++ " := " ++ showsPrec 0 t ".")
                     | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
