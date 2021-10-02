@@ -94,6 +94,6 @@ shelly = go where
         if not (null msg) && last msg == ' '
             then getLine
             else do
-                sleep 100
+                delay 100
                 cout << endl
                 return ""
