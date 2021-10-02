@@ -21,12 +21,6 @@ data BaseRing val
     | AppEE (BaseRing val) (BaseRing val)
     deriving ()
 
-instance Eq val => Eq (BaseRing val) where
-    e1 == e2 = undefined
-
-instance Ord val => Ord (BaseRing val) where
-    e1 <= e2 = undefined
-
 instance Show val => Show (BaseRing val) where
     showsPrec prec = dispatch where
         myPrecIs :: Int -> ShowS -> ShowS
@@ -64,7 +58,7 @@ instance Num val => Num (BaseRing val) where
     negate e1 = MinusEE (VarEE "0") e1
     abs e1 = AppEE (VarEE "__ABS__") e1
     signum e1 = AppEE (AppEE (VarEE "__DIV__") e1) (AppEE (VarEE "__ABS__") e1)
-    fromInteger n = if n < 0 then MinusEE (VarEE "0") (NatEE n) else NatEE n
+    fromInteger n = if n < 0 then MinusEE (VarEE "0") (NatEE (abs n)) else NatEE n
 
 instance Fractional val => Fractional (BaseRing val) where
     fromRational r = AppEE (AppEE (VarEE "__DIV__") (fromInteger (numerator r))) (fromInteger (denominator r))
@@ -94,7 +88,7 @@ evalBaseRing = go where
             then return (go new_env body)
             else fail "In `evalBaseRing': parameters.length /= arguments.length"
 
-reduceBaseRing :: (Eq val, Num val) => ReductionOption -> BaseRing val -> BaseRing val
+reduceBaseRing :: ReductionOption -> BaseRing val -> BaseRing val
 reduceBaseRing _ = id
 
 bindVarsToVals :: [(VarID, val)] -> EvalEnv val
