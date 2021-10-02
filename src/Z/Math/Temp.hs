@@ -6,6 +6,8 @@ import Y.Base
 
 type VarID = String
 
+type EvalEnv val = [(VarID, ([VarID], val))]
+
 type ReductionOption = String
 
 data BaseRing val
@@ -60,8 +62,16 @@ instance Fractional val => Fractional (BaseRing val) where
     recip e1 = undefined
     e1 / e2 = undefined
 
-evalBaseRing :: Fractional val => Map.Map VarID val -> BaseRing val -> val
+evalBaseRing :: Fractional val => EvalEnv val -> BaseRing val -> val
 evalBaseRing = undefined
 
 reduceBaseRing :: (Eq val, Num val) => ReductionOption -> BaseRing val -> BaseRing val
 reduceBaseRing _ = id
+
+bindVarTo :: Fractional val => VarID -> BaseRing val -> EvalEnv val -> EvalEnv val
+bindVarTo x e env = (x, ([], evalBaseRing env e)) : env
+
+bindVarsToVals :: [(VarID, val)] -> EvalEnv val
+bindVarsToVals = foldr go [] where
+    go :: (VarID, val) -> EvalEnv val -> EvalEnv val
+    go (x, v) env = (x, ([], v)) : env
