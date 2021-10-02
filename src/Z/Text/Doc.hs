@@ -57,18 +57,18 @@ pnl = DocText "\n"
 pblock :: Doc -> Doc
 pblock = DocNemo . renderViewer . toViewer
 
-ppunc :: Doc -> [Doc] -> Doc
-ppunc doc0 [] = DocNull
-ppunc doc0 (doc1 : docs2) = doc1 +> foldr (\doc2 -> \acc -> doc0 +> doc2 +> acc) DocNull docs2
+ppunc' :: Doc -> [Doc] -> Doc
+ppunc' doc0 [] = DocNull
+ppunc' doc0 (doc1 : docs2) = doc1 +> foldr (\doc2 -> \acc -> doc0 +> doc2 +> acc) DocNull docs2
 
 pparen :: Bool -> String -> String -> Doc -> Doc
 pparen b left right doc = if b then pstr left +> doc +> pstr right else doc
 
 plist' :: [Doc] -> Doc
-plist' docs = pstr "[ " +> ppunc (pstr "\n, ") docs +> pstr "\n]"
+plist' docs = pstr "[ " +> ppunc' (pstr "\n, ") docs +> pstr "\n]"
 
 pquote :: String -> Doc
 pquote str = pstr ("\"" ++ (str >>= dispatchChar) ++ "\"")
 
-plist :: [Doc] -> Doc
-plist docs = if null docs then pstr "[]" else ptab +> pblock (plist' docs)
+plist0 :: [Doc] -> Doc
+plist0 docs = (if null docs then DocNull else ptab) +> pblock (plist' docs)

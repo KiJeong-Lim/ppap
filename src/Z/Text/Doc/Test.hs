@@ -50,8 +50,8 @@ docshunt 1 = vcat
         [ beam '|'
         , pstr " "
         , plist'
-            [ pstr "Point" +> pnl +> pparen True "\t{ " "\n\t}" (ppunc (pnl +> pstr "\t, ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2])
-            , pstr "Point " +> pparen True "{ " " }" (ppunc (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
+            [ pstr "Point" +> pnl +> pparen True "\t{ " "\n\t}" (ppunc' (pnl +> pstr "\t, ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2])
+            , pstr "Point " +> pparen True "{ " " }" (ppunc' (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
             ]
         ]
     , beam '^'
@@ -84,9 +84,9 @@ docshunt 8 = vcat
         [ beam '|'
         , pstr " "
         , plist'
-            [ pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc (pnl +> pstr ", ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2]))
-            , pstr "Point " +> pparen True "{ " " }" (ppunc (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
-            , pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc (pnl +> pstr ", ") [pstr "x = " +> pprint 5, pstr "y = " +> pprint 6]))
+            [ pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc' (pnl +> pstr ", ") [pstr "x = " +> pprint 1, pstr "y = " +> pprint 2]))
+            , pstr "Point " +> pparen True "{ " " }" (ppunc' (pstr ", ") [pstr "x = " +> pprint 3, pstr "y = " +> pprint 4])
+            , pstr "Point" +> pnl +> ptab +> pblock (pparen True "{ " "\n}" (ppunc' (pnl +> pstr ", ") [pstr "x = " +> pprint 5, pstr "y = " +> pprint 6]))
             ]
         ]
     , beam '^'
