@@ -7,13 +7,13 @@ infixr 9 +>
 
 type Doc = Doc_
 
-class Outputable a where
+class PrettyPrintable a where
     pretty :: Precedence -> a -> Doc
 
 instance OStreamObject Doc_ where
     hput h = hput h . show
 
-instance Outputable Char where
+instance PrettyPrintable Char where
     pretty _ ch = pstr ("\'" ++ dispatchChar ch ++ "\'")
 
 isEmptyDoc :: Doc -> Bool
