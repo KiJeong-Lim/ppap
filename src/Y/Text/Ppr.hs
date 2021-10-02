@@ -3,6 +3,7 @@ module Y.Text.Ppr where
 import System.Console.Pretty
 import Y.Base
 import Y.Text.Ppr.Viewer
+import qualified Z.Text.Doc.Internal as Z
 import Z.Utils
 
 data Doc
@@ -69,13 +70,7 @@ instance Show Doc where
     showsPrec _ doc1 str = "(" ++ showsPrec 0 doc1 (")" ++ str)
 
 instance Outputable Char where
-    pprint _ ch = case ch of
-        '\n' -> strstr "\\n"
-        '\t' -> strstr "\\t"
-        '\\' -> strstr "\\\\"
-        '\"' -> strstr "\\\""
-        '\'' -> strstr "\\\'"
-        ch -> strstr [ch]
+    pprint _ = strstr . Z.dispatchChar
 
 empty :: Doc
 empty = DE
