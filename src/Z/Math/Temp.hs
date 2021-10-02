@@ -32,7 +32,7 @@ instance Show val => Show (BaseRing val) where
         dispatch (NatEE n) = myPrecIs 11 (showsPrec 11 n)
         dispatch (LitEE val) = myPrecIs 11 (showsPrec 11 val)
         dispatch (VarEE var) = myPrecIs 11 (strstr var)
-        dispatch (AppEE e1 e2) = fromJust (tryMatchPrimitive (AppEE e1 e2) `maybeAlt` return (myPrecIs 10 (showsPrec 10 e1 . strstr " " . showsPrec 11 e2)))
+        dispatch (AppEE e1 e2) = fromJust (tryMatchPrimitive (AppEE e1 e2) /> return (myPrecIs 10 (showsPrec 10 e1 . strstr " " . showsPrec 11 e2)))
         tryMatchPrimitive :: Show val => BaseRing val -> Maybe ShowS
         tryMatchPrimitive (AppEE (VarEE unary_operator) e1) = lookup unary_operator
             [ ("__ABS__", myPrecIs 11 (strstr "|" . showsPrec 0 e1 . strstr "|"))
@@ -76,7 +76,7 @@ evalBaseRing = go where
     go env (MultEE e1 e2) = go env e1 * go env e2
     go env (NatEE n) = fromInteger n
     go env (LitEE v) = v
-    go env e = fromJust (tryMatchPrimitive env e `maybeAlt` callWith e [] env)
+    go env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> BaseRing val -> Maybe val
     tryMatchPrimitive env (VarEE "0") = return 0
     tryMatchPrimitive env (AppEE (VarEE "__ABS__") e1) = return (abs (go env e1))

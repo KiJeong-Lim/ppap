@@ -4,6 +4,19 @@ import qualified Data.Function as Function
 import qualified Data.Maybe as Maybe
 import GHC.Stack
 
+infix 9 />
+
+class TransErr a where
+    tryWith :: a -> a -> a
+
+instance TransErr (Maybe a) where
+    tryWith (Nothing) = id
+    tryWith x = const x
+
+instance TransErr (Either e a) where
+    tryWith (Left _) = id
+    tryWith x = const x
+
 recNat :: Int -> a -> (Int -> a -> a) -> a
 recNat n init step = foldr step init (reverse [0 .. n - 1])
 
@@ -13,6 +26,8 @@ recNat n init step = foldr step init (reverse [0 .. n - 1])
 fromJust :: HasCallStack => Maybe a -> a
 fromJust = Maybe.fromJust
 
-maybeAlt :: Maybe a -> Maybe a -> Maybe a
-maybeAlt (Nothing) y = y
-maybeAlt x _ = x
+fromEither :: HasCallStack => Either String a -> a
+fromEither = either error id
+
+(/>) :: TransErr a => a -> a -> a
+x /> y = tryWith x y
