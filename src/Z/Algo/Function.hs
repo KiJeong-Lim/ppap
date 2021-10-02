@@ -19,6 +19,9 @@ instance TransErr (Either e a) where
     tryWith (Left _) = id
     tryWith x = const x
 
+instance TransErr [a] where
+    tryWith xs ys = if null xs then ys else xs
+
 recNat :: Int -> a -> (Int -> a -> a) -> a
 recNat n init step = foldr step init (reverse [0 .. n - 1])
 
