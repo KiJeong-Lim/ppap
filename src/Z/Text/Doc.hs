@@ -13,6 +13,9 @@ class Outputable a where
 instance OStreamObject Doc_ where
     hput h = hput h . show
 
+instance Outputable Char where
+    pretty _ ch = pstr ("\'" ++ dispatchChar ch ++ "\'")
+
 isEmptyDoc :: Doc -> Bool
 isEmptyDoc (DocNull) = True
 isEmptyDoc (DocText str) = null str
@@ -20,9 +23,6 @@ isEmptyDoc (DocHCat doc1 doc2) = isEmptyDoc doc1 && isEmptyDoc doc2
 isEmptyDoc (DocVCat doc1 doc2) = False
 isEmptyDoc (DocBeam ch) = False
 isEmptyDoc (DocNemo strs) = null (alliance strs)
-
-hcat :: [Doc] -> Doc
-hcat = foldr DocHCat DocNull
 
 vcat :: [Doc] -> Doc
 vcat = foldr DocVCat DocNull
@@ -71,4 +71,4 @@ pquote :: String -> Doc
 pquote str = pstr ("\"" ++ (str >>= dispatchChar) ++ "\"")
 
 plist0 :: [Doc] -> Doc
-plist0 docs = (if null docs then DocNull else ptab) +> pblock (plist' docs)
+plist0 docs = if null docs then pblock (plist' docs) else ptab +> pblock (plist' docs)

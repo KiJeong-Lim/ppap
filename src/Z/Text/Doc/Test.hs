@@ -93,7 +93,7 @@ docshunt 8 = vcat
     ]
 docshunt 9 = vcat
     [ pstr "main :: IO ()"
-    , pstr "main = " +> pparen True "do\n\t" "" (pblock (ppunc' pnl [pstr "putStrLn \"Hello, world!\"", pstr "return ()"]))
+    , pstr "main = " +> pparen True "do\n\t" "" (pblock (ppunc' pnl [pstr "putStrLn " +> pquote "Hello, world!", pstr "return ()"]))
     , pstr ""
     , pstr "x :: Int"
     , pstr "x = 3"

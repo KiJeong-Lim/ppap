@@ -166,4 +166,4 @@ renderViewer = unVF . normalizeV where
 dispatchChar :: Char -> String
 dispatchChar '\"' = "\\\""
 dispatchChar '\'' = "\\\'"
-dispatchChar ch = show ch
+dispatchChar ch = [ch]
