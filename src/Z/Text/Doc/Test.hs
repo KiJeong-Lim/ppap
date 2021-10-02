@@ -93,7 +93,8 @@ docshunt 8 = vcat
     ]
 docshunt 9 = vcat
     [ pstr "main :: IO ()"
-    , pstr "main = " +> (pstr "do" +> pnl +> ptab +> pblock (pparen True "" "\n" (ppunc' pnl [pstr "putStrLn \"Hello, world!\"", pstr "return ()"])))
+    , pstr "main = " +> pparen True "do\n\t" "" (pblock (ppunc' pnl [pstr "putStrLn \"Hello, world!\"", pstr "return ()"]))
+    , pstr ""
     , pstr "x :: Int"
     , pstr "x = 3"
     ]
@@ -140,7 +141,7 @@ testDoc = go 9 where
         , "main = do\n"
         , "    putStrLn \"Hello, world!\"\n"
         , "    return ()\n"
-        , "    \n"
+        , "\n"
         , "x :: Int\n"
         , "x = 3\n"
         ]
