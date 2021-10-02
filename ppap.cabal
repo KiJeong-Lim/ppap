@@ -86,7 +86,7 @@ executable ppap
     Z.Algo.Function
     Z.Algo.Sorting
     Z.Math.Classes
-    Z.Math.Temp
+    Z.Math.V1
     Z.System.File
     Z.System.Path
     Z.System.Shelly

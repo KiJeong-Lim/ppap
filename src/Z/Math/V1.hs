@@ -1,4 +1,4 @@
-module Z.Math.Temp where
+module Z.Math.V1 where
 
 import Data.Ratio
 import Y.Base

@@ -7,15 +7,15 @@ type VarID = String
 type ReductionOption = String
 
 class Functor expr => IsExpr expr where
-    evalExpr :: Fractional val => [(VarID, ([VarID], expr val))] -> expr val -> val
-    reduceExpr :: (Eq val, Num val) => ReductionOption -> expr val -> expr val
-    embedding :: Num val => val -> expr val
-    var :: VarID -> expr val
+    evalExpr :: Fractional a => [(VarID, ([VarID], expr a))] -> expr a -> a
+    reduceExpr :: (Eq a, Num a) => ReductionOption -> expr a -> expr a
+    embedding :: Num a => a -> expr a
+    var :: VarID -> expr a
 
 _INF_ :: Fractional a => a
 _INF_ = fromRational infinity
 
-bindVarsToVals :: (Num val, IsExpr expr) => [(VarID, val)] -> [(VarID, ([VarID], expr val))]
+bindVarsToVals :: (Num a, IsExpr expr) => [(VarID, a)] -> [(VarID, ([VarID], expr a))]
 bindVarsToVals = foldr go [] where
-    go :: (Num val, IsExpr expr) => (VarID, val) -> [(VarID, ([VarID], expr val))] -> [(VarID, ([VarID], expr val))]
+    go :: (Num a, IsExpr expr) => (VarID, a) -> [(VarID, ([VarID], expr a))] -> [(VarID, ([VarID], expr a))]
     go (x, v) env = (x, ([], embedding v)) : env
