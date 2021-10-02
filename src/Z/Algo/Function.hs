@@ -6,6 +6,8 @@ import GHC.Stack
 
 infix 9 />
 
+type ErrMsgM = Either String
+
 class TransErr a where
     tryWith :: a -> a -> a
 
@@ -26,8 +28,11 @@ recNat n init step = foldr step init (reverse [0 .. n - 1])
 fromJust :: HasCallStack => Maybe a -> a
 fromJust = Maybe.fromJust
 
-fromEither :: HasCallStack => Either String a -> a
-fromEither = either error id
+fromErrMsgM :: HasCallStack => ErrMsgM a -> a
+fromErrMsgM = either error id
+
+addErrMsg :: String -> Maybe a -> ErrMsgM a
+addErrMsg str = Maybe.maybe (Left str) Right
 
 (/>) :: TransErr a => a -> a -> a
 x /> y = tryWith x y

@@ -72,20 +72,20 @@ instance IsExpr ElemExpr where
     var = VarEE
     getExprRep = showsPrec 0
 
-evalElemExprWith :: Num val => (EvalEnv val -> ElemExpr val -> val) -> EvalEnv val -> ElemExpr val -> val
+evalElemExprWith :: Num val => (EvalEnv val -> ElemExpr val -> ErrMsgM val) -> EvalEnv val -> ElemExpr val -> val
 evalElemExprWith = go where
-    go :: Num val => (EvalEnv val -> ElemExpr val -> val) -> EvalEnv val -> ElemExpr val -> val
+    go :: Num val => (EvalEnv val -> ElemExpr val -> ErrMsgM val) -> EvalEnv val -> ElemExpr val -> val
     go wild_card env (PluEE e1 e2) = go wild_card env e1 + go wild_card env e2
     go wild_card env (NegEE e1) = - go wild_card env e1
     go wild_card env (MulEE e1 e2) = go wild_card env e1 * go wild_card env e2
     go wild_card env (PosEE n) = fromInteger n
     go wild_card env (LitEE v) = v
-    go wild_card env e = wild_card env e
+    go wild_card env e = fromErrMsgM (wild_card env e)
 
 evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
 evalElemExpr = evalElemExprWith myWildCard where
-    myWildCard :: Fractional val => EvalEnv val -> ElemExpr val -> val
-    myWildCard env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
+    myWildCard :: Fractional val => EvalEnv val -> ElemExpr val -> ErrMsgM val
+    myWildCard env e = addErrMsg "evalElemExpr" (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> ElemExpr val -> Maybe val
     tryMatchPrimitive env (VarEE "0") = return 0
     tryMatchPrimitive env (VarEE "0+") = return (1 / _INF_)
