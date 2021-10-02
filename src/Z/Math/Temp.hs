@@ -43,6 +43,7 @@ instance Functor BaseRing where
     fmap f (MultEE e1 e2) = MultEE (fmap f e1) (fmap f e2)
     fmap f (VarEE var) = VarEE var
     fmap f (AppEE e1 e2) = AppEE (fmap f e1) (fmap f e2)
+    fmap f (NatEE n) = NatEE n
     fmap f (LitEE val) = LitEE (f val)
 
 instance Num val => Num (BaseRing val) where
