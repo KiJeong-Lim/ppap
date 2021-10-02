@@ -82,3 +82,8 @@ callWithStrictArg f x = x `seq` f x
 
 one :: a -> [a]
 one = callWithStrictArg pure
+
+modifyWithout :: Eq a => a -> ([a] -> [a]) -> [a] -> [a]
+modifyWithout ch delta = connect ch . map delta . splitBy ch where
+    connect :: a -> [[a]] -> [a]
+    connect ch = tail . foldr (\str -> \acc -> [ch] ++ str ++ acc) []
