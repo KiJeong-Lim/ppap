@@ -68,7 +68,7 @@ instance Fractional val => Fractional (ElemExpr val) where
 instance IsExpr ElemExpr where
     evalExpr = evalElemExpr
     reduceExpr = reduceElemExpr
-    embedding = LitEE
+    embed = LitEE
     var = VarEE
 
 evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
@@ -89,7 +89,7 @@ evalElemExpr = go theWildCard where
     tryMatchPrimitive env (AppEE (AppEE (VarEE "_DIV_") e1) e2) = return (evalElemExpr env e1 / evalElemExpr env e2)
     tryMatchPrimitive env _ = Nothing
     getDefn :: VarID -> EvalEnv val -> Maybe ([ExprCall], ElemExpr val)
-    getDefn f_lookuped env = safehd [ (xs, body) | (CALL f xs, body) <- env, f == f_lookuped ]
+    getDefn f_lookuped env = safehd [ (xs, body) | (SApp f xs, body) <- env, f == f_lookuped ]
     callWith :: Fractional val => ElemExpr val -> [ElemExpr val] -> EvalEnv val -> Maybe val
     callWith (AppEE e1 e2) es env = callWith e1 (e2 : es) env
     callWith (VarEE x) es env = do
