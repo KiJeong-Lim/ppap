@@ -11,7 +11,7 @@ data ElemExpr val
     = PluEE (ElemExpr val) (ElemExpr val)
     | NegEE (ElemExpr val)
     | MulEE (ElemExpr val) (ElemExpr val)
-    | NatEE (Integer)
+    | PosEE (Integer)
     | LitEE (val)
     | VarEE (VarID)
     | AppEE (ElemExpr val) (ElemExpr val)
@@ -24,15 +24,15 @@ instance Show val => Show (ElemExpr val) where
         dispatch :: Show val => ElemExpr val -> ShowS
         dispatch (PluEE e1 (NegEE e2)) = myPrecIs 4 (showsPrec 4 e1 . strstr " - " . showsPrec 5 e2)
         dispatch (PluEE e1 e2) = myPrecIs 4 (showsPrec 4 e1 . strstr " + " . showsPrec 5 e2)
-        dispatch (NegEE e1) = myPrecIs 6 (strstr "- " . showsPrec 6 e1)
+        dispatch (NegEE e1) = myPrecIs 6 (strstr "- " . showsPrec 7 e1)
         dispatch (MulEE e1 e2) = myPrecIs 5 (showsPrec 5 e1 . strstr " * " . showsPrec 6 e2)
-        dispatch (NatEE n) = myPrecIs 11 (pprint 0 n)
+        dispatch (PosEE n) = myPrecIs 11 (pprint 0 n)
         dispatch (LitEE val) = myPrecIs 11 (showsPrec 11 val)
         dispatch (VarEE var) = myPrecIs 11 (strstr var)
         dispatch (AppEE e1 e2) = fromJust (tryMatchPrimitive (AppEE e1 e2) /> return (myPrecIs 10 (showsPrec 10 e1 . strstr " " . showsPrec 11 e2)))
         tryMatchPrimitive :: Show val => ElemExpr val -> Maybe ShowS
         tryMatchPrimitive (AppEE (VarEE unary_operator) e1) = lookup unary_operator
-            [ ("_ABS_", myPrecIs 11 (strstr "|" . showsPrec 0 e1 . strstr "|"))
+            [ ("_ABS_", myPrecIs 11 (strstr "| " . showsPrec 0 e1 . strstr " |"))
             ]
         tryMatchPrimitive (AppEE (AppEE (VarEE binary_operator) e1) e2) = lookup binary_operator
             [ ("_DIV_", myPrecIs 5 (showsPrec 5 e1 . strstr " / " . showsPrec 6 e2))
@@ -43,7 +43,7 @@ instance Functor ElemExpr where
     fmap f (PluEE e1 e2) = PluEE (fmap f e1) (fmap f e2)
     fmap f (NegEE e1) = NegEE (fmap f e1)
     fmap f (MulEE e1 e2) = MulEE (fmap f e1) (fmap f e2)
-    fmap f (NatEE n) = NatEE n
+    fmap f (PosEE n) = PosEE n
     fmap f (LitEE val) = LitEE (f val)
     fmap f (VarEE var) = VarEE var
     fmap f (AppEE e1 e2) = AppEE (fmap f e1) (fmap f e2)
@@ -56,13 +56,13 @@ instance Num val => Num (ElemExpr val) where
     abs e1 = AppEE (VarEE "_ABS_") e1
     signum e1 = AppEE (AppEE (VarEE "_DIV_") e1) (AppEE (VarEE "_ABS_") e1)
     fromInteger n = case n `compare` 0 of
-        LT -> NegEE (NatEE (abs n))
+        LT -> NegEE (PosEE (abs n))
         EQ -> VarEE "0"
-        GT -> NatEE n
+        GT -> PosEE n
 
 instance Fractional val => Fractional (ElemExpr val) where
     fromRational r = AppEE (AppEE (VarEE "_DIV_") (fromInteger (numerator r))) (fromInteger (denominator r))
-    recip e1 = AppEE (AppEE (VarEE "_DIV_") (NatEE 1)) e1
+    recip e1 = AppEE (AppEE (VarEE "_DIV_") (PosEE 1)) e1
     e1 / e2 = AppEE (AppEE (VarEE "_DIV_") e1) e2
 
 instance IsExpr ElemExpr where
@@ -78,7 +78,7 @@ evalElemExprWith = go where
     go wild_card env (PluEE e1 e2) = go wild_card env e1 + go wild_card env e2
     go wild_card env (NegEE e1) = - go wild_card env e1
     go wild_card env (MulEE e1 e2) = go wild_card env e1 * go wild_card env e2
-    go wild_card env (NatEE n) = fromInteger n
+    go wild_card env (PosEE n) = fromInteger n
     go wild_card env (LitEE v) = v
     go wild_card env e = wild_card env e
 
