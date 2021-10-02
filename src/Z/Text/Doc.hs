@@ -33,8 +33,8 @@ beam = DocBeam
 pstr :: String -> Doc
 pstr str = if null str then DocNull else DocText str
 
-pprint :: Show a => a -> Doc
-pprint = pstr . show
+pp :: Show a => a -> Doc
+pp = pstr . show
 
 (+>) :: Doc -> Doc -> Doc
 DocNull +> doc = doc

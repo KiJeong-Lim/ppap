@@ -167,14 +167,14 @@ makeMessageForParsingError path src lstr = show theMsgDoc where
         ((r, c), _) : _ -> c
     theMsgDoc :: Doc
     theMsgDoc = vcat
-        [ pstr path +> pstr ":" +> pprint stuckRow +> pstr ":" +> pprint stuckCol +> pstr ": error:"
+        [ pstr path +> pstr ":" +> pp stuckRow +> pstr ":" +> pp stuckCol +> pstr ": error:"
         , pstr "parse error " +> (if null lstr then pstr "at EOF" else pstr "on input `" +> pstr (one (snd (head lstr))) +> pstr "'")
         , pcat
             [ vcat
                 [ pstr ""
                 , pcat
                     [ pstr " "
-                    , pprint stuckRow
+                    , pp stuckRow
                     , pstr " "
                     ]
                 , pstr ""
@@ -257,7 +257,7 @@ takeStringMatchedWithRegexFromStreamByMaximalMunchRule = go where
         | otherwise = mkReMult (differentiate ch re1) re2
     differentiate ch (ReStar re1)
         = mkReMult (differentiate ch re1) (mkReStar re1)
-    isNotEmpty :: DoesMyCharSetAcceptSomeChar -- Fix me!
+    isNotEmpty :: DoesMyCharSetAcceptSomeChar
     isNotEmpty _ = True
     mayPlvsVltra :: IsItPossibleThatMyRegexAcceptNonemptyString
     mayPlvsVltra (ReCSet chs) = isNotEmpty chs
