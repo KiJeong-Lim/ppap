@@ -38,14 +38,14 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
                 , unionRE (at (q_i, q_j)) (concatRE (at (q_i, q_k)) (concatRE (starRE (at (q_k, q_k))) (at (q_k, q_j))))
                 )
         epsilonRE :: MyExpr
-        epsilonRE = LitEE 1
+        epsilonRE = 1
         nullRE :: MyExpr
-        nullRE = LitEE 0
+        nullRE = 0
         unionRE :: MyExpr -> MyExpr -> MyExpr
-        unionRE e1 e2 = PlusEE e1 e2
+        unionRE e1 e2 = e1 + e2
         concatRE :: MyExpr -> MyExpr -> MyExpr
-        concatRE e1 e2 = MultEE e1 e2
+        concatRE e1 e2 = e1 * e2
         starRE :: MyExpr -> MyExpr
-        starRE e1 = DivEE (LitEE 1) (MinusEE (LitEE 1) e1)
+        starRE e1 = 1 / (1 - e1)
     simplExpr :: MyExpr -> MyExpr
-    simplExpr = id
+    simplExpr = reduceBaseRing "high"

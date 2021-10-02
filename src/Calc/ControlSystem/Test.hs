@@ -30,7 +30,7 @@ test1OfControlSystemAux _G1 _G2 _G3 _H1 _H2
         expected :: Double
         expected = (_G1 * _G2 * _G3) / (1 - _G1 * _G2 * _H1 + _G2 * _G3 * _H2 + _G1 * _G2 * _G3)
         actual :: Double
-        actual = evalElemExpr (Map.fromList [("G1", _G1), ("G2", _G2), ("G3", _G3), ("H1", _H1), ("H2", _H2)]) (makePathTable "R" testcase1 Map.! "C")
+        actual = evalBaseRing (Map.fromList [("G1", _G1), ("G2", _G2), ("G3", _G3), ("H1", _H1), ("H2", _H2)]) (makePathTable "R" testcase1 Map.! "C")
 
 test1OfControlSystem :: IO ()
 test1OfControlSystem = test1OfControlSystemAux 0.1 0.2 0.3 0.4 0.5
