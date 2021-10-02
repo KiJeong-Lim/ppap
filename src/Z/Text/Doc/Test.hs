@@ -91,9 +91,15 @@ docshunt 8 = vcat
         ]
     , beam '^'
     ]
+docshunt 9 = vcat
+    [ pstr "main :: IO ()"
+    , pstr "main = " +> (pstr "do" +> pnl +> ptab +> pblock (pparen True "" "\n" (ppunc' pnl [pstr "putStrLn \"Hello, world!\"", pstr "return ()"])))
+    , pstr "x :: Int"
+    , pstr "x = 3"
+    ]
 
 testDoc :: IO ()
-testDoc = go 8 where
+testDoc = go 9 where
     str :: Int -> String
     str 1 = concat
         [ "--------------------------\n"
@@ -128,6 +134,15 @@ testDoc = go 8 where
         , "|     }\n"
         , "| ]\n"
         , "^^^^^^^^^^^^^^^^^^^^^^^^^^\n"
+        ]
+    str 9 = concat
+        [ "main :: IO ()\n"
+        , "main = do\n"
+        , "    putStrLn \"Hello, world!\"\n"
+        , "    return ()\n"
+        , "    \n"
+        , "x :: Int\n"
+        , "x = 3\n"
         ]
     go :: Int -> IO ()
     go ea = do
