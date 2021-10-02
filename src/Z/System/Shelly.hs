@@ -5,6 +5,7 @@ import Control.Monad
 import System.Console.Pretty
 import System.IO
 import Z.Text.PM
+import Z.System.Util
 import Z.Utils
 
 shelly :: String -> IO String
@@ -89,11 +90,10 @@ shelly = go where
     go msg = do
         can_prettify <- supportsPretty
         let msg' = if can_prettify then elaborate msg else msg
+        cout << msg' << Flush
         if not (null msg) && last msg == ' '
-            then do
-                putStr msg'
-                hFlush stdout
-                getLine
+            then getLine
             else do
-                putStrLn msg'
+                cout << endl
+                sleep 100
                 return ""

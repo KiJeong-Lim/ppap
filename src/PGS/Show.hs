@@ -133,9 +133,7 @@ genParser blocks = go where
         [ patNsIdx idx
         , strstr "@(PTBranch "
         , guardIdx idx
-        , strstr " "
-        , strstr "_"
-        , strstr ")"
+        , strstr " _)"
         ]
     makeTSPatn :: Map.Map TSym String -> Int -> TSym -> String -> String
     makeTSPatn mapTSymToPatn = loop where
@@ -162,7 +160,7 @@ genParser blocks = go where
             Nothing -> error "`makeTSPatn\'"
             Just patn -> strstr "PTLeaf (" . either (error "`makeTSPatn\'") id (execPC (makePatn idx) patn) . strstr ")"
     guardIdx :: Int -> String -> String
-    guardIdx idx = strstr "guard" . showsPrec 0 idx
+    guardIdx idx = strstr "guard" . shows idx
     makeGuard :: Map.Map NSym Int -> String -> [String] -> [(Int, Sym)] -> String -> String
     makeGuard id_env body_name params_name zipped_sym = if null [ (idx, ns) | (idx, NS ns) <- zipped_sym ] then strstr "otherwise" else guard where
         guard :: String -> String

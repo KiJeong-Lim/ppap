@@ -25,6 +25,7 @@ executable ppap
     , ieee754 >= 0.8
     , vector >= 0.12
     , math-functions >= 0.3
+    , extra >= 1.7
   main-is: Main.hs
   ghc-options:
     -O3
@@ -91,6 +92,7 @@ executable ppap
     Z.System.File
     Z.System.Path
     Z.System.Shelly
+    Z.System.Util
     Z.Text.Doc.Internal
     Z.Text.Doc.Test
     Z.Text.PC.Base
