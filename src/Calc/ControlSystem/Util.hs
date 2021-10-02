@@ -6,6 +6,6 @@ import Z.Math.Temp
 
 type MyNode = String
 
-type MyExpr = BaseRing Double
+type MyExpr = ElemExpr Double
 
 type ControlSystem = Map.Map (MyNode, MyNode) MyExpr
