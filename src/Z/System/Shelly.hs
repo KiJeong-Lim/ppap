@@ -67,7 +67,7 @@ shelly = go where
         lhs <- identifierPM
         skipWhite
         bind <- readDirectedBind <|> readReversedBind
-        let my_colorize = if bind == "=<<" then color Yellow else color Green
+        let my_colorize = modifyWithout '.' (if bind == "=<<" then color Yellow else color Green)
         stmt <- mconcat
             [ do
                 skipWhite
