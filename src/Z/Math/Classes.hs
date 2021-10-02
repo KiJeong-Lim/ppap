@@ -1,6 +1,6 @@
 module Z.Math.Classes where
 
-import GHC.Real
+import Data.Ratio
 
 type VarID = String
 
@@ -21,7 +21,7 @@ class Functor expr => IsExpr expr where
     getExprRep :: Show a => expr a -> ShowS
 
 _INF_ :: Fractional a => a
-_INF_ = fromRational infinity
+_INF_ = fromRational (10 ^ 100)
 
 bindVarsToVals :: (Num a, IsExpr expr) => [(VarID, a)] -> [(ExprCall, expr a)]
 bindVarsToVals = foldr go [] where

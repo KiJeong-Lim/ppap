@@ -88,20 +88,20 @@ evalElemExpr = evalElemExprWith myWildCard where
     myWildCard env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> ElemExpr val -> Maybe val
     tryMatchPrimitive env (VarEE "0") = return 0
-    tryMatchPrimitive env (VarEE "_INF_") = return _INF_
+    tryMatchPrimitive env (VarEE "0+") = return (1 / fromRational _INF_)
+    tryMatchPrimitive env (VarEE "0-") = return (- 1 / fromRational _INF_)
+    tryMatchPrimitive env (VarEE "_INF_") = return (fromRational _INF_)
     tryMatchPrimitive env (AppEE (VarEE "_ABS_") e1) = return (abs (evalElemExpr env e1))
     tryMatchPrimitive env (AppEE (AppEE (VarEE "_DIV_") e1) e2) = return (evalElemExpr env e1 / evalElemExpr env e2)
     tryMatchPrimitive env _ = Nothing
-    getDefn :: VarID -> EvalEnv val -> Maybe ([ExprCall], ElemExpr val)
-    getDefn f_lookedup env = safehd [ (xs, body) | (SApp f xs, body) <- env, f == f_lookedup ]
+    getDefn :: VarID -> Int -> EvalEnv val -> Maybe ([ExprCall], ElemExpr val)
+    getDefn f_lookedup xs_len env = safehd [ (xs, body) | (SApp f xs, body) <- env, f == f_lookedup, length xs == xs_len ]
     callWith :: Fractional val => ElemExpr val -> [ElemExpr val] -> EvalEnv val -> Maybe val
     callWith (AppEE e1 e2) es env = callWith e1 (e2 : es) env
     callWith (VarEE x) es env = do
-        (params, body) <- getDefn x env
+        (params, body) <- getDefn x (length es) env
         let new_env = zip params es ++ env
-        if length params == length es
-            then return (evalElemExpr new_env body)
-            else fail "In `evalElemExpr\': parameters.length /= arguments.length"
+        return (evalElemExpr new_env body)
     callWith _ es env = Nothing
 
 reduceElemExpr :: ReductionOption -> ElemExpr val -> ElemExpr val

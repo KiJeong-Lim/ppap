@@ -22,6 +22,7 @@ executable ppap
     , QuickCheck >= 2.13
     , checkers >= 0.5
     , pathtype >= 0.8
+    , ieee754 >= 0.8
     , vector >= 0.12
     , math-functions >= 0.3
   main-is: Main.hs
