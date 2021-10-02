@@ -8,9 +8,9 @@ import Z.Math.Classes
 type EvalEnv val = [(VarID, ([VarID], ElemExpr val))]
 
 data ElemExpr val
-    = PlusEE (ElemExpr val) (ElemExpr val)
-    | MinusEE (ElemExpr val) (ElemExpr val)
-    | MultEE (ElemExpr val) (ElemExpr val)
+    = PluEE (ElemExpr val) (ElemExpr val)
+    | NegEE (ElemExpr val)
+    | MulEE (ElemExpr val) (ElemExpr val)
     | NatEE (Integer)
     | LitEE (val)
     | VarEE (VarID)
@@ -22,10 +22,11 @@ instance Show val => Show (ElemExpr val) where
         myPrecIs :: Int -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: Show val => ElemExpr val -> ShowS
-        dispatch (PlusEE e1 e2) = myPrecIs 4 (showsPrec 4 e1 . strstr " + " . showsPrec 5 e2)
-        dispatch (MinusEE e1 e2) = myPrecIs 4 (showsPrec 4 e1 . strstr " - " . showsPrec 5 e2)
-        dispatch (MultEE e1 e2) = myPrecIs 5 (showsPrec 5 e1 . strstr " * " . showsPrec 6 e2)
-        dispatch (NatEE n) = myPrecIs 11 (showsPrec 11 n)
+        dispatch (PluEE e1 (NegEE e2)) = myPrecIs 4 (showsPrec 4 e1 . strstr " - " . showsPrec 5 e2)
+        dispatch (PluEE e1 e2) = myPrecIs 4 (showsPrec 4 e1 . strstr " + " . showsPrec 5 e2)
+        dispatch (NegEE e1) = myPrecIs 6 (strstr "- " . showsPrec 6 e1)
+        dispatch (MulEE e1 e2) = myPrecIs 5 (showsPrec 5 e1 . strstr " * " . showsPrec 6 e2)
+        dispatch (NatEE n) = myPrecIs 11 (pprint 0 n)
         dispatch (LitEE val) = myPrecIs 11 (showsPrec 11 val)
         dispatch (VarEE var) = myPrecIs 11 (strstr var)
         dispatch (AppEE e1 e2) = fromJust (tryMatchPrimitive (AppEE e1 e2) /> return (myPrecIs 10 (showsPrec 10 e1 . strstr " " . showsPrec 11 e2)))
@@ -39,23 +40,23 @@ instance Show val => Show (ElemExpr val) where
         tryMatchPrimitive _ = Nothing
 
 instance Functor ElemExpr where
-    fmap f (PlusEE e1 e2) = PlusEE (fmap f e1) (fmap f e2)
-    fmap f (MinusEE e1 e2) = MinusEE (fmap f e1) (fmap f e2)
-    fmap f (MultEE e1 e2) = MultEE (fmap f e1) (fmap f e2)
+    fmap f (PluEE e1 e2) = PluEE (fmap f e1) (fmap f e2)
+    fmap f (NegEE e1) = NegEE (fmap f e1)
+    fmap f (MulEE e1 e2) = MulEE (fmap f e1) (fmap f e2)
     fmap f (NatEE n) = NatEE n
     fmap f (LitEE val) = LitEE (f val)
     fmap f (VarEE var) = VarEE var
     fmap f (AppEE e1 e2) = AppEE (fmap f e1) (fmap f e2)
 
 instance Num val => Num (ElemExpr val) where
-    e1 + e2 = PlusEE e1 e2
-    e1 - e2 = MinusEE e1 e2 
-    e1 * e2 = MultEE e1 e2
-    negate e1 = MinusEE (VarEE "0") e1
+    e1 + e2 = PluEE e1 e2
+    e1 - e2 = PluEE e1 (NegEE e2)
+    e1 * e2 = MulEE e1 e2
+    negate e1 = NegEE e1
     abs e1 = AppEE (VarEE "_ABS_") e1
     signum e1 = AppEE (AppEE (VarEE "_DIV_") e1) (AppEE (VarEE "_ABS_") e1)
     fromInteger n = case n `compare` 0 of
-        LT -> MinusEE (VarEE "0") (NatEE (abs n))
+        LT -> NegEE (NatEE (abs n))
         EQ -> VarEE "0"
         GT -> NatEE n
 
@@ -73,9 +74,9 @@ instance IsExpr ElemExpr where
 evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
 evalElemExpr = go where
     go :: Fractional val => EvalEnv val -> ElemExpr val -> val
-    go env (PlusEE e1 e2) = go env e1 + go env e2
-    go env (MinusEE e1 e2) = go env e1 - go env e2
-    go env (MultEE e1 e2) = go env e1 * go env e2
+    go env (PluEE e1 e2) = go env e1 + go env e2
+    go env (NegEE e1) = - go env e1
+    go env (MulEE e1 e2) = go env e1 * go env e2
     go env (NatEE n) = fromInteger n
     go env (LitEE v) = v
     go env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
