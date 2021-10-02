@@ -5,7 +5,7 @@ import Y.Base
 import Z.Algo.Function
 import Z.Math.Classes
 
-type EvalEnv val = [(VarID, ([VarID], ElemExpr val))]
+type EvalEnv val = [(ExprCall, ElemExpr val)]
 
 data ElemExpr val
     = PluEE (ElemExpr val) (ElemExpr val)
@@ -72,28 +72,33 @@ instance IsExpr ElemExpr where
     var = VarEE
 
 evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
-evalElemExpr = go where
-    go :: Fractional val => EvalEnv val -> ElemExpr val -> val
-    go env (PluEE e1 e2) = go env e1 + go env e2
-    go env (NegEE e1) = - go env e1
-    go env (MulEE e1 e2) = go env e1 * go env e2
-    go env (NatEE n) = fromInteger n
-    go env (LitEE v) = v
-    go env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
+evalElemExpr = go theWildCard where
+    go :: Num val => (EvalEnv val -> ElemExpr val -> val) -> EvalEnv val -> ElemExpr val -> val
+    go wc env (PluEE e1 e2) = go wc env e1 + go wc env e2
+    go wc env (NegEE e1) = - go wc env e1
+    go wc env (MulEE e1 e2) = go wc env e1 * go wc env e2
+    go wc env (NatEE n) = fromInteger n
+    go wc env (LitEE v) = v
+    go wc env e = wc env e
+    theWildCard :: Fractional val => EvalEnv val -> ElemExpr val -> val
+    theWildCard env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> ElemExpr val -> Maybe val
     tryMatchPrimitive env (VarEE "0") = return 0
     tryMatchPrimitive env (VarEE "_INF_") = return _INF_
-    tryMatchPrimitive env (AppEE (VarEE "_ABS_") e1) = return (abs (go env e1))
-    tryMatchPrimitive env (AppEE (AppEE (VarEE "_DIV_") e1) e2) = return (go env e1 / go env e2)
+    tryMatchPrimitive env (AppEE (VarEE "_ABS_") e1) = return (abs (evalElemExpr env e1))
+    tryMatchPrimitive env (AppEE (AppEE (VarEE "_DIV_") e1) e2) = return (evalElemExpr env e1 / evalElemExpr env e2)
     tryMatchPrimitive env _ = Nothing
+    getDefn :: VarID -> EvalEnv val -> Maybe ([ExprCall], ElemExpr val)
+    getDefn f_lookuped env = safehd [ (xs, body) | (CALL f xs, body) <- env, f == f_lookuped ]
     callWith :: Fractional val => ElemExpr val -> [ElemExpr val] -> EvalEnv val -> Maybe val
     callWith (AppEE e1 e2) es env = callWith e1 (e2 : es) env
     callWith (VarEE x) es env = do
-        (params, body) <- lookup x env
-        let new_env = [ (param, ([], LitEE (go new_env e))) | (param, e) <- zip params es ] ++ env
+        (params, body) <- getDefn x env
+        let new_env = zip params es ++ env
         if length params == length es
-            then return (go new_env body)
-            else fail "In `evalElemExpr': parameters.length /= arguments.length"
+            then return (evalElemExpr new_env body)
+            else fail "In `evalElemExpr\': parameters.length /= arguments.length"
+    callWith _ es env = Nothing
 
 reduceElemExpr :: ReductionOption -> ElemExpr val -> ElemExpr val
 reduceElemExpr _ = id

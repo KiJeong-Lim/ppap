@@ -31,3 +31,6 @@ fromEither = either error id
 
 (/>) :: TransErr a => a -> a -> a
 x /> y = tryWith x y
+
+safehd :: [a] -> Maybe a
+safehd = foldr (const . Just) Nothing . take 1
