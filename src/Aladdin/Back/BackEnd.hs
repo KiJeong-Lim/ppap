@@ -27,6 +27,9 @@ import Z.Utils
 
 type Debugging = Bool
 
+isYES :: String -> Bool
+isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
+
 eraseTrivialBinding :: LVarSubst -> LVarSubst
 eraseTrivialBinding = VarBinding . loop . unVarBinding where
     hasName :: LogicVar -> Bool
@@ -43,13 +46,16 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
         | not (hasName v1) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
         | otherwise = id
     tryMatchLVar :: TermNode -> Maybe LogicVar
-    tryMatchLVar t = case viewNestedNAbs (rewrite NF t) of
-        (n, t') -> case unfoldlNApp t' of
-            (LVar v, ts) -> if ts == map mkNIdx [1 .. n] then Just v else Nothing
-            _ -> Nothing
+    tryMatchLVar t
+        = case viewNestedNAbs (rewrite NF t) of
+            (n, t') -> case unfoldlNApp t' of
+                (LVar v, ts) -> if ts == map mkNIdx [1 .. n] then Just v else Nothing
+                _ -> Nothing
 
 runREPL :: Program TermNode -> UniqueGenT IO ()
 runREPL program = lift (newIORef False) >>= go where
+    myTabs :: String
+    myTabs = ""
     promptify :: String -> IO String
     promptify str = shelly (moduleName program ++ "> " ++ str)
     mkRuntimeEnv :: IORef Debugging -> TermNode -> IO RuntimeEnv
@@ -79,7 +85,7 @@ runREPL program = lift (newIORef False) >>= go where
             | isClear = do
                 promptify "The answer substitution is:"
                 sequence
-                    [ promptify ("" ++ v ++ " := " ++ showsPrec 0 t ".")
+                    [ promptify (myTabs ++ v ++ " := " ++ showsPrec 0 t ".")
                     | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
@@ -98,17 +104,17 @@ runREPL program = lift (newIORef False) >>= go where
                     str <- promptify "Find more solutions? [Y/n] "
                     if List.null str
                         then askToRunMore
-                        else return (str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ])
+                        else return (isYES str)
                 printDisagreements :: IO ()
                 printDisagreements = do
                     promptify "The remaining disagreements are:"
                     sequence
-                        [ promptify ("  " ++ showsPrec 0 lhs (" =?= " ++ showsPrec 0 rhs "."))
+                        [ promptify (myTabs ++ showsPrec 0 lhs (" =?= " ++ showsPrec 0 rhs "."))
                         | lhs :=?=: rhs <- _LeftConstraints final_ctx
                         ]
                     promptify "The binding is:"
                     sequence
-                        [ promptify ("  " ++ showsPrec 0 (mkLVar v) (" := " ++ showsPrec 0 t "."))
+                        [ promptify (myTabs ++ showsPrec 0 (mkLVar v) (" := " ++ showsPrec 0 t "."))
                         | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
                         ]
                     return ()
