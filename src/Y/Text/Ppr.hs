@@ -16,6 +16,7 @@ data Doc
     deriving ()
 
 instance Semigroup Doc where
+    doc1 <> DE = doc1
     DE <> doc1 = doc1
     DH doc1 doc2 <> doc3 = happend doc1 (doc2 <> doc3)
     doc1 <> doc2 = happend doc1 doc2
@@ -113,9 +114,7 @@ red :: Doc -> Doc
 red = DC Red
 
 indent :: Int -> [Doc] -> Doc
-indent n docs1
-    | null docs1 = empty
-    | otherwise = white n <> vconcat docs1
+indent n docs1 = if null docs1 then empty else white n <> vconcat docs1
 
 putDoc :: Show a => Precedence -> a -> Doc
 putDoc prec = DT . flip (showsPrec prec) ""
@@ -147,4 +146,4 @@ pprintChar :: Char -> String -> String
 pprintChar ch = strstr "\\\'" . pprint 0 ch . strstr "\\\'"
 
 pprintString :: String -> String -> String
-pprintString str = strstr "\"" . strcat (map (pprint 0) str) . strstr "\"" where
+pprintString str = strstr "\"" . strcat (map (pprint 0) str) . strstr "\""
