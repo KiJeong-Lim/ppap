@@ -58,7 +58,10 @@ instance Num val => Num (BaseRing val) where
     negate e1 = MinusEE (VarEE "0") e1
     abs e1 = AppEE (VarEE "__ABS__") e1
     signum e1 = AppEE (AppEE (VarEE "__DIV__") e1) (AppEE (VarEE "__ABS__") e1)
-    fromInteger n = if n < 0 then MinusEE (VarEE "0") (NatEE (abs n)) else NatEE n
+    fromInteger n = case n `compare` 0 of
+        LT -> MinusEE (VarEE "0") (NatEE (abs n))
+        EQ -> VarEE "0"
+        GT -> NatEE n
 
 instance Fractional val => Fractional (BaseRing val) where
     fromRational r = AppEE (AppEE (VarEE "__DIV__") (fromInteger (numerator r))) (fromInteger (denominator r))
