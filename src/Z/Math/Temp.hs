@@ -1,15 +1,11 @@
 module Z.Math.Temp where
 
-import qualified Data.Map.Strict as Map
-import GHC.Real
+import Data.Ratio
 import Y.Base
 import Z.Algo.Function
-
-type VarID = String
+import Z.Math.Classes
 
 type EvalEnv val = [(VarID, ([VarID], BaseRing val))]
-
-type ReductionOption = String
 
 data BaseRing val
     = PlusEE (BaseRing val) (BaseRing val)
@@ -68,6 +64,12 @@ instance Fractional val => Fractional (BaseRing val) where
     recip e1 = AppEE (AppEE (VarEE "__DIV__") (NatEE 1)) e1
     e1 / e2 = AppEE (AppEE (VarEE "__DIV__") e1) e2
 
+instance IsExpr BaseRing where
+    evalExpr = evalBaseRing
+    reduceExpr = reduceBaseRing
+    embedding = LitEE
+    var = VarEE
+
 evalBaseRing :: Fractional val => EvalEnv val -> BaseRing val -> val
 evalBaseRing = go where
     go :: Fractional val => EvalEnv val -> BaseRing val -> val
@@ -79,6 +81,7 @@ evalBaseRing = go where
     go env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> BaseRing val -> Maybe val
     tryMatchPrimitive env (VarEE "0") = return 0
+    tryMatchPrimitive env (VarEE "__INF__") = return (fromRational __INF__)
     tryMatchPrimitive env (AppEE (VarEE "__ABS__") e1) = return (abs (go env e1))
     tryMatchPrimitive env (AppEE (AppEE (VarEE "__DIV__") e1) e2) = return (go env e1 / go env e2)
     tryMatchPrimitive env _ = Nothing
@@ -93,8 +96,3 @@ evalBaseRing = go where
 
 reduceBaseRing :: ReductionOption -> BaseRing val -> BaseRing val
 reduceBaseRing _ = id
-
-bindVarsToVals :: [(VarID, val)] -> EvalEnv val
-bindVarsToVals = foldr go [] where
-    go :: (VarID, val) -> EvalEnv val -> EvalEnv val
-    go (x, v) env = (x, ([], LitEE v)) : env

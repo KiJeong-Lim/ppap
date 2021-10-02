@@ -5,7 +5,7 @@ import Calc.ControlSystem.Util
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Z.Algo.Function
-import Z.Math.Temp
+import Z.Math.Classes
 
 makePathTable :: MyNode -> ControlSystem -> Map.Map MyNode MyExpr
 makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q))) | q <- qs ] where
@@ -48,4 +48,4 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
         starRE :: MyExpr -> MyExpr
         starRE e1 = 1 / (1 - e1)
     simplExpr :: MyExpr -> MyExpr
-    simplExpr = reduceBaseRing "high"
+    simplExpr = reduceExpr "high"

@@ -85,6 +85,7 @@ executable ppap
     Y.Base
     Z.Algo.Function
     Z.Algo.Sorting
+    Z.Math.Classes
     Z.Math.Temp
     Z.System.File
     Z.System.Path
