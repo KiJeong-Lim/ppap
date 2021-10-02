@@ -71,8 +71,8 @@ instance IsExpr ElemExpr where
     embed = LitEE
     var = VarEE
 
-evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
-evalElemExpr = go theWildCard where
+evalElemExprWith :: Num val => (EvalEnv val -> ElemExpr val -> val) -> EvalEnv val -> ElemExpr val -> val
+evalElemExprWith = go where
     go :: Num val => (EvalEnv val -> ElemExpr val -> val) -> EvalEnv val -> ElemExpr val -> val
     go wc env (PluEE e1 e2) = go wc env e1 + go wc env e2
     go wc env (NegEE e1) = - go wc env e1
@@ -80,6 +80,9 @@ evalElemExpr = go theWildCard where
     go wc env (NatEE n) = fromInteger n
     go wc env (LitEE v) = v
     go wc env e = wc env e
+
+evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
+evalElemExpr = evalElemExprWith theWildCard where
     theWildCard :: Fractional val => EvalEnv val -> ElemExpr val -> val
     theWildCard env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> ElemExpr val -> Maybe val
