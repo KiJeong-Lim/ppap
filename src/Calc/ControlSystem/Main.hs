@@ -48,4 +48,4 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
         starRE :: MyExpr -> MyExpr
         starRE e1 = 1 / (1 - e1)
     simplExpr :: MyExpr -> MyExpr
-    simplExpr = reduceExpr "high"
+    simplExpr = reduceExpr ReduceLv1

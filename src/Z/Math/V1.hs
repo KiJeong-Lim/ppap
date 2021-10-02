@@ -70,21 +70,22 @@ instance IsExpr ElemExpr where
     reduceExpr = reduceElemExpr
     embed = LitEE
     var = VarEE
+    getExprRep = showsPrec 0
 
 evalElemExprWith :: Num val => (EvalEnv val -> ElemExpr val -> val) -> EvalEnv val -> ElemExpr val -> val
 evalElemExprWith = go where
     go :: Num val => (EvalEnv val -> ElemExpr val -> val) -> EvalEnv val -> ElemExpr val -> val
-    go wc env (PluEE e1 e2) = go wc env e1 + go wc env e2
-    go wc env (NegEE e1) = - go wc env e1
-    go wc env (MulEE e1 e2) = go wc env e1 * go wc env e2
-    go wc env (NatEE n) = fromInteger n
-    go wc env (LitEE v) = v
-    go wc env e = wc env e
+    go wild_card env (PluEE e1 e2) = go wild_card env e1 + go wild_card env e2
+    go wild_card env (NegEE e1) = - go wild_card env e1
+    go wild_card env (MulEE e1 e2) = go wild_card env e1 * go wild_card env e2
+    go wild_card env (NatEE n) = fromInteger n
+    go wild_card env (LitEE v) = v
+    go wild_card env e = wild_card env e
 
 evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
-evalElemExpr = evalElemExprWith theWildCard where
-    theWildCard :: Fractional val => EvalEnv val -> ElemExpr val -> val
-    theWildCard env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
+evalElemExpr = evalElemExprWith myWildCard where
+    myWildCard :: Fractional val => EvalEnv val -> ElemExpr val -> val
+    myWildCard env e = fromJust (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> ElemExpr val -> Maybe val
     tryMatchPrimitive env (VarEE "0") = return 0
     tryMatchPrimitive env (VarEE "_INF_") = return _INF_
@@ -92,7 +93,7 @@ evalElemExpr = evalElemExprWith theWildCard where
     tryMatchPrimitive env (AppEE (AppEE (VarEE "_DIV_") e1) e2) = return (evalElemExpr env e1 / evalElemExpr env e2)
     tryMatchPrimitive env _ = Nothing
     getDefn :: VarID -> EvalEnv val -> Maybe ([ExprCall], ElemExpr val)
-    getDefn f_lookuped env = safehd [ (xs, body) | (SApp f xs, body) <- env, f == f_lookuped ]
+    getDefn f_lookedup env = safehd [ (xs, body) | (SApp f xs, body) <- env, f == f_lookedup ]
     callWith :: Fractional val => ElemExpr val -> [ElemExpr val] -> EvalEnv val -> Maybe val
     callWith (AppEE e1 e2) es env = callWith e1 (e2 : es) env
     callWith (VarEE x) es env = do
@@ -104,4 +105,5 @@ evalElemExpr = evalElemExprWith theWildCard where
     callWith _ es env = Nothing
 
 reduceElemExpr :: ReductionOption -> ElemExpr val -> ElemExpr val
+reduceElemExpr ReduceLv2 = id
 reduceElemExpr _ = id

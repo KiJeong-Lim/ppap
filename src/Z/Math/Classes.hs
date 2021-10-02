@@ -4,7 +4,10 @@ import GHC.Real
 
 type VarID = String
 
-type ReductionOption = String
+data ReductionOption
+    = ReduceLv1
+    | ReduceLv2
+    deriving (Eq, Show)
 
 data ExprCall
     = SApp VarID [ExprCall]
@@ -15,6 +18,7 @@ class Functor expr => IsExpr expr where
     reduceExpr :: (Eq a, Num a) => ReductionOption -> expr a -> expr a
     embed :: Num a => a -> expr a
     var :: VarID -> expr a
+    getExprRep :: Show a => expr a -> ShowS
 
 _INF_ :: Fractional a => a
 _INF_ = fromRational infinity
