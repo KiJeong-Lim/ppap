@@ -1,6 +1,7 @@
 module Z.Algo.Function where
 
 import Control.Monad
+import qualified Data.Foldable as Foldable
 import qualified Data.Function as Function
 import qualified Data.Maybe as Maybe
 import GHC.Stack
@@ -64,6 +65,5 @@ getFirstMatched f = foldr imp bot . map f
 safehd :: [a] -> Maybe a
 safehd = getFirstMatched Just
 
-kconcat :: Monad m => [a -> m a] -> a -> m a
-kconcat [] = return
-kconcat (k : ks) = k >=> kconcat ks
+kconcat :: (Foldable.Foldable t, Monad m) => t (a -> m a) -> (a -> m a)
+kconcat = Foldable.foldr (>=>) return
