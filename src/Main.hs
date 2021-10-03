@@ -5,14 +5,9 @@ import qualified Calc.Main as Calc
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
+import Z.Algo.Function
 import Z.System.Shelly
 import Z.Utils
-
-showCopyright :: String
-showCopyright = unlines
-    [ "Copyright (c) 2020-2021, Kijeong Lim"
-    , "All rights reserved."
-    ]
 
 extractArgs :: String -> Maybe [String]
 extractArgs args_rep
@@ -30,7 +25,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = foldMap matchPrefix ["Aladdin", "Calc", "LGS", "PGS", "TEST"]
+    | otherwise = foldr (/>) Nothing (map matchPrefix ["Aladdin", "Calc", "LGS", "PGS", "TEST"])
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix pre = do
@@ -84,6 +79,6 @@ ppap = do
 
 main :: IO ()
 main = do
-    putStrLn showCopyright
+    putStrLn "Copyright (c) 2021, Kijeong Lim"
     ppap
     return ()
