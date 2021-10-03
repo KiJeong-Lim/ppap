@@ -29,8 +29,8 @@ instance FailableZero (Maybe a) where
 instance FailableZero [a] where
     myNothing = []
 
-recNat :: Int -> a -> (Int -> a -> a) -> a
-recNat n init step = foldr step init (reverse [0 .. n - 1])
+recNat :: a -> (Int -> a -> a) -> Int -> a
+recNat my_init my_step n = foldr my_step my_init (reverse [0 .. n - 1])
 
 (&) :: a -> (a -> b) -> b
 (&) = (Function.&)

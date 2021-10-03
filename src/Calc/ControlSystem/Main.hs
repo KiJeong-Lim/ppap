@@ -17,17 +17,17 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
             , Set.unions [ Set.fromList [q, p] | (q, p) <- Set.toAscList (Map.keysSet table0) ]
             ]
     theClosure :: Map.Map (MyNode, MyNode) MyExpr
-    theClosure = Map.fromList (recNat (length qs) init step) where
-        init :: [((MyNode, MyNode), MyExpr)]
-        init = do
+    theClosure = Map.fromList (recNat myInit myStep (length qs)) where
+        myInit :: [((MyNode, MyNode), MyExpr)]
+        myInit = do
             q_i <- qs
             q_j <- qs
             return
                 ( (q_i, q_j)
                 , maybe nullRE id (Map.lookup (q_i, q_j) table0)
                 )
-        step :: Int -> [((MyNode, MyNode), MyExpr)] -> [((MyNode, MyNode), MyExpr)]
-        step k mapsto = do
+        myStep :: Int -> [((MyNode, MyNode), MyExpr)] -> [((MyNode, MyNode), MyExpr)]
+        myStep k mapsto = do
             let q_k = qs !! k
                 table = Map.fromList mapsto
                 at idx = table Map.! idx
