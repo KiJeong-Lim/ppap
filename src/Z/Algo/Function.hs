@@ -11,35 +11,35 @@ infixr 3 />
 type ErrMsgM = Either String
 
 class Failable a where
-    imp :: a -> a -> a
+    alt :: a -> a -> a
 
 class Failable a => FailableZero a where
-    bot :: a
+    nil :: a
 
 instance Failable Bool where
-    imp (False) = id
-    imp x = const x
+    alt (False) = id
+    alt x = const x
 
 instance Failable (Maybe a) where
-    imp (Nothing) = id
-    imp x = const x
+    alt (Nothing) = id
+    alt x = const x
 
 instance Failable (Either e a) where
-    imp (Left _) = id
-    imp x = const x
+    alt (Left _) = id
+    alt x = const x
 
 instance Failable [a] where
-    imp [] = id
-    imp x = const x
+    alt [] = id
+    alt x = const x
 
 instance FailableZero Bool where
-    bot = False
+    nil = False
 
 instance FailableZero (Maybe a) where
-    bot = Nothing
+    nil = Nothing
 
 instance FailableZero [a] where
-    bot = []
+    nil = []
 
 recNat :: a -> (Int -> a -> a) -> Int -> a
 recNat my_init my_step n = foldr my_step my_init (reverse [0 .. n - 1])
@@ -57,10 +57,10 @@ addErrMsg :: String -> Maybe a -> ErrMsgM a
 addErrMsg str = Maybe.maybe (Left str) Right
 
 (/>) :: Failable a => a -> a -> a
-x /> y = imp x y
+x /> y = alt x y
 
 getFirstMatched :: FailableZero b => (a -> b) -> [a] -> b
-getFirstMatched f = foldr imp bot . map f
+getFirstMatched f = foldr alt nil . map f
 
 safehd :: [a] -> Maybe a
 safehd = getFirstMatched Just
