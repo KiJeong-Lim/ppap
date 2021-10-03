@@ -1,10 +1,10 @@
 # ppap
 
-- Project putting all power!
+- Project Putting All Power!
 
 - In `Windows 10`, everything works fine.
 
-# Quick Start:
+# Quick Start
 
 ```
 git clone https://github.com/KiJeong-Lim/ppap.git
