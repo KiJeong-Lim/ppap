@@ -9,13 +9,25 @@ infix 9 />
 type ErrMsgM = Either String
 
 class Failable a where
-    failed :: a -> Bool
+    isNothing :: a -> Bool
+
+class Failable a => FailableZero a where
+    myNothing :: a
 
 instance Failable (Maybe a) where
-    failed = Maybe.isNothing
+    isNothing = Maybe.isNothing
 
 instance Failable (Either e a) where
-    failed = either (const True) (const False)
+    isNothing = either (const True) (const False)
+
+instance Failable [a] where
+    isNothing = null
+
+instance FailableZero (Maybe a) where
+    myNothing = Nothing
+
+instance FailableZero [a] where
+    myNothing = []
 
 recNat :: Int -> a -> (Int -> a -> a) -> a
 recNat n init step = foldr step init (reverse [0 .. n - 1])
@@ -33,7 +45,10 @@ addErrMsg :: String -> Maybe a -> ErrMsgM a
 addErrMsg str = Maybe.maybe (Left str) Right
 
 (/>) :: Failable a => a -> a -> a
-x /> y = if failed x then y else x
+x /> y = if isNothing x then y else x
+
+getFirstMatched :: FailableZero b => (a -> b) -> [a] -> b
+getFirstMatched f = foldr (/>) myNothing . map f
 
 safehd :: [a] -> Maybe a
-safehd = foldr (const . Just) Nothing
+safehd = getFirstMatched Just
