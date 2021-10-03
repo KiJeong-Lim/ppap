@@ -81,4 +81,4 @@ modifySep :: Eq a => a -> (a -> [b]) -> ([a] -> [b]) -> ([a] -> [b])
 modifySep x f g = connect (f x) . map g . splitBy x where
     connect :: [b] -> [[b]] -> [b]
     connect xs [] = []
-    connect xs (ys : zss) = ys ++ concat [ xs ++ zs | zs <- zss ]
+    connect xs (ys : zss) = ys ++ foldr (\zs -> \acc -> xs ++ zs ++ acc) [] zss
