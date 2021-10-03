@@ -7,7 +7,6 @@ import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
 import Z.Algo.Function
 import Z.System.Shelly
-import Z.Utils
 
 extractArgs :: String -> Maybe [String]
 extractArgs args_rep
@@ -28,57 +27,53 @@ matchCommand str
     | otherwise = takeFirst matchPrefix ["Aladdin", "Calc", "LGS", "PGS", "TEST"]
     where
         matchPrefix :: String -> Maybe (String, [String])
-        matchPrefix pre = do
-            let n = length pre
-            args <- if pre == take n str
-                then extractArgs (drop n str)
-                else Nothing
-            return (pre, args)
+        matchPrefix cmd = go (splitAt (length cmd) str) where
+            go :: (String, String) -> Maybe (String, [String])
+            go (my_prefix, my_suffix) = if my_prefix == cmd then extractArgs my_suffix >>= curry return cmd else Nothing
 
 ppap :: IO ()
 ppap = do
-    command <- shelly "ppap =<< "
+    command <- shelly ("ppap =<< ")
     case matchCommand command of
-        Just ("", []) -> do
-            shelly "ppap >>= quit"
+        Nothing -> do
+            shelly ("ppap >>= tell (invalid-command=" ++ shows command ")")
+            shelly ("ppap >>= quit")
             return ()
         Just ("Aladdin", []) -> do
-            shelly "ppap >>= exec (Aladdin.main)"
+            shelly ("ppap >>= exec (Aladdin.main)")
             Aladdin.main
         Just ("Calc", []) -> do
-            shelly "ppap >>= exec (Calc.main)"
+            shelly ("ppap >>= exec (Calc.main)")
             Calc.main
         Just ("Calc", ["quick"]) -> do
-            shelly "ppap >>= eval (Calc.runCalc \"calc-example1.calc\")"
-            Calc.runCalc "calc-example1.calc"
-            shelly "ppap >>= quit"
+            shelly ("ppap >>= eval (Calc.runCalc \"calc-example1.calc\")")
+            Calc.runCalc ("calc-example1.calc")
+            shelly ("ppap >>= quit")
             return ()
         Just ("LGS", []) -> do
-            shelly "ppap >>= exec (LGS.main)"
+            shelly ("ppap >>= exec (LGS.main)")
             LGS.main
         Just ("LGS", ["quick"]) -> do
-            shelly "ppap >>= eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")"
-            LGS.runLGS "src/Aladdin/Front/Analyzer/Lexer"
-            shelly "ppap >>= quit"
+            shelly ("ppap >>= eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")")
+            LGS.runLGS ("src/Aladdin/Front/Analyzer/Lexer")
+            shelly ("ppap >>= quit")
             return ()
         Just ("PGS", []) -> do
-            shelly "ppap >>= exec (PGS.main)"
+            shelly ("ppap >>= exec (PGS.main)")
             PGS.main
         Just ("PGS", ["quick"]) -> do
-            shelly "ppap >>= eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")"
-            PGS.runPGS "src/Aladdin/Front/Analyzer/Parser"
-            shelly "ppap >>= quit"
+            shelly ("ppap >>= eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")")
+            PGS.runPGS ("src/Aladdin/Front/Analyzer/Parser")
+            shelly ("ppap >>= quit")
             return ()
         Just ("TEST", []) -> do
-            shelly "ppap >>= exec (TEST.main)"
+            shelly ("ppap >>= exec (TEST.main)")
             TEST.main
-        invalid_command -> do
-            shelly ("ppap >>= tell (invalid-command=" ++ show invalid_command ++ ")")
-            shelly "ppap >>= quit"
+        Just (cmd, args) -> do
+            shelly ("ppap >>= quit")
             return ()
 
 main :: IO ()
 main = do
     putStrLn "Copyright (c) 2021, Kijeong Lim"
     ppap
-    return ()

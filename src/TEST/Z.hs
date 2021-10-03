@@ -8,8 +8,11 @@ import Z.Utils
 testZ :: IO ()
 testZ = do
     shelly "TEST.testZ >>= eval (testDoc)"
+    putStrLn ""
     testDoc
+    putStrLn ""
     shelly "TEST.testZ >>= eval (testParserBaseProperty)"
     testParserBaseProperty
     shelly "TEST.testZ >>= quit"
+    putStrLn ""
     return ()
