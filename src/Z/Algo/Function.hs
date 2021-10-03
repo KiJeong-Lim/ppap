@@ -1,33 +1,44 @@
 module Z.Algo.Function where
 
+import Control.Monad
 import qualified Data.Function as Function
 import qualified Data.Maybe as Maybe
 import GHC.Stack
 
-infix 9 />
+infixr 3 />
 
 type ErrMsgM = Either String
 
 class Failable a where
-    isNothing :: a -> Bool
+    imp :: a -> a -> a
 
 class Failable a => FailableZero a where
-    myNothing :: a
+    bot :: a
+
+instance Failable Bool where
+    imp (False) = id
+    imp x = const x
 
 instance Failable (Maybe a) where
-    isNothing = Maybe.isNothing
+    imp (Nothing) = id
+    imp x = const x
 
 instance Failable (Either e a) where
-    isNothing = either (const True) (const False)
+    imp (Left _) = id
+    imp x = const x
 
 instance Failable [a] where
-    isNothing = null
+    imp [] = id
+    imp x = const x
+
+instance FailableZero Bool where
+    bot = False
 
 instance FailableZero (Maybe a) where
-    myNothing = Nothing
+    bot = Nothing
 
 instance FailableZero [a] where
-    myNothing = []
+    bot = []
 
 recNat :: a -> (Int -> a -> a) -> Int -> a
 recNat my_init my_step n = foldr my_step my_init (reverse [0 .. n - 1])
@@ -45,10 +56,14 @@ addErrMsg :: String -> Maybe a -> ErrMsgM a
 addErrMsg str = Maybe.maybe (Left str) Right
 
 (/>) :: Failable a => a -> a -> a
-x /> y = if isNothing x then y else x
+x /> y = imp x y
 
 getFirstMatched :: FailableZero b => (a -> b) -> [a] -> b
-getFirstMatched f = foldr (/>) myNothing . map f
+getFirstMatched f = foldr imp bot . map f
 
 safehd :: [a] -> Maybe a
 safehd = getFirstMatched Just
+
+kconcat :: Monad m => [a -> m a] -> a -> m a
+kconcat [] = return
+kconcat (k : ks) = k >=> kconcat ks
