@@ -34,6 +34,10 @@ Aladdin >>= quit
 
 - My dialect of lambda-Prolog
 
+# Calc
+
+- My calculator
+
 # LGS
 
 - My lexer generator
@@ -41,7 +45,3 @@ Aladdin >>= quit
 # PGS
 
 - My parser generator
-
-# Calc
-
-- My calculator

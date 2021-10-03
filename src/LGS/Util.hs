@@ -126,5 +126,4 @@ instance Show DFA where
 
 formalChar :: Char -> ShowS
 formalChar '\"' = strstr "\'\\\"\'"
-formalChar '\'' = strstr "\'\\\'\'"
 formalChar ch = showsPrec 0 ch

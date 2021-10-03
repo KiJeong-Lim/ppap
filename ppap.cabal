@@ -102,5 +102,5 @@ executable ppap
     Z.Text.PM
     Z.Utils
   c-sources:
-    src/Machine/machine.c
-    src/Machine/machine.h
+    src/X/machine.c
+    src/X/machine.h

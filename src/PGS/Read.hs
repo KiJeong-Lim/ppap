@@ -39,7 +39,7 @@ readDestructors
         , do
             consumePC "$"
             negPC (acceptPC (\ch -> ch == ' '))
-            idx <- readInt
+            idx <- intPC
             de <- mconcat
                 [ do
                     consumePC "."
@@ -52,14 +52,13 @@ readDestructors
         , do
             consumePC "$"
             str <- many (acceptPC (\ch -> ch == ' '))
-            if str == "" then negPC readInt else return ()
+            if null str
+                then negPC intPC
+                else return ()
             des <- readDestructors
             return (DsSource ("$" ++ str) : des)
         , lend *> pure []
         ]
-    where
-        readInt :: PC Int
-        readInt = intPC
 
 readSym :: PC Sym
 readSym = mconcat

@@ -11,6 +11,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import PGS.Util
 import Y.Base
+import Z.Algo.Function
 import Z.Algo.Sorting
 import Z.Utils
 
@@ -157,9 +158,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         loop :: Map.Map NSym TerminalSet -> Map.Map NSym TerminalSet
         loop mapping = if mapping == mapping' then mapping' else loop mapping' where
             getFirstOf :: Sym -> TerminalSet
-            getFirstOf (NS ns) = case Map.lookup ns mapping of
-                Nothing -> error "getLALR1.getFIRST.loop.getFirstOf"
-                Just tss -> tss
+            getFirstOf (NS ns) = fromJust (Map.lookup ns mapping)
             getFirstOf (TS ts) = TerminalSet (Set.singleton (Just ts))
             go :: (NSym, [Sym]) -> TerminalSet -> Maybe TerminalSet
             go (lhs, rhs) tss = Just (TerminalSet (unTerminalSet tss `Set.union` unTerminalSet (mconcat [ getFirstOf sym | sym <- rhs ])))

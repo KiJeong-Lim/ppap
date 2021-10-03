@@ -1,8 +1,6 @@
 module LGS.Main where
 
 import Control.Applicative
-import Control.Monad
-import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Writer.Strict
@@ -13,7 +11,6 @@ import qualified Data.Set as Set
 import LGS.Read
 import LGS.Show
 import LGS.Util
-import Y.Base
 import Z.System.File
 import Z.System.Shelly
 import Z.Text.PC
