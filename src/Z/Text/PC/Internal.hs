@@ -4,6 +4,7 @@ import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.State.Strict
 import qualified Data.List as List
+import Z.Algo.Function
 import Z.Algo.Sorting
 import Z.Text.Doc
 import Z.Text.PC.Base
@@ -133,6 +134,15 @@ instance Show RegEx where
         dispatch (ReMult re1 re2) = myPrecIs 1 (showsPrec 1 re1 . showString " " . showsPrec 2 re2)
         dispatch (ReStar re1) = myPrecIs 2 (showsPrec 2 re1 . showString "*")
     showList = undefined
+
+instance Failable (MyPC val) where
+    alt = liftPC2 (\p1 -> \p2 -> mkPB $ pure alt <*> runPB p1 <*> runPB p2)
+
+instance FailableZero (MyPC val) where
+    nil = MyPC (mkPB $ pure nil)
+
+liftPC2 :: (PB LocChr val -> PB LocChr val -> PB LocChr val) -> (MyPC val -> MyPC val -> MyPC val)
+liftPC2 fun p1 p2 = MyPC (fun (unMyPC p1) (unMyPC p2))
 
 initRow :: Row
 initRow = 1

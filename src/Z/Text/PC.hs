@@ -9,12 +9,6 @@ import Z.Utils
 
 type PC = MyPC
 
-instance Failable (MyPC val) where
-    alt p1 p2 = MyPC (mkPB $ \str0 -> alt (runPB (unMyPC p1) str0) (runPB (unMyPC p2) str0))
-
-instance FailableZero (MyPC val) where
-    nil = MyPC (mkPB $ \str0 -> nil)
-
 execPC :: PC val -> Src -> Either LocStr val
 execPC p str = execPB (unMyPC p) (addLoc str)
 
@@ -24,8 +18,7 @@ runPC path p src = either (callWithStrictArg Left . makeMessageForParsingError p
 acceptPC :: (Char -> Bool) -> PC Char
 acceptPC cond = MyPC (mkPB go) where
     go :: LocStr -> [(Char, LocStr)]
-    go [] = []
-    go (((r, c), ch) : lstr') = if cond ch then [(ch, lstr')] else []
+    go lstr = [ (ch, drop 1 lstr) | (_, ch) <- take 1 lstr, cond ch ]
 
 consumePC :: String -> PC ()
 consumePC = mapM_ acceptPC . map (==)
@@ -37,7 +30,9 @@ matchPC = MyPC . go where
         (token, lstr1) -> if map snd token == expecteds then [((), lstr1)] else []
 
 eofPC :: PC ()
-eofPC = MyPC (mkPB $ \lstr0 -> if null lstr0 then [((), lstr0)] else [])
+eofPC = MyPC go where
+    go :: PB LocChr ()
+    go = mkPB $ \lstr0 -> if null lstr0 then [((), lstr0)] else []
 
 regexPC :: RegExRep -> PC String
 regexPC = myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression
