@@ -14,25 +14,30 @@ makePathTable q0 table0 = Map.fromList [ (q, theClosure Map.! (q0, q)) | q <- qs
         theSetOfNodes :: Set.Set MyNode
         theSetOfNodes = Set.unions
             [ Set.singleton q0
-            , Set.unions [ Set.fromList [q, p] | (q, p) <- Set.toAscList (Map.keysSet table0) ]
+            , Set.unions
+                [ Set.fromList [q, p]
+                | (q, p) <- Set.toAscList (Map.keysSet table0)
+                ]
             ]
     theClosure :: Map.Map (MyNode, MyNode) MyExpr
     theClosure = refine (recNat myInit myStep (length qs)) where
         refine :: [((MyNode, MyNode), MyExpr)] -> Map.Map (MyNode, MyNode) MyExpr
         refine = Map.fromList . map (fmap (reduceExpr ReduceLv1))
+        lookup :: Map.Map (MyNode, MyNode) MyExpr -> (MyNode, MyNode) -> MyExpr
+        lookup = curry (maybe nullRE id . uncurry (flip Map.lookup))
         myInit :: [((MyNode, MyNode), MyExpr)]
         myInit = do
             q_i <- qs
             q_j <- qs
             return
                 ( (q_i, q_j)
-                , maybe nullRE id (Map.lookup (q_i, q_j) table0)
+                , lookup table0 (q_i, q_j)
                 )
         myStep :: Int -> [((MyNode, MyNode), MyExpr)] -> [((MyNode, MyNode), MyExpr)]
         myStep k prev = do
             let q_k = qs !! k
                 table = refine prev
-                at idx = table Map.! idx
+                at = lookup table
             q_i <- qs
             q_j <- qs
             return
