@@ -13,7 +13,9 @@ import Z.Utils
 instance (Arbitrary chr, CoArbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
     arbitrary = choose (0, 10) >>= recNat myInit myStep where
         myInit :: (Arbitrary val) => Gen (ParserBase chr val)
-        myInit = PVal <$> arbitrary
+        myInit = frequency
+            [ (10, PVal <$> arbitrary)
+            ]
         myStep :: (Arbitrary chr, CoArbitrary chr, Arbitrary val) => Int -> Gen (ParserBase chr val) -> Gen (ParserBase chr val)
         myStep n prev = frequency
             [ (8, prev)
@@ -30,13 +32,16 @@ instance Show (ParserBase chr val) where
 instance (Show chr, Arbitrary chr, EqProp val, EqProp chr) => EqProp (ParserBase chr val) where
     p1 =-= p2 = execPB p1 =-= execPB p2
 
+with100000 :: String -> TestBatch -> TestBatch
+with100000 this_test_name this_test_batch = (this_test_name, map (fmap (withMaxSuccess 100000)) (snd this_test_batch))
+
 checkParserBaseIsMonad :: TestBatch
-checkParserBaseIsMonad = (">>> checking=\"Monad (ParserBase LocChr)\"", map (fmap (withMaxSuccess 100000)) (snd (go undefined))) where
+checkParserBaseIsMonad = with100000 ">>> checking=\"Monad (ParserBase LocChr)\"" (go undefined) where
     go :: PB LocChr (Int, Int, Int) -> TestBatch
     go = monad
 
 checkParserBaseIsMonadPlus :: TestBatch
-checkParserBaseIsMonadPlus = (">>> checking=\"MonadPlus (ParserBase LocChr)\"", map (fmap (withMaxSuccess 100000)) (snd (go undefined))) where
+checkParserBaseIsMonadPlus = with100000 ">>> checking=\"MonadPlus (ParserBase LocChr)\"" (go undefined) where
     go :: PB LocChr (Int, Int) -> TestBatch
     go = monadPlus
 
