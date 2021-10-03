@@ -1,8 +1,8 @@
 module Z.Algo.Function where
 
 import Control.Monad
+import Control.Monad.Trans.Except
 import qualified Data.Foldable as Foldable
-import qualified Data.Function as Function
 import qualified Data.Maybe as Maybe
 import GHC.Stack
 
@@ -41,11 +41,11 @@ instance FailableZero (Maybe a) where
 instance FailableZero [a] where
     nil = []
 
-recNat :: a -> (Int -> a -> a) -> Int -> a
-recNat my_init my_step n = foldr my_step my_init (reverse [0 .. n - 1])
+(/>) :: Failable a => a -> a -> a
+x /> y = alt x y
 
-(&) :: a -> (a -> b) -> b
-(&) = (Function.&)
+takeFirst :: FailableZero b => (a -> b) -> [a] -> b
+takeFirst f = foldr alt nil . map f
 
 fromJust :: HasCallStack => Maybe a -> a
 fromJust = Maybe.fromJust
@@ -56,14 +56,14 @@ fromErrMsgM = either error id
 addErrMsg :: String -> Maybe a -> ErrMsgM a
 addErrMsg str = Maybe.maybe (Left str) Right
 
-(/>) :: Failable a => a -> a -> a
-x /> y = alt x y
-
-getFirstMatched :: FailableZero b => (a -> b) -> [a] -> b
-getFirstMatched f = foldr alt nil . map f
+liftErrMsgM :: Monad m => ErrMsgM a -> ExceptT String m a
+liftErrMsgM = ExceptT . return
 
 safehd :: [a] -> Maybe a
-safehd = getFirstMatched Just
+safehd = takeFirst Just
+
+recNat :: a -> (Int -> a -> a) -> Int -> a
+recNat my_init my_step n = foldr my_step my_init (reverse [0 .. n - 1])
 
 kconcat :: (Foldable.Foldable t, Monad m) => t (a -> m a) -> (a -> m a)
 kconcat = Foldable.foldr (>=>) return

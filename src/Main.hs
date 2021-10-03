@@ -25,7 +25,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = getFirstMatched matchPrefix ["Aladdin", "Calc", "LGS", "PGS", "TEST"]
+    | otherwise = takeFirst matchPrefix ["Aladdin", "Calc", "LGS", "PGS", "TEST"]
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix pre = do
