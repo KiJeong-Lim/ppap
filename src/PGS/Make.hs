@@ -52,8 +52,8 @@ instance Outputable Cannonical0 where
             , ppunc "\n"
                 [ ppunc "\n"
                     [ strstr "getParserSInfo " . showsPrec 0 q . strstr " = ParserSInfo"
-                    , strstr "    { myItems = " . plist 8 (map (pprint 0) items)
-                    , strstr "    , myNexts = " . plist 8 [ pprint 0 sym . strstr " +-> " . showsPrec 0 p | (sym, p) <- maybe [] id (lookup q formatedEdges) ]
+                    , strstr "    { myItems = " . plist 8 (map (quotify . pprint 0) items)
+                    , strstr "    , myNexts = " . plist 8 [ quotify (pprint 0 sym . strstr " +-> " . showsPrec 0 p) | (sym, p) <- maybe [] id (lookup q formatedEdges) ]
                     , strstr "    }"
                     ]
                 | (q, items) <- formatedVertices

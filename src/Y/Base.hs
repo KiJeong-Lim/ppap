@@ -33,7 +33,7 @@ ppunc str (delta1 : deltas2) = delta1 . foldr (\delta2 -> \acc -> strstr str . d
 
 plist :: Indentation -> [ShowS] -> ShowS
 plist space [] = strstr "[]"
-plist space (delta : deltas) = nl . pindent space . strstr "[ " . loop delta deltas where
-    loop :: ShowS -> [ShowS] -> ShowS
-    loop delta1 [] = delta1 . nl . pindent space . strstr "]"
-    loop delta1 (delta2 : deltas) = delta1 . nl . pindent space . strstr ", " . loop delta2 deltas
+plist space (delta1 : deltas2) = nl . pindent space . strstr "[ " . delta1 . foldr (\delta2 -> \acc -> nl . pindent space . strstr ", " . delta2 . acc) (nl . pindent space . strstr "]") deltas2
+
+quotify :: ShowS -> ShowS
+quotify ss = shows (ss "")
