@@ -312,10 +312,7 @@ myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression 
     myErrMsg :: ErrMsg
     myErrMsg = concat
         [ "In `Z.Text.PC.Internal.myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression':\n"
-        , "  invalid-regex-representation-is-given,\n"
-        , "  regex-representation={\n"
-        , "    " ++ show regex_representation ++ "\n"
-        , "  }.\n"
+        , "  invalid-regex-representation-is-given, regex-representation=" ++ shows regex_representation ".\n"
         ]
     go :: [RegEx] -> ParserBase LocChr String
     go [regex] = mkPB (maybe [] pure . takeStringMatchedWithRegexFromStreamByMaximalMunchRule regex)
