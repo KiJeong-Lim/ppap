@@ -12,21 +12,21 @@ import Z.Utils
 instance (Arbitrary chr, CoArbitrary chr, Arbitrary val) => Arbitrary (ParserBase chr val) where
     arbitrary = choose (0, 10) >>= go where
         go :: (Arbitrary chr, CoArbitrary chr, Arbitrary val) => Int -> Gen (ParserBase chr val)
-        go rank
-            | rank > 0 = frequency
+        go rank = if rank > 0
+            then frequency
                 [ (8, go (rank - 1))
                 , (2, pure PAct <*> genPAct (go (rank - 1)))
                 ]
-            | otherwise = pure PVal <*> arbitrary
+            else pure PVal <*> arbitrary
         genPAct :: (Arbitrary chr, CoArbitrary chr) => Gen (ParserBase chr val) -> Gen ([chr] -> [(ParserBase chr val, [chr])])
         genPAct seed = do
             conds <- listOf arbitrary
-            p <- seed
-            return (parsing p conds)
-        parsing :: val -> [chr -> Bool] -> ([chr] -> [(val, [chr])])
-        parsing val [] str = [(val, str)]
-        parsing val (cond : conds) (ch : str) = if cond ch then parsing val conds str else []
-        parsing val _ _ = []
+            ps <- listOf seed
+            return (parsing ps conds)
+        parsing :: [val] -> [chr -> Bool] -> ([chr] -> [(val, [chr])])
+        parsing vals [] str = [ (val, str) | val <- vals ]
+        parsing vals (cond : conds) (ch : str) = if cond ch then parsing vals conds str else []
+        parsing vals _ _ = []
     shrink = const []
 
 instance Show (ParserBase chr val) where
@@ -36,12 +36,12 @@ instance (Show chr, Arbitrary chr, EqProp val, EqProp chr) => EqProp (ParserBase
     p1 =-= p2 = execPB p1 =-= execPB p2
 
 checkParserBaseIsMonad :: TestBatch
-checkParserBaseIsMonad = (">>> checking=\"Monad ParserBase\"", map (fmap (withMaxSuccess 100000)) (snd (go undefined))) where
+checkParserBaseIsMonad = (">>> checking=\"Monad (PB LocChr)\"", map (fmap (withMaxSuccess 100000)) (snd (go undefined))) where
     go :: PB LocChr (Int, Int, Int) -> TestBatch
     go = monad
 
 checkParserBaseIsMonadPlus :: TestBatch
-checkParserBaseIsMonadPlus = (">>> checking=\"MonadPlus ParserBase\"", map (fmap (withMaxSuccess 100000)) (snd (go undefined))) where
+checkParserBaseIsMonadPlus = (">>> checking=\"MonadPlus (PB LocChr)\"", map (fmap (withMaxSuccess 100000)) (snd (go undefined))) where
     go :: PB LocChr (Int, Int) -> TestBatch
     go = monadPlus
 

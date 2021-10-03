@@ -13,6 +13,6 @@ testZ = do
     putStrLn ""
     shelly "TEST.testZ >>= eval (testParserBaseProperty)"
     testParserBaseProperty
-    shelly "TEST.testZ >>= quit"
     putStrLn ""
+    shelly "TEST.testZ >>= quit"
     return ()
