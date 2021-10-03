@@ -6,10 +6,6 @@ infixl 1 <<
 
 type Precedence = Int
 
-data Flush
-    = Flush
-    deriving ()
-
 class OStreamMaker seed where
     mkOStream :: seed -> IO Handle
 
@@ -22,9 +18,6 @@ instance OStreamMaker Handle where
 instance OStreamMaker a => OStreamMaker (IO a) where
     mkOStream m = m >>= mkOStream
 
-instance OStreamObject Flush where
-    hput = const . hFlush
-
 instance OStreamObject Char where
     hput = hPutChar
 
@@ -32,13 +25,13 @@ instance OStreamObject a => OStreamObject [a] where
     hput = mapM_ . hput
 
 instance OStreamObject Int where
-    hput h = hput h . show
+    hput h = hPutStr h . show
 
 instance OStreamObject Double where
-    hput h = hput h . show
+    hput h = hPutStr h . show
 
 instance OStreamObject Integer where
-    hput h = hput h . show
+    hput h = hPutStr h . show
 
 instance OStreamObject Bool where
     hput h b = hput h (if b then "true" else "false")
@@ -56,6 +49,7 @@ endl = '\n'
 seed << x = do
     h <- mkOStream seed
     hput h x
+    hFlush h
     return h
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
@@ -83,7 +77,8 @@ callWithStrictArg f x = x `seq` f x
 one :: a -> [a]
 one = callWithStrictArg pure
 
-modifySep :: Eq a => a -> (a -> b) -> ([a] -> [b]) -> [a] -> [b]
+modifySep :: Eq a => a -> (a -> [b]) -> ([a] -> [b]) -> ([a] -> [b])
 modifySep x f g = connect (f x) . map g . splitBy x where
-    connect :: b -> [[b]] -> [b]
-    connect y = tail . foldr (\ys -> \acc -> y : ys ++ acc) []
+    connect :: [b] -> [[b]] -> [b]
+    connect xs [] = []
+    connect xs (ys : zss) = ys ++ concat [ xs ++ zs | zs <- zss ]

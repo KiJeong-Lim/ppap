@@ -39,6 +39,9 @@ ppap = do
             shelly ("ppap >>= tell (invalid-command=" ++ shows command ")")
             shelly ("ppap >>= quit")
             return ()
+        Just ("", []) -> do
+            shelly ("ppap >>= quit")
+            return ()
         Just ("Aladdin", []) -> do
             shelly ("ppap >>= exec (Aladdin.main)")
             Aladdin.main
@@ -70,10 +73,12 @@ ppap = do
             shelly ("ppap >>= exec (TEST.main)")
             TEST.main
         Just (cmd, args) -> do
-            shelly ("ppap >>= quit")
+            shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
 
 main :: IO ()
 main = do
-    putStrLn "Copyright (c) 2021, Kijeong Lim"
+    shelly ("ppap> Copyright (c) 2021, Kijeong Lim")
+    shelly ("ppap> All rights reserved")
     ppap
+    return ()

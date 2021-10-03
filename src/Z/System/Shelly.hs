@@ -34,10 +34,7 @@ shelly = go where
         ]
     atomPM :: Bool -> PM String
     atomPM paren_be_colored = do
-        res <- mconcat
-            [ litPM
-            , argPM paren_be_colored
-            ]
+        res <- litPM <|> argPM paren_be_colored
         return (" " ++ res)
     argPM :: Bool -> PM String
     argPM paren_be_colored = do
@@ -67,7 +64,7 @@ shelly = go where
         lhs <- identifierPM
         skipWhite
         bind <- readDirectedBind <|> readReversedBind
-        let my_colorize = modifySep '.' id (if bind == "=<<" then color Yellow else color Green)
+        let my_colorize = modifySep '.' one (if bind == "=<<" then color Yellow else color Green)
         stmt <- mconcat
             [ do
                 skipWhite
@@ -84,13 +81,16 @@ shelly = go where
                 return (stmt ++ ["."])
             , return stmt
             ]
+    smallshell :: String -> String
+    smallshell str = case span (\ch -> ch /= '>') str of
+        (my_prefix, my_suffix) -> case span (\ch -> ch == '>') my_suffix of
+            (my_suffix_left, my_suffix_right) -> color Cyan (my_prefix ++ my_suffix_left) ++ my_suffix_right
     elaborate :: String -> String
-    elaborate str = maybe str concat (foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ])
+    elaborate str = maybe (smallshell str) concat (foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ])
     go :: String -> IO String
     go msg = do
         can_prettify <- supportsPretty
-        let msg' = if can_prettify then elaborate msg else msg
-        cout << msg' << Flush
+        cout << (if can_prettify then elaborate msg else msg)
         if not (null msg) && last msg == ' '
             then getLine
             else do

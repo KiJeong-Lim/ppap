@@ -159,8 +159,8 @@ testDoc = go 9 where
             ]
         faileds <- readIORef faileds_ref
         if null faileds
-            then shelly (">>> " ++ "\"ALL CASES PASSED.\"")
-            else shelly (">>> " ++ "(" ++ shows (length faileds) (" cases failed = " ++ showList faileds ")."))
+            then putStrLn (">>> " ++ "\"ALL CASES PASSED.\"")
+            else putStrLn (">>> " ++ "(" ++ shows (length faileds) (" cases failed = " ++ showList faileds ")."))
         return ()
 
 testDocIsMonoid :: IO ()

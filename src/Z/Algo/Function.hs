@@ -63,7 +63,7 @@ safehd :: [a] -> Maybe a
 safehd = takeFirst Just
 
 recNat :: a -> (Int -> a -> a) -> Int -> a
-recNat my_init my_step n = foldr my_step my_init (reverse [0 .. n - 1])
+recNat my_init my_step n = foldr my_step my_init [n - 1, n - 2 .. 0]
 
 kconcat :: (Foldable.Foldable t, Monad m) => t (a -> m a) -> (a -> m a)
 kconcat = Foldable.foldr (>=>) return
