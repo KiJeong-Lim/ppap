@@ -8,7 +8,7 @@ import Z.Algo.Function
 import Z.Math.Classes
 
 makePathTable :: MyNode -> ControlSystem -> Map.Map MyNode MyExpr
-makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q))) | q <- qs ] where
+makePathTable q0 table0 = Map.fromList [ (q, theClosure Map.! (q0, q)) | q <- qs ] where
     qs :: [MyNode]
     qs = Set.toAscList theSetOfNodes where
         theSetOfNodes :: Set.Set MyNode
@@ -17,7 +17,9 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
             , Set.unions [ Set.fromList [q, p] | (q, p) <- Set.toAscList (Map.keysSet table0) ]
             ]
     theClosure :: Map.Map (MyNode, MyNode) MyExpr
-    theClosure = Map.fromList (recNat myInit myStep (length qs)) where
+    theClosure = refine (recNat myInit myStep (length qs)) where
+        refine :: [((MyNode, MyNode), MyExpr)] -> Map.Map (MyNode, MyNode) MyExpr
+        refine = Map.fromList . map (fmap (reduceExpr ReduceLv1))
         myInit :: [((MyNode, MyNode), MyExpr)]
         myInit = do
             q_i <- qs
@@ -27,9 +29,9 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
                 , maybe nullRE id (Map.lookup (q_i, q_j) table0)
                 )
         myStep :: Int -> [((MyNode, MyNode), MyExpr)] -> [((MyNode, MyNode), MyExpr)]
-        myStep k mapsto = do
+        myStep k prev = do
             let q_k = qs !! k
-                table = Map.fromList mapsto
+                table = refine prev
                 at idx = table Map.! idx
             q_i <- qs
             q_j <- qs
@@ -37,15 +39,13 @@ makePathTable q0 table0 = Map.fromList [ (q, simplExpr (theClosure Map.! (q0, q)
                 ( (q_i, q_j)
                 , unionRE (at (q_i, q_j)) (concatRE (at (q_i, q_k)) (concatRE (starRE (at (q_k, q_k))) (at (q_k, q_j))))
                 )
-        epsilonRE :: MyExpr
-        epsilonRE = 1
-        nullRE :: MyExpr
-        nullRE = 0
         unionRE :: MyExpr -> MyExpr -> MyExpr
         unionRE e1 e2 = e1 + e2
+        nullRE :: MyExpr
+        nullRE = 0
         concatRE :: MyExpr -> MyExpr -> MyExpr
         concatRE e1 e2 = e1 * e2
+        epsilonRE :: MyExpr
+        epsilonRE = 1
         starRE :: MyExpr -> MyExpr
         starRE e1 = 1 / (1 - e1)
-    simplExpr :: MyExpr -> MyExpr
-    simplExpr = reduceExpr ReduceLv1
