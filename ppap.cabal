@@ -67,7 +67,6 @@ executable ppap
     Calc.ControlSystem.Read
     Calc.ControlSystem.Test
     Calc.ControlSystem.Util
-    Calc.Runtime.Main
     Calc.Main
     LGS.Main
     LGS.Make
@@ -88,7 +87,6 @@ executable ppap
     Z.Algo.Sorting
     Z.Math.Classes
     Z.Math.V1
-    Z.Math.V2
     Z.System.File
     Z.System.Machine
     Z.System.Path

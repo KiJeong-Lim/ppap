@@ -1,6 +1,6 @@
 module Calc.Main where
 
-import Calc.Runtime.Main
+import Calc.ControlSystem.Main
 import Control.Monad
 import Z.System.File
 import Z.System.Path
@@ -11,9 +11,7 @@ runCalc dir = do
     content <- readFileNow dir
     case content of
         Nothing -> putStrLn ("cannot open: " ++ dir)
-        Just queries -> do
-            runCalculator queries
-            return ()
+        Just queries -> return ()
 
 main :: IO ()
 main = do
