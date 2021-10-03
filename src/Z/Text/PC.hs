@@ -1,12 +1,25 @@
 module Z.Text.PC where
 
 import Control.Applicative
+import Z.Algo.Function
 import Z.Text.Doc
 import Z.Text.PC.Base
 import Z.Text.PC.Internal
 import Z.Utils
 
 type PC = MyPC
+
+instance Failable (MyPC val) where
+    alt p1 p2 = MyPC (mkPB $ \str0 -> alt (runPB (unMyPC p1) str0) (runPB (unMyPC p2) str0))
+
+instance FailableZero (MyPC val) where
+    nil = MyPC (mkPB $ \str0 -> nil)
+
+execPC :: PC val -> Src -> Either LocStr val
+execPC p str = execPB (unMyPC p) (addLoc str)
+
+runPC :: FilePath -> PC val -> Src -> Either ErrMsg val
+runPC path p src = either (callWithStrictArg Left . makeMessageForParsingError path src) (callWithStrictArg return) (execPC p src)
 
 acceptPC :: (Char -> Bool) -> PC Char
 acceptPC cond = MyPC (mkPB go) where
@@ -24,9 +37,7 @@ matchPC = MyPC . go where
         (token, lstr1) -> if map snd token == expecteds then [((), lstr1)] else []
 
 eofPC :: PC ()
-eofPC = MyPC go where
-    go :: PB LocChr ()
-    go = mkPB $ \lstr0 -> if null lstr0 then [((), lstr0)] else []
+eofPC = MyPC (mkPB $ \lstr0 -> if null lstr0 then [((), lstr0)] else [])
 
 regexPC :: RegExRep -> PC String
 regexPC = myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression
@@ -35,15 +46,9 @@ intPC :: PC Int
 intPC = read <$> regexPC "['-']? ['0'-'9']+"
 
 negPC :: PC val -> PC ()
-negPC = MyPC . go . unMyPC where
-    go :: PB LocChr val -> PB LocChr ()
-    go p1 = mkPB $ \str0 -> if null (runPB p1 str0) then [((), str0)] else []
-
-execPC :: PC val -> Src -> Either LocStr val
-execPC p str = execPB (unMyPC p) (addLoc str)
-
-runPC :: FilePath -> PC val -> Src -> Either ErrMsg val
-runPC path p src = either (callWithStrictArg Left . makeMessageForParsingError path src) (callWithStrictArg return) (execPC p src)
+negPC p1 = ((p1 *> return True) /> return False) >>= go where
+    go :: Bool -> PC ()
+    go p1_passed = if p1_passed then empty else return ()
 
 acceptQuote :: PC String
 acceptQuote = pure read <*> regexPC "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\'])* \"\\\"\""
