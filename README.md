@@ -9,7 +9,7 @@
 ```
 git clone https://github.com/KiJeong-Lim/ppap.git
 cd ppap
-stack build ppap --ghc-options="-O3"
+stack build ppap
 stack exec -- ppap
 Copyright (c) 2020-2021, Kijeong Lim
 All rights reserved.
