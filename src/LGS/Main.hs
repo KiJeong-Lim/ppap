@@ -23,11 +23,11 @@ runLGS dir = do
         Left err -> putStrLn err
         Right xblocks -> case runIdentity (runExceptT (genLexer xblocks)) of
             Left err -> do
-                writeFile (dir ++ ".failed") err
+                writeFileNow (dir ++ ".failed") err
                 shelly "LGS >>= tell (generating-failed)"
                 return ()
             Right delta -> do
-                writeFile (dir ++ ".hs") (delta "")
+                writeFileNow (dir ++ ".hs") (delta "")
                 shelly "LGS >>= tell (the-lexer-has-been-generated)"
                 return ()
 

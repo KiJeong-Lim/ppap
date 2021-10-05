@@ -23,11 +23,11 @@ runPGS dir = do
         Left err -> putStrLn err
         Right yblocks -> case runIdentity (runExceptT (genParser yblocks)) of
             Left err -> do
-                writeFile (dir ++ ".failed") err
+                writeFileNow (dir ++ ".failed") err
                 shelly "PGS >>= tell (generating-failed)"
                 return ()
             Right delta -> do
-                writeFile (dir ++ ".hs") (delta "")
+                writeFileNow (dir ++ ".hs") (delta "")
                 shelly "PGS >>= tell (the-parser-has-been-generated)"
                 return ()
 
