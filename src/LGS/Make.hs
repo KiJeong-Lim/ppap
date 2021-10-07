@@ -332,344 +332,8 @@ mkReQuest re1 = ReQuest re1
 mkReCharSet :: CharSet -> RegEx
 mkReCharSet chs = chs `seq` ReCharSet chs
 
-differentiate :: RegEx -> Char -> RegEx
-differentiate (ReZero) ch = mkReZero
-differentiate (ReUnion re1 re2) ch = mkReUnion (differentiate re1 ch) (differentiate re2 ch)
-differentiate (ReWord str1) ch = if null str1 then mkReZero else if head str1 == ch then mkReWord (tail str1) else mkReZero
-differentiate (ReConcat re1 re2) ch = mkReUnion (mkReConcat (differentiate re1 ch) re2) (if isNullable re1 then differentiate re2 ch else mkReZero)
-differentiate (ReStar re1) ch = mkReConcat (differentiate re1 ch) (mkReStar re1)
-differentiate (ReDagger re1) ch = differentiate (mkReConcat re1 (mkReStar re1)) ch
-differentiate (ReQuest re1) ch = differentiate (mkReUnion re1 (mkReWord [])) ch
-differentiate (ReCharSet chs1) ch = if ch `Set.member` runCharSet chs1 then mkReWord [] else mkReZero
-
-runRegEx :: RegEx -> String -> Bool
-runRegEx = curry (isNullable . uncurry (List.foldl' differentiate))
-
-isNullable :: RegEx -> Bool
-isNullable (ReZero) = False
-isNullable (ReUnion re1 re2) = isNullable re1 || isNullable re2
-isNullable (ReWord str1) = null str1
-isNullable (ReConcat re1 re2) = isNullable re1 && isNullable re2
-isNullable (ReStar re1) = True
-isNullable (ReDagger re1) = isNullable re1
-isNullable (ReQuest re1) = True
-isNullable (ReCharSet chs1) = False
-
-implies :: RegEx -> RegEx -> Bool
-implies = go where
-    go :: RegEx -> RegEx -> Bool
-    go re1 re2 = re1 == re2 || dispatch re1 re2
-    dispatch :: RegEx -> RegEx -> Bool
-    dispatch (ReZero) re1 = True
-    dispatch (ReUnion re1 re2) re3 = re1 `implies` re3 && re2 `implies` re3
-    dispatch (ReWord str1) re2 = runRegEx re2 str1
-    dispatch (ReCharSet chs1) (ReCharSet chs2) = runCharSet chs1 `Set.isSubsetOf` runCharSet chs2
-    dispatch (ReCharSet chs1) (ReWord [ch2]) = runCharSet chs1 `Set.isSubsetOf` Set.singleton ch2
-    dispatch (ReStar re1) (ReStar re2) = re1 `implies` re2
-    dispatch (ReStar re1) (ReDagger re2) = isNullable re2 && re1 `implies` ReStar re2
-    dispatch (ReStar re1) (ReQuest re2) = ReStar re1 `implies` re2
-    dispatch (ReDagger re1) (ReStar re2) = re1 `implies` re2
-    dispatch (ReDagger re1) (ReDagger re2) = re1 `implies` re2
-    dispatch (ReDagger re1) (ReQuest re2) = ReStar re1 `implies` re2
-    dispatch (ReQuest re1) (ReStar re2) = re1 `implies` ReStar re2
-    dispatch (ReQuest re1) (ReDagger re2) = isNullable re2 && re1 `implies` ReStar re2
-    dispatch (ReQuest re1) (ReQuest re2) = re1 `implies` re2
-    dispatch (ReConcat re1 re2) (ReStar re3) = re1 `implies` ReStar re3 && re2 `implies` ReStar re3
-    dispatch (ReConcat re1 re2) (ReDagger re3) = (re1 `implies` ReDagger re3 && re2 `implies` ReStar re3) || (re1 `implies` ReStar re3 && re2 `implies` ReDagger re3)
-    dispatch re1 (ReUnion re2 re3) = re1 `implies` re2 || re1 `implies` re3
-    dispatch re1 (ReStar re2) = re1 `implies` ReWord [] || re1 `implies` re2
-    dispatch re1 (ReDagger re2) = re1 `implies` re2
-    dispatch re1 (ReQuest re2) = re1 `implies` ReWord [] || re1 `implies` re2
-    dispatch re1 re2 = False
-
-equiv :: RegEx -> RegEx -> Bool
-re1 `equiv` re2 = re1 `implies` re2 && re2 `implies` re1
-
 reduceRegEx :: RegEx -> RegEx
-reduceRegEx = go3 . go2 . go1 where
-    dropLast :: [x] -> [x]
-    dropLast [] = []
-    dropLast [x1] = []
-    dropLast (x1 : xs) = x1 : dropLast xs
-    unfoldConcat :: RegEx -> [RegEx]
-    unfoldConcat (ReConcat re1 re2) = unfoldConcat re1 ++ unfoldConcat re2
-    unfoldConcat (ReWord []) = []
-    unfoldConcat re1 = [re1]
-    extractCS :: [Char] -> RegEx
-    extractCS chs
-        = case reverse (foldr loop1 [] chs) of
-            [] -> mkReZero
-            pair : pairs -> case foldr mkCsUnion (loop2 pair) (map loop2 pairs) of
-                CsSingle ch -> mkReWord [ch]
-                chs' -> mkReCharSet chs'
-        where
-            loop1 :: Char -> [(Char, Char)] -> [(Char, Char)]
-            loop1 ch0 pairs0 = case List.partition (\pair -> snd pair == pred ch0) pairs0 of
-                ([], pairs1) -> (ch0, ch0) : pairs1
-                ([(ch1, ch2)], pairs1) -> (ch1, ch0) : pairs1
-            loop2 :: (Char, Char) -> CharSet
-            loop2 (ch1, ch2) = if ch1 == ch2 then mkCsSingle ch1 else mkCsEnum ch1 ch2
-    go1 :: RegEx -> RegEx
-    go1 (ReZero) = makeReZero1
-    go1 (ReUnion re1 re2) = makeReUnion1 (go1 re1) (go1 re2)
-    go1 (ReWord str1) = makeReWord1 str1
-    go1 (ReConcat re1 re2) = makeReConcat1 (go1 re1) (go1 re2)
-    go1 (ReStar re1) = makeReStar1 (go1 re1)
-    go1 (ReDagger re1) = makeReDagger1 (go1 re1)
-    go1 (ReQuest re1) = makeReQuest1 (go1 re1)
-    go1 (ReCharSet chs1) = makeReCharSet1 chs1
-    makeReZero1 :: RegEx
-    makeReZero1 = mkReZero
-    makeReUnion1 :: RegEx -> RegEx -> RegEx
-    makeReUnion1 re1 re2
-        | ReCharSet chs1 <- re1
-        , ReCharSet chs2 <- re2
-        = makeReCharSet1 (mkCsUnion chs1 chs2)
-        | re1 `implies` re2
-        = re2
-        | re2 `implies` re1
-        = re1
-        | ReUnion re3 re4 <- re2
-        = mkReUnion (mkReUnion re1 re3) re4
-        | otherwise
-        = mkReUnion re1 re2
-    makeReWord1 :: String -> RegEx
-    makeReWord1 str1
-        = case str1 of
-            [ch1] -> mkReCharSet (mkCsSingle ch1)
-            str1' -> mkReWord str1'
-    makeReConcat1 :: RegEx -> RegEx -> RegEx
-    makeReConcat1 re1 re2
-        | ReConcat re3 re4 <- re2
-        = mkReConcat (mkReConcat re1 re3) re4
-        | otherwise
-        = mkReConcat re1 re2
-    makeReStar1 :: RegEx -> RegEx
-    makeReStar1 re1
-        = case deleteUnit re1 of
-            ReZero -> mkReWord []
-            re2 -> case destructStarConcat re2 of
-                [] -> mkReStar re2
-                re3 : res4 -> mkReStar (List.foldl' mkReUnion re3 res4)
-        where
-            deleteUnit :: RegEx -> RegEx
-            deleteUnit (ReUnion re1 (ReWord [])) = deleteUnit re1
-            deleteUnit (ReUnion re1 re2) = mkReUnion (deleteUnit re1) re2
-            deleteUnit (ReWord []) = ReZero
-            deleteUnit re1 = re1
-            destructStarConcat :: RegEx -> [RegEx]
-            destructStarConcat (ReStar re1)
-                = [re1]
-            destructStarConcat (ReConcat re1 (ReStar re2))
-                = case destructStarConcat re1 of
-                    [] -> []
-                    res3 -> res3 ++ [re2]
-            destructStarConcat re1
-                = []
-    makeReDagger1 :: RegEx -> RegEx
-    makeReDagger1 = makeReConcat1 <*> makeReStar1
-    makeReQuest1 :: RegEx -> RegEx
-    makeReQuest1 re1 = makeReUnion1 (makeReWord1 []) re1
-    makeReCharSet1 :: CharSet -> RegEx
-    makeReCharSet1 (CsUnion chs1 chs2)
-        = case (runCharSet chs1, runCharSet chs2) of
-            (chs1_val, chs2_val)
-                | chs1_val `Set.isSubsetOf` chs2_val -> mkReCharSet chs2
-                | chs2_val `Set.isSubsetOf` chs1_val -> mkReCharSet chs1
-                | otherwise -> case List.partition (\ch -> ch `Set.member` chs1_val || ch `Set.member` chs2_val) (Set.toDescList theCsUniv) of
-                    (yess, nos)
-                        | length nos < 5 -> mkReCharSet (List.foldl' mkCsDiff mkCsUniv (map mkCsSingle nos))
-                        | otherwise -> extractCS yess
-    makeReCharSet1 chs1
-        = extractCS (Set.toAscList (runCharSet chs1))
-    go2 :: RegEx -> RegEx
-    go2 (ReZero) = makeReZero2
-    go2 (ReUnion re1 re2) = makeReUnion2 (go2 re1) (go2 re2)
-    go2 (ReWord str1) = makeReWord2 str1
-    go2 (ReConcat re1 re2) = makeReConcat2 (go2 re1) (go2 re2)
-    go2 (ReStar re1) = makeReStar2 (go2 re1)
-    go2 (ReDagger re1) = makeReDagger2 (go2 re1)
-    go2 (ReCharSet chs1) = makeReCharSet2 chs1
-    makeReZero2 :: RegEx
-    makeReZero2 = mkReZero
-    makeReUnion2 :: RegEx -> RegEx -> RegEx
-    makeReUnion2 re1 re2
-        | ReDagger re3 <- re1
-        , ReWord [] <- re2
-        = mkReStar re3
-        | ReWord [] <- re1
-        , ReDagger re3 <- re2
-        = mkReStar re3
-        | ReStar re3 <- re1
-        , ReWord [] <- re2
-        = re1
-        | ReWord [] <- re1
-        , ReStar re3 <- re2
-        = re2
-        | ReQuest re3 <- re1
-        , ReWord [] <- re2
-        = re1
-        | ReWord [] <- re1
-        , ReQuest re3 <- re2
-        = re2
-        | ReWord [] <- re1
-        = mkReQuest re2
-        | ReWord [] <- re2
-        = mkReQuest re1
-        | otherwise
-        = makeReUnion1 re1 re2
-    makeReWord2 :: String -> RegEx
-    makeReWord2 = mkReWord
-    makeReConcat2 :: RegEx -> RegEx -> RegEx
-    makeReConcat2 re1 re2
-        | ReWord str1 <- re1
-        , ReWord str2 <- re2
-        = mkReWord (str1 ++ str2)
-        | ReStar re3 <- re1
-        , ReStar re4 <- re2
-        , re3 `equiv` re4
-        = re1
-        | ReStar re3 <- re1
-        , ReDagger re4 <- re2
-        , re3 `equiv` re4
-        = re2
-        | ReStar re3 <- re1
-        , ReQuest re4 <- re2
-        , re3 `equiv` re4
-        = re1
-        | ReDagger re3 <- re1
-        , ReStar re4 <- re2
-        , re3 `equiv` re4
-        = re1
-        | ReDagger re3 <- re1
-        , ReQuest re4 <- re2
-        , re3 `equiv` re4
-        = re1
-        | ReQuest re3 <- re1
-        , ReStar re4 <- re2
-        , re3 `equiv` re4
-        = re2
-        | ReQuest re3 <- re1
-        , ReDagger re4 <- re2
-        , re3 `equiv` re4
-        = re2
-        | ReStar re3 <- re1
-        , re2 `equiv` re3
-        = mkReDagger re3
-        | ReStar re3 <- re2
-        , re1 `equiv` re3
-        = mkReDagger re3
-        | ReConcat re3 re4 <- re1
-        = case makeReConcat2 re4 re2 of
-            ReConcat re5 re6 -> makeReConcat1 (makeReConcat2 re3 re5) re6
-            re5 -> makeReConcat2 re3 re5
-        | otherwise
-        = makeReConcat1 re1 re2
-    makeReStar2 :: RegEx -> RegEx
-    makeReStar2 = mkReStar
-    makeReDagger2 :: RegEx -> RegEx
-    makeReDagger2 = mkReDagger
-    makeReQuest2 :: RegEx -> RegEx
-    makeReQuest2 = mkReQuest
-    makeReCharSet2 :: CharSet -> RegEx
-    makeReCharSet2 chs1
-        = case List.partition (\ch -> ch `Set.member` runCharSet chs1) (Set.toDescList theCsUniv) of
-            (yess, nos)
-                | length nos < 5 -> mkReCharSet (List.foldl' mkCsDiff mkCsUniv (map mkCsSingle nos))
-                | otherwise -> case reverse (mkCollection yess) of
-                    [] -> mkReZero
-                    re1 : res2 -> case List.foldl' mkCsUnion re1 res2 of
-                        CsSingle ch3 -> ReWord [ch3]
-                        chs3 -> mkReCharSet chs3
-        where
-            loop :: Char -> [(Char, Char)] -> [(Char, Char)]
-            loop ch0 pairs0 = case List.partition (\pair -> snd pair == pred ch0) pairs0 of
-                ([], pairs1) -> (ch0, ch0) : pairs1
-                ([(ch1, ch2)], pairs1) -> (ch1, ch0) : pairs1
-            mkCollection :: [Char] -> [CharSet]
-            mkCollection yess = do
-                (ch1, ch2) <- foldr loop [] yess
-                if ch1 == ch2
-                    then return (mkCsSingle ch1)
-                    else return (mkCsEnum ch1 ch2)
-    makeReZero3 :: RegEx
-    makeReZero3 = mkReZero
-    makeReUnion3 :: RegEx -> RegEx -> RegEx
-    makeReUnion3 re1 re2
-        | ReQuest re3 <- re1
-        = mkReQuest (makeReUnion3 re3 re2)
-        | ReQuest re3 <- re2
-        = mkReQuest (makeReUnion3 re1 re3)
-        | ReUnion re3 re4 <- re1
-        = case makeReUnion3 re4 re2 of
-            ReUnion re5 re6 -> makeReUnion2 (makeReUnion3 re3 re5) re6
-            re5 -> makeReUnion3 re3 re5
-        | otherwise
-        = case go (unfoldConcat re1) (unfoldConcat re2) of
-            Nothing -> makeReUnion2 re1 re2
-            Just re3 -> re3
-        where
-            go :: [RegEx] -> [RegEx] -> Maybe RegEx
-            go res1 res2
-                | null res1 || null res2 = return (tryToMerge res1 res2)
-                | Just res3 <- head res1 `matchPrefix` res2 = do
-                    re4 <- go (tail res1) res3
-                    return (mkReConcat (head res1) re4)
-                | Just res3 <- last res1 `matchSuffix` res2 = do
-                    re4 <- go (dropLast res1) res3
-                    return (mkReConcat re4 (last res1))
-                | otherwise = Nothing
-            tryToMerge :: [RegEx] -> [RegEx] -> RegEx
-            tryToMerge [] [] = makeReWord2 []
-            tryToMerge [] (re1 : res2) = makeReQuest2 (List.foldl' makeReConcat2 re1 res2)
-            tryToMerge (re1 : res2) [] = makeReQuest2 (List.foldl' makeReConcat2 re1 res2)
-            tryToMerge (re1 : res2) (re3 : res4) = makeReUnion2 (List.foldl' makeReConcat2 re1 res2) (List.foldl' makeReConcat2 re3 res4)
-    makeReWord3 :: String -> RegEx
-    makeReWord3 = mkReWord
-    makeReConcat3 :: RegEx -> RegEx -> RegEx
-    makeReConcat3 = makeReConcat2
-    makeReStar3 :: RegEx -> RegEx
-    makeReStar3 re0
-        | ReConcat re1 re2 <- re0
-        = case foldr loop1 init1 (unfoldConcat re1 ++ unfoldConcat re2) of
-            Nothing -> makeReStar2 (mkReConcat re1 re2)
-            Just (re3', res4) -> case (re3', res4) of
-                (Nothing, []) -> mkReWord []
-                (Nothing, re5 : res6) -> mkReStar (List.foldl' makeReUnion3 re5 res6)
-                (Just re5, res6) -> mkReStar (List.foldl' makeReUnion1 re5 res6)
-        | otherwise
-        = makeReStar2 re0
-        where
-            init1 :: Maybe (Maybe RegEx, [RegEx])
-            init1 = Just (Nothing, [])
-            loop1 :: RegEx -> Maybe (Maybe RegEx, [RegEx]) -> Maybe (Maybe RegEx, [RegEx])
-            loop1 (ReStar re1) acc = do
-                (re2', res3) <- acc
-                return (re2', re1 : res3)
-            loop1 re1 acc = do
-                (re2', res3) <- acc
-                case re2' of
-                    Nothing -> return (Just re1, res3)
-                    Just re2 -> Nothing
-    makeReDagger3 :: RegEx -> RegEx
-    makeReDagger3 = mkReDagger
-    makeReQuest3 :: RegEx -> RegEx
-    makeReQuest3 = mkReQuest
-    makeReCharSet3 :: CharSet -> RegEx
-    makeReCharSet3 = mkReCharSet
-    go3 :: RegEx -> RegEx
-    go3 (ReZero) = makeReZero3
-    go3 (ReUnion re1 re2) = makeReUnion3 (go3 re1) (go3 re2)
-    go3 (ReWord str1) = makeReWord3 str1
-    go3 (ReConcat re1 re2) = makeReConcat3 (go3 re1) (go3 re2)
-    go3 (ReStar re1) = makeReStar3 (go3 re1)
-    go3 (ReDagger re1) = makeReDagger3 (go3 re1)
-    go3 (ReQuest re1) = makeReQuest3 (go3 re1)
-    go3 (ReCharSet chs1) = makeReCharSet3 chs1
-    matchPrefix :: RegEx -> [RegEx] -> Maybe [RegEx]
-    matchPrefix re1 res2 = if re1 `equiv` head res2 then return (tail res2) else Nothing
-    matchSuffix :: RegEx -> [RegEx] -> Maybe [RegEx]
-    matchSuffix re1 res2 = if re1 `equiv` last res2 then return (dropLast res2) else Nothing
+reduceRegEx = reduceRegExOldPassion
 
 makeJumpRegexTable :: DFA -> Map.Map (ParserS, ParserS) RegEx
 makeJumpRegexTable (DFA q0 qfs delta markeds) = makeClosure (length qs) where
@@ -737,3 +401,339 @@ generateRegexTable dfa = result where
             )
         | q <- qs
         ]
+
+reduceRegExOldPassion :: RegEx -> RegEx
+reduceRegExOldPassion = myMain where
+    differentiate :: RegEx -> Char -> RegEx
+    differentiate (ReZero) ch = mkReZero
+    differentiate (ReUnion re1 re2) ch = mkReUnion (differentiate re1 ch) (differentiate re2 ch)
+    differentiate (ReWord str1) ch = if null str1 then mkReZero else if head str1 == ch then mkReWord (tail str1) else mkReZero
+    differentiate (ReConcat re1 re2) ch = mkReUnion (mkReConcat (differentiate re1 ch) re2) (if isNullable re1 then differentiate re2 ch else mkReZero)
+    differentiate (ReStar re1) ch = mkReConcat (differentiate re1 ch) (mkReStar re1)
+    differentiate (ReDagger re1) ch = differentiate (mkReConcat re1 (mkReStar re1)) ch
+    differentiate (ReQuest re1) ch = differentiate (mkReUnion re1 (mkReWord [])) ch
+    differentiate (ReCharSet chs1) ch = if ch `Set.member` runCharSet chs1 then mkReWord [] else mkReZero
+    runRegEx :: RegEx -> String -> Bool
+    runRegEx = curry (isNullable . uncurry (List.foldl' differentiate))
+    isNullable :: RegEx -> Bool
+    isNullable (ReZero) = False
+    isNullable (ReUnion re1 re2) = isNullable re1 || isNullable re2
+    isNullable (ReWord str1) = null str1
+    isNullable (ReConcat re1 re2) = isNullable re1 && isNullable re2
+    isNullable (ReStar re1) = True
+    isNullable (ReDagger re1) = isNullable re1
+    isNullable (ReQuest re1) = True
+    isNullable (ReCharSet chs1) = False
+    implies :: RegEx -> RegEx -> Bool
+    implies = go where
+        go :: RegEx -> RegEx -> Bool
+        go re1 re2 = re1 == re2 || dispatch re1 re2
+        dispatch :: RegEx -> RegEx -> Bool
+        dispatch (ReZero) re1 = True
+        dispatch (ReUnion re1 re2) re3 = re1 `implies` re3 && re2 `implies` re3
+        dispatch (ReWord str1) re2 = runRegEx re2 str1
+        dispatch (ReCharSet chs1) (ReCharSet chs2) = runCharSet chs1 `Set.isSubsetOf` runCharSet chs2
+        dispatch (ReCharSet chs1) (ReWord [ch2]) = runCharSet chs1 `Set.isSubsetOf` Set.singleton ch2
+        dispatch (ReStar re1) (ReStar re2) = re1 `implies` re2
+        dispatch (ReStar re1) (ReDagger re2) = isNullable re2 && re1 `implies` ReStar re2
+        dispatch (ReStar re1) (ReQuest re2) = ReStar re1 `implies` re2
+        dispatch (ReDagger re1) (ReStar re2) = re1 `implies` re2
+        dispatch (ReDagger re1) (ReDagger re2) = re1 `implies` re2
+        dispatch (ReDagger re1) (ReQuest re2) = ReStar re1 `implies` re2
+        dispatch (ReQuest re1) (ReStar re2) = re1 `implies` ReStar re2
+        dispatch (ReQuest re1) (ReDagger re2) = isNullable re2 && re1 `implies` ReStar re2
+        dispatch (ReQuest re1) (ReQuest re2) = re1 `implies` re2
+        dispatch (ReConcat re1 re2) (ReStar re3) = re1 `implies` ReStar re3 && re2 `implies` ReStar re3
+        dispatch (ReConcat re1 re2) (ReDagger re3) = (re1 `implies` ReDagger re3 && re2 `implies` ReStar re3) || (re1 `implies` ReStar re3 && re2 `implies` ReDagger re3)
+        dispatch re1 (ReUnion re2 re3) = re1 `implies` re2 || re1 `implies` re3
+        dispatch re1 (ReStar re2) = re1 `implies` ReWord [] || re1 `implies` re2
+        dispatch re1 (ReDagger re2) = re1 `implies` re2
+        dispatch re1 (ReQuest re2) = re1 `implies` ReWord [] || re1 `implies` re2
+        dispatch re1 re2 = False
+    equiv :: RegEx -> RegEx -> Bool
+    re1 `equiv` re2 = re1 `implies` re2 && re2 `implies` re1
+    dropLast :: [x] -> [x]
+    dropLast [] = []
+    dropLast [x1] = []
+    dropLast (x1 : xs) = x1 : dropLast xs
+    unfoldConcat :: RegEx -> [RegEx]
+    unfoldConcat (ReConcat re1 re2) = unfoldConcat re1 ++ unfoldConcat re2
+    unfoldConcat (ReWord []) = []
+    unfoldConcat re1 = [re1]
+    myMain :: RegEx -> RegEx
+    myMain = go3 . go2 . go1 where
+        extractCS :: [Char] -> RegEx
+        extractCS chs
+            = case reverse (foldr loop1 [] chs) of
+                [] -> mkReZero
+                pair : pairs -> case foldr mkCsUnion (loop2 pair) (map loop2 pairs) of
+                    CsSingle ch -> mkReWord [ch]
+                    chs' -> mkReCharSet chs'
+            where
+                loop1 :: Char -> [(Char, Char)] -> [(Char, Char)]
+                loop1 ch0 pairs0 = case List.partition (\pair -> snd pair == pred ch0) pairs0 of
+                    ([], pairs1) -> (ch0, ch0) : pairs1
+                    ([(ch1, ch2)], pairs1) -> (ch1, ch0) : pairs1
+                loop2 :: (Char, Char) -> CharSet
+                loop2 (ch1, ch2) = if ch1 == ch2 then mkCsSingle ch1 else mkCsEnum ch1 ch2
+        go1 :: RegEx -> RegEx
+        go1 (ReZero) = makeReZero1
+        go1 (ReUnion re1 re2) = makeReUnion1 (go1 re1) (go1 re2)
+        go1 (ReWord str1) = makeReWord1 str1
+        go1 (ReConcat re1 re2) = makeReConcat1 (go1 re1) (go1 re2)
+        go1 (ReStar re1) = makeReStar1 (go1 re1)
+        go1 (ReDagger re1) = makeReDagger1 (go1 re1)
+        go1 (ReQuest re1) = makeReQuest1 (go1 re1)
+        go1 (ReCharSet chs1) = makeReCharSet1 chs1
+        makeReZero1 :: RegEx
+        makeReZero1 = mkReZero
+        makeReUnion1 :: RegEx -> RegEx -> RegEx
+        makeReUnion1 re1 re2
+            | ReCharSet chs1 <- re1
+            , ReCharSet chs2 <- re2
+            = makeReCharSet1 (mkCsUnion chs1 chs2)
+            | re1 `implies` re2
+            = re2
+            | re2 `implies` re1
+            = re1
+            | ReUnion re3 re4 <- re2
+            = mkReUnion (mkReUnion re1 re3) re4
+            | otherwise
+            = mkReUnion re1 re2
+        makeReWord1 :: String -> RegEx
+        makeReWord1 str1
+            = case str1 of
+                [ch1] -> mkReCharSet (mkCsSingle ch1)
+                str1' -> mkReWord str1'
+        makeReConcat1 :: RegEx -> RegEx -> RegEx
+        makeReConcat1 re1 re2
+            | ReConcat re3 re4 <- re2
+            = mkReConcat (mkReConcat re1 re3) re4
+            | otherwise
+            = mkReConcat re1 re2
+        makeReStar1 :: RegEx -> RegEx
+        makeReStar1 re1
+            = case deleteUnit re1 of
+                ReZero -> mkReWord []
+                re2 -> case destructStarConcat re2 of
+                    [] -> mkReStar re2
+                    re3 : res4 -> mkReStar (List.foldl' mkReUnion re3 res4)
+            where
+                deleteUnit :: RegEx -> RegEx
+                deleteUnit (ReUnion re1 (ReWord [])) = deleteUnit re1
+                deleteUnit (ReUnion re1 re2) = mkReUnion (deleteUnit re1) re2
+                deleteUnit (ReWord []) = ReZero
+                deleteUnit re1 = re1
+                destructStarConcat :: RegEx -> [RegEx]
+                destructStarConcat (ReStar re1)
+                    = [re1]
+                destructStarConcat (ReConcat re1 (ReStar re2))
+                    = case destructStarConcat re1 of
+                        [] -> []
+                        res3 -> res3 ++ [re2]
+                destructStarConcat re1
+                    = []
+        makeReDagger1 :: RegEx -> RegEx
+        makeReDagger1 = makeReConcat1 <*> makeReStar1
+        makeReQuest1 :: RegEx -> RegEx
+        makeReQuest1 re1 = makeReUnion1 (makeReWord1 []) re1
+        makeReCharSet1 :: CharSet -> RegEx
+        makeReCharSet1 (CsUnion chs1 chs2)
+            = case (runCharSet chs1, runCharSet chs2) of
+                (chs1_val, chs2_val)
+                    | chs1_val `Set.isSubsetOf` chs2_val -> mkReCharSet chs2
+                    | chs2_val `Set.isSubsetOf` chs1_val -> mkReCharSet chs1
+                    | otherwise -> case List.partition (\ch -> ch `Set.member` chs1_val || ch `Set.member` chs2_val) (Set.toDescList theCsUniv) of
+                        (yess, nos)
+                            | length nos < 5 -> mkReCharSet (List.foldl' mkCsDiff mkCsUniv (map mkCsSingle nos))
+                            | otherwise -> extractCS yess
+        makeReCharSet1 chs1
+            = extractCS (Set.toAscList (runCharSet chs1))
+        go2 :: RegEx -> RegEx
+        go2 (ReZero) = makeReZero2
+        go2 (ReUnion re1 re2) = makeReUnion2 (go2 re1) (go2 re2)
+        go2 (ReWord str1) = makeReWord2 str1
+        go2 (ReConcat re1 re2) = makeReConcat2 (go2 re1) (go2 re2)
+        go2 (ReStar re1) = makeReStar2 (go2 re1)
+        go2 (ReDagger re1) = makeReDagger2 (go2 re1)
+        go2 (ReCharSet chs1) = makeReCharSet2 chs1
+        makeReZero2 :: RegEx
+        makeReZero2 = mkReZero
+        makeReUnion2 :: RegEx -> RegEx -> RegEx
+        makeReUnion2 re1 re2
+            | ReDagger re3 <- re1
+            , ReWord [] <- re2
+            = mkReStar re3
+            | ReWord [] <- re1
+            , ReDagger re3 <- re2
+            = mkReStar re3
+            | ReStar re3 <- re1
+            , ReWord [] <- re2
+            = re1
+            | ReWord [] <- re1
+            , ReStar re3 <- re2
+            = re2
+            | ReQuest re3 <- re1
+            , ReWord [] <- re2
+            = re1
+            | ReWord [] <- re1
+            , ReQuest re3 <- re2
+            = re2
+            | ReWord [] <- re1
+            = mkReQuest re2
+            | ReWord [] <- re2
+            = mkReQuest re1
+            | otherwise
+            = makeReUnion1 re1 re2
+        makeReWord2 :: String -> RegEx
+        makeReWord2 = mkReWord
+        makeReConcat2 :: RegEx -> RegEx -> RegEx
+        makeReConcat2 re1 re2
+            | ReWord str1 <- re1
+            , ReWord str2 <- re2
+            = mkReWord (str1 ++ str2)
+            | ReStar re3 <- re1
+            , ReStar re4 <- re2
+            , re3 `equiv` re4
+            = re1
+            | ReStar re3 <- re1
+            , ReDagger re4 <- re2
+            , re3 `equiv` re4
+            = re2
+            | ReStar re3 <- re1
+            , ReQuest re4 <- re2
+            , re3 `equiv` re4
+            = re1
+            | ReDagger re3 <- re1
+            , ReStar re4 <- re2
+            , re3 `equiv` re4
+            = re1
+            | ReDagger re3 <- re1
+            , ReQuest re4 <- re2
+            , re3 `equiv` re4
+            = re1
+            | ReQuest re3 <- re1
+            , ReStar re4 <- re2
+            , re3 `equiv` re4
+            = re2
+            | ReQuest re3 <- re1
+            , ReDagger re4 <- re2
+            , re3 `equiv` re4
+            = re2
+            | ReStar re3 <- re1
+            , re2 `equiv` re3
+            = mkReDagger re3
+            | ReStar re3 <- re2
+            , re1 `equiv` re3
+            = mkReDagger re3
+            | ReConcat re3 re4 <- re1
+            = case makeReConcat2 re4 re2 of
+                ReConcat re5 re6 -> makeReConcat1 (makeReConcat2 re3 re5) re6
+                re5 -> makeReConcat2 re3 re5
+            | otherwise
+            = makeReConcat1 re1 re2
+        makeReStar2 :: RegEx -> RegEx
+        makeReStar2 = mkReStar
+        makeReDagger2 :: RegEx -> RegEx
+        makeReDagger2 = mkReDagger
+        makeReQuest2 :: RegEx -> RegEx
+        makeReQuest2 = mkReQuest
+        makeReCharSet2 :: CharSet -> RegEx
+        makeReCharSet2 chs1
+            = case List.partition (\ch -> ch `Set.member` runCharSet chs1) (Set.toDescList theCsUniv) of
+                (yess, nos)
+                    | length nos < 5 -> mkReCharSet (List.foldl' mkCsDiff mkCsUniv (map mkCsSingle nos))
+                    | otherwise -> case reverse (mkCollection yess) of
+                        [] -> mkReZero
+                        re1 : res2 -> case List.foldl' mkCsUnion re1 res2 of
+                            CsSingle ch3 -> ReWord [ch3]
+                            chs3 -> mkReCharSet chs3
+            where
+                loop :: Char -> [(Char, Char)] -> [(Char, Char)]
+                loop ch0 pairs0 = case List.partition (\pair -> snd pair == pred ch0) pairs0 of
+                    ([], pairs1) -> (ch0, ch0) : pairs1
+                    ([(ch1, ch2)], pairs1) -> (ch1, ch0) : pairs1
+                mkCollection :: [Char] -> [CharSet]
+                mkCollection yess = do
+                    (ch1, ch2) <- foldr loop [] yess
+                    if ch1 == ch2
+                        then return (mkCsSingle ch1)
+                        else return (mkCsEnum ch1 ch2)
+        makeReZero3 :: RegEx
+        makeReZero3 = mkReZero
+        makeReUnion3 :: RegEx -> RegEx -> RegEx
+        makeReUnion3 re1 re2
+            | ReQuest re3 <- re1
+            = mkReQuest (makeReUnion3 re3 re2)
+            | ReQuest re3 <- re2
+            = mkReQuest (makeReUnion3 re1 re3)
+            | ReUnion re3 re4 <- re1
+            = case makeReUnion3 re4 re2 of
+                ReUnion re5 re6 -> makeReUnion2 (makeReUnion3 re3 re5) re6
+                re5 -> makeReUnion3 re3 re5
+            | otherwise
+            = case go (unfoldConcat re1) (unfoldConcat re2) of
+                Nothing -> makeReUnion2 re1 re2
+                Just re3 -> re3
+            where
+                go :: [RegEx] -> [RegEx] -> Maybe RegEx
+                go res1 res2
+                    | null res1 || null res2 = return (tryToMerge res1 res2)
+                    | Just res3 <- head res1 `matchPrefix` res2 = do
+                        re4 <- go (tail res1) res3
+                        return (mkReConcat (head res1) re4)
+                    | Just res3 <- last res1 `matchSuffix` res2 = do
+                        re4 <- go (dropLast res1) res3
+                        return (mkReConcat re4 (last res1))
+                    | otherwise = Nothing
+                tryToMerge :: [RegEx] -> [RegEx] -> RegEx
+                tryToMerge [] [] = makeReWord2 []
+                tryToMerge [] (re1 : res2) = makeReQuest2 (List.foldl' makeReConcat2 re1 res2)
+                tryToMerge (re1 : res2) [] = makeReQuest2 (List.foldl' makeReConcat2 re1 res2)
+                tryToMerge (re1 : res2) (re3 : res4) = makeReUnion2 (List.foldl' makeReConcat2 re1 res2) (List.foldl' makeReConcat2 re3 res4)
+        makeReWord3 :: String -> RegEx
+        makeReWord3 = mkReWord
+        makeReConcat3 :: RegEx -> RegEx -> RegEx
+        makeReConcat3 = makeReConcat2
+        makeReStar3 :: RegEx -> RegEx
+        makeReStar3 re0
+            | ReConcat re1 re2 <- re0
+            = case foldr loop1 init1 (unfoldConcat re1 ++ unfoldConcat re2) of
+                Nothing -> makeReStar2 (mkReConcat re1 re2)
+                Just (re3', res4) -> case (re3', res4) of
+                    (Nothing, []) -> mkReWord []
+                    (Nothing, re5 : res6) -> mkReStar (List.foldl' makeReUnion3 re5 res6)
+                    (Just re5, res6) -> mkReStar (List.foldl' makeReUnion1 re5 res6)
+            | otherwise
+            = makeReStar2 re0
+            where
+                init1 :: Maybe (Maybe RegEx, [RegEx])
+                init1 = Just (Nothing, [])
+                loop1 :: RegEx -> Maybe (Maybe RegEx, [RegEx]) -> Maybe (Maybe RegEx, [RegEx])
+                loop1 (ReStar re1) acc = do
+                    (re2', res3) <- acc
+                    return (re2', re1 : res3)
+                loop1 re1 acc = do
+                    (re2', res3) <- acc
+                    case re2' of
+                        Nothing -> return (Just re1, res3)
+                        Just re2 -> Nothing
+        makeReDagger3 :: RegEx -> RegEx
+        makeReDagger3 = mkReDagger
+        makeReQuest3 :: RegEx -> RegEx
+        makeReQuest3 = mkReQuest
+        makeReCharSet3 :: CharSet -> RegEx
+        makeReCharSet3 = mkReCharSet
+        go3 :: RegEx -> RegEx
+        go3 (ReZero) = makeReZero3
+        go3 (ReUnion re1 re2) = makeReUnion3 (go3 re1) (go3 re2)
+        go3 (ReWord str1) = makeReWord3 str1
+        go3 (ReConcat re1 re2) = makeReConcat3 (go3 re1) (go3 re2)
+        go3 (ReStar re1) = makeReStar3 (go3 re1)
+        go3 (ReDagger re1) = makeReDagger3 (go3 re1)
+        go3 (ReQuest re1) = makeReQuest3 (go3 re1)
+        go3 (ReCharSet chs1) = makeReCharSet3 chs1
+        matchPrefix :: RegEx -> [RegEx] -> Maybe [RegEx]
+        matchPrefix re1 res2 = if re1 `equiv` head res2 then return (tail res2) else Nothing
+        matchSuffix :: RegEx -> [RegEx] -> Maybe [RegEx]
+        matchSuffix re1 res2 = if re1 `equiv` last res2 then return (dropLast res2) else Nothing

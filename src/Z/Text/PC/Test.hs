@@ -33,17 +33,17 @@ instance (Show chr, Arbitrary chr, EqProp val, EqProp chr) => EqProp (ParserBase
     p1 =-= p2 = execPB p1 =-= execPB p2
 
 with100000 :: String -> TestBatch -> TestBatch
-with100000 this_test_name this_test_batch = (this_test_name, map (fmap (withMaxSuccess 100000)) (snd this_test_batch))
+with100000 = curry (fmap (fmap (fmap (fmap (withMaxSuccess 100000))) snd))
 
 checkParserBaseIsMonad :: TestBatch
-checkParserBaseIsMonad = with100000 ">>> checking=\"Monad (ParserBase LocChr)\"" (go undefined) where
-    go :: PB LocChr (Int, Int, Int) -> TestBatch
-    go = monad
+checkParserBaseIsMonad = with100000 ">>> checking=\"Monad (ParserBase LocChr)\"" (checkMonad undefined) where
+    checkMonad :: PB LocChr (Int, Int, Int) -> TestBatch
+    checkMonad = monad
 
 checkParserBaseIsMonadPlus :: TestBatch
-checkParserBaseIsMonadPlus = with100000 ">>> checking=\"MonadPlus (ParserBase LocChr)\"" (go undefined) where
-    go :: PB LocChr (Int, Int) -> TestBatch
-    go = monadPlus
+checkParserBaseIsMonadPlus = with100000 ">>> checking=\"MonadPlus (ParserBase LocChr)\"" (checkMonadPlus undefined) where
+    checkMonadPlus :: PB LocChr (Int, Int) -> TestBatch
+    checkMonadPlus = monadPlus
 
 testParserBaseProperty :: IO ()
 testParserBaseProperty = do
