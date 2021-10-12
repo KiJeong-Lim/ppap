@@ -33,7 +33,7 @@ instance Show Term where
         myPrecIs :: Precedence -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
         dispatch :: Term -> ShowS
-        dispatch (IVar x) = myPrecIs 11 $ showsVar x
+        dispatch (IVar x) = myPrecIs 11 $ showVar x
         dispatch (Zero) = myPrecIs 11 $ showString "0"
         dispatch (Succ t1) = myPrecIs 10 $ showString "S " . showsPrec 11 t1
         dispatch (Plus t1 t2) = myPrecIs 4 $ showsPrec 4 t1 . showString " + " . showsPrec 5 t2
@@ -50,8 +50,8 @@ instance Show Formula where
         dispatch (DisF f1 f2) = myPrecIs 1 $ showsPrec 1 f1 . showString " \\/ " . showsPrec 2 f2
         dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 2 f1 . showString " /\\ " . showsPrec 3 f2
         dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . showString " -> " . showsPrec 0 f2
-        dispatch (AllF y f1) = myPrecIs 0 $ showString "forall " . showsVar y . showString ", " . showsPrec 0 f1
-        dispatch (ExsF y f1) = myPrecIs 0 $ showString "exists " . showsVar y . showString ", " . showsPrec 0 f1
+        dispatch (AllF y f1) = myPrecIs 0 $ showString "forall " . showVar y . showString ", " . showsPrec 0 f1
+        dispatch (ExsF y f1) = myPrecIs 0 $ showString "exists " . showVar y . showString ", " . showsPrec 0 f1
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = asterify . simplify where
@@ -74,8 +74,8 @@ eliminateQuantifierExsF = curry go where
     go :: (Var, Formula) -> Formula
     go = undefined
 
-showsVar :: Var -> ShowS
-showsVar x = showString "v" . showsPrec 0 x
+showVar :: Var -> ShowS
+showVar x = showString "v" . showsPrec 0 x
 
 mkSubst :: [(Var, Term)] -> Subst
 mkSubst = foldr consSubst nilSubst
