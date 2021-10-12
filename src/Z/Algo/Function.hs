@@ -8,6 +8,8 @@ import GHC.Stack
 
 infixr 3 />
 
+type MyNat = Integer
+
 type ErrMsgM = Either String
 
 class Failable a where
@@ -62,8 +64,11 @@ liftErrMsgM = ExceptT . return
 safehd :: [a] -> Maybe a
 safehd = takeFirst Just
 
-recNat :: a -> (Int -> a -> a) -> Int -> a
+recNat :: (Num nat, Enum nat) => a -> (nat -> a -> a) -> nat -> a
 recNat my_init my_step n = foldr my_step my_init [n - 1, n - 2 .. 0]
 
 kconcat :: (Foldable.Foldable t, Monad m) => t (a -> m a) -> (a -> m a)
 kconcat = Foldable.foldr (>=>) return
+
+cpairing :: MyNat -> (MyNat, MyNat)
+cpairing = recNat (0, 0) (\n -> \prev -> if fst prev == 0 then (snd prev + 1, 0) else (fst prev - 1, snd prev + 1))

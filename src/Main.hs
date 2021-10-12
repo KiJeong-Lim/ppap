@@ -2,6 +2,7 @@ module Main where
 
 import qualified Aladdin.Main as Aladdin
 import qualified Calc.Main as Calc
+import qualified Jasmine.Main as Main
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
