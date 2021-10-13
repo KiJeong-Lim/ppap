@@ -134,34 +134,36 @@ nilSubst x = mkIVar x
 consSubst :: (Var, Term) -> Subst -> Subst
 consSubst (z, t) sigma x = if z == x then t else sigma x
 
-runSubst :: Subst -> Formula -> Formula
-runSubst = flip runSubstOnFormula where
-    runSubstOnVar :: Var -> Subst -> Term
-    runSubstOnVar x sigma = sigma x
-    runSubstOnTerm :: Term -> Subst -> Term
-    runSubstOnTerm (IVar x) = runSubstOnVar x
-    runSubstOnTerm (Zero) = pure mkZero
-    runSubstOnTerm (Succ t1) = pure mkSucc <*> runSubstOnTerm t1
-    runSubstOnTerm (Plus t1 t2) = pure mkPlus <*> runSubstOnTerm t1 <*> runSubstOnTerm t2
-    runSubstOnFormula :: Formula -> Subst -> Formula
-    runSubstOnFormula (EqnF t1 t2) = pure mkEqnF <*> runSubstOnTerm t1 <*> runSubstOnTerm t2
-    runSubstOnFormula (LtnF t1 t2) = pure mkLtnF <*> runSubstOnTerm t1 <*> runSubstOnTerm t2
-    runSubstOnFormula (ModF t1 r t2) = pure mkModF <*> runSubstOnTerm t1 <*> pure r <*> runSubstOnTerm t2
-    runSubstOnFormula (NegF f1) = pure mkNegF <*> runSubstOnFormula f1
-    runSubstOnFormula (DisF f1 f2) = pure mkDisF <*> runSubstOnFormula f1 <*> runSubstOnFormula f2
-    runSubstOnFormula (ConF f1 f2) = pure mkConF <*> runSubstOnFormula f1 <*> runSubstOnFormula f2
-    runSubstOnFormula (ImpF f1 f2) = pure mkImpF <*> runSubstOnFormula f1 <*> runSubstOnFormula f2
-    runSubstOnFormula f = runSubstOnBinder f
-    runSubstOnBinder :: Formula -> Subst -> Formula
-    runSubstOnBinder f sigma = case (chi sigma f, f) of
-        (z, AllF y f1) -> mkAllF z (runSubst (consSubst (y, mkIVar z) sigma) f1)
-        (z, ExsF y f1) -> mkExsF z (runSubst (consSubst (y, mkIVar z) sigma) f1)
+substitute :: (Var, Term) -> Formula -> Formula
+substitute = runSubst . mkSubst . one
 
-chi :: Subst -> Formula -> Var
-chi sigma f = succ (foldr max 0 [ foldr max 0 (addFVsOfTerm (sigma x) Set.empty) | x <- Set.toAscList (getFVs f) ])
+runSubst :: Subst -> Formula -> Formula
+runSubst = flip applySubstOnFormula where
+    applySubstOnVar :: Var -> Subst -> Term
+    applySubstOnVar x sigma = sigma x
+    applySubstOnTerm :: Term -> Subst -> Term
+    applySubstOnTerm (IVar x) = applySubstOnVar x
+    applySubstOnTerm (Zero) = pure mkZero
+    applySubstOnTerm (Succ t1) = pure mkSucc <*> applySubstOnTerm t1
+    applySubstOnTerm (Plus t1 t2) = pure mkPlus <*> applySubstOnTerm t1 <*> applySubstOnTerm t2
+    applySubstOnFormula :: Formula -> Subst -> Formula
+    applySubstOnFormula (EqnF t1 t2) = pure mkEqnF <*> applySubstOnTerm t1 <*> applySubstOnTerm t2
+    applySubstOnFormula (LtnF t1 t2) = pure mkLtnF <*> applySubstOnTerm t1 <*> applySubstOnTerm t2
+    applySubstOnFormula (ModF t1 r t2) = pure mkModF <*> applySubstOnTerm t1 <*> pure r <*> applySubstOnTerm t2
+    applySubstOnFormula (NegF f1) = pure mkNegF <*> applySubstOnFormula f1
+    applySubstOnFormula (DisF f1 f2) = pure mkDisF <*> applySubstOnFormula f1 <*> applySubstOnFormula f2
+    applySubstOnFormula (ConF f1 f2) = pure mkConF <*> applySubstOnFormula f1 <*> applySubstOnFormula f2
+    applySubstOnFormula (ImpF f1 f2) = pure mkImpF <*> applySubstOnFormula f1 <*> applySubstOnFormula f2
+    applySubstOnFormula f = applySubstOnBinder f <*> chi f
+    applySubstOnBinder :: Formula -> Subst -> Var -> Formula
+    applySubstOnBinder (AllF y f1) sigma z = mkAllF z (applySubstOnFormula f1 (consSubst (y, mkIVar z) sigma))
+    applySubstOnBinder (ExsF y f1) sigma z = mkExsF z (applySubstOnFormula f1 (consSubst (y, mkIVar z) sigma))
+
+chi :: Formula -> Subst -> Var
+chi f sigma = succ (foldr max 0 [ foldr max 0 (addFVsOfTerm (sigma x) Set.empty) | x <- Set.toAscList (getFVs f) ])
 
 chi0 :: Formula -> Var
-chi0 = chi nilSubst
+chi0 f = chi f nilSubst
 
 getFVs :: Formula -> Set.Set Var
 getFVs (EqnF t1 t2) = addFVsOfTerm t1 (addFVsOfTerm t2 Set.empty)
@@ -185,7 +187,7 @@ destiny = maybe False id . tryEvalFormula where
     myZero :: MyNat
     myZero = 0
     mySucc :: MyNat -> MyNat
-    mySucc n1 = n1 + 1
+    mySucc n1 = succ n1
     myPlus :: MyNat -> MyNat -> MyNat
     myPlus n1 n2 = n1 + n2
     tryEvalTerm :: Term -> Maybe MyNat
