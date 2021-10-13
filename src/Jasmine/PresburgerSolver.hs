@@ -90,7 +90,7 @@ mkIffF :: Formula -> Formula -> Formula
 mkIffF f1 f2 = mkConF (mkImpF f1 f2) (mkImpF f2 f1)
 
 mkIVar :: Var -> Term
-mkIVar x = IVar x
+mkIVar x = if x < 0 then error "mkIVar: negative input" else IVar x
 
 mkZero :: Term
 mkZero = Zero
@@ -108,7 +108,7 @@ mkLtnF :: Term -> Term -> Formula
 mkLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
 
 mkModF :: Term -> MyNat -> Term -> Formula
-mkModF t1 r t2 = t1 `seq` t2 `seq` ModF t1 r t2
+mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "mkModF: r must be positive!"
 
 mkNegF :: Formula -> Formula
 mkNegF f1 = f1 `seq` NegF f1
