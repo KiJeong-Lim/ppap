@@ -129,17 +129,17 @@ eliminateQuantifier = eliminateOneByOne where
                 mkKlass :: Formula -> Klass
                 mkKlass (EqnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        LT -> KlassEqn (m2 - m1) t1' t2'
+                        LT -> KlassEqn (m2 - m1) t2' t1'
                         EQ -> KlassEtc (mkEqnF t1' t2')
                         GT -> KlassEqn (m1 - m2) t1' t2'
                 mkKlass (LtnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        LT -> KlassLtn (m2 - m1) t1' t2'
+                        LT -> KlassGtn (m2 - m1) t2' t1'
                         EQ -> KlassEtc (mkLtnF t1' t2')
-                        GT -> KlassGtn (m1 - m2) t1' t2'
+                        GT -> KlassLtn (m1 - m2) t1' t2'
                 mkKlass (ModF t1 r t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        LT -> KlassMod (m2 - m1) t1' r t2'
+                        LT -> KlassMod (m2 - m1) t2' r t1'
                         EQ -> KlassEtc (mkModF t1' r t2')
                         GT -> KlassMod (m1 - m2) t1' r t2'
             standardizeCoefficient :: [Klass] -> Either [Klass] (MyNat, [Klass])
