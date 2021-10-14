@@ -179,7 +179,7 @@ eliminateQuantifier = eliminateOneByOne where
                         , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v', _v) <- theGtns0 ]
                         , orcat
                             [ andcat
-                                [ mkLeqF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
+                                [ mkLtnF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
                                 , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (r, (w, w')) <- theMods0 ]
                                 ]
                             | s <- [1 .. _R]
