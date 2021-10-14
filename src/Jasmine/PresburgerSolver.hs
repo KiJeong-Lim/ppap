@@ -1,6 +1,5 @@
 module Jasmine.PresburgerSolver where
 
-import Data.Functor.Identity
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -169,36 +168,34 @@ eliminateQuantifierExsF = curry step0 where
         myMain :: [Formula] -> Formula
         myMain conjs = case standardizeCoefficient (mkKlasses conjs) of
             Left my_klasses -> andcat [ f | KlassEtc f <- my_klasses ]
-            Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (runIdentity (step2 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 0, mkNum 1) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ])))
-    step2 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Identity Formula
-    step2 = myMain where
-        myMain :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Identity Formula
-        myMain theEqns0 theLtns0 theGtns0 theMods0 = do
-            (theEqns1, theLtns1, theGtns1, theMods1) <- case theEqns0 of
-                [] -> return ([], theLtns0, theGtns0, theMods0)
-                (t, t') : theEqns' -> return
-                    ( [ (mkPlus t' t1, mkPlus t2 t') | (t1, t2) <- theEqns' ]
-                    , [ (mkPlus t' t1, mkPlus t2 t') | (t1, t2) <- theLtns0 ]
-                    , [ (mkPlus t' t1, mkPlus t2 t') | (t1, t2) <- theGtns0 ]
-                    , [ (r, (mkPlus t' t1, mkPlus t2 t')) | (r, (t1, t2)) <- theMods0 ]
-                    )
-            let _R = foldr getLCM 1 (map fst theMods1)
-            return $ orcat
+            Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step2 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 0, mkNum 1) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
+    step2 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Formula
+    step2 theEqns0 theLtns0 theGtns0 theMods0
+        = case theEqns0 of
+            [] -> orcat
                 [ andcat
-                    [ andcat [ mkEqnF t t' | (t, t') <- theEqns1 ]
-                    , andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns1 ]
-                    , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v, _v') <- theGtns1 ]
+                    [ andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns0 ]
+                    , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v, _v') <- theGtns0 ]
                     , orcat
                         [ andcat
                             [ mkLeqF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
-                            , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (r, (w, w')) <- theMods1 ]
+                            , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (r, (w, w')) <- theMods0 ]
                             ]
                         | s <- [1 .. _R]
                         ]
                     ]
-                | (u, u') <- theLtns1
-                , (v, v') <- theGtns1
+                | (u, u') <- theLtns0
+                , (v, v') <- theGtns0
                 ]
+            (t, t') : theEqns' -> andcat
+                [ andcat [ mkEqnF (mkPlus t' t1) (mkPlus t2 t') | (t1, t2) <- theEqns' ]
+                , andcat [ mkLtnF (mkPlus t' t1) (mkPlus t2 t') | (t1, t2) <- theLtns0 ]
+                , andcat [ mkGtnF (mkPlus t' t1) (mkPlus t2 t') | (t1, t2) <- theGtns0 ]
+                , andcat [ mkModF (mkPlus t' t1) r (mkPlus t2 t') | (r, (t1, t2)) <- theMods0 ]
+                ]
+        where
+            _R :: MyNat
+            _R = foldr getLCM 1 (map fst theMods0)
 
 showVar :: Var -> ShowS
 showVar x = showString "v" . showsPrec 0 x
