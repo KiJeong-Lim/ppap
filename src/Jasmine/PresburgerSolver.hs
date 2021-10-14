@@ -36,8 +36,8 @@ data Klass
     = KlassEqn Coefficient !Term !Term
     | KlassLtn Coefficient !Term !Term
     | KlassGtn Coefficient !Term !Term
-    | KlassMod Coefficient !Term MyNat !Term
-    | KlassEtc Formula
+    | KlassMod Coefficient !Term !MyNat !Term
+    | KlassEtc !Formula
     deriving (Eq)
 
 instance Show Term where
@@ -177,7 +177,7 @@ eliminateQuantifier = eliminateOneByOne where
                     ]
             where
                 _R :: MyNat
-                _R = foldr getLCM 1 (map fst theMods0)
+                _R = List.foldl' getLCM 1 (map fst theMods0)
 
 showVar :: Var -> ShowS
 showVar x = strstr "v" . showsPrec 0 x
@@ -186,14 +186,19 @@ mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
 mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
 
 multiplyTerm :: MyNat -> Term -> Term
-multiplyTerm k (Term con coeffs) = mkTerm (con * k) (Map.map (\n -> n * k) coeffs)
+multiplyTerm k t
+    | k < 0 = error "multiplyTerm: negative input"
+    | k == 1 = mkZero
+    | k == 1 = t
+    | otherwise = mkTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
 
 orcat :: [Formula] -> Formula
 orcat [] = mkBotF
 orcat (f : fs) = List.foldl' mkDisF f fs
 
 andcat :: [Formula] -> Formula
-andcat = foldr mkConF (mkEqnF (mkNum 0) (mkNum 0))
+andcat [] = mkEqnF (mkNum 0) (mkNum 0)
+andcat (f : fs) = List.foldl' mkConF f fs
 
 getLCM :: MyNat -> MyNat -> MyNat
 getLCM x y = (x * y) `div` (getGCD x y)
