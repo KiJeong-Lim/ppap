@@ -72,3 +72,13 @@ kconcat = Foldable.foldr (>=>) return
 
 cpairing :: MyNat -> (MyNat, MyNat)
 cpairing = recNat (0, 0) (\n -> \prev -> if fst prev == 0 then (snd prev + 1, 0) else (fst prev - 1, snd prev + 1))
+
+getGCD :: Integer -> Integer -> Integer
+getGCD x y
+    | 0 `elem` [x, y] = if x == y then error "getGCD: only zero inputs" else x + y
+    | x < 0 = getGCD (negate x) y
+    | y < 0 = getGCD x (negate y)
+    | otherwise = if x >= y then go x y else go y x
+    where
+        go :: Integer -> Integer -> Integer
+        go a b = let c = a `mod` b in if c == 0 then b else go b c
