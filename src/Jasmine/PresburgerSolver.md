@@ -1,11 +1,6 @@
-module Jasmine.PresburgerSolver where
+# PresburgerSolver
 
-import qualified Data.List as List
-import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
-import Z.Algo.Function
-import Z.Utils
-
+```hs
 type Var = MyNat
 
 type Subst = Var -> Term
@@ -36,31 +31,6 @@ data Klass
     | KlassMod MyNat Term MyNat Term
     | KlassEtc Formula
     deriving (Eq)
-
-instance Show Term where
-    showsPrec prec = pure maybe <*> dispatch <*> pure shows <*> unNum where
-        myPrecIs :: Precedence -> ShowS -> ShowS
-        myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
-        dispatch :: Term -> ShowS
-        dispatch (IVar x) = myPrecIs 11 $ showVar x
-        dispatch (Zero) = myPrecIs 11 $ showString "0"
-        dispatch (Succ t1) = myPrecIs 10 $ showString "S " . showsPrec 11 t1
-        dispatch (Plus t1 t2) = myPrecIs 4 $ showsPrec 4 t1 . showString " + " . showsPrec 5 t2
-
-instance Show Formula where
-    showsPrec prec = dispatch where
-        myPrecIs :: Precedence -> ShowS -> ShowS
-        myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
-        dispatch :: Formula -> ShowS
-        dispatch (EqnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . showString " = " . showsPrec 4 t2
-        dispatch (LtnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . showString " < " . showsPrec 4 t2
-        dispatch (ModF t1 r t2) = myPrecIs 3 $ showsPrec 4 t1 . showString " ==_{" . showsPrec 0 r . showString "} " . showsPrec 4 t2
-        dispatch (NegF f1) = myPrecIs 3 $ showString "~ " . showsPrec 3 f1
-        dispatch (DisF f1 f2) = myPrecIs 1 $ showsPrec 1 f1 . showString " \\/ " . showsPrec 2 f2
-        dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 2 f1 . showString " /\\ " . showsPrec 3 f2
-        dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . showString " -> " . showsPrec 0 f2
-        dispatch (AllF y f1) = myPrecIs 0 $ showString "forall " . showVar y . showString ", " . showsPrec 0 f1
-        dispatch (ExsF y f1) = myPrecIs 0 $ showString "exists " . showVar y . showString ", " . showsPrec 0 f1
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = asterify . simplify where
@@ -377,3 +347,6 @@ destiny = fromJust . tryEvalFormula where
 
 applySubstOnVar :: Var -> Subst -> Term
 applySubstOnVar x sigma = sigma x
+```
+
+## Notes
