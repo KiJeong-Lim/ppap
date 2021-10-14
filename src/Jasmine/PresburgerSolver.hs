@@ -176,7 +176,7 @@ eliminateQuantifier = eliminateOneByOne where
                 [] -> orcat
                     [ andcat
                         [ andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns0 ]
-                        , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v, _v') <- theGtns0 ]
+                        , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v', _v) <- theGtns0 ]
                         , orcat
                             [ andcat
                                 [ mkLeqF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
@@ -186,13 +186,13 @@ eliminateQuantifier = eliminateOneByOne where
                             ]
                         ]
                     | (u, u') <- theLtns0
-                    , (v, v') <- theGtns0
+                    , (v', v) <- theGtns0
                     ]
                 (t, t') : theEqns' -> andcat
-                    [ andcat [ mkEqnF (mkPlus t' t1) (mkPlus t2 t') | (t1, t2) <- theEqns' ]
-                    , andcat [ mkLtnF (mkPlus t' t1) (mkPlus t2 t') | (t1, t2) <- theLtns0 ]
-                    , andcat [ mkGtnF (mkPlus t' t1) (mkPlus t2 t') | (t1, t2) <- theGtns0 ]
-                    , andcat [ mkModF (mkPlus t' t1) r (mkPlus t2 t') | (r, (t1, t2)) <- theMods0 ]
+                    [ andcat [ mkEqnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theEqns' ]
+                    , andcat [ mkLtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theLtns0 ]
+                    , andcat [ mkGtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theGtns0 ]
+                    , andcat [ mkModF (mkPlus t' t1) r (mkPlus t2 t) | (r, (t1, t2)) <- theMods0 ]
                     ]
             where
                 _R :: MyNat
