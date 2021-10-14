@@ -63,35 +63,35 @@ instance Show Formula where
         dispatch (ExsF y f1) = myPrecIs 0 $ showString "exists " . showVar y . showString ", " . showsPrec 0 f1
 
 eliminateQuantifier :: Formula -> Formula
-eliminateQuantifier = asterify . simplify where
-    simplify :: Formula -> Formula
-    simplify (NegF f1) = mkNegF (simplify f1)
-    simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
-    simplify (ConF f1 f2) = mkNegF (mkDisF (mkNegF (simplify f1)) (mkNegF (simplify f2)))
-    simplify (ImpF f1 f2) = mkDisF (mkNegF (simplify f1)) (simplify f2) 
-    simplify (AllF y f1) = mkNegF (mkExsF y (mkNegF (simplify f1)))
-    simplify (ExsF y f1) = mkExsF y (simplify f1)
-    simplify atom_f = atom_f
-    asterify :: Formula -> Formula
-    asterify (NegF f1) = mkNegF (asterify f1)
-    asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
-    asterify (ExsF y f1) = eliminateQuantifierExsF y (asterify f1)
-    asterify atom_f = atom_f
-    eliminateQuantifierExsF :: Var -> Formula -> Formula
-    eliminateQuantifierExsF = curry step0 where
+eliminateQuantifier = eliminateOneByOne where
+    eliminateOneByOne :: Formula -> Formula
+    eliminateOneByOne = asterify . simplify where
+        simplify :: Formula -> Formula
+        simplify (NegF f1) = mkNegF (simplify f1)
+        simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
+        simplify (ConF f1 f2) = mkNegF (mkDisF (mkNegF (simplify f1)) (mkNegF (simplify f2)))
+        simplify (ImpF f1 f2) = mkDisF (mkNegF (simplify f1)) (simplify f2) 
+        simplify (AllF y f1) = mkNegF (mkExsF y (mkNegF (simplify f1)))
+        simplify (ExsF y f1) = mkExsF y (simplify f1)
+        simplify atom_f = atom_f
+        asterify :: Formula -> Formula
+        asterify (NegF f1) = mkNegF (asterify f1)
+        asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
+        asterify (ExsF y f1) = eliminateExsF y (asterify f1)
+        asterify atom_f = atom_f
+    eliminateExsF :: Var -> Formula -> Formula
+    eliminateExsF = curry step0 where
         runNeg :: Formula -> Formula
         runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
         runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
-        runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum d)) | d <- [1 .. r - 1] ]
+        runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
         runNeg (NegF f1) = f1
         runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
         runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
         multiply :: MyNat -> Term -> Term
         multiply n = if n < 0 then error "multiply: negative input" else myLoop n where
             myLoop :: MyNat -> Term -> Term
-            myLoop n t
-                | n == 0 = mkNum 0
-                | otherwise = mkPlus t (myLoop (n - 1) t)
+            myLoop i t = if i == 0 then mkNum 0 else mkPlus t (myLoop (i - 1) t)
         getMaxVar :: Formula -> Var
         getMaxVar (NegF f1) = getMaxVar f1
         getMaxVar (DisF f1 f2) = getMaxVar f1 `max` getMaxVar f2
@@ -114,7 +114,7 @@ eliminateQuantifier = asterify . simplify where
             makeDNFfromNoNeg (ConF f1 f2) = [ fs1 ++ fs2 | fs1 <- makeDNFfromNoNeg f1, fs2 <- makeDNFfromNoNeg f2 ]
             makeDNFfromNoNeg atom_f = [one atom_f]
             myMain :: (Var, Formula) -> Formula
-            myMain (x, psi) = orcat [ step1 x conjs | (i, conjs) <- zip [1 .. ] (makeDNFfromNoNeg (removeNegation psi)) ]
+            myMain (x, psi) = orcat [ step1 x conjs | conjs <- makeDNFfromNoNeg (removeNegation psi) ]
         step1 :: Var -> [Formula] -> Formula
         step1 x = myMain where
             mkKlasses :: [Formula] -> [Klass]
