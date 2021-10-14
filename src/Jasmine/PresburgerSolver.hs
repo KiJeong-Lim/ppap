@@ -3,6 +3,7 @@ module Jasmine.PresburgerSolver where
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import Y.Base
 import Z.Algo.Function
 import Z.Utils
 
@@ -10,11 +11,13 @@ type Var = MyNat
 
 type Subst = Var -> Term
 
+type Coefficient = Integer
+
 data Term
-    = IVar Var
-    | Zero
-    | Succ Term
-    | Plus Term Term
+    = Term 
+        { getConstantTerm :: MyNat
+        , getCoefficients :: Map.Map Var Coefficient
+        }
     deriving (Eq)
 
 data Formula
@@ -30,37 +33,30 @@ data Formula
     deriving (Eq)
 
 data Klass
-    = KlassEqn MyNat Term Term
-    | KlassLtn MyNat Term Term
-    | KlassGtn MyNat Term Term
-    | KlassMod MyNat Term MyNat Term
+    = KlassEqn Coefficient !Term !Term
+    | KlassLtn Coefficient !Term !Term
+    | KlassGtn Coefficient !Term !Term
+    | KlassMod Coefficient !Term MyNat !Term
     | KlassEtc Formula
     deriving (Eq)
 
 instance Show Term where
-    showsPrec prec = pure maybe <*> dispatch <*> pure shows <*> unNum where
-        myPrecIs :: Precedence -> ShowS -> ShowS
-        myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
-        dispatch :: Term -> ShowS
-        dispatch (IVar x) = myPrecIs 11 $ showVar x
-        dispatch (Zero) = myPrecIs 11 $ showString "0"
-        dispatch (Succ t1) = myPrecIs 10 $ showString "S " . showsPrec 11 t1
-        dispatch (Plus t1 t2) = myPrecIs 4 $ showsPrec 4 t1 . showString " + " . showsPrec 5 t2
+    showsPrec _ (Term con coeffs) = strcat [ shows n . strstr " " . showVar x . strstr " + " | (x, n) <- Map.toAscList coeffs ] . shows con
 
 instance Show Formula where
     showsPrec prec = dispatch where
         myPrecIs :: Precedence -> ShowS -> ShowS
-        myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
+        myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: Formula -> ShowS
-        dispatch (EqnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . showString " = " . showsPrec 4 t2
-        dispatch (LtnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . showString " < " . showsPrec 4 t2
-        dispatch (ModF t1 r t2) = myPrecIs 3 $ showsPrec 4 t1 . showString " ==_{" . showsPrec 0 r . showString "} " . showsPrec 4 t2
-        dispatch (NegF f1) = myPrecIs 3 $ showString "~ " . showsPrec 3 f1
-        dispatch (DisF f1 f2) = myPrecIs 1 $ showsPrec 1 f1 . showString " \\/ " . showsPrec 2 f2
-        dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 2 f1 . showString " /\\ " . showsPrec 3 f2
-        dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . showString " -> " . showsPrec 0 f2
-        dispatch (AllF y f1) = myPrecIs 0 $ showString "forall " . showVar y . showString ", " . showsPrec 0 f1
-        dispatch (ExsF y f1) = myPrecIs 0 $ showString "exists " . showVar y . showString ", " . showsPrec 0 f1
+        dispatch (EqnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " = " . showsPrec 4 t2
+        dispatch (LtnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " < " . showsPrec 4 t2
+        dispatch (ModF t1 r t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " ==_{" . showsPrec 0 r . strstr "} " . showsPrec 4 t2
+        dispatch (NegF f1) = myPrecIs 3 $ strstr "~ " . showsPrec 3 f1
+        dispatch (DisF f1 f2) = myPrecIs 1 $ showsPrec 1 f1 . strstr " \\/ " . showsPrec 2 f2
+        dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 2 f1 . strstr " /\\ " . showsPrec 3 f2
+        dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " -> " . showsPrec 0 f2
+        dispatch (AllF y f1) = myPrecIs 0 $ strstr "forall " . showVar y . strstr ", " . showsPrec 0 f1
+        dispatch (ExsF y f1) = myPrecIs 0 $ strstr "exists " . showVar y . strstr ", " . showsPrec 0 f1
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = eliminateOneByOne where
@@ -88,18 +84,6 @@ eliminateQuantifier = eliminateOneByOne where
         runNeg (NegF f1) = f1
         runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
         runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
-        multiply :: MyNat -> Term -> Term
-        multiply n = if n < 0 then error "multiply: negative input" else myLoop n where
-            myLoop :: MyNat -> Term -> Term
-            myLoop i t = if i == 0 then mkNum 0 else mkPlus t (myLoop (i - 1) t)
-        getMaxVar :: Formula -> Var
-        getMaxVar (NegF f1) = getMaxVar f1
-        getMaxVar (DisF f1 f2) = getMaxVar f1 `max` getMaxVar f2
-        getMaxVar (ConF f1 f2) = getMaxVar f1 `max` getMaxVar f2
-        getMaxVar (ImpF f1 f2) = getMaxVar f1 `max` getMaxVar f2
-        getMaxVar (AllF y f1) = y `max` getMaxVar f1
-        getMaxVar (ExsF y f1) = y `max` getMaxVar f1
-        getMaxVar atom_f = getMaxVarOf (getFVs atom_f)
         step0 :: (Var, Formula) -> Formula
         step0 = myMain where
             removeNegation :: Formula -> Formula
@@ -120,12 +104,9 @@ eliminateQuantifier = eliminateOneByOne where
             mkKlasses :: [Formula] -> [Klass]
             mkKlasses = map mkKlass where
                 extractCoefficient :: Term -> (MyNat, Term)
-                extractCoefficient (IVar z) = if z == x then (1, mkNum 0) else (0, mkIVar z)
-                extractCoefficient (Zero) = (0, mkNum 0)
-                extractCoefficient (Succ t1) = case extractCoefficient t1 of
-                    (m1, t1') -> (m1, mkSucc t1')
-                extractCoefficient (Plus t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
-                    ((m1, t1'), (m2, t2')) -> (m1 + m2, mkPlus t1' t2')
+                extractCoefficient t = case Map.lookup x (getCoefficients t) of
+                    Nothing -> (0, t)
+                    Just n -> (n, mkTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))
                 mkKlass :: Formula -> Klass
                 mkKlass (EqnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
@@ -148,7 +129,7 @@ eliminateQuantifier = eliminateOneByOne where
                 theMaybeLCM = calcLCM theCoefficients where
                     calcLCM :: [MyNat] -> Maybe MyNat
                     calcLCM [] = Nothing
-                    calcLCM (m : ms) = return (List.foldl' getLCM m ms)
+                    calcLCM (m : ms) = callWithStrictArg return (List.foldl' getLCM m ms)
                     theCoefficients :: [MyNat]
                     theCoefficients = do
                         klass <- your_klasses
@@ -161,10 +142,10 @@ eliminateQuantifier = eliminateOneByOne where
                 theStandardizedKlasses :: MyNat -> [Klass]
                 theStandardizedKlasses theLCM = map myLoop your_klasses where
                     myLoop :: Klass -> Klass
-                    myLoop (KlassEqn m t1 t2) = KlassEqn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    myLoop (KlassLtn m t1 t2) = KlassLtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    myLoop (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    myLoop (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiply (theLCM `div` m) t2)
+                    myLoop (KlassEqn m t1 t2) = KlassEqn theLCM (multiplyTerm (theLCM `div` m) t1) (multiplyTerm (theLCM `div` m) t2)
+                    myLoop (KlassLtn m t1 t2) = KlassLtn theLCM (multiplyTerm (theLCM `div` m) t1) (multiplyTerm (theLCM `div` m) t2)
+                    myLoop (KlassGtn m t1 t2) = KlassGtn theLCM (multiplyTerm (theLCM `div` m) t1) (multiplyTerm (theLCM `div` m) t2)
+                    myLoop (KlassMod m t1 r t2) = KlassMod theLCM (multiplyTerm (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiplyTerm (theLCM `div` m) t2)
                     myLoop (KlassEtc f) = KlassEtc f
             myMain :: [Formula] -> Formula
             myMain conjs = case standardizeCoefficient (mkKlasses conjs) of
@@ -199,10 +180,13 @@ eliminateQuantifier = eliminateOneByOne where
                 _R = foldr getLCM 1 (map fst theMods0)
 
 showVar :: Var -> ShowS
-showVar x = showString "v" . showsPrec 0 x
+showVar x = strstr "v" . showsPrec 0 x
 
-mkSubst :: [(Var, Term)] -> Subst
-mkSubst = foldr consSubst nilSubst
+mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
+mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
+
+multiplyTerm :: MyNat -> Term -> Term
+multiplyTerm k (Term con coeffs) = mkTerm (con * k) (Map.map (\n -> n * k) coeffs)
 
 orcat :: [Formula] -> Formula
 orcat [] = mkBotF
@@ -215,12 +199,10 @@ getLCM :: MyNat -> MyNat -> MyNat
 getLCM x y = (x * y) `div` (getGCD x y)
 
 unNum :: Term -> Maybe MyNat
-unNum (Zero) = pure 0
-unNum (Succ t1) = pure succ <*> unNum t1
-unNum _ = Nothing
+unNum t = if Map.null (getCoefficients t) then Nothing else return (getConstantTerm t)
 
 mkNum :: MyNat -> Term
-mkNum n = if n < 0 then error "mkNum: negative input" else foldr (const mkSucc) mkZero [1 .. n]
+mkNum n = mkTerm n Map.empty
 
 mkLeqF :: Term -> Term -> Formula
 mkLeqF t1 t2 = mkDisF (mkEqnF t1 t2) (mkLtnF t1 t2)
@@ -235,16 +217,18 @@ mkIffF :: Formula -> Formula -> Formula
 mkIffF f1 f2 = mkConF (mkImpF f1 f2) (mkImpF f2 f1)
 
 mkIVar :: Var -> Term
-mkIVar x = if x < 0 then error "mkIVar: negative input" else IVar x
+mkIVar x = mkTerm 0 (Map.singleton x 1)
 
 mkZero :: Term
-mkZero = Zero
+mkZero = mkNum 0
 
 mkSucc :: Term -> Term
-mkSucc t1 = t1 `seq` Succ t1
+mkSucc (Term con coeffs) = mkTerm (succ con) coeffs
 
 mkPlus :: Term -> Term -> Term
-mkPlus t1 t2 = t1 `seq` t2 `seq` Plus t1 t2
+mkPlus (Term con1 coeffs1) (Term con2 coeffs2) = mkTerm (con1 + con2) (foldr go coeffs1 (Map.toAscList coeffs2)) where
+    go :: (Var, Coefficient) -> Map.Map Var Coefficient -> Map.Map Var Coefficient
+    go (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 mkEqnF :: Term -> Term -> Formula
 mkEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
@@ -273,74 +257,10 @@ mkAllF y f1 = f1 `seq` AllF y f1
 mkExsF :: Var -> Formula -> Formula
 mkExsF y f1 = f1 `seq` ExsF y f1
 
-nilSubst :: Subst
-nilSubst x = mkIVar x
-
-consSubst :: (Var, Term) -> Subst -> Subst
-consSubst (z, t) sigma x = if z == x then t else applySubstOnVar x sigma
-
-substitute :: (Var, Term) -> Formula -> Formula
-substitute = runSubst . mkSubst . one
-
-runSubst :: Subst -> Formula -> Formula
-runSubst = flip applySubstOnFormula where
-    applySubstOnTerm :: Term -> Subst -> Term
-    applySubstOnTerm (IVar x) = applySubstOnVar x
-    applySubstOnTerm (Zero) = pure mkZero
-    applySubstOnTerm (Succ t1) = pure mkSucc <*> applySubstOnTerm t1
-    applySubstOnTerm (Plus t1 t2) = pure mkPlus <*> applySubstOnTerm t1 <*> applySubstOnTerm t2
-    applySubstOnFormula :: Formula -> Subst -> Formula
-    applySubstOnFormula (EqnF t1 t2) = pure mkEqnF <*> applySubstOnTerm t1 <*> applySubstOnTerm t2
-    applySubstOnFormula (LtnF t1 t2) = pure mkLtnF <*> applySubstOnTerm t1 <*> applySubstOnTerm t2
-    applySubstOnFormula (ModF t1 r t2) = pure mkModF <*> applySubstOnTerm t1 <*> pure r <*> applySubstOnTerm t2
-    applySubstOnFormula (NegF f1) = pure mkNegF <*> applySubstOnFormula f1
-    applySubstOnFormula (DisF f1 f2) = pure mkDisF <*> applySubstOnFormula f1 <*> applySubstOnFormula f2
-    applySubstOnFormula (ConF f1 f2) = pure mkConF <*> applySubstOnFormula f1 <*> applySubstOnFormula f2
-    applySubstOnFormula (ImpF f1 f2) = pure mkImpF <*> applySubstOnFormula f1 <*> applySubstOnFormula f2
-    applySubstOnFormula f = applySubstOnBinder f <*> chi f
-    applySubstOnBinder :: Formula -> Subst -> Var -> Formula
-    applySubstOnBinder (AllF y f1) sigma z = mkAllF z (applySubstOnFormula f1 (consSubst (y, mkIVar z) sigma))
-    applySubstOnBinder (ExsF y f1) sigma z = mkExsF z (applySubstOnFormula f1 (consSubst (y, mkIVar z) sigma))
-
-chi :: Formula -> Subst -> Var
-chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVsOfTerm (applySubstOnVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ])
-
-getMaxVarOf :: Foldable f => f Var -> Var
-getMaxVarOf = foldr max 0
-
-chi0 :: Formula -> Var
-chi0 f = chi f nilSubst
-
-getFVs :: Formula -> Set.Set Var
-getFVs (EqnF t1 t2) = addFVsOfTerm t1 (addFVsOfTerm t2 Set.empty)
-getFVs (LtnF t1 t2) = addFVsOfTerm t1 (addFVsOfTerm t2 Set.empty)
-getFVs (ModF t1 r t2) = addFVsOfTerm t1 (addFVsOfTerm t2 Set.empty)
-getFVs (NegF f1) = getFVs f1
-getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (AllF y f1) = Set.delete y (getFVs f1)
-getFVs (ExsF y f1) = Set.delete y (getFVs f1)
-
-addFVsOfTerm :: Term -> Set.Set Var -> Set.Set Var
-addFVsOfTerm (IVar x) = Set.insert x
-addFVsOfTerm (Zero) = id
-addFVsOfTerm (Succ t1) = addFVsOfTerm t1
-addFVsOfTerm (Plus t1 t2) = addFVsOfTerm t1 . addFVsOfTerm t2
-
 destiny :: Formula -> Bool
 destiny = fromJust . tryEvalFormula where
-    myZero :: MyNat
-    myZero = 0
-    mySucc :: MyNat -> MyNat
-    mySucc n1 = succ n1
-    myPlus :: MyNat -> MyNat -> MyNat
-    myPlus n1 n2 = n1 + n2
     tryEvalTerm :: Term -> Maybe MyNat
-    tryEvalTerm (Zero) = pure myZero
-    tryEvalTerm (Succ t1) = pure mySucc <*> tryEvalTerm t1
-    tryEvalTerm (Plus t1 t2) = pure myPlus <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalTerm _ = Nothing
+    tryEvalTerm (Term con coeffs) = if Map.null coeffs then return con else Nothing
     myEqn :: MyNat -> MyNat -> Bool
     myEqn n1 n2 = n1 == n2
     myLtn :: MyNat -> MyNat -> Bool
@@ -364,6 +284,3 @@ destiny = fromJust . tryEvalFormula where
     tryEvalFormula (ConF f1 f2) = pure myCon <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ImpF f1 f2) = pure myImp <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula _ = Nothing
-
-applySubstOnVar :: Var -> Subst -> Term
-applySubstOnVar x sigma = sigma x
