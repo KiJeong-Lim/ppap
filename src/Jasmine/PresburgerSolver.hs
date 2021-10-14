@@ -1,5 +1,7 @@
 module Jasmine.PresburgerSolver where
 
+import Data.Functor.Identity
+import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Z.Algo.Function
@@ -26,6 +28,14 @@ data Formula
     | ImpF Formula Formula
     | AllF Var Formula
     | ExsF Var Formula
+    deriving (Eq)
+
+data Klass
+    = KlassEqn MyNat Term Term
+    | KlassLtn MyNat Term Term
+    | KlassGtn MyNat Term Term
+    | KlassMod MyNat Term MyNat Term
+    | KlassEtc Formula
     deriving (Eq)
 
 instance Show Term where
@@ -62,17 +72,133 @@ eliminateQuantifier = asterify . simplify where
     simplify (ImpF f1 f2) = mkDisF (mkNegF (simplify f1)) (simplify f2) 
     simplify (AllF y f1) = mkNegF (mkExsF y (mkNegF (simplify f1)))
     simplify (ExsF y f1) = mkExsF y (simplify f1)
-    simplify atom_f1 = atom_f1
+    simplify atom_f = atom_f
     asterify :: Formula -> Formula
     asterify (NegF f1) = mkNegF (asterify f1)
     asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
     asterify (ExsF y f1) = eliminateQuantifierExsF y (asterify f1)
-    asterify atom_f1 = atom_f1
+    asterify atom_f = atom_f
 
 eliminateQuantifierExsF :: Var -> Formula -> Formula
-eliminateQuantifierExsF = curry go where
-    go :: (Var, Formula) -> Formula
-    go = undefined
+eliminateQuantifierExsF = curry step0 where
+    runNeg :: Formula -> Formula
+    runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
+    runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
+    runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum d)) | d <- [1 .. r - 1] ]
+    runNeg (NegF f1) = f1
+    runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
+    runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
+    multiply :: MyNat -> Term -> Term
+    multiply n = if n < 0 then error "multiply: negative input" else myLoop n where
+        myLoop :: MyNat -> Term -> Term
+        myLoop n t = if n == 0 then mkNum 0 else mkPlus t (myLoop (n - 1) t)
+    getMaxVar :: Formula -> Var
+    getMaxVar (NegF f1) = getMaxVar f1
+    getMaxVar (DisF f1 f2) = getMaxVar f1 `max` getMaxVar f2
+    getMaxVar (ConF f1 f2) = getMaxVar f1 `max` getMaxVar f2
+    getMaxVar (ImpF f1 f2) = getMaxVar f1 `max` getMaxVar f2
+    getMaxVar (AllF y f1) = y `max` getMaxVar f1
+    getMaxVar (ExsF y f1) = y `max` getMaxVar f1
+    getMaxVar atom_f = getMaxVarOf (getFVs atom_f)
+    step0 :: (Var, Formula) -> Formula
+    step0 = myMain where
+        removeNegation :: Formula -> Formula
+        removeNegation = go where
+            go :: Formula -> Formula
+            go (NegF f1) = runNeg (go f1)
+            go (DisF f1 f2) = mkDisF (go f1) (go f2)
+            go (ConF f1 f2) = mkConF (go f1) (go f2)
+            go atom_f = atom_f
+        makeDNFfromNoNeg :: Formula -> [[Formula]]
+        makeDNFfromNoNeg (DisF f1 f2) = makeDNFfromNoNeg f1 ++ makeDNFfromNoNeg f2
+        makeDNFfromNoNeg (ConF f1 f2) = [ fs1 ++ fs2 | fs1 <- makeDNFfromNoNeg f1, fs2 <- makeDNFfromNoNeg f2 ]
+        makeDNFfromNoNeg atom_f = [one atom_f]
+        myMain :: (Var, Formula) -> Formula
+        myMain (x, psi) = orcat [ (step1 x conjs) | (i, conjs) <- zip [1 .. ] (makeDNFfromNoNeg (removeNegation psi)) ]
+    step1 :: Var -> [Formula] -> Formula
+    step1 x = myMain where
+        mkKlasses :: [Formula] -> [Klass]
+        mkKlasses = map mkKlass where
+            extractCoefficient :: Term -> (MyNat, Term)
+            extractCoefficient (IVar z) = if z == x then (1, mkNum 0) else (0, mkIVar z)
+            extractCoefficient (Zero) = (0, mkNum 0)
+            extractCoefficient (Succ t1) = case extractCoefficient t1 of
+                (m1, t1') -> (m1, mkSucc t1')
+            extractCoefficient (Plus t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
+                ((m1, t1'), (m2, t2')) -> (m1 + m2, mkPlus t1' t2')
+            mkKlass :: Formula -> Klass
+            mkKlass (EqnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
+                ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
+                    LT -> KlassEqn (m2 - m1) t1' t2'
+                    EQ -> KlassEtc (mkEqnF t1' t2')
+                    GT -> KlassEqn (m1 - m2) t1' t2'
+            mkKlass (LtnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
+                ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
+                    LT -> KlassLtn (m2 - m1) t1' t2'
+                    EQ -> KlassEtc (mkLtnF t1' t2')
+                    GT -> KlassGtn (m1 - m2) t1' t2'
+            mkKlass (ModF t1 r t2) = case (extractCoefficient t1, extractCoefficient t2) of
+                ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
+                    LT -> KlassMod (m2 - m1) t1' r t2'
+                    EQ -> KlassEtc (mkModF t1' r t2')
+                    GT -> KlassMod (m1 - m2) t1' r t2'
+        standardizeCoefficient :: [Klass] -> Either [Klass] (MyNat, [Klass])
+        standardizeCoefficient your_klasses = maybe (Left your_klasses) (Right . ((,) <*> theStandardizedKlasses)) theMaybeLCM where
+            theMaybeLCM :: Maybe MyNat
+            theMaybeLCM = calcLCM theCoefficients where
+                calcLCM :: [MyNat] -> Maybe MyNat
+                calcLCM [] = Nothing
+                calcLCM (m : ms) = return (List.foldl' getLCM m ms)
+                theCoefficients :: [MyNat]
+                theCoefficients = do
+                    klass <- your_klasses
+                    case klass of
+                        KlassEqn m t1 t2 -> return m
+                        KlassLtn m t1 t2 -> return m
+                        KlassGtn m t1 t2 -> return m
+                        KlassMod m t1 r t2 -> return m
+                        KlassEtc f -> []
+            theStandardizedKlasses :: MyNat -> [Klass]
+            theStandardizedKlasses theLCM = map myLoop your_klasses where
+                myLoop :: Klass -> Klass
+                myLoop (KlassEqn m t1 t2) = KlassEqn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
+                myLoop (KlassLtn m t1 t2) = KlassLtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
+                myLoop (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
+                myLoop (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiply (theLCM `div` m) t2)
+                myLoop (KlassEtc f) = KlassEtc f
+        myMain :: [Formula] -> Formula
+        myMain conjs = case standardizeCoefficient (mkKlasses conjs) of
+            Left my_klasses -> andcat [ f | KlassEtc f <- my_klasses ]
+            Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (runIdentity (step2 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 0, mkNum 1) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ])))
+    step2 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Identity Formula
+    step2 = myMain where
+        myMain :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Identity Formula
+        myMain theEqns0 theLtns0 theGtns0 theMods0 = do
+            (theEqns1, theLtns1, theGtns1, theMods1) <- case theEqns0 of
+                [] -> return ([], theLtns0, theGtns0, theMods0)
+                (t, t') : theEqns' -> return
+                    ( [ (mkPlus t' t1, mkPlus t2 t') | (t1, t2) <- theEqns' ]
+                    , [ (mkPlus t' t1, mkPlus t2 t') | (t1, t2) <- theLtns0 ]
+                    , [ (mkPlus t' t1, mkPlus t2 t') | (t1, t2) <- theGtns0 ]
+                    , [ (r, (mkPlus t' t1, mkPlus t2 t')) | (r, (t1, t2)) <- theMods0 ]
+                    )
+            let _R = foldr getLCM 1 (map fst theMods1)
+            return $ orcat
+                [ andcat
+                    [ andcat [ mkEqnF t t' | (t, t') <- theEqns1 ]
+                    , andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns1 ]
+                    , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v, _v') <- theGtns1 ]
+                    , orcat
+                        [ andcat
+                            [ mkLeqF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
+                            , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (r, (w, w')) <- theMods1 ]
+                            ]
+                        | s <- [1 .. _R]
+                        ]
+                    ]
+                | (u, u') <- theLtns1
+                , (v, v') <- theGtns1
+                ]
 
 showVar :: Var -> ShowS
 showVar x = showString "v" . showsPrec 0 x
@@ -80,8 +206,35 @@ showVar x = showString "v" . showsPrec 0 x
 mkSubst :: [(Var, Term)] -> Subst
 mkSubst = foldr consSubst nilSubst
 
-mkNum :: Int -> Term
-mkNum n = if n < 0 then error "mkNum: negative input" else iterate mkSucc mkZero !! n
+orcat :: [Formula] -> Formula
+orcat [] = mkBotF
+orcat (f : fs) = List.foldl' mkDisF f fs
+
+andcat :: [Formula] -> Formula
+andcat = foldr mkConF (mkEqnF (mkNum 0) (mkNum 0))
+
+getGCD :: MyNat -> MyNat -> MyNat
+getGCD = myInit where
+    myInit :: MyNat -> MyNat -> MyNat
+    myInit x y
+        | 0 `elem` [x, y] = error "getGCD: zero input"
+        | x < 0 = myInit (negate x) y
+        | y < 0 = myInit x (negate y)
+        | otherwise = myLoop x y
+    myLoop :: MyNat -> MyNat -> MyNat
+    myLoop x y = if x `mod` y == 0 then y else myLoop y (x `mod` y)
+
+getLCM :: MyNat -> MyNat -> MyNat
+getLCM x y = (x * y) `div` (getGCD x y)
+
+mkNum :: MyNat -> Term
+mkNum n = if n < 0 then error "mkNum: negative input" else foldr (const mkSucc) mkZero [1 .. n]
+
+mkLeqF :: Term -> Term -> Formula
+mkLeqF t1 t2 = mkDisF (mkEqnF t1 t2) (mkLtnF t1 t2)
+
+mkGtnF :: Term -> Term -> Formula
+mkGtnF t1 t2 = mkLtnF t2 t1
 
 mkBotF :: Formula
 mkBotF = mkEqnF (mkNum 0) (mkNum 1)
@@ -158,9 +311,10 @@ runSubst = flip applySubstOnFormula where
     applySubstOnBinder (ExsF y f1) sigma z = mkExsF z (applySubstOnFormula f1 (consSubst (y, mkIVar z) sigma))
 
 chi :: Formula -> Subst -> Var
-chi f sigma = succ (maxOf [ maxOf (addFVsOfTerm (applySubstOnVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ]) where
-    maxOf :: Foldable f => f Var -> Var
-    maxOf = foldr max 0
+chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVsOfTerm (applySubstOnVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ])
+
+getMaxVarOf :: Foldable f => f Var -> Var
+getMaxVarOf = foldr max 0
 
 chi0 :: Formula -> Var
 chi0 f = chi f nilSubst
