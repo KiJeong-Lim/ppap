@@ -39,7 +39,7 @@ data Klass
     deriving (Eq)
 
 instance Show Term where
-    showsPrec prec = dispatch where
+    showsPrec prec = pure maybe <*> dispatch <*> pure shows <*> unNum where
         myPrecIs :: Precedence -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then showChar '(' . ss . showChar ')' else ss
         dispatch :: Term -> ShowS
@@ -226,6 +226,11 @@ getGCD = myInit where
 
 getLCM :: MyNat -> MyNat -> MyNat
 getLCM x y = (x * y) `div` (getGCD x y)
+
+unNum :: Term -> Maybe MyNat
+unNum (Zero) = pure 0
+unNum (Succ t1) = pure succ <*> unNum t1
+unNum _ = Nothing
 
 mkNum :: MyNat -> Term
 mkNum n = if n < 0 then error "mkNum: negative input" else foldr (const mkSucc) mkZero [1 .. n]
