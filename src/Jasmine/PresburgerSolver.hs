@@ -62,12 +62,12 @@ eliminateQuantifier = asterify . simplify where
     simplify (ImpF f1 f2) = mkDisF (mkNegF (simplify f1)) (simplify f2) 
     simplify (AllF y f1) = mkNegF (mkExsF y (mkNegF (simplify f1)))
     simplify (ExsF y f1) = mkExsF y (simplify f1)
-    simplify atom_f = atom_f
+    simplify atom_f1 = atom_f1
     asterify :: Formula -> Formula
     asterify (NegF f1) = mkNegF (asterify f1)
     asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
     asterify (ExsF y f1) = eliminateQuantifierExsF y (asterify f1)
-    asterify atom_f = atom_f
+    asterify atom_f1 = atom_f1
 
 eliminateQuantifierExsF :: Var -> Formula -> Formula
 eliminateQuantifierExsF = curry go where
@@ -132,15 +132,13 @@ nilSubst :: Subst
 nilSubst x = mkIVar x
 
 consSubst :: (Var, Term) -> Subst -> Subst
-consSubst (z, t) sigma x = if z == x then t else sigma x
+consSubst (z, t) sigma x = if z == x then t else applySubstOnVar x sigma
 
 substitute :: (Var, Term) -> Formula -> Formula
 substitute = runSubst . mkSubst . one
 
 runSubst :: Subst -> Formula -> Formula
 runSubst = flip applySubstOnFormula where
-    applySubstOnVar :: Var -> Subst -> Term
-    applySubstOnVar x sigma = sigma x
     applySubstOnTerm :: Term -> Subst -> Term
     applySubstOnTerm (IVar x) = applySubstOnVar x
     applySubstOnTerm (Zero) = pure mkZero
@@ -160,7 +158,9 @@ runSubst = flip applySubstOnFormula where
     applySubstOnBinder (ExsF y f1) sigma z = mkExsF z (applySubstOnFormula f1 (consSubst (y, mkIVar z) sigma))
 
 chi :: Formula -> Subst -> Var
-chi f sigma = succ (foldr max 0 [ foldr max 0 (addFVsOfTerm (sigma x) Set.empty) | x <- Set.toAscList (getFVs f) ])
+chi f sigma = succ (maxOf [ maxOf (addFVsOfTerm (applySubstOnVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ]) where
+    maxOf :: Foldable f => f Var -> Var
+    maxOf = foldr max 0
 
 chi0 :: Formula -> Var
 chi0 f = chi f nilSubst
@@ -183,7 +183,7 @@ addFVsOfTerm (Succ t1) = addFVsOfTerm t1
 addFVsOfTerm (Plus t1 t2) = addFVsOfTerm t1 . addFVsOfTerm t2
 
 destiny :: Formula -> Bool
-destiny = maybe False id . tryEvalFormula where
+destiny = fromJust . tryEvalFormula where
     myZero :: MyNat
     myZero = 0
     mySucc :: MyNat -> MyNat
@@ -218,3 +218,6 @@ destiny = maybe False id . tryEvalFormula where
     tryEvalFormula (ConF f1 f2) = pure myCon <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ImpF f1 f2) = pure myImp <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula _ = Nothing
+
+applySubstOnVar :: Var -> Subst -> Term
+applySubstOnVar x sigma = sigma x
