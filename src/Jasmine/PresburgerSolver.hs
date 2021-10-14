@@ -214,10 +214,10 @@ getGCD :: MyNat -> MyNat -> MyNat
 getGCD = myInit where
     myInit :: MyNat -> MyNat -> MyNat
     myInit x y
-        | 0 `elem` [x, y] = error "getGCD: zero input"
+        | 0 `elem` [x, y] = x + y
         | x < 0 = myInit (negate x) y
         | y < 0 = myInit x (negate y)
-        | otherwise = myLoop x y
+        | otherwise = if x >= y then myLoop x y else myLoop y x
     myLoop :: MyNat -> MyNat -> MyNat
     myLoop x y = if x `mod` y == 0 then y else myLoop y (x `mod` y)
 
