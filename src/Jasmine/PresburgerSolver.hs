@@ -169,7 +169,7 @@ eliminateQuantifier = eliminateOneByOne where
             myMain :: [Formula] -> Formula
             myMain conjs = case standardizeCoefficient (mkKlasses conjs) of
                 Left my_klasses -> andcat [ f | KlassEtc f <- my_klasses ]
-                Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step2 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] ((0, 1) : [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ]) [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ] ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
+                Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step2 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((0, 1) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
         step2 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Formula
         step2 theEqns0 theLtns0 theGtns0 theMods0
             = case theEqns0 of
