@@ -49,6 +49,7 @@ instance Show Formula where
         myPrecIs :: Precedence -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: Formula -> ShowS
+        dispatch (ValF b1) = myPrecIs 11 $ strstr (if b then "~ _|_" else "_|_")
         dispatch (EqnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " = " . showsPrec 4 t2
         dispatch (LtnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " < " . showsPrec 4 t2
         dispatch (ModF t1 r t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " ==_{" . showsPrec 0 r . strstr "} " . showsPrec 4 t2
@@ -183,7 +184,7 @@ eliminateQuantifier = eliminateOneByOne where
                 _R = List.foldl' getLCM 1 (map fst theMods0)
 
 showVar :: Var -> ShowS
-showVar x = strstr "v" . showsPrec 0 x
+showVar x = strstr "v" . shows x
 
 mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
 mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
@@ -244,10 +245,14 @@ mkPlus (Term con1 coeffs1) (Term con2 coeffs2) = mkTerm (con1 + con2) (foldr go 
     go (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 mkEqnF :: Term -> Term -> Formula
-mkEqnF t1 t2 = if t1 == t2 then mkTopF else EqnF t1 t2
+mkEqnF t1 t2
+    | t1 == t2 = mkTopF
+    | otherwise = EqnF t1 t2
 
 mkLtnF :: Term -> Term -> Formula
-mkLtnF t1 t2 = if getCoefficients t1 == getCoefficients t2 then mkValF (getConstantTerm t1 < getConstantTerm t2) else LtnF t1 t2
+mkLtnF t1 t2
+    | getCoefficients t1 == getCoefficients t2 = mkValF (getConstantTerm t1 < getConstantTerm t2)
+    | otherwise = LtnF t1 t2
 
 mkModF :: Term -> MyNat -> Term -> Formula
 mkModF t1 r t2
