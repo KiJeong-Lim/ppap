@@ -1,5 +1,6 @@
 module TEST.Main where
 
+import Jasmine.Main
 import TEST.Z
 import Z.System.Shelly
 import Z.Utils
@@ -9,6 +10,11 @@ main = do
     query <- shelly "TEST =<< "
     case query of
         "" -> do
+            shelly "TEST >>= quit"
+            return ()
+        "Jasmine" -> do
+            shelly "TEST >>= exec (TEST.Jasmine)"
+            mapM testJasmine [1, 2, 3, 4, 5]
             shelly "TEST >>= quit"
             return ()
         "Z" -> do
