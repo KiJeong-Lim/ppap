@@ -14,8 +14,6 @@ import Z.Utils
 
 type Var = MyNat
 
-type Subst = Var -> Term
-
 type Coefficient = Integer
 
 data Term
@@ -50,7 +48,6 @@ instance Show Term where
     showsPrec _ (Term con coeffs)
         | con == 0 = ppunc " + " [ shows n . strstr " " . showVar x | (x, n) <- Map.toAscList coeffs ]
         | otherwise = strcat [ shows n . strstr " " . showVar x . strstr " + " | (x, n) <- Map.toAscList coeffs ] . shows con
-    showList = undefined
 
 instance Show Formula where
     showsPrec prec = dispatch where
@@ -315,6 +312,7 @@ destiny = maybe False id . tryEvalFormula where
     tryEvalFormula (ConF f1 f2) = pure myCon <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ImpF f1 f2) = pure myImp <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula _ = Nothing
+
 ```
 
 - References:
