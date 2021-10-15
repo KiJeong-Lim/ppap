@@ -3,10 +3,15 @@ module Z.Algo.Function where
 import Control.Monad
 import Control.Monad.Trans.Except
 import qualified Data.Foldable as Foldable
+import qualified Data.Function as Function
 import qualified Data.Maybe as Maybe
 import GHC.Stack
+import Z.Utils
 
 infixr 3 />
+infixl 1 <^>
+
+type PositiveInteger = Integer
 
 type MyNat = Integer
 
@@ -64,21 +69,31 @@ liftErrMsgM = ExceptT . return
 safehd :: [a] -> Maybe a
 safehd = takeFirst Just
 
-recNat :: (Num nat, Enum nat) => a -> (nat -> a -> a) -> nat -> a
+gfp :: (a -> a) -> a
+gfp = Function.fix
+
+lfp :: (a -> a) -> a
+lfp = Function.fix . callWithStrictArg
+
+recNat :: (Num nat, Enum nat) => (res) -> (nat -> res -> res) -> (nat -> res)
 recNat my_init my_step n = foldr my_step my_init [n - 1, n - 2 .. 0]
+
+(<^>) :: (fst1 -> fst2) -> (snd1 -> snd2) -> ((fst1, snd1) -> (fst2, snd2))
+map_fst <^> map_snd = pure (curry id) <*> map_fst . fst <*> map_snd . snd
 
 kconcat :: (Foldable.Foldable t, Monad m) => t (a -> m a) -> (a -> m a)
 kconcat = Foldable.foldr (>=>) return
 
-cpairing :: MyNat -> (MyNat, MyNat)
-cpairing = recNat (0, 0) (\n -> \prev -> if fst prev == 0 then (snd prev + 1, 0) else (fst prev - 1, snd prev + 1))
-
-getGCD :: Integer -> Integer -> Integer
+getGCD :: Integer -> Integer -> PositiveInteger
 getGCD x y
+    | negate 1 `elem` map signum [x, y] = Function.on getGCD abs x y
     | 0 `elem` [x, y] = if x == y then error "getGCD: only zero inputs" else x + y
-    | x < 0 = getGCD (negate x) y
-    | y < 0 = getGCD x (negate y)
-    | otherwise = if x >= y then go x y else go y x
+    | otherwise = euclid x y
     where
-        go :: Integer -> Integer -> Integer
-        go a b = let c = a `mod` b in if c == 0 then b else go b c
+        euclid :: MyNat -> MyNat -> PositiveInteger
+        euclid a b = case a `mod` b of
+            0 -> b
+            c -> euclid b c
+
+mkCantorPair :: (Num nat, Enum nat) => nat -> (nat, nat)
+mkCantorPair = recNat (0, 0) (\n -> uncurry $ \x -> \y -> if null [0, 1 .. pred x] then (succ y, 0) else (pred x, succ y))
