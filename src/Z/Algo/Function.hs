@@ -84,16 +84,16 @@ map_fst <^> map_snd = pure (curry id) <*> map_fst . fst <*> map_snd . snd
 kconcat :: (Foldable.Foldable t, Monad m) => t (a -> m a) -> (a -> m a)
 kconcat = Foldable.foldr (>=>) return
 
-getGCD :: Integer -> Integer -> PositiveInteger
+mkCantorPair :: (Num nat, Enum nat) => nat -> (nat, nat)
+mkCantorPair = recNat (0, 0) (\n -> uncurry $ \x -> \y -> if null [0, 1 .. pred x] then (succ y, 0) else (pred x, succ y))
+
+getGCD :: Integral int => int -> int -> PositiveInteger
 getGCD x y
     | negate 1 `elem` map signum [x, y] = Function.on getGCD abs x y
-    | 0 `elem` [x, y] = if x == y then error "getGCD: only zero inputs" else x + y
-    | otherwise = euclid x y
+    | 0 `elem` [x, y] = if x == y then error "getGCD: only zero inputs" else Function.on (+) toInteger x y
+    | otherwise = Function.on euclid toInteger x y
     where
         euclid :: MyNat -> MyNat -> PositiveInteger
         euclid a b = case a `mod` b of
             0 -> b
             c -> euclid b c
-
-mkCantorPair :: (Num nat, Enum nat) => nat -> (nat, nat)
-mkCantorPair = recNat (0, 0) (\n -> uncurry $ \x -> \y -> if null [0, 1 .. pred x] then (succ y, 0) else (pred x, succ y))
