@@ -292,7 +292,7 @@ mkExsF y f1 = f1 `seq` ExsF y f1
 destiny :: Formula -> Bool
 destiny = maybe False id . tryEvalFormula where
     tryEvalTerm :: Term -> Maybe MyNat
-    tryEvalTerm (Term con coeffs) = if Map.null coeffs then return con else Nothing
+    tryEvalTerm (Term con coeffs) = if Map.null coeffs then pure con else Nothing
     myEqn :: MyNat -> MyNat -> Bool
     myEqn n1 n2 = n1 == n2
     myLtn :: MyNat -> MyNat -> Bool
@@ -320,6 +320,8 @@ destiny = maybe False id . tryEvalFormula where
 
 ```
 
-- References:
+### How it works?
+
+### References
 
 1. `Fundamentals of Mathematical Logic` by `Peter G. Hinman`
