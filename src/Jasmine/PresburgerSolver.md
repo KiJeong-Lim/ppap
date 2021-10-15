@@ -54,7 +54,7 @@ instance Show Formula where
         myPrecIs :: Precedence -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: Formula -> ShowS
-        dispatch (ValF b1) = myPrecIs 11 $ strstr (if b then "~ _|_" else "_|_")
+        dispatch (ValF b1) = myPrecIs 11 $ strstr (if b1 then "~ _|_" else "_|_")
         dispatch (EqnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " = " . showsPrec 4 t2
         dispatch (LtnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " < " . showsPrec 4 t2
         dispatch (ModF t1 r t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " ==_{" . showsPrec 0 r . strstr "} " . showsPrec 4 t2
@@ -64,6 +64,7 @@ instance Show Formula where
         dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " -> " . showsPrec 0 f2
         dispatch (AllF y f1) = myPrecIs 0 $ strstr "forall " . showVar y . strstr ", " . showsPrec 0 f1
         dispatch (ExsF y f1) = myPrecIs 0 $ strstr "exists " . showVar y . strstr ", " . showsPrec 0 f1
+    showList = undefined
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = eliminateOneByOne where
@@ -72,13 +73,14 @@ eliminateQuantifier = eliminateOneByOne where
         simplify :: Formula -> Formula
         simplify (NegF f1) = mkNegF (simplify f1)
         simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
-        simplify (ConF f1 f2) = mkNegF (mkDisF (mkNegF (simplify f1)) (mkNegF (simplify f2)))
+        simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f1)
         simplify (ImpF f1 f2) = mkDisF (mkNegF (simplify f1)) (simplify f2) 
         simplify (AllF y f1) = mkNegF (mkExsF y (mkNegF (simplify f1)))
         simplify (ExsF y f1) = mkExsF y (simplify f1)
         simplify atom_f = atom_f
         asterify :: Formula -> Formula
         asterify (NegF f1) = mkNegF (asterify f1)
+        asterify (ConF f1 f2) = mkConF (asterify f1) (asterify f2)
         asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
         asterify (ExsF y f1) = eliminateExsF y (asterify f1)
         asterify atom_f = atom_f
@@ -250,9 +252,7 @@ mkPlus (Term con1 coeffs1) (Term con2 coeffs2) = mkTerm (con1 + con2) (foldr go 
     go (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 mkEqnF :: Term -> Term -> Formula
-mkEqnF t1 t2
-    | t1 == t2 = mkTopF
-    | otherwise = EqnF t1 t2
+mkEqnF t1 t2 = if t1 == t2 then mkTopF else EqnF t1 t2
 
 mkLtnF :: Term -> Term -> Formula
 mkLtnF t1 t2
