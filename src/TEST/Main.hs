@@ -14,7 +14,7 @@ main = do
             return ()
         "Jasmine" -> do
             shelly "TEST >>= exec (TEST.Jasmine)"
-            mapM testJasmine [1, 2, 3, 4, 5]
+            mapM testJasmine [1, 2, 3, 4, 5, 6]
             shelly "TEST >>= quit"
             return ()
         "Z" -> do
