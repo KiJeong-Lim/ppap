@@ -50,15 +50,15 @@ instance Show Formula where
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: Formula -> ShowS
         dispatch (ValF b1) = myPrecIs 11 $ strstr (if b1 then "~ _|_" else "_|_")
-        dispatch (EqnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " = " . showsPrec 4 t2
-        dispatch (LtnF t1 t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " < " . showsPrec 4 t2
-        dispatch (ModF t1 r t2) = myPrecIs 3 $ showsPrec 4 t1 . strstr " ==_{" . showsPrec 0 r . strstr "} " . showsPrec 4 t2
-        dispatch (NegF f1) = myPrecIs 3 $ strstr "~ " . showsPrec 3 f1
-        dispatch (DisF f1 f2) = myPrecIs 1 $ showsPrec 1 f1 . strstr " \\/ " . showsPrec 2 f2
-        dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 2 f1 . strstr " /\\ " . showsPrec 3 f2
+        dispatch (EqnF t1 t2) = myPrecIs 9 $ shows t1 . strstr " = " . shows t2
+        dispatch (LtnF t1 t2) = myPrecIs 9 $ shows t1 . strstr " < " . shows t2
+        dispatch (ModF t1 r t2) = myPrecIs 9 $ shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
+        dispatch (NegF f1) = myPrecIs 8 $ strstr "~ " . showsPrec 9 f1
+        dispatch (DisF f1 f2) = myPrecIs 6 $ showsPrec 6 f1 . strstr " \\/ " . showsPrec 7 f2
+        dispatch (ConF f1 f2) = myPrecIs 7 $ showsPrec 7 f1 . strstr " /\\ " . showsPrec 8 f2
         dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " -> " . showsPrec 0 f2
-        dispatch (AllF y f1) = myPrecIs 0 $ strstr "forall " . showVar y . strstr ", " . showsPrec 0 f1
-        dispatch (ExsF y f1) = myPrecIs 0 $ strstr "exists " . showVar y . strstr ", " . showsPrec 0 f1
+        dispatch (AllF y f1) = myPrecIs 8 $ strstr "forall " . showVar y . strstr ", " . showsPrec 8 f1
+        dispatch (ExsF y f1) = myPrecIs 8 $ strstr "exists " . showVar y . strstr ", " . showsPrec 8 f1
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = eliminateOneByOne where

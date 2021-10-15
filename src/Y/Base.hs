@@ -16,7 +16,7 @@ instance Outputable Integer where
             | otherwise = shows n
 
 strstr :: String -> ShowS
-strstr str1 str2 = str1 ++ str2
+strstr = showString
 
 strcat :: [ShowS] -> ShowS
 strcat = foldr (.) id
