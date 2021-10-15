@@ -51,8 +51,8 @@ instance FailableZero [a] where
 (/>) :: Failable a => a -> a -> a
 x /> y = alt x y
 
-takeFirst :: FailableZero b => (a -> b) -> [a] -> b
-takeFirst f = foldr alt nil . map f
+takeFirstOf :: FailableZero b => (a -> b) -> [a] -> b
+takeFirstOf f = foldr alt nil . map f
 
 fromJust :: HasCallStack => Maybe a -> a
 fromJust = Maybe.fromJust
@@ -67,7 +67,7 @@ liftErrMsgM :: Monad m => ErrMsgM a -> ExceptT String m a
 liftErrMsgM = ExceptT . return
 
 safehd :: [a] -> Maybe a
-safehd = takeFirst Just
+safehd = takeFirstOf Just
 
 gfp :: (a -> a) -> a
 gfp = Function.fix

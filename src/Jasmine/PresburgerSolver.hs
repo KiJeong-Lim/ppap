@@ -59,7 +59,6 @@ instance Show Formula where
         dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " -> " . showsPrec 0 f2
         dispatch (AllF y f1) = myPrecIs 0 $ strstr "forall " . showVar y . strstr ", " . showsPrec 0 f1
         dispatch (ExsF y f1) = myPrecIs 0 $ strstr "exists " . showVar y . strstr ", " . showsPrec 0 f1
-    showList = undefined
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = eliminateOneByOne where
@@ -80,7 +79,7 @@ eliminateQuantifier = eliminateOneByOne where
         asterify (ExsF y f1) = eliminateExsF y (asterify f1)
         asterify atom_f = atom_f
     eliminateExsF :: Var -> Formula -> Formula
-    eliminateExsF = curry step0 where
+    eliminateExsF = curry step1 where
         runNeg :: Formula -> Formula
         runNeg (ValF b1) = mkValF (not b1)
         runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
@@ -89,8 +88,8 @@ eliminateQuantifier = eliminateOneByOne where
         runNeg (NegF f1) = f1
         runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
         runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
-        step0 :: (Var, Formula) -> Formula
-        step0 = myMain where
+        step1 :: (Var, Formula) -> Formula
+        step1 = myMain where
             removeNegation :: Formula -> Formula
             removeNegation = go where
                 go :: Formula -> Formula
@@ -103,9 +102,9 @@ eliminateQuantifier = eliminateOneByOne where
             makeDNFfromNoNeg (ConF f1 f2) = [ fs1 ++ fs2 | fs1 <- makeDNFfromNoNeg f1, fs2 <- makeDNFfromNoNeg f2 ]
             makeDNFfromNoNeg atom_f = [one atom_f]
             myMain :: (Var, Formula) -> Formula
-            myMain (x, psi) = orcat [ step1 x conjs | conjs <- makeDNFfromNoNeg (removeNegation psi) ]
-        step1 :: Var -> [Formula] -> Formula
-        step1 x = myMain where
+            myMain (x, psi) = orcat [ step2 x conjs | conjs <- makeDNFfromNoNeg (removeNegation psi) ]
+        step2 :: Var -> [Formula] -> Formula
+        step2 x = myMain where
             mkKlasses :: [Formula] -> [Klass]
             mkKlasses = map mkKlass where
                 extractCoefficient :: Term -> (MyNat, Term)
@@ -156,9 +155,9 @@ eliminateQuantifier = eliminateOneByOne where
             myMain :: [Formula] -> Formula
             myMain conjs = case standardizeCoefficient (mkKlasses conjs) of
                 Left my_klasses -> andcat [ f | KlassEtc f <- my_klasses ]
-                Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step2 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 1, mkNum 0) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
-        step2 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Formula
-        step2 theEqns0 theLtns0 theGtns0 theMods0
+                Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step3 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 1, mkNum 0) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
+        step3 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Formula
+        step3 theEqns0 theLtns0 theGtns0 theMods0
             = case theEqns0 of
                 [] -> orcat
                     [ andcat
@@ -258,6 +257,7 @@ mkModF :: Term -> MyNat -> Term -> Formula
 mkModF t1 r t2
     | r <= 0 = error "mkModF: r must be positive!"
     | r == 1 = mkTopF
+    | Map.null (getCoefficients t1) && Map.null (getCoefficients t2) = mkValF ((getConstantTerm t1 `mod` r) == (getConstantTerm t2 `mod` r))
     | otherwise = t1 `seq` t2 `seq` ModF t1 r t2
 
 mkNegF :: Formula -> Formula
