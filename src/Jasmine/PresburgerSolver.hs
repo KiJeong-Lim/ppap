@@ -68,7 +68,7 @@ eliminateQuantifier = eliminateOneByOne where
         simplify (NegF f1) = mkNegF (simplify f1)
         simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
         simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f1)
-        simplify (ImpF f1 f2) = mkDisF (mkNegF (simplify f1)) (simplify f2) 
+        simplify (ImpF f1 f2) = mkDisF (mkNegF (simplify f1)) (simplify f2)
         simplify (AllF y f1) = mkNegF (mkExsF y (mkNegF (simplify f1)))
         simplify (ExsF y f1) = mkExsF y (simplify f1)
         simplify atom_f = atom_f
@@ -80,16 +80,16 @@ eliminateQuantifier = eliminateOneByOne where
         asterify atom_f = atom_f
     eliminateExsF :: Var -> Formula -> Formula
     eliminateExsF = curry step1 where
-        runNeg :: Formula -> Formula
-        runNeg (ValF b1) = mkValF (not b1)
-        runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
-        runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
-        runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
-        runNeg (NegF f1) = f1
-        runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
-        runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
         step1 :: (Var, Formula) -> Formula
         step1 = myMain where
+            runNeg :: Formula -> Formula
+            runNeg (ValF b1) = mkValF (not b1)
+            runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
+            runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
+            runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
+            runNeg (NegF f1) = f1
+            runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
+            runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
             removeNegation :: Formula -> Formula
             removeNegation = go where
                 go :: Formula -> Formula
