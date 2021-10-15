@@ -251,12 +251,12 @@ mkPlus (Term con1 coeffs1) (Term con2 coeffs2) = mkTerm (con1 + con2) (foldr go 
     go (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 mkEqnF :: Term -> Term -> Formula
-mkEqnF t1 t2 = if t1 == t2 then mkTopF else EqnF t1 t2
+mkEqnF t1 t2 = if t1 == t2 then mkTopF else t1 `seq` t2 `seq` EqnF t1 t2
 
 mkLtnF :: Term -> Term -> Formula
 mkLtnF t1 t2
     | getCoefficients t1 == getCoefficients t2 = mkValF (getConstantTerm t1 < getConstantTerm t2)
-    | otherwise = LtnF t1 t2
+    | otherwise = t1 `seq` t2 `seq` LtnF t1 t2
 
 mkModF :: Term -> MyNat -> Term -> Formula
 mkModF t1 r t2
