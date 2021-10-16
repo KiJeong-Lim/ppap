@@ -13,8 +13,8 @@ main = do
             shelly "TEST >>= quit"
             return ()
         "Jasmine" -> do
-            shelly "TEST >>= exec (TEST.Jasmine)"
-            mapM testJasmine [1, 2, 3, 4, 5, 6]
+            shelly "TEST >>= eval (TEST.Jasmine)"
+            mapM testJasmine [1, 2, 3, 4, 5, 6, 7]
             shelly "TEST >>= quit"
             return ()
         "Z" -> do
