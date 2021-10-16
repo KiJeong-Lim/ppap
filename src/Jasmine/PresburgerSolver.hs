@@ -318,6 +318,10 @@ destiny = maybe (error "destiny: Not a sentence!") id . tryEvalFormula where
     myEqn n1 n2 = n1 == n2
     myLtn :: MyNat -> MyNat -> Bool
     myLtn n1 n2 = n1 < n2
+    myLeq :: MyNat -> MyNat -> Bool
+    myLeq n1 n2 = n1 <= n2
+    myGtn :: MyNat -> MyNat -> Bool
+    myGtn n1 n2 = n1 > n2
     myMod :: MyNat -> MyNat -> MyNat -> Bool
     myMod n1 r n2 = (n1 `mod` r) == (n2 `mod` r)
     myNeg :: Bool -> Bool
@@ -327,11 +331,15 @@ destiny = maybe (error "destiny: Not a sentence!") id . tryEvalFormula where
     myCon :: Bool -> Bool -> Bool
     myCon b1 b2 = b1 && b2
     myImp :: Bool -> Bool -> Bool
-    myImp b1 b2 = (not b1) || b2
+    myImp b1 b2 = b1 <= b2
+    myIff :: Bool -> Bool -> Bool
+    myIff b1 b2 = b1 == b2
     tryEvalFormula :: Formula Term -> Maybe Bool
-    tryEvalFormula (ValF b1) = pure b1 
+    tryEvalFormula (ValF b1) = pure b1
     tryEvalFormula (EqnF t1 t2) = pure myEqn <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (LtnF t1 t2) = pure myLtn <*> tryEvalTerm t1 <*> tryEvalTerm t2
+    tryEvalFormula (LeqF t1 t2) = pure myLeq <*> tryEvalTerm t1 <*> tryEvalTerm t2
+    tryEvalFormula (GtnF t1 t2) = pure myGtn <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (ModF t1 r t2) = pure myMod <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
     tryEvalFormula (NegF f1) = pure myNeg <*> tryEvalFormula f1
     tryEvalFormula (DisF f1 f2) = pure myDis <*> tryEvalFormula f1 <*> tryEvalFormula f2
