@@ -88,30 +88,6 @@ instance Show term => Show (Formula term) where
         dispatch (AllF y f1) = myPrecIs 8 $ strstr "forall " . showVar y . strstr ", " . showsPrec 8 f1
         dispatch (ExsF y f1) = myPrecIs 8 $ strstr "exists " . showVar y . strstr ", " . showsPrec 8 f1
 
-showVar :: Var -> ShowS
-showVar x = strstr "v" . shows x
-
-addFVs :: TermRep -> Set.Set Var -> Set.Set Var
-addFVs (IVar x) = Set.insert x
-addFVs (Zero) = id
-addFVs (Succ t1) = addFVs t1
-addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
-
-getFVs :: Formula TermRep -> Set.Set Var
-getFVs (ValF b1) = Set.empty
-getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (NegF f1) = getFVs f1
-getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (IffF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (AllF y f1) = y `Set.delete` getFVs f1
-getFVs (ExsF y f1) = y `Set.delete` getFVs f1
-
 runTermRep :: TermRep -> Term
 runTermRep = go where
     mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
@@ -128,14 +104,12 @@ runTermRep = go where
 
 eliminateQuantifier :: MyFormula -> MyFormula
 eliminateQuantifier = eliminateOneByOne where
-    mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
-    mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
     multiplyTerm :: MyNat -> Term -> Term
     multiplyTerm k t
-        | k < 0 = error "multiplyTerm: negative input"
-        | k == 0 = mkZero
+        | k == 0 = mkNum 0
         | k == 1 = t
-        | otherwise = mkTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
+        | k >= 0 = mkTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
+        | otherwise = error "multiplyTerm: negative input"
     orcat :: [Formula Term] -> Formula Term
     orcat [] = mkBotF
     orcat (f : fs) = List.foldl' mkDisF f fs
@@ -143,22 +117,16 @@ eliminateQuantifier = eliminateOneByOne where
     andcat = foldr mkConF mkTopF
     getLCM :: MyNat -> MyNat -> MyNat
     getLCM x y = (x * y) `div` (getGCD x y)
-    unNum :: Term -> Maybe MyNat
-    unNum t = if Map.null (getCoefficients t) then Nothing else return (getConstantTerm t)
     mkNum :: MyNat -> Term
     mkNum n = mkTerm n Map.empty
+    mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
+    mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
+    mkPlus :: Term -> Term -> Term
+    mkPlus (Term con1 coeffs1) (Term con2 coeffs2) = mkTerm (con1 + con2) (foldr plusCoeff coeffs1 (Map.toAscList coeffs2)) where
+        plusCoeff :: (Var, Coefficient) -> Map.Map Var Coefficient -> Map.Map Var Coefficient
+        plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
     mkValF :: Bool -> Formula Term
     mkValF b1 = b1 `seq` ValF b1
-    mkIVar :: Var -> Term
-    mkIVar x = mkTerm 0 (Map.singleton x 1)
-    mkZero :: Term
-    mkZero = mkNum 0
-    mkSucc :: Term -> Term
-    mkSucc (Term con coeffs) = mkTerm (succ con) coeffs
-    mkPlus :: Term -> Term -> Term
-    mkPlus (Term con1 coeffs1) (Term con2 coeffs2) = mkTerm (con1 + con2) (foldr go coeffs1 (Map.toAscList coeffs2)) where
-        go :: (Var, Coefficient) -> Map.Map Var Coefficient -> Map.Map Var Coefficient
-        go (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
     mkEqnF :: Term -> Term -> MyFormula
     mkEqnF t1 t2 = if t1 == t2 then mkTopF else t1 `seq` t2 `seq` EqnF t1 t2
     mkLtnF :: Term -> Term -> MyFormula
@@ -167,10 +135,10 @@ eliminateQuantifier = eliminateOneByOne where
         | otherwise = t1 `seq` t2 `seq` LtnF t1 t2
     mkModF :: Term -> PositiveInteger -> Term -> MyFormula
     mkModF t1 r t2
-        | r <= 0 = error "mkModF: r must be positive!"
         | r == 1 = mkTopF
         | Map.null (getCoefficients t1) && Map.null (getCoefficients t2) = mkValF ((getConstantTerm t1 `mod` r) == (getConstantTerm t2 `mod` r))
-        | otherwise = t1 `seq` t2 `seq` ModF t1 r t2
+        | r >= 0 = t1 `seq` t2 `seq` ModF t1 r t2
+        | otherwise = error "mkModF: r must be positive!"
     mkLeqF :: Term -> Term -> MyFormula
     mkLeqF t1 t2 = mkDisF (mkEqnF t1 t2) (mkLtnF t1 t2)
     mkGtnF :: Term -> Term -> MyFormula
@@ -225,21 +193,19 @@ eliminateQuantifier = eliminateOneByOne where
     eliminateExsF = curry step1 where
         step1 :: (Var, MyFormula) -> MyFormula
         step1 = myMain where
+            runNeg :: MyFormula -> MyFormula
+            runNeg (ValF b1) = mkValF (not b1)
+            runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
+            runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
+            runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
+            runNeg (NegF f1) = f1
+            runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
+            runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
             removeNegation :: MyFormula -> MyFormula
-            removeNegation = go where
-                runNeg :: MyFormula -> MyFormula
-                runNeg (ValF b1) = mkValF (not b1)
-                runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
-                runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
-                runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
-                runNeg (NegF f1) = f1
-                runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
-                runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
-                go :: MyFormula -> MyFormula
-                go (NegF f1) = runNeg (go f1)
-                go (DisF f1 f2) = mkDisF (go f1) (go f2)
-                go (ConF f1 f2) = mkConF (go f1) (go f2)
-                go atom_f = atom_f
+            removeNegation (NegF f1) = runNeg (removeNegation f1)
+            removeNegation (DisF f1 f2) = mkDisF (removeNegation f1) (removeNegation f2)
+            removeNegation (ConF f1 f2) = mkConF (removeNegation f1) (removeNegation f2)
+            removeNegation atom_f = atom_f
             makeDNFfromNoNeg :: MyFormula -> [[MyFormula]]
             makeDNFfromNoNeg (DisF f1 f2) = makeDNFfromNoNeg f1 ++ makeDNFfromNoNeg f2
             makeDNFfromNoNeg (ConF f1 f2) = [ fs1 ++ fs2 | fs1 <- makeDNFfromNoNeg f1, fs2 <- makeDNFfromNoNeg f2 ]
@@ -365,6 +331,27 @@ destiny = tryEvalFormula where
     tryEvalFormula (IffF f1 f2) = pure myIff <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula _ = Nothing
 
+addFVs :: TermRep -> Set.Set Var -> Set.Set Var
+addFVs (IVar x) = Set.insert x
+addFVs (Zero) = id
+addFVs (Succ t1) = addFVs t1
+addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
+
+getFVs :: Formula TermRep -> Set.Set Var
+getFVs (ValF b1) = Set.empty
+getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (NegF f1) = getFVs f1
+getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (IffF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (AllF y f1) = y `Set.delete` getFVs f1
+getFVs (ExsF y f1) = y `Set.delete` getFVs f1
+
 mapTermInFormula :: (old_term -> term) -> Formula old_term -> Formula term
 mapTermInFormula = go where
     mkValF :: Bool -> Formula term
@@ -407,3 +394,6 @@ mapTermInFormula = go where
     go z (IffF f1 f2) = mkIffF (go z f1) (go z f2)
     go z (AllF y f1) = mkAllF y (go z f1)
     go z (ExsF y f1) = mkExsF y (go z f1)
+
+showVar :: Var -> ShowS
+showVar x = strstr "v" . shows x
