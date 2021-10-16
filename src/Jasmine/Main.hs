@@ -3,7 +3,7 @@ module Jasmine.Main where
 import Jasmine.PresburgerSolver
 
 testPresburger :: IO ()
-testPresburger = mapM_ (go . getCase) [1 .. 8] where
+testPresburger = mapM_ (putStrLn . go . getCase) [1 .. 9] where
     getCase :: Int -> Formula TermRep
     getCase 1 = (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
     getCase 2 = (AllF 1 (LeqF (IVar 1) (IVar 1)))
@@ -13,8 +13,11 @@ testPresburger = mapM_ (go . getCase) [1 .. 8] where
     getCase 6 = (AllF 1 (NegF (LtnF (IVar 1) (IVar 1))))
     getCase 7 = (AllF 1 (ImpF (LtnF (Zero) (IVar 1)) (LtnF (IVar 1) (Plus (IVar 1) (IVar 1)))))
     getCase 8 = (AllF 1 (AllF 2 (LeqF (IVar 1) (Plus (IVar 1) (IVar 2)))))
-    go :: Formula TermRep -> IO ()
-    go f = putStrLn ("eval `" ++ shows f ("` = " ++ shows (destiny (eliminateQuantifier (fmap runTermRep f))) ""))
+    getCase 9 = (AllF 1 (AllF 2 (LeqF (IVar 2) (Plus (IVar 1) (IVar 2))))) 
+    go :: Formula TermRep -> String
+    go f = case destiny (eliminateQuantifier (fmap runTermRep f)) of
+        Nothing -> ("Presburger> The formula `" ++ shows f ("` is not a sentence."))
+        Just vf -> ("Presburger> The formula `" ++ shows f ("` is a " ++ (if vf then "true" else "false") ++ " sentence."))
 
 main :: IO ()
 main = return ()

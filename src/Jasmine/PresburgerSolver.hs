@@ -316,8 +316,8 @@ eliminateQuantifier = eliminateOneByOne where
                 _R :: MyNat
                 _R = List.foldl' getLCM 1 (map fst theMods0)
 
-destiny :: Formula Term -> Bool
-destiny = maybe (error "destiny: Not a sentence!") id . tryEvalFormula where
+destiny :: Formula Term -> Maybe Bool
+destiny = tryEvalFormula where
     tryEvalTerm :: Term -> Maybe MyNat
     tryEvalTerm (Term con coeffs) = if Map.null coeffs then pure con else Nothing
     myEqn :: MyNat -> MyNat -> Bool
