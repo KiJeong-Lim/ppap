@@ -101,6 +101,27 @@ instance Show term => Show (Formula term) where
 showVar :: Var -> ShowS
 showVar x = strstr "v" . shows x
 
+addFVs :: TermRep -> Set.Set Var -> Set.Set Var
+addFVs (IVar x) = Set.insert x
+addFVs (Zero) = id
+addFVs (Succ t1) = addFVs t1
+addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
+
+getFVs :: Formula TermRep -> Set.Set Var
+getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (ValF b1) = Set.empty
+getFVs (NegF f1) = getFVs f1
+getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (IffF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (AllF y f1) = y `Set.delete` getFVs f1
+getFVs (ExsF y f1) = y `Set.delete` getFVs f1
+
 runTermRep :: TermRep -> Term
 runTermRep = go where
     mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
