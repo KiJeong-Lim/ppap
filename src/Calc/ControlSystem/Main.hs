@@ -8,7 +8,7 @@ import Z.Algo.Function
 import Z.Math.Classes
 
 makePathTable :: MyNode -> ControlSystem -> Map.Map MyNode MyExpr
-makePathTable q0 table0 = Map.fromList [ (q, theClosure Map.! (q0, q)) | q <- qs ] where
+makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <- qs ] where
     qs :: [MyNode]
     qs = Set.toAscList theSetOfNodes where
         theSetOfNodes :: Set.Set MyNode
@@ -22,7 +22,7 @@ makePathTable q0 table0 = Map.fromList [ (q, theClosure Map.! (q0, q)) | q <- qs
     theClosure :: Map.Map (MyNode, MyNode) MyExpr
     theClosure = refine (recNat myInit myStep (length qs)) where
         refine :: [((MyNode, MyNode), MyExpr)] -> Map.Map (MyNode, MyNode) MyExpr
-        refine = Map.fromList . map (fmap (reduceExpr ReduceLv1))
+        refine = Map.map (reduceExpr ReduceLv1) . Map.fromList
         lookup :: Map.Map (MyNode, MyNode) MyExpr -> (MyNode, MyNode) -> MyExpr
         lookup = curry (maybe nullRE id . uncurry (flip Map.lookup))
         myInit :: [((MyNode, MyNode), MyExpr)]
@@ -37,12 +37,11 @@ makePathTable q0 table0 = Map.fromList [ (q, theClosure Map.! (q0, q)) | q <- qs
         myStep k prev = do
             let q_k = qs !! k
                 table = refine prev
-                at = lookup table
             q_i <- qs
             q_j <- qs
             return
                 ( (q_i, q_j)
-                , unionRE (at (q_i, q_j)) (concatRE (at (q_i, q_k)) (concatRE (starRE (at (q_k, q_k))) (at (q_k, q_j))))
+                , unionRE (lookup table (q_i, q_j)) (concatRE (lookup table (q_i, q_k)) (concatRE (starRE (lookup table (q_k, q_k))) (lookup table (q_k, q_j))))
                 )
         unionRE :: MyExpr -> MyExpr -> MyExpr
         unionRE e1 e2 = e1 + e2
