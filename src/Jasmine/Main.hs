@@ -16,8 +16,10 @@ testPresburger = mapM_ (putStrLn . go . getCase) [1 .. 9] where
     getCase 9 = (AllF 1 (AllF 2 (LeqF (IVar 2) (Plus (IVar 1) (IVar 2)))))
     go :: Formula TermRep -> String
     go f = case destiny (eliminateQuantifier (fmap runTermRep f)) of
-        Nothing -> ("Presburger> The formula ``" ++ shows f ("\'\' is not a sentence."))
-        Just vf -> ("Presburger> The formula ``" ++ shows f ("\'\' is a " ++ (if vf then "true" else "false") ++ " sentence."))
+        Nothing -> ("Presburger> The formula \'" ++ shows f ("\' is " ++ "not " ++ "a " ++ "sentence."))
+        Just vf -> ("Presburger> The formula \'" ++ shows f ("\' is " ++ "a " ++ showvf vf "sentence."))
+    showvf :: Bool -> ShowS
+    showvf vf = showString (if vf then "true " else "false ")
 
 main :: IO ()
 main = return ()
