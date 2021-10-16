@@ -16,7 +16,7 @@ testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 10] where
     getCase 7 = (AllF 1 (ImpF (LtnF (Zero) (IVar 1)) (LtnF (IVar 1) (Plus (IVar 1) (IVar 1)))))
     getCase 8 = (AllF 1 (AllF 2 (LeqF (IVar 1) (Plus (IVar 1) (IVar 2)))))
     getCase 9 = (AllF 1 (AllF 2 (LeqF (IVar 2) (Plus (IVar 1) (IVar 2)))))
-    getCase 10 = (AllF 1 (AllF 2 (LeqF (Plus (Succ Zero) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
+    getCase 10 = (AllF 1 (AllF 2 (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
     check :: Formula TermRep -> Bool
     check = fromJust . destiny . eliminateQuantifier . fmap runTermRep
     analyze :: Formula TermRep -> String
