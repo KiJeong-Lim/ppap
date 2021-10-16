@@ -13,7 +13,7 @@ testJasmine = go . getCase where
     getCase 6 = (mkAllF 1 (mkNegF (mkLtnF (mkIVar 1) (mkIVar 1))))
     getCase 7 = (mkAllF 1 (mkImpF (mkLtnF (mkZero) (mkIVar 1)) (mkLtnF (mkIVar 1) (mkPlus (mkIVar 1) (mkIVar 1)))))
     go :: Formula -> IO ()
-    go f = putStrLn ("eval (" ++ shows f (") = " ++ shows (destiny (eliminateQuantifier f)) ""))
+    go f = putStrLn ("eval `" ++ shows f ("` = " ++ shows (destiny (eliminateQuantifier f)) ""))
 
 main :: IO ()
 main = return ()
