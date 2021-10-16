@@ -14,7 +14,7 @@ main = do
             return ()
         "Presburger" -> do
             shelly "TEST >>= eval (TEST.testPresburger)"
-            mapM testPresburger [1, 2, 3, 4, 5, 6, 7]
+            testPresburger
             shelly "TEST >>= quit"
             return ()
         "Z" -> do
