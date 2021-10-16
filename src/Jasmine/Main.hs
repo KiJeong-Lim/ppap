@@ -4,16 +4,16 @@ import Jasmine.PresburgerSolver
 
 testJasmine :: Int -> IO ()
 testJasmine = go . getCase where
-    getCase :: Int -> Formula
-    getCase 1 = (mkAllF 1 (mkAllF 2 (mkEqnF (mkPlus (mkIVar 1) (mkIVar 2)) (mkPlus (mkIVar 2) (mkIVar 1)))))
-    getCase 2 = (mkAllF 1 (mkLeqF (mkIVar 1) (mkIVar 1)))
-    getCase 3 = (mkAllF 1 (mkAllF 2 (mkNegF (mkConF (mkLeqF (mkIVar 1) (mkIVar 2)) (mkGtnF (mkIVar 1) (mkIVar 2))))))
-    getCase 4 = (mkAllF 1 (mkAllF 2 (mkImpF (mkConF (mkLeqF (mkIVar 1) (mkIVar 2)) (mkLeqF (mkIVar 2) (mkIVar 1))) (mkEqnF (mkIVar 1) (mkIVar 2)))))
-    getCase 5 = (mkAllF 1 (mkAllF 2 (mkAllF 3 (mkImpF (mkConF (mkLeqF (mkIVar 1) (mkIVar 2)) (mkLeqF (mkIVar 2) (mkIVar 3))) (mkLeqF (mkIVar 1) (mkIVar 3))))))
-    getCase 6 = (mkAllF 1 (mkNegF (mkLtnF (mkIVar 1) (mkIVar 1))))
-    getCase 7 = (mkAllF 1 (mkImpF (mkLtnF (mkZero) (mkIVar 1)) (mkLtnF (mkIVar 1) (mkPlus (mkIVar 1) (mkIVar 1)))))
-    go :: Formula -> IO ()
-    go f = putStrLn ("eval `" ++ shows f ("` = " ++ shows (destiny (eliminateQuantifier f)) ""))
+    getCase :: Int -> Formula TermRep
+    getCase 1 = (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
+    getCase 2 = (AllF 1 (LeqF (IVar 1) (IVar 1)))
+    getCase 3 = (AllF 1 (AllF 2 (NegF (ConF (LeqF (IVar 1) (IVar 2)) (GtnF (IVar 1) (IVar 2))))))
+    getCase 4 = (AllF 1 (AllF 2 (ImpF (ConF (LeqF (IVar 1) (IVar 2)) (LeqF (IVar 2) (IVar 1))) (EqnF (IVar 1) (IVar 2)))))
+    getCase 5 = (AllF 1 (AllF 2 (AllF 3 (ImpF (ConF (LeqF (IVar 1) (IVar 2)) (LeqF (IVar 2) (IVar 3))) (LeqF (IVar 1) (IVar 3))))))
+    getCase 6 = (AllF 1 (NegF (LtnF (IVar 1) (IVar 1))))
+    getCase 7 = (AllF 1 (ImpF (LtnF (Zero) (IVar 1)) (LtnF (IVar 1) (Plus (IVar 1) (IVar 1)))))
+    go :: Formula TermRep -> IO ()
+    go f = putStrLn ("eval `" ++ shows f ("` = " ++ shows (destiny (eliminateQuantifier (fmap runTermRep f))) ""))
 
 main :: IO ()
 main = return ()
