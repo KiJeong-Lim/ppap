@@ -137,7 +137,7 @@ eliminateQuantifier = eliminateOneByOne where
     mkModF t1 r t2
         | r == 1 = mkTopF
         | Map.null (getCoefficients t1) && Map.null (getCoefficients t2) = mkValF ((getConstantTerm t1 `mod` r) == (getConstantTerm t2 `mod` r))
-        | r >= 0 = t1 `seq` t2 `seq` ModF t1 r t2
+        | r > 0 = t1 `seq` t2 `seq` ModF t1 r t2
         | otherwise = error "mkModF: r must be positive!"
     mkLeqF :: Term -> Term -> MyFormula
     mkLeqF t1 t2 = mkDisF (mkEqnF t1 t2) (mkLtnF t1 t2)
