@@ -22,8 +22,6 @@ testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 9] where
     analyze f
         | null (getFVs f) = "Presburger> The formula ``" ++ shows f ("\'\' is a " ++ (if check f then "true" else "false") ++ " sentence.")
         | otherwise = "Presburger> The formula ``" ++ shows f "\'\' is not a sentence."
-    showsb :: Bool -> ShowS
-    showsb b_ = showString (if b_ then "true " else "false ")
 
 main :: IO ()
 main = return ()
