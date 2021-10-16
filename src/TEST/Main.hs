@@ -12,9 +12,9 @@ main = do
         "" -> do
             shelly "TEST >>= quit"
             return ()
-        "Jasmine" -> do
-            shelly "TEST >>= eval (TEST.testJasmine)"
-            mapM testJasmine [1, 2, 3, 4, 5, 6, 7]
+        "Presburger" -> do
+            shelly "TEST >>= eval (TEST.testPresburger)"
+            mapM testPresburger [1, 2, 3, 4, 5, 6, 7]
             shelly "TEST >>= quit"
             return ()
         "Z" -> do

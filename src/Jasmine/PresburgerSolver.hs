@@ -102,12 +102,18 @@ showVar :: Var -> ShowS
 showVar x = strstr "v" . shows x
 
 runTermRep :: TermRep -> Term
-runTermRep (IVar x) = Term 0 (Map.singleton x 1)
-runTermRep (Zero) = Term 0 Map.empty
-runTermRep (Succ t1) = case runTermRep t1 of
-    Term con1 coeffs1 -> Term (succ con1) coeffs1
-runTermRep (Plus t1 t2) = case (runTermRep t1, runTermRep t2) of
-    (Term con1 coeffs1, Term con2 coeffs2) -> Term (con1 + con2) (foldr (uncurry $ \x -> \n -> Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x) coeffs1 (Map.toAscList coeffs2))
+runTermRep = go where
+    mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
+    mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
+    go :: TermRep -> Term
+    go (IVar x) = mkTerm 0 (Map.singleton x 1)
+    go (Zero) = mkTerm 0 Map.empty
+    go (Succ t1) = case go t1 of
+        Term con1 coeffs1 -> mkTerm (succ con1) coeffs1
+    go (Plus t1 t2) = case (go t1, go t2) of
+        (Term con1 coeffs1, Term con2 coeffs2) -> mkTerm (con1 + con2) (foldr plusCoeff coeffs1 (Map.toAscList coeffs2))
+    plusCoeff :: (Var, Coefficient) -> Map.Map Var Coefficient -> Map.Map Var Coefficient
+    plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 eliminateQuantifier :: Formula Term -> Formula Term
 eliminateQuantifier = eliminateOneByOne where
@@ -323,7 +329,7 @@ destiny = maybe (error "destiny: Not a sentence!") id . tryEvalFormula where
     myGtn :: MyNat -> MyNat -> Bool
     myGtn n1 n2 = n1 > n2
     myMod :: MyNat -> MyNat -> MyNat -> Bool
-    myMod n1 r n2 = (n1 `mod` r) == (n2 `mod` r)
+    myMod n1 r n2 = n1 `mod` r == n2 `mod` r
     myNeg :: Bool -> Bool
     myNeg b1 = not b1
     myDis :: Bool -> Bool -> Bool

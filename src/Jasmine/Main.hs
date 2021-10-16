@@ -2,8 +2,8 @@ module Jasmine.Main where
 
 import Jasmine.PresburgerSolver
 
-testJasmine :: Int -> IO ()
-testJasmine = go . getCase where
+testPresburger :: Int -> IO ()
+testPresburger = go . getCase where
     getCase :: Int -> Formula TermRep
     getCase 1 = (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
     getCase 2 = (AllF 1 (LeqF (IVar 1) (IVar 1)))
