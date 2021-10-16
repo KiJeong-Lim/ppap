@@ -9,7 +9,9 @@ import Z.Utils
 
 type Var = MyNat
 
-type Coefficient = Integer
+type Coefficient = PositiveInteger
+
+type MyFormula = Formula Term
 
 data TermRep
     = IVar Var
@@ -31,7 +33,7 @@ data Formula term
     | LtnF term term
     | LeqF term term
     | GtnF term term
-    | ModF term MyNat term
+    | ModF term PositiveInteger term
     | NegF (Formula term)
     | DisF (Formula term) (Formula term)
     | ConF (Formula term) (Formula term)
@@ -45,8 +47,8 @@ data Klass
     = KlassEqn !Coefficient !Term !Term
     | KlassLtn !Coefficient !Term !Term
     | KlassGtn !Coefficient !Term !Term
-    | KlassMod !Coefficient !Term !MyNat !Term
-    | KlassEtc !(Formula Term)
+    | KlassMod !Coefficient !Term !PositiveInteger !Term
+    | KlassEtc !MyFormula
     deriving (Eq)
 
 instance Show TermRep where
@@ -65,19 +67,7 @@ instance Show Term where
         | otherwise = strcat [ (if n > 1 then shows n . strstr " " else id) . showVar x . strstr " + " | (x, n) <- Map.toAscList coeffs ] . shows con
 
 instance Functor Formula where
-    fmap f (ValF b) = ValF b
-    fmap f (EqnF t1 t2) = EqnF (f t1) (f t2)
-    fmap f (LtnF t1 t2) = LtnF (f t1) (f t2)
-    fmap f (LeqF t1 t2) = LeqF (f t1) (f t2)
-    fmap f (GtnF t1 t2) = GtnF (f t1) (f t2)
-    fmap f (ModF t1 r t2) = ModF (f t1) r (f t2)
-    fmap f (NegF f1) = NegF (fmap f f1)
-    fmap f (DisF f1 f2) = DisF (fmap f f1) (fmap f f2)
-    fmap f (ConF f1 f2) = ConF (fmap f f1) (fmap f f2)
-    fmap f (ImpF f1 f2) = ImpF (fmap f f1) (fmap f f2)
-    fmap f (IffF f1 f2) = IffF (fmap f f1) (fmap f f2)
-    fmap f (AllF y f1) = AllF y (fmap f f1)
-    fmap f (ExsF y f1) = ExsF y (fmap f f1)
+    fmap = mapTermInFormula
 
 instance Show term => Show (Formula term) where
     showsPrec prec = dispatch where
@@ -108,12 +98,12 @@ addFVs (Succ t1) = addFVs t1
 addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
 
 getFVs :: Formula TermRep -> Set.Set Var
+getFVs (ValF b1) = Set.empty
 getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
 getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
 getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
 getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
 getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (ValF b1) = Set.empty
 getFVs (NegF f1) = getFVs f1
 getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
 getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
@@ -136,7 +126,7 @@ runTermRep = go where
     plusCoeff :: (Var, Coefficient) -> Map.Map Var Coefficient -> Map.Map Var Coefficient
     plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
-eliminateQuantifier :: Formula Term -> Formula Term
+eliminateQuantifier :: MyFormula -> MyFormula
 eliminateQuantifier = eliminateOneByOne where
     mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
     mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
@@ -169,49 +159,49 @@ eliminateQuantifier = eliminateOneByOne where
     mkPlus (Term con1 coeffs1) (Term con2 coeffs2) = mkTerm (con1 + con2) (foldr go coeffs1 (Map.toAscList coeffs2)) where
         go :: (Var, Coefficient) -> Map.Map Var Coefficient -> Map.Map Var Coefficient
         go (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
-    mkEqnF :: Term -> Term -> Formula Term
+    mkEqnF :: Term -> Term -> MyFormula
     mkEqnF t1 t2 = if t1 == t2 then mkTopF else t1 `seq` t2 `seq` EqnF t1 t2
-    mkLtnF :: Term -> Term -> Formula Term
+    mkLtnF :: Term -> Term -> MyFormula
     mkLtnF t1 t2
         | getCoefficients t1 == getCoefficients t2 = mkValF (getConstantTerm t1 < getConstantTerm t2)
         | otherwise = t1 `seq` t2 `seq` LtnF t1 t2
-    mkModF :: Term -> MyNat -> Term -> Formula Term
+    mkModF :: Term -> PositiveInteger -> Term -> MyFormula
     mkModF t1 r t2
         | r <= 0 = error "mkModF: r must be positive!"
         | r == 1 = mkTopF
         | Map.null (getCoefficients t1) && Map.null (getCoefficients t2) = mkValF ((getConstantTerm t1 `mod` r) == (getConstantTerm t2 `mod` r))
         | otherwise = t1 `seq` t2 `seq` ModF t1 r t2
-    mkLeqF :: Term -> Term -> Formula Term
+    mkLeqF :: Term -> Term -> MyFormula
     mkLeqF t1 t2 = mkDisF (mkEqnF t1 t2) (mkLtnF t1 t2)
-    mkGtnF :: Term -> Term -> Formula Term
+    mkGtnF :: Term -> Term -> MyFormula
     mkGtnF t1 t2 = mkLtnF t2 t1
-    mkTopF :: Formula Term
+    mkTopF :: MyFormula
     mkTopF = mkValF True
-    mkBotF :: Formula Term
+    mkBotF :: MyFormula
     mkBotF = mkValF False
-    mkNegF :: Formula Term -> Formula Term
+    mkNegF :: MyFormula -> MyFormula
     mkNegF (ValF b1) = mkValF (not b1)
     mkNegF (NegF f1) = f1
     mkNegF f1 = NegF f1
-    mkDisF :: Formula Term -> Formula Term -> Formula Term
+    mkDisF :: MyFormula -> MyFormula -> MyFormula
     mkDisF (ValF b1) f2 = if b1 then mkTopF else f2
     mkDisF f1 (ValF b2) = if b2 then mkTopF else f1
     mkDisF f1 f2 = DisF f1 f2
-    mkConF :: Formula Term -> Formula Term -> Formula Term
+    mkConF :: MyFormula -> MyFormula -> MyFormula
     mkConF (ValF b1) f2 = if b1 then f2 else mkBotF
     mkConF f1 (ValF b2) = if b2 then f1 else mkBotF
     mkConF f1 f2 = ConF f1 f2
-    mkImpF :: Formula Term -> Formula Term -> Formula Term
+    mkImpF :: MyFormula -> MyFormula -> MyFormula
     mkImpF f1 f2 = mkDisF (mkNegF f1) f2
-    mkIffF :: Formula Term -> Formula Term -> Formula Term
+    mkIffF :: MyFormula -> MyFormula -> MyFormula
     mkIffF f1 f2 = mkConF (mkImpF f1 f2) (mkImpF f2 f1)
-    mkAllF :: Var -> Formula Term -> Formula Term
+    mkAllF :: Var -> MyFormula -> MyFormula
     mkAllF y f1 = mkNegF (mkExsF y (mkNegF f1))
-    mkExsF :: Var -> Formula Term -> Formula Term
+    mkExsF :: Var -> MyFormula -> MyFormula
     mkExsF y f1 = f1 `seq` ExsF y f1
-    eliminateOneByOne :: Formula Term -> Formula Term
+    eliminateOneByOne :: MyFormula -> MyFormula
     eliminateOneByOne = asterify . simplify where
-        simplify :: Formula Term -> Formula Term
+        simplify :: MyFormula -> MyFormula
         simplify (ValF b1) = mkValF b1
         simplify (EqnF t1 t2) = mkEqnF t1 t2
         simplify (LtnF t1 t2) = mkLtnF t1 t2
@@ -225,46 +215,46 @@ eliminateQuantifier = eliminateOneByOne where
         simplify (IffF f1 f2) = mkIffF (simplify f1) (simplify f2)
         simplify (AllF y f1) = mkAllF y (simplify f1)
         simplify (ExsF y f1) = mkExsF y (simplify f1)
-        asterify :: Formula Term -> Formula Term
+        asterify :: MyFormula -> MyFormula
         asterify (NegF f1) = mkNegF (asterify f1)
         asterify (ConF f1 f2) = mkConF (asterify f1) (asterify f2)
         asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
         asterify (ExsF y f1) = eliminateExsF y (asterify f1)
         asterify atom_f = atom_f
-    eliminateExsF :: Var -> Formula Term -> Formula Term
+    eliminateExsF :: Var -> MyFormula -> MyFormula
     eliminateExsF = curry step1 where
-        step1 :: (Var, Formula Term) -> Formula Term
+        step1 :: (Var, MyFormula) -> MyFormula
         step1 = myMain where
-            runNeg :: Formula Term -> Formula Term
-            runNeg (ValF b1) = mkValF (not b1)
-            runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
-            runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
-            runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
-            runNeg (NegF f1) = f1
-            runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
-            runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
-            removeNegation :: Formula Term -> Formula Term
+            removeNegation :: MyFormula -> MyFormula
             removeNegation = go where
-                go :: Formula Term -> Formula Term
+                runNeg :: MyFormula -> MyFormula
+                runNeg (ValF b1) = mkValF (not b1)
+                runNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
+                runNeg (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
+                runNeg (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
+                runNeg (NegF f1) = f1
+                runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
+                runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
+                go :: MyFormula -> MyFormula
                 go (NegF f1) = runNeg (go f1)
                 go (DisF f1 f2) = mkDisF (go f1) (go f2)
                 go (ConF f1 f2) = mkConF (go f1) (go f2)
                 go atom_f = atom_f
-            makeDNFfromNoNeg :: Formula Term -> [[Formula Term]]
+            makeDNFfromNoNeg :: MyFormula -> [[MyFormula]]
             makeDNFfromNoNeg (DisF f1 f2) = makeDNFfromNoNeg f1 ++ makeDNFfromNoNeg f2
             makeDNFfromNoNeg (ConF f1 f2) = [ fs1 ++ fs2 | fs1 <- makeDNFfromNoNeg f1, fs2 <- makeDNFfromNoNeg f2 ]
             makeDNFfromNoNeg atom_f = [one atom_f]
-            myMain :: (Var, Formula Term) -> Formula Term
+            myMain :: (Var, MyFormula) -> MyFormula
             myMain (x, psi) = orcat [ step2 x conjs | conjs <- makeDNFfromNoNeg (removeNegation psi) ]
-        step2 :: Var -> [Formula Term] -> Formula Term
+        step2 :: Var -> [MyFormula] -> MyFormula
         step2 x = myMain where
-            mkKlasses :: [Formula Term] -> [Klass]
+            mkKlasses :: [MyFormula] -> [Klass]
             mkKlasses = map mkKlass where
                 extractCoefficient :: Term -> (MyNat, Term)
                 extractCoefficient t = case Map.lookup x (getCoefficients t) of
                     Nothing -> (0, t)
                     Just n -> (n, mkTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))
-                mkKlass :: Formula Term -> Klass
+                mkKlass :: MyFormula -> Klass
                 mkKlass (EqnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
                         LT -> KlassEqn (m2 - m1) t2' t1'
@@ -305,11 +295,11 @@ eliminateQuantifier = eliminateOneByOne where
                     myLoop (KlassGtn m t1 t2) = KlassGtn theLCM (multiplyTerm (theLCM `div` m) t1) (multiplyTerm (theLCM `div` m) t2)
                     myLoop (KlassMod m t1 r t2) = KlassMod theLCM (multiplyTerm (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiplyTerm (theLCM `div` m) t2)
                     myLoop (KlassEtc f) = KlassEtc f
-            myMain :: [Formula Term] -> Formula Term
+            myMain :: [MyFormula] -> MyFormula
             myMain conjs = case standardizeCoefficient (mkKlasses conjs) of
                 Left my_klasses -> andcat [ f | KlassEtc f <- my_klasses ]
                 Right (m, my_klasses) -> mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step3 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 1, mkNum 0) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
-        step3 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(MyNat, (Term, Term))] -> Formula Term
+        step3 :: [(Term, Term)] -> [(Term, Term)] -> [(Term, Term)] -> [(PositiveInteger, (Term, Term))] -> MyFormula
         step3 theEqns0 theLtns0 theGtns0 theMods0
             = case theEqns0 of
                 [] -> orcat
@@ -337,7 +327,7 @@ eliminateQuantifier = eliminateOneByOne where
                 _R :: MyNat
                 _R = List.foldl' getLCM 1 (map fst theMods0)
 
-destiny :: Formula Term -> Maybe Bool
+destiny :: MyFormula -> Maybe Bool
 destiny = tryEvalFormula where
     tryEvalTerm :: Term -> Maybe MyNat
     tryEvalTerm (Term con coeffs) = if Map.null coeffs then pure con else Nothing
@@ -352,16 +342,16 @@ destiny = tryEvalFormula where
     myMod :: MyNat -> MyNat -> MyNat -> Bool
     myMod n1 r n2 = n1 `mod` r == n2 `mod` r
     myNeg :: Bool -> Bool
-    myNeg b1 = not b1
+    myNeg = not
     myDis :: Bool -> Bool -> Bool
-    myDis b1 b2 = b1 || b2
+    myDis = (||)
     myCon :: Bool -> Bool -> Bool
-    myCon b1 b2 = b1 && b2
+    myCon = (&&)
     myImp :: Bool -> Bool -> Bool
-    myImp b1 b2 = b1 <= b2
+    myImp = (<=)
     myIff :: Bool -> Bool -> Bool
-    myIff b1 b2 = b1 == b2
-    tryEvalFormula :: Formula Term -> Maybe Bool
+    myIff = (==)
+    tryEvalFormula :: MyFormula -> Maybe Bool
     tryEvalFormula (ValF b1) = pure b1
     tryEvalFormula (EqnF t1 t2) = pure myEqn <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (LtnF t1 t2) = pure myLtn <*> tryEvalTerm t1 <*> tryEvalTerm t2
@@ -372,4 +362,48 @@ destiny = tryEvalFormula where
     tryEvalFormula (DisF f1 f2) = pure myDis <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ConF f1 f2) = pure myCon <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ImpF f1 f2) = pure myImp <*> tryEvalFormula f1 <*> tryEvalFormula f2
+    tryEvalFormula (IffF f1 f2) = pure myIff <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula _ = Nothing
+
+mapTermInFormula :: (old_term -> term) -> Formula old_term -> Formula term
+mapTermInFormula = go where
+    mkValF :: Bool -> Formula term
+    mkValF b1 = b1 `seq` ValF b1
+    mkEqnF :: term -> term -> Formula term
+    mkEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
+    mkLtnF :: term -> term -> Formula term
+    mkLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
+    mkLeqF :: term -> term -> Formula term
+    mkLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
+    mkGtnF :: term -> term -> Formula term
+    mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
+    mkModF :: term -> PositiveInteger -> term -> Formula term
+    mkModF t1 r t2 = t1 `seq` r `seq` t2 `seq` ModF t1 r t2
+    mkNegF :: Formula term -> Formula term
+    mkNegF f1 = f1 `seq` NegF f1
+    mkDisF :: Formula term -> Formula term -> Formula term
+    mkDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
+    mkConF :: Formula term -> Formula term -> Formula term
+    mkConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
+    mkImpF :: Formula term -> Formula term -> Formula term
+    mkImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
+    mkIffF :: Formula term -> Formula term -> Formula term
+    mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
+    mkAllF :: Var -> Formula term -> Formula term
+    mkAllF y f1 = y `seq` f1 `seq` AllF y f1
+    mkExsF :: Var -> Formula term -> Formula term
+    mkExsF y f1 = y `seq` f1 `seq` ExsF y f1
+    go :: (old_term -> term) -> Formula old_term -> Formula term
+    go z (ValF b1) = mkValF b1
+    go z (EqnF t1 t2) = mkEqnF (z t1) (z t2)
+    go z (LtnF t1 t2) = mkLtnF (z t1) (z t2)
+    go z (LeqF t1 t2) = mkLeqF (z t1) (z t2)
+    go z (GtnF t1 t2) = mkGtnF (z t1) (z t2)
+    go z (ModF t1 r t2) = mkModF (z t1) r (z t2)
+    go z (NegF f1) = mkNegF (go z f1)
+    go z (DisF f1 f2) = mkDisF (go z f1) (go z f2)
+    go z (ConF f1 f2) = mkConF (go z f1) (go z f2)
+    go z (ImpF f1 f2) = mkImpF (go z f1) (go z f2)
+    go z (IffF f1 f2) = mkIffF (go z f1) (go z f2)
+    go z (AllF y f1) = mkAllF y (go z f1)
+    go z (ExsF y f1) = mkExsF y (go z f1)
