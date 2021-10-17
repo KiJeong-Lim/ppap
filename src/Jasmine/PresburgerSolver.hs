@@ -124,8 +124,6 @@ eliminateQuantifier = eliminateOneByOne where
     andcat = foldr mkConF mkTopF
     getLCM :: MyNat -> MyNat -> MyNat
     getLCM x y = (x * y) `div` (getGCD x y)
-    mkNum :: MyNat -> PresburgerTerm
-    mkNum n = mkTerm n Map.empty
     eliminateOneByOne :: PresburgerFormula -> PresburgerFormula
     eliminateOneByOne = asterify . simplify where
         simplify :: PresburgerFormula -> PresburgerFormula
@@ -253,6 +251,8 @@ eliminateQuantifier = eliminateOneByOne where
                 _R = List.foldl' getLCM 1 (map fst theMods0)
     mkTerm :: MyNat -> Map.Map MyVar Coefficient -> PresburgerTerm
     mkTerm con coeffs = con `seq` coeffs `seq` PresburgerTerm con coeffs
+    mkNum :: MyNat -> PresburgerTerm
+    mkNum n = mkTerm n Map.empty
     mkPlus :: PresburgerTerm -> PresburgerTerm -> PresburgerTerm
     mkPlus (PresburgerTerm con1 coeffs1) (PresburgerTerm con2 coeffs2) = mkTerm (con1 + con2) (foldr plusCoeff coeffs1 (Map.toAscList coeffs2)) where
         plusCoeff :: (MyVar, Coefficient) -> Map.Map MyVar Coefficient -> Map.Map MyVar Coefficient
