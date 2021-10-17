@@ -97,10 +97,10 @@ instance Functor PresburgerFormula where
 showsMyVar :: MyVar -> ShowS
 showsMyVar x = strstr "v" . shows x
 
-compileTerm :: PresburgerTermRep -> PresburgerTerm
-compileTerm = go where
+compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
+compilePresburgerTerm = go where
     mkTerm :: MyNat -> Map.Map MyVar MyCoefficient -> PresburgerTerm
-    mkTerm con coeffs = con `seq` coeffs `seq` PresburgerTerm con coeffs
+    mkTerm con coeffs = if con >= 0 && all (\n -> n > 0) (Map.elems coeffs) && all (\x -> x > 0) (Map.keysSet coeffs) then PresburgerTerm con coeffs else error "compilePresburgerTerm: bad input"
     go :: PresburgerTermRep -> PresburgerTerm
     go (IVar x) = mkTerm 0 (Map.singleton x 1)
     go (Zero) = mkTerm 0 Map.empty
