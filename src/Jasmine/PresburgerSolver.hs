@@ -95,8 +95,8 @@ instance Show term => Show (Formula term) where
 showVar :: Var -> ShowS
 showVar x = strstr "v" . shows x
 
-compilerTerm :: TermRep -> Term
-compilerTerm = go where
+compileTerm :: TermRep -> Term
+compileTerm = go where
     mkTerm :: MyNat -> Map.Map Var Coefficient -> Term
     mkTerm con coeffs = con `seq` coeffs `seq` Term con coeffs
     go :: TermRep -> Term

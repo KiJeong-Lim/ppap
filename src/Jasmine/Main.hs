@@ -19,7 +19,7 @@ testPresburger = mapM_ (shelly . analyze . getCase) [0 .. 10] where
     getCase 9 = (AllF 1 (AllF 2 (LeqF (IVar 2) (Plus (IVar 1) (IVar 2)))))
     getCase 10 = (AllF 1 (AllF 2 (IffF (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2))) (NegF (EqnF (IVar 1) (Zero))))))
     check :: MyFormulaRep -> Bool
-    check = fromJust . destiny . eliminateQuantifier . fmap compilerTerm
+    check = fromJust . destiny . eliminateQuantifier . fmap compileTerm
     analyze :: MyFormulaRep -> String
     analyze f
         | null (getFVs f) = "Presburger> The formula ``" ++ shows f ("\'\' is a " ++ (if check f then "true" else "false") ++ " sentence.")
