@@ -71,9 +71,9 @@ instance Show PresburgerTerm where
         , case con `compare` 0 of
             (LT) -> if Map.null coeffs then shows con else strstr " - " . shows (abs con)
             (EQ) -> if Map.null coeffs then shows con else id
-            (GT) -> if Map.null coeffs then shows con else strstr " + " . shows con
+            (GT) -> if Map.null coeffs then shows con else strstr " + " . shows (abs con)
         ]
-    showsPrec _ t = strstr "(" . shows t . strstr ")"
+    showsPrec prec t = if prec > 5 then strstr "(" . shows t . strstr ")" else shows t
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
