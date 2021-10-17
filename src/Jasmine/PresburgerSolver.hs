@@ -99,15 +99,19 @@ showsMyVar x = strstr "v" . shows x
 
 compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
 compilePresburgerTerm = go where
-    mkTerm :: MyNat -> Map.Map MyVar MyCoefficient -> PresburgerTerm
-    mkTerm con coeffs = if con >= 0 && all (\n -> n > 0) (Map.elems coeffs) && all (\x -> x > 0) (Map.keysSet coeffs) then PresburgerTerm con coeffs else error "compilePresburgerTerm: bad input"
     go :: PresburgerTermRep -> PresburgerTerm
-    go (IVar x) = mkTerm 0 (Map.singleton x 1)
-    go (Zero) = mkTerm 0 Map.empty
-    go (Succ t1) = case go t1 of
-        PresburgerTerm con1 coeffs1 -> mkTerm (succ con1) coeffs1
-    go (Plus t1 t2) = case (go t1, go t2) of
-        (PresburgerTerm con1 coeffs1, PresburgerTerm con2 coeffs2) -> mkTerm (con1 + con2) (foldr plusCoeff coeffs1 (Map.toAscList coeffs2))
+    go (IVar x) = mkIVar x
+    go (Zero) = mkZero
+    go (Succ t1) = mkSucc (go t1)
+    go (Plus t1 t2) = mkPlus (go t1) (go t2)
+    mkIVar :: MyVar -> PresburgerTerm
+    mkIVar x = if x > 0 then PresburgerTerm 0 (Map.singleton x 1) else error "compilePresburgerTerm: bad individual variable given"
+    mkZero :: PresburgerTerm
+    mkZero = PresburgerTerm 0 Map.empty
+    mkSucc :: PresburgerTerm -> PresburgerTerm
+    mkSucc (PresburgerTerm con1 coeffs1) = PresburgerTerm (succ con1) coeffs1
+    mkPlus :: PresburgerTerm -> PresburgerTerm -> PresburgerTerm
+    mkPlus (PresburgerTerm con1 coeffs1) (PresburgerTerm con2 coeffs2) = PresburgerTerm (con1 + con2) (foldr plusCoeff coeffs1 (Map.toAscList coeffs2))
     plusCoeff :: (MyVar, MyCoefficient) -> Map.Map MyVar MyCoefficient -> Map.Map MyVar MyCoefficient
     plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
@@ -147,9 +151,9 @@ eliminateQuantifier = eliminateOneByOne where
         asterify (ExsF y f1) = eliminateExsF y (asterify f1)
         asterify atom_f = atom_f
     eliminateExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
-    eliminateExsF = step1 where
-        step1 :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
-        step1 = rewriteExsF where
+    eliminateExsF = curry step1 where
+        step1 :: (MyVar, MyPresburgerFormula) -> MyPresburgerFormula
+        step1 = orcat . (map . step2 . fst <*> makeDNF . removeNegF . snd) where
             rewriteNeg :: MyPresburgerFormula -> MyPresburgerFormula
             rewriteNeg (ValF b) = mkValF (not b)
             rewriteNeg (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
@@ -167,32 +171,28 @@ eliminateQuantifier = eliminateOneByOne where
             makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
             makeDNF (ConF f1 f2) = [ fs1 ++ fs2 | fs1 <- makeDNF f1, fs2 <- makeDNF f2 ]
             makeDNF atom_f = [one atom_f]
-            rewriteExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
-            rewriteExsF y f1 = orcat (map (step2 y) (makeDNF (removeNegF f1)))
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
         step2 x = buildBigConF . standardizeCoefficient . mkKlasses where
             mkKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
             mkKlasses = map mkKlass where
                 extractMyCoefficient :: PresburgerTerm -> (MyNat, PresburgerTerm)
-                extractMyCoefficient t = case Map.lookup x (getCoefficients t) of
-                    Nothing -> (0, t)
-                    Just n -> (n, mkTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))
+                extractMyCoefficient t = maybe (0, t) (\n -> (n, mkTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
                 mkKlass :: MyPresburgerFormula -> PresburgerKlass
                 mkKlass (EqnF t1 t2) = case (extractMyCoefficient t1, extractMyCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        LT -> KlassEqn (m2 - m1) t2' t1'
-                        EQ -> KlassEtc (mkEqnF t1' t2')
-                        GT -> KlassEqn (m1 - m2) t1' t2'
+                        (LT) -> KlassEqn (m2 - m1) t2' t1'
+                        (EQ) -> KlassEtc (mkEqnF t1' t2')
+                        (GT) -> KlassEqn (m1 - m2) t1' t2'
                 mkKlass (LtnF t1 t2) = case (extractMyCoefficient t1, extractMyCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        LT -> KlassGtn (m2 - m1) t2' t1'
-                        EQ -> KlassEtc (mkLtnF t1' t2')
-                        GT -> KlassLtn (m1 - m2) t1' t2'
+                        (LT) -> KlassGtn (m2 - m1) t2' t1'
+                        (EQ) -> KlassEtc (mkLtnF t1' t2')
+                        (GT) -> KlassLtn (m1 - m2) t1' t2'
                 mkKlass (ModF t1 r t2) = case (extractMyCoefficient t1, extractMyCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        LT -> KlassMod (m2 - m1) t2' r t1'
-                        EQ -> KlassEtc (mkModF t1' r t2')
-                        GT -> KlassMod (m1 - m2) t1' r t2'
+                        (LT) -> KlassMod (m2 - m1) t2' r t1'
+                        (EQ) -> KlassEtc (mkModF t1' r t2')
+                        (GT) -> KlassMod (m1 - m2) t1' r t2'
                 mkKlass f = KlassEtc f
             standardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (MyNat, [PresburgerKlass])
             standardizeCoefficient your_klasses = maybe (Left your_klasses) (Right . ((,) <*> theStandardizedKlasses)) theMaybeLCM where
@@ -200,16 +200,16 @@ eliminateQuantifier = eliminateOneByOne where
                 theMaybeLCM = calcLCM theMyCoefficients where
                     calcLCM :: [MyNat] -> Maybe MyNat
                     calcLCM [] = Nothing
-                    calcLCM (m : ms) = callWithStrictArg return (List.foldl' getLCM m ms)
+                    calcLCM (m : ms) = callWithStrictArg Just (List.foldl' getLCM m ms)
                     theMyCoefficients :: [MyNat]
                     theMyCoefficients = do
                         klass <- your_klasses
                         case klass of
-                            KlassEqn m t1 t2 -> return m
-                            KlassLtn m t1 t2 -> return m
-                            KlassGtn m t1 t2 -> return m
-                            KlassMod m t1 r t2 -> return m
-                            KlassEtc f -> []
+                            (KlassEqn m t1 t2) -> return m
+                            (KlassLtn m t1 t2) -> return m
+                            (KlassGtn m t1 t2) -> return m
+                            (KlassMod m t1 r t2) -> return m
+                            (KlassEtc f) -> []
                 theStandardizedKlasses :: MyNat -> [PresburgerKlass]
                 theStandardizedKlasses theLCM = map myLoop your_klasses where
                     myLoop :: PresburgerKlass -> PresburgerKlass
@@ -239,7 +239,7 @@ eliminateQuantifier = eliminateOneByOne where
                     | (u, u') <- theLtns0
                     , (v', v) <- theGtns0
                     ]
-                (t, t') : theEqns' -> andcat
+                ((t, t') : theEqns') -> andcat
                     [ andcat [ mkEqnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theEqns' ]
                     , andcat [ mkLtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theLtns0 ]
                     , andcat [ mkGtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theGtns0 ]
@@ -362,7 +362,7 @@ getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
 chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
 chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVs (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ]) where
-    getMaxVarOf :: Foldable f => f MyVar -> MyVar
+    getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
     getMaxVarOf = foldr max 0
 
 getFreshVar :: MyPresburgerFormulaRep -> MyVar
