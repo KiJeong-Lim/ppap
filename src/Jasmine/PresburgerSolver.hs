@@ -299,7 +299,7 @@ eliminateQuantifier = eliminateOneByOne where
     mkExsF :: MyVar -> PresburgerFormula -> PresburgerFormula
     mkExsF y f1 = f1 `seq` ExsF y f1
     reduceTermWithMod :: PositiveInteger -> PresburgerTerm -> PresburgerTerm
-    reduceTermWithMod r (PresburgerTerm con coeffs) = if r > 0 then mkTerm (con `mod` r) (Map.fromAscList [ (x, n `mod` r) | (x, n) <- Map.toAscList coeffs, n `mod` r /= 0 ]) else "reduceTermWithMod: negative input"
+    reduceTermWithMod r (PresburgerTerm con coeffs) = if r > 0 then mkTerm (con `mod` r) (Map.fromAscList [ (x, n `mod` r) | (x, n) <- Map.toAscList coeffs, n `mod` r /= 0 ]) else error "reduceTermWithMod: negative input"
 
 destiny :: PresburgerFormula -> Maybe Bool
 destiny = tryEvalFormula where
