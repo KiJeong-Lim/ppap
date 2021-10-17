@@ -66,9 +66,9 @@ instance Show PresburgerTermRep where
         dispatch (Plus t1 t2) = myPrecIs 4 $ showsPrec 4 t1 . strstr " + " . showsPrec 5 t2
 
 instance Show PresburgerTerm where
-    showsPrec _ (PresburgerTerm con coeffs) = ppunc " + " (map showsMyVarWithCoefficient (Map.toAscList coeffs)) . (if Map.null coeffs then shows con else (if con == 0 then id else strstr " + " . shows con)) where
+    showsPrec _ (PresburgerTerm con coeffs) = (ppunc " + " (map showsMyVarWithCoefficient (Map.toAscList coeffs))) . (if Map.null coeffs then shows con else (if con == 0 then id else strstr " + " . shows con)) where
         showsMyVarWithCoefficient :: (MyVar, Coefficient) -> ShowS
-        showsMyVarWithCoefficient (x, n) = if n == 1 then showsMyVar x else shows n . strstr " " . showsMyVar x
+        showsMyVarWithCoefficient (x, n) = if n == 1 then showsMyVar x else (if n < 0 then strstr "(" . shows n . strstr ")" else shows n) . strstr " " . showsMyVar x
 
 instance Show term => Show (Formula term) where
     showsPrec prec = dispatch where
@@ -283,11 +283,11 @@ eliminateQuantifier = eliminateOneByOne where
     mkNegF (NegF f1) = f1
     mkNegF f1 = NegF f1
     mkDisF :: PresburgerFormula -> PresburgerFormula -> PresburgerFormula
-    mkDisF (ValF b) f2 = if b then mkTopF else f2
+    mkDisF (ValF b1) f2 = if b1 then mkTopF else f2
     mkDisF f1 (ValF b2) = if b2 then mkTopF else f1
     mkDisF f1 f2 = DisF f1 f2
     mkConF :: PresburgerFormula -> PresburgerFormula -> PresburgerFormula
-    mkConF (ValF b) f2 = if b then f2 else mkBotF
+    mkConF (ValF b1) f2 = if b1 then f2 else mkBotF
     mkConF f1 (ValF b2) = if b2 then f1 else mkBotF
     mkConF f1 f2 = ConF f1 f2
     mkImpF :: PresburgerFormula -> PresburgerFormula -> PresburgerFormula
