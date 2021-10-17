@@ -73,7 +73,7 @@ instance Show PresburgerTerm where
             (EQ) -> if Map.null coeffs then shows con else id
             (GT) -> if Map.null coeffs then shows con else strstr " + " . shows (abs con)
         ]
-    showsPrec prec t = if prec >= 5 then strstr "(" . shows t . strstr ")" else shows t
+    showsPrec prec t = if prec > 5 then strstr "(" . shows t . strstr ")" else shows t
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
@@ -102,7 +102,7 @@ instance Show PresburgerTermRep where
         dispatch (IVar x) = myPrecIs 11 $ showsMyVar x
         dispatch (Zero) = myPrecIs 11 $ strstr "0"
         dispatch (Succ t1) = myPrecIs 10 $ strstr "S " . showsPrec 11 t1
-        dispatch (Plus t1 t2) = myPrecIs 4 $ showsPrec 4 t1 . strstr " + " . showsPrec 5 t2
+        dispatch (Plus t1 t2) = myPrecIs 6 $ showsPrec 6 t1 . strstr " + " . showsPrec 7 t2
 
 instance Functor PresburgerFormula where
     fmap = mapTermInPresburgerFormula
