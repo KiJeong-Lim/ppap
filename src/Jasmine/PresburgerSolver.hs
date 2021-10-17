@@ -48,7 +48,7 @@ data PresburgerKlass
     | KlassGtn !MyCoefficient !PresburgerTerm !PresburgerTerm
     | KlassMod !MyCoefficient !PresburgerTerm !PositiveInteger !PresburgerTerm
     | KlassEtc !MyPresburgerFormula
-    deriving (Eq)
+    deriving (Eq, Show)
 
 data PresburgerTermRep
     = IVar MyVar
@@ -73,26 +73,26 @@ instance Show PresburgerTerm where
             (EQ) -> if Map.null coeffs then shows con else id
             (GT) -> if Map.null coeffs then shows con else strstr " + " . shows (abs con)
         ]
-    showsPrec prec t = if prec > 5 then strstr "(" . shows t . strstr ")" else shows t
+    showsPrec prec t = if prec >= 5 then strstr "(" . shows t . strstr ")" else shows t
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
         myPrecIs :: Precedence -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: Show term => PresburgerFormula term -> ShowS
-        dispatch (ValF b) = myPrecIs 11 $ strstr (if b then "~ _|_" else "_|_")
-        dispatch (EqnF t1 t2) = myPrecIs 9 $ shows t1 . strstr " = " . shows t2
-        dispatch (LtnF t1 t2) = myPrecIs 9 $ shows t1 . strstr " < " . shows t2
-        dispatch (LeqF t1 t2) = myPrecIs 9 $ shows t1 . strstr " =< " . shows t2
-        dispatch (GtnF t1 t2) = myPrecIs 9 $ shows t1 . strstr " > " . shows t2
-        dispatch (ModF t1 r t2) = myPrecIs 9 $ shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
-        dispatch (NegF f1) = myPrecIs 8 $ strstr "~ " . showsPrec 9 f1
-        dispatch (DisF f1 f2) = myPrecIs 6 $ showsPrec 6 f1 . strstr " \\/ " . showsPrec 7 f2
-        dispatch (ConF f1 f2) = myPrecIs 7 $ showsPrec 7 f1 . strstr " /\\ " . showsPrec 8 f2
+        dispatch (ValF b) = myPrecIs 4 $ strstr (if b then "~ _|_" else "_|_")
+        dispatch (EqnF t1 t2) = myPrecIs 4 $ shows t1 . strstr " = " . shows t2
+        dispatch (LtnF t1 t2) = myPrecIs 4 $ shows t1 . strstr " < " . shows t2
+        dispatch (LeqF t1 t2) = myPrecIs 4 $ shows t1 . strstr " =< " . shows t2
+        dispatch (GtnF t1 t2) = myPrecIs 4 $ shows t1 . strstr " > " . shows t2
+        dispatch (ModF t1 r t2) = myPrecIs 4 $ shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
+        dispatch (NegF f1) = myPrecIs 3 $ strstr "~ " . showsPrec 4 f1
+        dispatch (DisF f1 f2) = myPrecIs 1 $ showsPrec 1 f1 . strstr " \\/ " . showsPrec 2 f2
+        dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 2 f1 . strstr " /\\ " . showsPrec 3 f2
         dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " -> " . showsPrec 0 f2
         dispatch (IffF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " <-> " . showsPrec 1 f2
-        dispatch (AllF y f1) = myPrecIs 8 $ strstr "forall " . showsMyVar y . strstr ", " . showsPrec 8 f1
-        dispatch (ExsF y f1) = myPrecIs 8 $ strstr "exists " . showsMyVar y . strstr ", " . showsPrec 8 f1
+        dispatch (AllF y f1) = myPrecIs 3 $ strstr "forall " . showsMyVar y . strstr ", " . showsPrec 3 f1
+        dispatch (ExsF y f1) = myPrecIs 3 $ strstr "exists " . showsMyVar y . strstr ", " . showsPrec 3 f1
 
 instance Show PresburgerTermRep where
     showsPrec prec = dispatch where
