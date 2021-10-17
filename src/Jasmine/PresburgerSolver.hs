@@ -109,8 +109,8 @@ instance Functor PresburgerFormula where
 showsMyVar :: MyVar -> ShowS
 showsMyVar x = if x > 0 then strstr "v" . shows x else strstr "?" . shows (abs x)
 
-congru :: MyNat -> PositiveInteger -> MyNat -> MyProp
-congru n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "congru: r must be positive"
+congruence :: MyNat -> PositiveInteger -> MyNat -> MyProp
+congruence n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "congruence: r must be positive"
 
 compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
 compilePresburgerTerm = go where
@@ -302,7 +302,7 @@ eliminateQuantifierByTheMethodOfPeterHinman = eliminateQuantifier where
     mkBotF :: MyPresburgerFormula
     mkBotF = mkValF False
     makeModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    makeModF t1 r t2 = if getCoefficients t1 == getCoefficients t2 then mkValF (congru (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
+    makeModF t1 r t2 = if getCoefficients t1 == getCoefficients t2 then mkValF (congruence (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
     multiply :: MyNat -> PresburgerTerm -> PresburgerTerm
     multiply k t
         | k == 0 = mkNum 0
@@ -322,7 +322,7 @@ destiny = tryEvalFormula where
     tryEvalFormula (LtnF t1 t2) = pure (<) <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (LeqF t1 t2) = pure (<=) <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (GtnF t1 t2) = pure (>) <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalFormula (ModF t1 r t2) = pure congru <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
+    tryEvalFormula (ModF t1 r t2) = pure congruence <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
     tryEvalFormula (NegF f1) = pure not <*> tryEvalFormula f1
     tryEvalFormula (DisF f1 f2) = pure (||) <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ConF f1 f2) = pure (&&) <*> tryEvalFormula f1 <*> tryEvalFormula f2
