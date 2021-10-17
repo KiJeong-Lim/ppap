@@ -124,8 +124,6 @@ eliminateQuantifier = eliminateOneByOne where
     orcat (f : fs) = List.foldl' mkDisF f fs
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     andcat = foldr mkConF mkTopF
-    getLCM :: MyNat -> MyNat -> MyNat
-    getLCM x y = (x * y) `div` (getGCD x y)
     eliminateOneByOne :: MyPresburgerFormula -> MyPresburgerFormula
     eliminateOneByOne = asterify . simplify where
         simplify :: MyPresburgerFormula -> MyPresburgerFormula
@@ -172,7 +170,7 @@ eliminateQuantifier = eliminateOneByOne where
             rewriteExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
             rewriteExsF y f1 = orcat (map (step2 y) (makeDNF (removeNegF f1)))
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
-        step2 x = makeBigConF . standardizeMyCoefficient . mkKlasses where
+        step2 x = buildBigConF . standardizeCoefficient . mkKlasses where
             mkKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
             mkKlasses = map mkKlass where
                 extractMyCoefficient :: PresburgerTerm -> (MyNat, PresburgerTerm)
@@ -196,8 +194,8 @@ eliminateQuantifier = eliminateOneByOne where
                         EQ -> KlassEtc (mkModF t1' r t2')
                         GT -> KlassMod (m1 - m2) t1' r t2'
                 mkKlass f = KlassEtc f
-            standardizeMyCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (MyNat, [PresburgerKlass])
-            standardizeMyCoefficient your_klasses = maybe (Left your_klasses) (Right . ((,) <*> theStandardizedKlasses)) theMaybeLCM where
+            standardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (MyNat, [PresburgerKlass])
+            standardizeCoefficient your_klasses = maybe (Left your_klasses) (Right . ((,) <*> theStandardizedKlasses)) theMaybeLCM where
                 theMaybeLCM :: Maybe MyNat
                 theMaybeLCM = calcLCM theMyCoefficients where
                     calcLCM :: [MyNat] -> Maybe MyNat
@@ -220,9 +218,9 @@ eliminateQuantifier = eliminateOneByOne where
                     myLoop (KlassGtn m t1 t2) = KlassGtn theLCM (multiplyTerm (theLCM `div` m) t1) (multiplyTerm (theLCM `div` m) t2)
                     myLoop (KlassMod m t1 r t2) = KlassMod theLCM (multiplyTerm (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiplyTerm (theLCM `div` m) t2)
                     myLoop (KlassEtc f) = KlassEtc f
-            makeBigConF :: Either [PresburgerKlass] (MyNat, [PresburgerKlass]) -> MyPresburgerFormula
-            makeBigConF (Left my_klasses) = andcat [ f | KlassEtc f <- my_klasses ]
-            makeBigConF (Right (m, my_klasses)) = mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step3 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 1, mkNum 0) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
+            buildBigConF :: Either [PresburgerKlass] (MyNat, [PresburgerKlass]) -> MyPresburgerFormula
+            buildBigConF (Left my_klasses) = andcat [ f | KlassEtc f <- my_klasses ]
+            buildBigConF (Right (m, my_klasses)) = mkConF (andcat [ f | KlassEtc f <- my_klasses ]) (step3 [ (t1, t2) | KlassEqn _ t1 t2 <- my_klasses ] [ (t1, t2) | KlassLtn _ t1 t2 <- my_klasses ] ((mkNum 1, mkNum 0) : [ (t1, t2) | KlassGtn _ t1 t2 <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | KlassMod _ t1 r t2 <- my_klasses ]))
         step3 :: [(PresburgerTerm, PresburgerTerm)] -> [(PresburgerTerm, PresburgerTerm)] -> [(PresburgerTerm, PresburgerTerm)] -> [(PositiveInteger, (PresburgerTerm, PresburgerTerm))] -> MyPresburgerFormula
         step3 theEqns0 theLtns0 theGtns0 theMods0
             = case theEqns0 of
@@ -300,6 +298,8 @@ eliminateQuantifier = eliminateOneByOne where
     mkAllF y f1 = mkNegF (mkExsF y (mkNegF f1))
     mkExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     mkExsF y f1 = f1 `seq` ExsF y f1
+    getLCM :: MyNat -> MyNat -> MyNat
+    getLCM x y = (x * y) `div` (getGCD x y)
 
 destiny :: MyPresburgerFormula -> Maybe MyProp
 destiny = tryEvalFormula where
