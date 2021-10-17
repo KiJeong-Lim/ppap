@@ -360,7 +360,7 @@ getFVs (AllF y f1) = y `Set.delete` getFVs f1
 getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
 chi :: MyFormulaRep -> MySubst -> Var
-chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVs (runMySubstOnVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ]) where
+chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVs (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ]) where
     getMaxVarOf :: Foldable f => f Var -> Var
     getMaxVarOf = foldr max 0
 
@@ -371,39 +371,39 @@ nilMySubst :: MySubst
 nilMySubst z = IVar z
 
 consMySubst :: (Var, TermRep) -> MySubst -> MySubst
-consMySubst (x, t) sigma z = if x == z then t else runMySubstOnVar z sigma
+consMySubst (x, t) sigma z = if x == z then t else applyMySubstToVar z sigma
 
 makeMySubst :: [(Var, TermRep)] -> MySubst
 makeMySubst = foldr consMySubst nilMySubst
 
-runMySubstOnVar :: Var -> MySubst -> TermRep
-runMySubstOnVar x sigma = sigma x
+applyMySubstToVar :: Var -> MySubst -> TermRep
+applyMySubstToVar x sigma = sigma x
 
-runMySubstOnTermRep :: TermRep -> MySubst -> TermRep
-runMySubstOnTermRep (IVar x) = runMySubstOnVar x
-runMySubstOnTermRep (Zero) = pure Zero
-runMySubstOnTermRep (Succ t1) = pure Succ <*> runMySubstOnTermRep t1
-runMySubstOnTermRep (Plus t1 t2) = pure Plus <*> runMySubstOnTermRep t1 <*> runMySubstOnTermRep t2
+applyMySubstToTermRep :: TermRep -> MySubst -> TermRep
+applyMySubstToTermRep (IVar x) = applyMySubstToVar x
+applyMySubstToTermRep (Zero) = pure Zero
+applyMySubstToTermRep (Succ t1) = pure Succ <*> applyMySubstToTermRep t1
+applyMySubstToTermRep (Plus t1 t2) = pure Plus <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
 
-applyMySubst :: MySubst -> MyFormulaRep -> MyFormulaRep
-applyMySubst = flip runMySubstOnFormulaRep where
-    runMySubstOnFormulaRep :: MyFormulaRep -> MySubst -> MyFormulaRep
-    runMySubstOnFormulaRep (ValF b) = pure (ValF b)
-    runMySubstOnFormulaRep (EqnF t1 t2) = pure EqnF <*> runMySubstOnTermRep t1 <*> runMySubstOnTermRep t2
-    runMySubstOnFormulaRep (LtnF t1 t2) = pure LtnF <*> runMySubstOnTermRep t1 <*> runMySubstOnTermRep t2
-    runMySubstOnFormulaRep (LeqF t1 t2) = pure LeqF <*> runMySubstOnTermRep t1 <*> runMySubstOnTermRep t2
-    runMySubstOnFormulaRep (GtnF t1 t2) = pure GtnF <*> runMySubstOnTermRep t1 <*> runMySubstOnTermRep t2
-    runMySubstOnFormulaRep (ModF t1 r t2) = pure ModF <*> runMySubstOnTermRep t1 <*> pure r <*> runMySubstOnTermRep t2
-    runMySubstOnFormulaRep (NegF f1) = pure NegF <*> runMySubstOnFormulaRep f1
-    runMySubstOnFormulaRep (DisF f1 f2) = pure DisF <*> runMySubstOnFormulaRep f1 <*> runMySubstOnFormulaRep f2
-    runMySubstOnFormulaRep (ConF f1 f2) = pure ConF <*> runMySubstOnFormulaRep f1 <*> runMySubstOnFormulaRep f2
-    runMySubstOnFormulaRep (ImpF f1 f2) = pure ImpF <*> runMySubstOnFormulaRep f1 <*> runMySubstOnFormulaRep f2
-    runMySubstOnFormulaRep (IffF f1 f2) = pure IffF <*> runMySubstOnFormulaRep f1 <*> runMySubstOnFormulaRep f2
-    runMySubstOnFormulaRep f = runMySubstOnQuantifier f
-    runMySubstOnQuantifier :: MyFormulaRep -> MySubst -> MyFormulaRep
-    runMySubstOnQuantifier f sigma = case (f, chi f sigma) of
-        (AllF y f1, z) -> AllF z (runMySubstOnFormulaRep f1 (consMySubst (y, IVar z) sigma))
-        (ExsF y f1, z) -> ExsF z (runMySubstOnFormulaRep f1 (consMySubst (y, IVar z) sigma))
+runMySubst :: MySubst -> MyFormulaRep -> MyFormulaRep
+runMySubst = flip applyMySubstToFormulaRep where
+    applyMySubstToFormulaRep :: MyFormulaRep -> MySubst -> MyFormulaRep
+    applyMySubstToFormulaRep (ValF b) = pure (ValF b)
+    applyMySubstToFormulaRep (EqnF t1 t2) = pure EqnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
+    applyMySubstToFormulaRep (LtnF t1 t2) = pure LtnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
+    applyMySubstToFormulaRep (LeqF t1 t2) = pure LeqF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
+    applyMySubstToFormulaRep (GtnF t1 t2) = pure GtnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
+    applyMySubstToFormulaRep (ModF t1 r t2) = pure ModF <*> applyMySubstToTermRep t1 <*> pure r <*> applyMySubstToTermRep t2
+    applyMySubstToFormulaRep (NegF f1) = pure NegF <*> applyMySubstToFormulaRep f1
+    applyMySubstToFormulaRep (DisF f1 f2) = pure DisF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
+    applyMySubstToFormulaRep (ConF f1 f2) = pure ConF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
+    applyMySubstToFormulaRep (ImpF f1 f2) = pure ImpF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
+    applyMySubstToFormulaRep (IffF f1 f2) = pure IffF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
+    applyMySubstToFormulaRep f = applyMySubstToQuantifier f
+    applyMySubstToQuantifier :: MyFormulaRep -> MySubst -> MyFormulaRep
+    applyMySubstToQuantifier f sigma = case (f, chi f sigma) of
+        (AllF y f1, z) -> AllF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
+        (ExsF y f1, z) -> ExsF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
 
 mapTermInFormula :: (old_term -> term) -> Formula old_term -> Formula term
 mapTermInFormula = go where
