@@ -5,9 +5,8 @@ import Z.Algo.Function
 import Z.System.Shelly
 
 testPresburger :: IO ()
-testPresburger = mapM_ (shelly . analyze . getCase) [0 .. 10] where
+testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 12] where
     getCase :: Int -> MyPresburgerFormulaRep
-    getCase 0 = (AllF 1 (AllF 2 (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
     getCase 1 = (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
     getCase 2 = (AllF 1 (LeqF (IVar 1) (IVar 1)))
     getCase 3 = (AllF 1 (AllF 2 (NegF (ConF (LeqF (IVar 1) (IVar 2)) (GtnF (IVar 1) (IVar 2))))))
@@ -18,6 +17,8 @@ testPresburger = mapM_ (shelly . analyze . getCase) [0 .. 10] where
     getCase 8 = (AllF 1 (AllF 2 (LeqF (IVar 1) (Plus (IVar 1) (IVar 2)))))
     getCase 9 = (AllF 1 (AllF 2 (LeqF (IVar 2) (Plus (IVar 1) (IVar 2)))))
     getCase 10 = (AllF 1 (AllF 2 (IffF (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2))) (NegF (EqnF (IVar 1) (Zero))))))
+    getCase 11 = (AllF 1 (AllF 2 (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
+    getCase 12 = (ExsF 1 (AllF 2 (LtnF (IVar 2) (IVar 1))))
     check :: MyPresburgerFormulaRep -> MyProp
     check = fromJust . destiny . eliminateQuantifier . fmap compilePresburgerTerm
     analyze :: MyPresburgerFormulaRep -> String
