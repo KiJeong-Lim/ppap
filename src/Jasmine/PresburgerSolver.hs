@@ -269,7 +269,7 @@ eliminateQuantifier = eliminateOneByOne where
     mkModF t1 r t2
         | r > 0 = case (reduceTermWithMod r t1, reduceTermWithMod r t2) of
             (t1', t2') -> if t1' == t2' then mkTopF else ModF t1' r t2'
-        | otherwise = error "mkModF: r must be positive!"
+        | otherwise = error "mkModF: r must be positive"
     mkLeqF :: PresburgerTerm -> PresburgerTerm -> PresburgerFormula
     mkLeqF t1 t2 = mkDisF (mkEqnF t1 t2) (mkLtnF t1 t2)
     mkGtnF :: PresburgerTerm -> PresburgerTerm -> PresburgerFormula
@@ -299,7 +299,7 @@ eliminateQuantifier = eliminateOneByOne where
     mkExsF :: MyVar -> PresburgerFormula -> PresburgerFormula
     mkExsF y f1 = f1 `seq` ExsF y f1
     reduceTermWithMod :: PositiveInteger -> PresburgerTerm -> PresburgerTerm
-    reduceTermWithMod r (PresburgerTerm con coeffs) = mkTerm (con `mod` r) (Map.fromAscList [ (x, n `mod` r) | (x, n) <- Map.toAscList coeffs, n `mod` r /= 0 ])
+    reduceTermWithMod r (PresburgerTerm con coeffs) = if r > 0 then mkTerm (con `mod` r) (Map.fromAscList [ (x, n `mod` r) | (x, n) <- Map.toAscList coeffs, n `mod` r /= 0 ]) else "reduceTermWithMod: negative input"
 
 destiny :: PresburgerFormula -> Maybe Bool
 destiny = tryEvalFormula where
