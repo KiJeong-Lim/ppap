@@ -27,7 +27,7 @@ data PresburgerTermRep
 data PresburgerTerm
     = PresburgerTerm 
         { getConstantTerm :: MyNat
-        , getMyCoefficients :: Map.Map MyVar MyCoefficient
+        , getCoefficients :: Map.Map MyVar MyCoefficient
         }
     deriving (Eq)
 
@@ -115,7 +115,7 @@ eliminateQuantifier = eliminateOneByOne where
     multiplyTerm k t
         | k == 0 = mkNum 0
         | k == 1 = t
-        | k >= 0 = mkTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getMyCoefficients t))
+        | k >= 0 = mkTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
         | otherwise = error "multiplyTerm: negative input"
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     orcat [] = mkBotF
@@ -174,9 +174,9 @@ eliminateQuantifier = eliminateOneByOne where
             mkKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
             mkKlasses = map mkKlass where
                 extractMyCoefficient :: PresburgerTerm -> (MyNat, PresburgerTerm)
-                extractMyCoefficient t = case Map.lookup x (getMyCoefficients t) of
+                extractMyCoefficient t = case Map.lookup x (getCoefficients t) of
                     Nothing -> (0, t)
-                    Just n -> (n, mkTerm (getConstantTerm t) (Map.delete x (getMyCoefficients t)))
+                    Just n -> (n, mkTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))
                 mkKlass :: MyPresburgerFormula -> PresburgerKlass
                 mkKlass (EqnF t1 t2) = case (extractMyCoefficient t1, extractMyCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
@@ -263,7 +263,7 @@ eliminateQuantifier = eliminateOneByOne where
     mkEqnF t1 t2 = if t1 == t2 then mkTopF else t1 `seq` t2 `seq` EqnF t1 t2
     mkLtnF :: PresburgerTerm -> PresburgerTerm -> MyPresburgerFormula
     mkLtnF t1 t2
-        | getMyCoefficients t1 == getMyCoefficients t2 = mkValF (getConstantTerm t1 < getConstantTerm t2)
+        | getCoefficients t1 == getCoefficients t2 = mkValF (getConstantTerm t1 < getConstantTerm t2)
         | otherwise = t1 `seq` t2 `seq` LtnF t1 t2
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
     mkModF t1 r t2
