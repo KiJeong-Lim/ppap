@@ -105,7 +105,7 @@ showsMyVar :: MyVar -> ShowS
 showsMyVar x = if x <= 0 then strstr "?" . shows (abs x) else strstr "v" . shows x
 
 congru :: MyNat -> PositiveInteger -> MyNat -> MyProp
-congru n1 r n2 = if r <= 0 then n1 `mod` r == n2 `mod` r else error "congru: r must be positive"
+congru n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "congru: r must be positive"
 
 compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
 compilePresburgerTerm = go where
