@@ -58,7 +58,7 @@ data PresburgerTermRep
     deriving (Eq)
 
 instance Show PresburgerTerm where
-    showsPrec _ (PresburgerTerm con coeffs) = strcat
+    showsPrec 0 (PresburgerTerm con coeffs) = strcat
         [ ppunc " + "
             [ if n == 1
                 then showsMyVar x
@@ -73,6 +73,7 @@ instance Show PresburgerTerm where
             (EQ) -> if Map.null coeffs then shows con else id
             (GT) -> if Map.null coeffs then shows con else strstr " + " . shows con
         ]
+    showsPrec _ t = strstr "(" . shows t . strstr ")"
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
@@ -133,8 +134,7 @@ compilePresburgerTerm = go where
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier where
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
-    orcat [] = mkBotF
-    orcat (f : fs) = List.foldl' mkDisF f fs
+    orcat fs = if null fs then mkBotF else List.foldl' mkDisF (head fs) (tail fs)
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     andcat = foldr mkConF mkTopF
     eliminateQuantifier :: MyPresburgerFormula -> MyPresburgerFormula
