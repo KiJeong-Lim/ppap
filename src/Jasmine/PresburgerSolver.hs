@@ -365,8 +365,8 @@ chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVs (applyMySubstToVar x sigma
     getMaxVarOf :: Foldable f => f MyVar -> MyVar
     getMaxVarOf = foldr max 0
 
-getNewFV :: MyPresburgerFormulaRep -> MyVar
-getNewFV f = chi f nilMySubst
+getFreshVar :: MyPresburgerFormulaRep -> MyVar
+getFreshVar f = chi f nilMySubst
 
 nilMySubst :: MySubst
 nilMySubst z = IVar z
