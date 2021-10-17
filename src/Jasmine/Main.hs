@@ -6,7 +6,7 @@ import Z.System.Shelly
 
 testPresburger :: IO ()
 testPresburger = mapM_ (shelly . analyze . getCase) [0 .. 10] where
-    getCase :: Int -> PresburgerFormulaRep
+    getCase :: Int -> MyPresburgerFormulaRep
     getCase 0 = (AllF 1 (AllF 2 (LeqF (Plus (Succ Zero) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
     getCase 1 = (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
     getCase 2 = (AllF 1 (LeqF (IVar 1) (IVar 1)))
@@ -18,9 +18,9 @@ testPresburger = mapM_ (shelly . analyze . getCase) [0 .. 10] where
     getCase 8 = (AllF 1 (AllF 2 (LeqF (IVar 1) (Plus (IVar 1) (IVar 2)))))
     getCase 9 = (AllF 1 (AllF 2 (LeqF (IVar 2) (Plus (IVar 1) (IVar 2)))))
     getCase 10 = (AllF 1 (AllF 2 (IffF (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2))) (NegF (EqnF (IVar 1) (Zero))))))
-    check :: PresburgerFormulaRep -> Bool
+    check :: MyPresburgerFormulaRep -> Bool
     check = fromJust . destiny . eliminateQuantifier . fmap compileTerm
-    analyze :: PresburgerFormulaRep -> String
+    analyze :: MyPresburgerFormulaRep -> String
     analyze f
         | null (getFVs f) = "Presburger> The formula ``" ++ shows f ("\'\' is a " ++ (if check f then "true" else "false") ++ " sentence.")
         | otherwise = "Presburger> The formula ``" ++ shows f "\'\' is not a sentence."
