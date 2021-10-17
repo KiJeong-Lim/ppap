@@ -68,9 +68,9 @@ instance Show PresburgerTermRep where
         dispatch (Plus t1 t2) = myPrecIs 4 $ showsPrec 4 t1 . strstr " + " . showsPrec 5 t2
 
 instance Show PresburgerTerm where
-    showsPrec _ (PresburgerTerm con coeffs) = (ppunc " + " (map showsMyVarWithMyCoefficient (Map.toAscList coeffs))) . (if Map.null coeffs then shows con else (if con == 0 then id else strstr " + " . shows con)) where
-        showsMyVarWithMyCoefficient :: (MyVar, MyCoefficient) -> ShowS
-        showsMyVarWithMyCoefficient (x, n) = if n == 1 then showsMyVar x else (if n < 0 then strstr "(" . shows n . strstr ")" else shows n) . strstr " " . showsMyVar x
+    showsPrec _ (PresburgerTerm con coeffs) = (ppunc " + " (map showsCoeff (Map.toAscList coeffs))) . (if Map.null coeffs then shows con else (if con == 0 then id else strstr " + " . shows con)) where
+        showsCoeff :: (MyVar, MyCoefficient) -> ShowS
+        showsCoeff (x, n) = if n == 1 then showsMyVar x else (if n < 0 then strstr "(" . shows n . strstr ")" else shows n) . strstr " " . showsMyVar x
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
