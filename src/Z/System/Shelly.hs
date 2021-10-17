@@ -84,7 +84,7 @@ shelly = go where
     smallshell :: String -> String
     smallshell str = case span (\ch -> ch /= '>') str of
         (my_prefix, my_suffix) -> case span (\ch -> ch == '>') my_suffix of
-            (my_suffix_left, my_suffix_right) -> color Cyan (my_prefix ++ my_suffix_left) ++ my_suffix_right
+            (my_suffix_left, my_suffix_right) -> if null my_suffix_left then my_prefix ++ my_suffix_left ++ my_suffix_right else color Cyan (my_prefix ++ my_suffix_left) ++ my_suffix_right
     elaborate :: String -> String
     elaborate str = maybe (smallshell str) concat (foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ])
     go :: String -> IO String
