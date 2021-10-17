@@ -116,7 +116,7 @@ compilePresburgerTerm = go where
     plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 eliminateQuantifier :: MyPresburgerFormula -> MyPresburgerFormula
-eliminateQuantifier = eliminateOneByOne where
+eliminateQuantifier = eliminateQuantifierByTheMethodOfPeterHinman where
     multiplyTerm :: MyNat -> PresburgerTerm -> PresburgerTerm
     multiplyTerm k t
         | k == 0 = mkNum 0
@@ -128,8 +128,8 @@ eliminateQuantifier = eliminateOneByOne where
     orcat (f : fs) = List.foldl' mkDisF f fs
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     andcat = foldr mkConF mkTopF
-    eliminateOneByOne :: MyPresburgerFormula -> MyPresburgerFormula
-    eliminateOneByOne = asterify . simplify where
+    eliminateQuantifierByTheMethodOfPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
+    eliminateQuantifierByTheMethodOfPeterHinman = asterify . simplify where
         simplify :: MyPresburgerFormula -> MyPresburgerFormula
         simplify (ValF b) = mkValF b
         simplify (EqnF t1 t2) = mkEqnF t1 t2
