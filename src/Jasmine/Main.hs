@@ -19,12 +19,20 @@ testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 12] where
     getCase 10 = (AllF 1 (AllF 2 (IffF (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2))) (NegF (EqnF (IVar 1) (Zero))))))
     getCase 11 = (AllF 1 (AllF 2 (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
     getCase 12 = (ExsF 1 (AllF 2 (LtnF (IVar 2) (IVar 1))))
-    check :: MyPresburgerFormulaRep -> MyProp
-    check = fromJust . destiny . eliminateQuantifier . fmap compilePresburgerTerm
+    checkTruth :: MyPresburgerFormulaRep -> MyProp
+    checkTruth = fromJust . destiny . eliminateQuantifier . fmap compilePresburgerTerm
     analyze :: MyPresburgerFormulaRep -> String
     analyze f
-        | null (getFVs f) = "Presburger> The formula ``" ++ shows f ("\'\' is a " ++ (if check f then "true" else "false") ++ " sentence.")
-        | otherwise = "Presburger> The formula ``" ++ shows f "\'\' is not a sentence."
+        | null (getFVs f) = concat
+            [ "Presburger> "
+            , if checkTruth f
+                then "The formula ``" ++ shows f "\'\' is a true sentence."
+                else "The formula ``" ++ shows f "\'\' is a false sentence."
+            ]
+        | otherwise = concat
+            [ "Presburger> "
+            , "The formula ``" ++ shows f "\'\' is not a sentence."
+            ]
 
 main :: IO ()
 main = return ()
