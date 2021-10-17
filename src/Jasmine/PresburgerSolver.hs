@@ -130,8 +130,8 @@ compilePresburgerTerm = go where
     plusCoeff :: (MyVar, MyCoefficient) -> Map.Map MyVar MyCoefficient -> Map.Map MyVar MyCoefficient
     plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
-eliminateQuantifierByTheMethodOfPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
-eliminateQuantifierByTheMethodOfPeterHinman = eliminateQuantifier where
+eliminateQuantifierReferringToTheBookWrittenByPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
+eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier where
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     orcat [] = mkBotF
     orcat (f : fs) = List.foldl' mkDisF f fs
