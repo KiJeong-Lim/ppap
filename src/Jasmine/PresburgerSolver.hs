@@ -68,16 +68,21 @@ instance Show PresburgerTermRep where
         dispatch (Plus t1 t2) = myPrecIs 4 $ showsPrec 4 t1 . strstr " + " . showsPrec 5 t2
 
 instance Show PresburgerTerm where
-    showsPrec _ (PresburgerTerm con coeffs)
-        = strcat
-            [ ppunc " + " (map showsCoeff (Map.toAscList coeffs))
-            , if Map.null coeffs then shows con else (if con == 0 then id else strstr " + " . shows con)
+    showsPrec _ (PresburgerTerm con coeffs) = strcat
+        [ ppunc " + "
+            [ if n == 1
+                then showsMyVar x
+                else strcat
+                    [ if n < 0 then strstr "(" . shows n . strstr ")" else shows n
+                    , strstr " " . showsMyVar x
+                    ]
+            | (x, n) <- Map.toAscList coeffs
             ]
-        where
-            showsCoeff :: (MyVar, MyCoefficient) -> ShowS
-            showsCoeff (x, n)
-                | n == 1 = showsMyVar x
-                | otherwise = (if n < 0 then strstr "(" . shows n . strstr ")" else shows n) . strstr " " . showsMyVar x
+        , case con `compare` 0 of
+            (LT) -> if Map.null coeffs then shows con else strstr " - " . shows (abs con)
+            (EQ) -> if Map.null coeffs then strstr "0" else id
+            (GT) -> if Map.null coeffs then shows con else strstr " + " . shows con
+        ]
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
@@ -125,15 +130,15 @@ compilePresburgerTerm = go where
     plusCoeff :: (MyVar, MyCoefficient) -> Map.Map MyVar MyCoefficient -> Map.Map MyVar MyCoefficient
     plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
-eliminateQuantifier :: MyPresburgerFormula -> MyPresburgerFormula
-eliminateQuantifier = eliminateQuantifierByTheMethodOfPeterHinman where
+eliminateQuantifierByTheMethodOfPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
+eliminateQuantifierByTheMethodOfPeterHinman = eliminateQuantifier where
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     orcat [] = mkBotF
     orcat (f : fs) = List.foldl' mkDisF f fs
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     andcat = foldr mkConF mkTopF
-    eliminateQuantifierByTheMethodOfPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
-    eliminateQuantifierByTheMethodOfPeterHinman = asterify . simplify where
+    eliminateQuantifier :: MyPresburgerFormula -> MyPresburgerFormula
+    eliminateQuantifier = asterify . simplify where
         simplify :: MyPresburgerFormula -> MyPresburgerFormula
         simplify (ValF b) = mkValF b
         simplify (EqnF t1 t2) = mkEqnF t1 t2
@@ -173,7 +178,7 @@ eliminateQuantifier = eliminateQuantifierByTheMethodOfPeterHinman where
             removeNegF atom_f = atom_f
             makeDNF :: MyPresburgerFormula -> [[MyPresburgerFormula]]
             makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
-            makeDNF (ConF f1 f2) = [ fs1 ++ fs2 | fs1 <- makeDNF f1, fs2 <- makeDNF f2 ]
+            makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
             makeDNF atom_f = [one atom_f]
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
         step2 x = buildBigConF . standardizeCoefficient . mkKlasses where

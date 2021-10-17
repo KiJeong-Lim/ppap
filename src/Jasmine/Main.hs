@@ -20,7 +20,7 @@ testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 12] where
     getCase 11 = (AllF 1 (AllF 2 (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
     getCase 12 = (ExsF 1 (AllF 2 (LtnF (IVar 2) (IVar 1))))
     checkTruth :: MyPresburgerFormulaRep -> MyProp
-    checkTruth = fromJust . destiny . eliminateQuantifier . fmap compilePresburgerTerm
+    checkTruth = fromJust . destiny . eliminateQuantifierByTheMethodOfPeterHinman . fmap compilePresburgerTerm
     analyze :: MyPresburgerFormulaRep -> String
     analyze f
         | null (getFVs f) = concat
