@@ -269,9 +269,9 @@ eliminateQuantifier = eliminateOneByOne where
     mkGtnF :: PresburgerTerm -> PresburgerTerm -> MyPresburgerFormula
     mkGtnF t1 t2 = mkLtnF t2 t1
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    mkModF t1 r t2
-        | r > 0 = case (reduceTermWithMod t1, reduceTermWithMod t2) of
-            (t1', t2') -> if t1' == t2' then mkTopF else ModF t1' r t2'
+    mkModF t1' r t2'
+        | r > 0 = case (reduceTermWithMod t1', reduceTermWithMod t2') of
+            (t1, t2) -> if getCoefficients t1 == getCoefficients t2 then mkValF (getConstantTerm t1 == getConstantTerm t2) else t1 `seq` t2 `seq` ModF t1 r t2
         | otherwise = error "mkModF: r must be positive"
         where
             reduceTermWithMod :: PresburgerTerm -> PresburgerTerm
