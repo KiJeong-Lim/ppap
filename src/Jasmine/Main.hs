@@ -24,14 +24,14 @@ testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 12] where
     analyze :: MyPresburgerFormulaRep -> String
     analyze f
         | null (getFVs f) = concat
-            [ "Presburger> "
+            [ "Presburger>"
             , if checkTruth f
-                then "The formula ``" ++ shows f "\'\' is a true sentence."
-                else "The formula ``" ++ shows f "\'\' is a false sentence."
+                then " The formula ``" ++ shows f "\'\' is a true sentence."
+                else " The formula ``" ++ shows f "\'\' is a false sentence."
             ]
         | otherwise = concat
-            [ "Presburger> "
-            , "The formula ``" ++ shows f "\'\' is not a sentence."
+            [ "Presburger>"
+            , " The formula ``" ++ shows f "\'\' is not a sentence."
             ]
 
 main :: IO ()
