@@ -70,9 +70,6 @@ instance Show PresburgerTerm where
         showsMyVarWithCoefficient :: (MyVar, Coefficient) -> ShowS
         showsMyVarWithCoefficient (x, n) = if n == 1 then showsMyVar x else shows n . strstr " " . showsMyVar x
 
-instance Functor Formula where
-    fmap = mapTermInFormula
-
 instance Show term => Show (Formula term) where
     showsPrec prec = dispatch where
         myPrecIs :: Precedence -> ShowS -> ShowS
@@ -91,6 +88,9 @@ instance Show term => Show (Formula term) where
         dispatch (IffF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " <-> " . showsPrec 1 f2
         dispatch (AllF y f1) = myPrecIs 8 $ strstr "forall " . showsMyVar y . strstr ", " . showsPrec 8 f1
         dispatch (ExsF y f1) = myPrecIs 8 $ strstr "exists " . showsMyVar y . strstr ", " . showsPrec 8 f1
+
+instance Functor Formula where
+    fmap = mapTermInFormula
 
 showsMyVar :: MyVar -> ShowS
 showsMyVar x = strstr "v" . shows x
