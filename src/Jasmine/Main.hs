@@ -18,7 +18,7 @@ testPresburger = mapM_ (shelly . analyze . getCase) [0 .. 10] where
     getCase 8 = (AllF 1 (AllF 2 (LeqF (IVar 1) (Plus (IVar 1) (IVar 2)))))
     getCase 9 = (AllF 1 (AllF 2 (LeqF (IVar 2) (Plus (IVar 1) (IVar 2)))))
     getCase 10 = (AllF 1 (AllF 2 (IffF (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2))) (NegF (EqnF (IVar 1) (Zero))))))
-    check :: MyPresburgerFormulaRep -> Bool
+    check :: MyPresburgerFormulaRep -> MyProp
     check = fromJust . destiny . eliminateQuantifier . fmap compileTerm
     analyze :: MyPresburgerFormulaRep -> String
     analyze f
