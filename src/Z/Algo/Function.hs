@@ -39,6 +39,9 @@ instance Failable [a] where
     alt [] = id
     alt x = const x
 
+instance Failable b => Failable (a -> b) where
+    alt = liftM2 alt
+
 instance FailableZero Bool where
     nil = False
 
@@ -47,6 +50,9 @@ instance FailableZero (Maybe a) where
 
 instance FailableZero [a] where
     nil = []
+
+instance FailableZero b => FailableZero (a -> b) where
+    nil = const nil
 
 (/>) :: Failable a => a -> a -> a
 x /> y = alt x y
@@ -68,12 +74,6 @@ liftErrMsgM = ExceptT . return
 
 safehd :: [a] -> Maybe a
 safehd = takeFirstOf Just
-
-gfp :: (a -> a) -> a
-gfp = Function.fix
-
-lfp :: (a -> a) -> a
-lfp = Function.fix . callWithStrictArg
 
 recNat :: (Num nat, Enum nat) => (res) -> (nat -> res -> res) -> (nat -> res)
 recNat my_init my_step n = foldr my_step my_init [n - 1, n - 2 .. 0]

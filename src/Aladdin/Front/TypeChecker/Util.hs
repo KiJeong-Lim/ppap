@@ -12,7 +12,6 @@ import Y.Base
 import Z.Utils
 
 infix 4 +->
-
 infix 4 ->>
 
 data TypeError
