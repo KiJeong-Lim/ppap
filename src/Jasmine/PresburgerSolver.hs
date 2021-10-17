@@ -48,7 +48,7 @@ data PresburgerKlass
     | KlassGtn !MyCoefficient !PresburgerTerm !PresburgerTerm
     | KlassMod !MyCoefficient !PresburgerTerm !PositiveInteger !PresburgerTerm
     | KlassEtc !MyPresburgerFormula
-    deriving (Eq, Show)
+    deriving (Eq)
 
 data PresburgerTermRep
     = IVar MyVar
