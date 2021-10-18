@@ -184,42 +184,42 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
         step2 x = buildBigConF . standardizeCoefficient . mkKlasses where
             mkKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
             mkKlasses = map mkKlass where
-                extractMyCoefficient :: PresburgerTerm -> (MyNat, PresburgerTerm)
-                extractMyCoefficient t = maybe (0, t) (\n -> (n, PresburgerTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
+                extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
+                extractCoefficient t = maybe (0, t) (\n -> (n, PresburgerTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
                 mkKlass :: MyPresburgerFormula -> PresburgerKlass
-                mkKlass (EqnF t1 t2) = case (extractMyCoefficient t1, extractMyCoefficient t2) of
+                mkKlass (EqnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
                         (LT) -> KlassEqn (m2 - m1) t2' t1'
                         (EQ) -> KlassEtc (mkEqnF t1' t2')
                         (GT) -> KlassEqn (m1 - m2) t1' t2'
-                mkKlass (LtnF t1 t2) = case (extractMyCoefficient t1, extractMyCoefficient t2) of
+                mkKlass (LtnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
                         (LT) -> KlassGtn (m2 - m1) t2' t1'
                         (EQ) -> KlassEtc (mkLtnF t1' t2')
                         (GT) -> KlassLtn (m1 - m2) t1' t2'
-                mkKlass (ModF t1 r t2) = case (extractMyCoefficient t1, extractMyCoefficient t2) of
+                mkKlass (ModF t1 r t2) = case (extractCoefficient t1, extractCoefficient t2) of
                     ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
                         (LT) -> KlassMod (m2 - m1) t2' r t1'
                         (EQ) -> KlassEtc (mkModF t1' r t2')
                         (GT) -> KlassMod (m1 - m2) t1' r t2'
                 mkKlass f = KlassEtc f
-            standardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (MyNat, [PresburgerKlass])
+            standardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass])
             standardizeCoefficient my_klasses = maybe (Left my_klasses) (curry Right <*> theStandardizedKlasses) theMaybeLCM where
-                theMaybeLCM :: Maybe MyNat
-                theMaybeLCM = calcLCM theMyCoefficients where
-                    calcLCM :: [MyNat] -> Maybe MyNat
-                    calcLCM [] = Nothing
-                    calcLCM (m : ms) = callWithStrictArg Just (List.foldl' getLCM m ms)
-                    theMyCoefficients :: [MyNat]
-                    theMyCoefficients = do
-                        klass <- my_klasses
-                        case klass of
-                            (KlassEqn m t1 t2) -> return m
-                            (KlassLtn m t1 t2) -> return m
-                            (KlassGtn m t1 t2) -> return m
-                            (KlassMod m t1 r t2) -> return m
-                            (KlassEtc f) -> []
-                theStandardizedKlasses :: MyNat -> [PresburgerKlass]
+                theMaybeLCM :: Maybe PositiveInteger
+                theMaybeLCM
+                    | null theCoefficients = Nothing
+                    | otherwise = callWithStrictArg Just (getLCMsOf theCoefficients)
+                    where
+                        theCoefficients :: [PositiveInteger]
+                        theCoefficients = do
+                            klass <- my_klasses
+                            case klass of
+                                (KlassEqn m t1 t2) -> return m
+                                (KlassLtn m t1 t2) -> return m
+                                (KlassGtn m t1 t2) -> return m
+                                (KlassMod m t1 r t2) -> return m
+                                (KlassEtc f) -> []
+                theStandardizedKlasses :: PositiveInteger -> [PresburgerKlass]
                 theStandardizedKlasses theLCM = map myLoop my_klasses where
                     myLoop :: PresburgerKlass -> PresburgerKlass
                     myLoop (KlassEqn m t1 t2) = KlassEqn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
@@ -227,7 +227,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
                     myLoop (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
                     myLoop (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiply (theLCM `div` m) t2)
                     myLoop (KlassEtc f) = KlassEtc f
-            buildBigConF :: Either [PresburgerKlass] (MyNat, [PresburgerKlass]) -> MyPresburgerFormula
+            buildBigConF :: Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
             buildBigConF (Left my_klasses) = andcat [ f | (KlassEtc f) <- my_klasses ]
             buildBigConF (Right (m, my_klasses)) = mkConF (andcat [ f | (KlassEtc f) <- my_klasses ]) (step3 [ (t1, t2) | (KlassEqn _ t1 t2) <- my_klasses ] [ (t1, t2) | (KlassLtn _ t1 t2) <- my_klasses ] ((mkNum 1, mkNum 0) : [ (t1, t2) | (KlassGtn _ t1 t2) <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | (KlassMod _ t1 r t2) <- my_klasses ]))
         step3 :: [(PresburgerTerm, PresburgerTerm)] -> [(PresburgerTerm, PresburgerTerm)] -> [(PresburgerTerm, PresburgerTerm)] -> [(PositiveInteger, (PresburgerTerm, PresburgerTerm))] -> MyPresburgerFormula
@@ -256,7 +256,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
                     ]
             where
                 _R :: MyNat
-                _R = List.foldl' getLCM 1 (map fst theMods0)
+                _R = getLCMsOf (map fst theMods0)
     mkNum :: MyNat -> PresburgerTerm
     mkNum n = PresburgerTerm n Map.empty
     mkPlus :: PresburgerTerm -> PresburgerTerm -> PresburgerTerm
@@ -276,7 +276,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
     mkModF t1 r t2 = if r > 0 then makeModF (reduceTermWithMod t1) r (reduceTermWithMod t2) else error "mkModF: r must be positive" where
         reduceTermWithMod :: PresburgerTerm -> PresburgerTerm
-        reduceTermWithMod t = PresburgerTerm (getConstantTerm t `mod` r) (Map.fromAscList [ (x, n `mod` r) | (x, n) <- Map.toAscList (getCoefficients t), n `mod` r /= 0 ])
+        reduceTermWithMod t = PresburgerTerm (getConstantTerm t `mod` r) (Map.fromAscList [ (x, n `mod` r) | (x, n) <- Map.toAscList (getCoefficients t), not (n `mod` r == 0) ])
     mkNegF :: MyPresburgerFormula -> MyPresburgerFormula
     mkNegF (ValF b) = mkValF (not b)
     mkNegF (NegF f1) = f1
@@ -309,13 +309,15 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
         | k == 1 = t
         | k >= 0 = PresburgerTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
         | otherwise = error "multiply: negative input"
-    getLCM :: MyNat -> MyNat -> MyNat
+    getLCM :: PositiveInteger -> PositiveInteger -> PositiveInteger
     getLCM n1 n2 = (n1 * n2) `div` (getGCD n1 n2)
+    getLCMsOf :: [PositiveInteger] -> PositiveInteger
+    getLCMsOf = List.foldl' getLCM 1
 
-checkTruthOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
-checkTruthOfMyPresburgerFormula = tryEvalFormula where
+checkTruthValueOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
+checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
     tryEvalTerm :: PresburgerTerm -> Maybe MyNat
-    tryEvalTerm (PresburgerTerm con coeffs) = if Map.null coeffs then pure con else Nothing
+    tryEvalTerm (PresburgerTerm con coeffs) = if null (filter (\n -> not (n == 0)) (Map.elems coeffs)) then pure con else Nothing
     tryEvalFormula :: MyPresburgerFormula -> Maybe MyProp
     tryEvalFormula (ValF b) = pure b
     tryEvalFormula (EqnF t1 t2) = pure (==) <*> tryEvalTerm t1 <*> tryEvalTerm t2
@@ -372,6 +374,9 @@ consMySubst (x, t) sigma z = if x == z then t else applyMySubstToVar z sigma
 
 makeMySubst :: [(MyVar, PresburgerTermRep)] -> MySubst
 makeMySubst = foldr consMySubst nilMySubst
+
+substitutePresburger :: (MyVar, PresburgerTermRep) -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+substitutePresburger = runMySubst . makeMySubst . one
 
 applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
 applyMySubstToVar x sigma = sigma x
