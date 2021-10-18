@@ -317,7 +317,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
 checkTruthValueOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
 checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
     tryEvalTerm :: PresburgerTerm -> Maybe MyNat
-    tryEvalTerm (PresburgerTerm con coeffs) = if null (filter (\n -> not (n == 0)) (Map.elems coeffs)) then pure con else Nothing
+    tryEvalTerm (PresburgerTerm con coeffs) = if all (\n -> n == 0) (Map.elems coeffs) then pure con else fail "some individual variable occurs"
     tryEvalFormula :: MyPresburgerFormula -> Maybe MyProp
     tryEvalFormula (ValF b) = pure b
     tryEvalFormula (EqnF t1 t2) = pure (==) <*> tryEvalTerm t1 <*> tryEvalTerm t2
