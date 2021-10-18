@@ -108,7 +108,7 @@ instance Functor PresburgerFormula where
     fmap = mapTermInPresburgerFormula
 
 showsMyVar :: MyVar -> ShowS
-showsMyVar x = if x > 0 then strstr "v" . shows x else strstr "?" . shows (abs x)
+showsMyVar x = if x > 0 then strstr "v" . shows x else strstr "?" . shows (negate x)
 
 congruenceModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
 congruenceModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "congruenceModulo: r must be positive"
@@ -162,7 +162,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     eliminateExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     eliminateExsF = curry step1 where
         step1 :: (MyVar, MyPresburgerFormula) -> MyPresburgerFormula
-        step1 = fmap orcat (map . step2 . fst <*> makeDNF . removeNegF . snd) where
+        step1 = fmap orcat (map . step2 . fst <*> makeDNF . eliminateNegF . snd) where
             unNegation :: MyPresburgerFormula -> MyPresburgerFormula
             unNegation (ValF b) = mkValF (not b)
             unNegation (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
@@ -171,11 +171,11 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
             unNegation (NegF f1) = f1
             unNegation (DisF f1 f2) = mkConF (unNegation f1) (unNegation f2)
             unNegation (ConF f1 f2) = mkDisF (unNegation f1) (unNegation f2)
-            removeNegF :: MyPresburgerFormula -> MyPresburgerFormula
-            removeNegF (NegF f1) = unNegation (removeNegF f1)
-            removeNegF (DisF f1 f2) = mkDisF (removeNegF f1) (removeNegF f2)
-            removeNegF (ConF f1 f2) = mkConF (removeNegF f1) (removeNegF f2)
-            removeNegF atom_f = atom_f
+            eliminateNegF :: MyPresburgerFormula -> MyPresburgerFormula
+            eliminateNegF (NegF f1) = unNegation (eliminateNegF f1)
+            eliminateNegF (DisF f1 f2) = mkDisF (eliminateNegF f1) (eliminateNegF f2)
+            eliminateNegF (ConF f1 f2) = mkConF (eliminateNegF f1) (eliminateNegF f2)
+            eliminateNegF atom_f = atom_f
             makeDNF :: MyPresburgerFormula -> [[MyPresburgerFormula]]
             makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
