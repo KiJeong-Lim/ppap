@@ -108,7 +108,7 @@ instance Functor PresburgerFormula where
     fmap = mapTermInPresburgerFormula
 
 showsMyVar :: MyVar -> ShowS
-showsMyVar x = if x > 0 then strstr "v" . shows x else strstr "?" . shows (negate x)
+showsMyVar x = if x > 0 then strstr "v" . shows x else strstr "?v" . shows (negate x)
 
 congruenceModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
 congruenceModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "congruenceModulo: r must be positive"
@@ -136,7 +136,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     orcat fs = if null fs then mkBotF else List.foldl' mkDisF (head fs) (tail fs)
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
-    andcat fs = foldr mkConF mkTopF fs
+    andcat = foldr mkConF mkTopF
     eliminateQuantifier :: MyPresburgerFormula -> MyPresburgerFormula
     eliminateQuantifier = asterify . simplify where
         simplify :: MyPresburgerFormula -> MyPresburgerFormula
@@ -302,7 +302,9 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkBotF :: MyPresburgerFormula
     mkBotF = mkValF False
     makeCongruence :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    makeCongruence t1 r t2 = if getCoefficients t1 == getCoefficients t2 then mkValF (congruenceModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
+    makeCongruence t1 r t2
+        | r > 0 = if getCoefficients t1 == getCoefficients t2 then mkValF (congruenceModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
+        | otherwise = error "makeCongruence: negative input"
     multiply :: MyNat -> PresburgerTerm -> PresburgerTerm
     multiply k t
         | k == 0 = mkNum 0
@@ -359,12 +361,10 @@ getFVsInPresburgerFormulaRep = getFVs where
     getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
 chiOfPresburger :: MyPresburgerFormulaRep -> MySubst -> MyVar
-chiOfPresburger f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ]) where
-    getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
-    getMaxVarOf = flip (foldr (\x1 -> \k -> \x2 -> callWithStrictArg k (max x1 x2)) id) 1
+chiOfPresburger f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
 
-getFreshVarOfPresburgerFormulaRep :: MyPresburgerFormulaRep -> MyVar
-getFreshVarOfPresburgerFormulaRep f = chiOfPresburger f nilMySubst
+getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
+getMaxVarOf xs = foldr (\x1 -> \acc -> \x2 -> callWithStrictArg acc (max x1 x2)) id xs 1
 
 nilMySubst :: MySubst
 nilMySubst z = IVar z
