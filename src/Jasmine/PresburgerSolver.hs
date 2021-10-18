@@ -136,7 +136,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     orcat fs = if null fs then mkBotF else List.foldl' mkDisF (head fs) (tail fs)
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
-    andcat fs = if null fs then mkTopF else List.foldl' mkConF (head fs) (tail fs)
+    andcat fs = foldr mkConF mkTopF fs
     eliminateQuantifier :: MyPresburgerFormula -> MyPresburgerFormula
     eliminateQuantifier = asterify . simplify where
         simplify :: MyPresburgerFormula -> MyPresburgerFormula
@@ -158,7 +158,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
         asterify (ConF f1 f2) = mkConF (asterify f1) (asterify f2)
         asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
         asterify (ExsF y f1) = eliminateExsF y (asterify f1)
-        asterify atom_f = atom_f
+        asterify f = f
     eliminateExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     eliminateExsF = curry step1 where
         step1 :: (MyVar, MyPresburgerFormula) -> MyPresburgerFormula
@@ -175,11 +175,11 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
             eliminateNegF (NegF f1) = runNegation (eliminateNegF f1)
             eliminateNegF (DisF f1 f2) = mkDisF (eliminateNegF f1) (eliminateNegF f2)
             eliminateNegF (ConF f1 f2) = mkConF (eliminateNegF f1) (eliminateNegF f2)
-            eliminateNegF atom_f = atom_f
+            eliminateNegF f = f
             makeDNF :: MyPresburgerFormula -> [[MyPresburgerFormula]]
             makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
-            makeDNF atom_f = [one atom_f]
+            makeDNF f = [one f]
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
         step2 x = buildBigConF . standardizeCoefficient . mkKlasses where
             mkKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
