@@ -108,7 +108,10 @@ instance Functor PresburgerFormula where
     fmap = mapTermInPresburgerFormula
 
 showsMyVar :: MyVar -> ShowS
-showsMyVar x = if x > 0 then strstr "v" . shows x else strstr "?v" . shows (negate x)
+showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?v" . shows (negate x)
+
+theMinNumOfMyVar :: MyVar
+theMinNumOfMyVar = 1
 
 congruenceModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
 congruenceModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "congruenceModulo: r must be positive"
@@ -206,19 +209,16 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
             standardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass])
             standardizeCoefficient my_klasses = maybe (Left my_klasses) (curry Right <*> theStandardizedKlasses) theMaybeLCM where
                 theMaybeLCM :: Maybe PositiveInteger
-                theMaybeLCM
-                    | null theCoefficients = Nothing
-                    | otherwise = callWithStrictArg Just (getLCMsOf theCoefficients)
-                    where
-                        theCoefficients :: [PositiveInteger]
-                        theCoefficients = do
-                            klass <- my_klasses
-                            case klass of
-                                (KlassEqn m t1 t2) -> return m
-                                (KlassLtn m t1 t2) -> return m
-                                (KlassGtn m t1 t2) -> return m
-                                (KlassMod m t1 r t2) -> return m
-                                (KlassEtc f) -> []
+                theMaybeLCM = if null theCoefficients then Nothing else callWithStrictArg Just (getLCMsOf theCoefficients) where
+                    theCoefficients :: [PositiveInteger]
+                    theCoefficients = do
+                        klass <- my_klasses
+                        case klass of
+                            (KlassEqn m t1 t2) -> return m
+                            (KlassLtn m t1 t2) -> return m
+                            (KlassGtn m t1 t2) -> return m
+                            (KlassMod m t1 r t2) -> return m
+                            (KlassEtc f) -> []
                 theStandardizedKlasses :: PositiveInteger -> [PresburgerKlass]
                 theStandardizedKlasses theLCM = map myLoop my_klasses where
                     myLoop :: PresburgerKlass -> PresburgerKlass
@@ -276,7 +276,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
     mkModF t1 r t2 = if r > 0 then makeCongruence (reduceTermWithMod t1) r (reduceTermWithMod t2) else error "mkModF: r must be positive" where
         reduceTermWithMod :: PresburgerTerm -> PresburgerTerm
-        reduceTermWithMod t = PresburgerTerm (getConstantTerm t `mod` r) (Map.filter (\n -> n > 0) (Map.map (\n -> n `mod` r) (getCoefficients t)))
+        reduceTermWithMod (PresburgerTerm con coeffs) = PresburgerTerm (con `mod` r) (Map.filter (\n -> not (n == 0)) (Map.map (\n -> n `mod` r) coeffs))
     mkNegF :: MyPresburgerFormula -> MyPresburgerFormula
     mkNegF (ValF b) = mkValF (not b)
     mkNegF (NegF f1) = f1
@@ -338,7 +338,7 @@ checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
 insertFVsInPresburgerTermRep :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
 insertFVsInPresburgerTermRep = addFVs where
     addFVs :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
-    addFVs (IVar x) = Set.insert x
+    addFVs (IVar x) = if x >= theMinNumOfMyVar then Set.insert x else id
     addFVs (Zero) = id
     addFVs (Succ t1) = addFVs t1
     addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
@@ -364,7 +364,7 @@ chiOfPresburger :: MyPresburgerFormulaRep -> MySubst -> MyVar
 chiOfPresburger f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
 
 getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
-getMaxVarOf xs = foldr (\x1 -> \acc -> \x2 -> callWithStrictArg acc (max x1 x2)) id xs 1
+getMaxVarOf xs = foldr (\x1 -> \acc -> \x2 -> callWithStrictArg acc (max x1 x2)) id xs theMinNumOfMyVar
 
 nilMySubst :: MySubst
 nilMySubst z = IVar z
