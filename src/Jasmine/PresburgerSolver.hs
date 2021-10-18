@@ -339,8 +339,8 @@ insertFVsInPresburgerTermRep = addFVs where
     addFVs (Succ t1) = addFVs t1
     addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
 
-getFVsInMyPresburgerFormulaRep :: MyPresburgerFormulaRep -> Set.Set MyVar
-getFVsInMyPresburgerFormulaRep = getFVs where
+getFVsInPresburgerFormulaRep :: MyPresburgerFormulaRep -> Set.Set MyVar
+getFVsInPresburgerFormulaRep = getFVs where
     getFVs :: MyPresburgerFormulaRep -> Set.Set MyVar
     getFVs (ValF b) = Set.empty
     getFVs (EqnF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
@@ -356,13 +356,13 @@ getFVsInMyPresburgerFormulaRep = getFVs where
     getFVs (AllF y f1) = y `Set.delete` getFVs f1
     getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
-chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
-chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInMyPresburgerFormulaRep f) ]) where
+chiOfPresburger :: MyPresburgerFormulaRep -> MySubst -> MyVar
+chiOfPresburger f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ]) where
     getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
     getMaxVarOf = foldr max 0
 
-getFreshVar :: MyPresburgerFormulaRep -> MyVar
-getFreshVar f = chi f nilMySubst
+getFreshVarOfPresburgerFormulaRep :: MyPresburgerFormulaRep -> MyVar
+getFreshVarOfPresburgerFormulaRep f = chiOfPresburger f nilMySubst
 
 nilMySubst :: MySubst
 nilMySubst z = IVar z
@@ -395,7 +395,7 @@ runMySubst = flip applyMySubstToFormulaRep where
     applyMySubstToFormulaRep (ConF f1 f2) = pure ConF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
     applyMySubstToFormulaRep (ImpF f1 f2) = pure ImpF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
     applyMySubstToFormulaRep (IffF f1 f2) = pure IffF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
-    applyMySubstToFormulaRep f = applyMySubstToQuantifier f <*> chi f
+    applyMySubstToFormulaRep f = applyMySubstToQuantifier f <*> chiOfPresburger f
     applyMySubstToQuantifier :: MyPresburgerFormulaRep -> MySubst -> MyVar -> MyPresburgerFormulaRep
     applyMySubstToQuantifier (AllF y f1) sigma z = AllF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
     applyMySubstToQuantifier (ExsF y f1) sigma z = ExsF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
