@@ -21,40 +21,40 @@ type MyProp = Bool
 
 data PresburgerTerm
     = PresburgerTerm 
-        { getConstantTerm :: !MyNat
+        { getConstantTerm :: !(MyNat)
         , getCoefficients :: !(Map.Map MyVar MyCoefficient)
         }
     deriving (Eq)
 
 data PresburgerFormula term
-    = ValF MyProp
-    | EqnF term term
-    | LtnF term term
-    | LeqF term term
-    | GtnF term term
-    | ModF term PositiveInteger term
+    = ValF (MyProp)
+    | EqnF (term) (term)
+    | LtnF (term) (term)
+    | LeqF (term) (term)
+    | GtnF (term) (term)
+    | ModF (term) (PositiveInteger) (term)
     | NegF (PresburgerFormula term)
     | DisF (PresburgerFormula term) (PresburgerFormula term)
     | ConF (PresburgerFormula term) (PresburgerFormula term)
     | ImpF (PresburgerFormula term) (PresburgerFormula term)
     | IffF (PresburgerFormula term) (PresburgerFormula term)
-    | AllF MyVar (PresburgerFormula term)
-    | ExsF MyVar (PresburgerFormula term)
+    | AllF (MyVar) (PresburgerFormula term)
+    | ExsF (MyVar) (PresburgerFormula term)
     deriving (Eq)
 
 data PresburgerKlass
-    = KlassEqn !MyCoefficient !PresburgerTerm !PresburgerTerm
-    | KlassLtn !MyCoefficient !PresburgerTerm !PresburgerTerm
-    | KlassGtn !MyCoefficient !PresburgerTerm !PresburgerTerm
-    | KlassMod !MyCoefficient !PresburgerTerm !PositiveInteger !PresburgerTerm
-    | KlassEtc !MyPresburgerFormula
+    = KlassEqn !(MyCoefficient) !(PresburgerTerm) !(PresburgerTerm)
+    | KlassLtn !(MyCoefficient) !(PresburgerTerm) !(PresburgerTerm)
+    | KlassGtn !(MyCoefficient) !(PresburgerTerm) !(PresburgerTerm)
+    | KlassMod !(MyCoefficient) !(PresburgerTerm) !(PositiveInteger) !(PresburgerTerm)
+    | KlassEtc !(MyPresburgerFormula)
     deriving (Eq, Show)
 
 data PresburgerTermRep
-    = IVar MyVar
+    = IVar (MyVar)
     | Zero
-    | Succ PresburgerTermRep
-    | Plus PresburgerTermRep PresburgerTermRep
+    | Succ (PresburgerTermRep)
+    | Plus (PresburgerTermRep) (PresburgerTermRep)
     deriving (Eq)
 
 instance Show PresburgerTerm where
@@ -312,7 +312,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     getLCM :: PositiveInteger -> PositiveInteger -> PositiveInteger
     getLCM n1 n2 = (n1 * n2) `div` (getGCD n1 n2)
     getLCMsOf :: [PositiveInteger] -> PositiveInteger
-    getLCMsOf = List.foldl' getLCM 1
+    getLCMsOf ns = if null ns then 1 else List.foldl' getLCM (head ns) (tail ns)
 
 checkTruthValueOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
 checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
