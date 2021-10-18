@@ -163,16 +163,16 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     eliminateExsF = curry step1 where
         step1 :: (MyVar, MyPresburgerFormula) -> MyPresburgerFormula
         step1 = fmap orcat (map . step2 . fst <*> makeDNF . eliminateNegF . snd) where
-            unNegation :: MyPresburgerFormula -> MyPresburgerFormula
-            unNegation (ValF b) = mkValF (not b)
-            unNegation (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
-            unNegation (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
-            unNegation (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
-            unNegation (NegF f1) = f1
-            unNegation (DisF f1 f2) = mkConF (unNegation f1) (unNegation f2)
-            unNegation (ConF f1 f2) = mkDisF (unNegation f1) (unNegation f2)
+            runNegation :: MyPresburgerFormula -> MyPresburgerFormula
+            runNegation (ValF b) = mkValF (not b)
+            runNegation (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
+            runNegation (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
+            runNegation (ModF t1 r t2) = orcat [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
+            runNegation (NegF f1) = f1
+            runNegation (DisF f1 f2) = mkConF (runNegation f1) (runNegation f2)
+            runNegation (ConF f1 f2) = mkDisF (runNegation f1) (runNegation f2)
             eliminateNegF :: MyPresburgerFormula -> MyPresburgerFormula
-            eliminateNegF (NegF f1) = unNegation (eliminateNegF f1)
+            eliminateNegF (NegF f1) = runNegation (eliminateNegF f1)
             eliminateNegF (DisF f1 f2) = mkDisF (eliminateNegF f1) (eliminateNegF f2)
             eliminateNegF (ConF f1 f2) = mkConF (eliminateNegF f1) (eliminateNegF f2)
             eliminateNegF atom_f = atom_f
