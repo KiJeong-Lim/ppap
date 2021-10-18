@@ -328,31 +328,36 @@ destiny = tryEvalFormula where
     tryEvalFormula (ConF f1 f2) = pure (&&) <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ImpF f1 f2) = pure (<=) <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (IffF f1 f2) = pure (==) <*> tryEvalFormula f1 <*> tryEvalFormula f2
-    tryEvalFormula _ = Nothing
+    tryEvalFormula (AllF y f1) = tryEvalFormula f1
+    tryEvalFormula (ExsF y f1) = tryEvalFormula f1
 
-addFVs :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
-addFVs (IVar x) = Set.insert x
-addFVs (Zero) = id
-addFVs (Succ t1) = addFVs t1
-addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
+insertFVsInPresburgerTermRep :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
+insertFVsInPresburgerTermRep = addFVs where
+    addFVs :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
+    addFVs (IVar x) = Set.insert x
+    addFVs (Zero) = id
+    addFVs (Succ t1) = addFVs t1
+    addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
 
-getFVs :: MyPresburgerFormulaRep -> Set.Set MyVar
-getFVs (ValF b) = Set.empty
-getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
-getFVs (NegF f1) = getFVs f1
-getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (IffF f1 f2) = getFVs f1 `Set.union` getFVs f2
-getFVs (AllF y f1) = y `Set.delete` getFVs f1
-getFVs (ExsF y f1) = y `Set.delete` getFVs f1
+getFVsInMyPresburgerFormulaRep :: MyPresburgerFormulaRep -> Set.Set MyVar
+getFVsInMyPresburgerFormulaRep = getFVs where
+    getFVs :: MyPresburgerFormulaRep -> Set.Set MyVar
+    getFVs (ValF b) = Set.empty
+    getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+    getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+    getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+    getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+    getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
+    getFVs (NegF f1) = getFVs f1
+    getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
+    getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
+    getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
+    getFVs (IffF f1 f2) = getFVs f1 `Set.union` getFVs f2
+    getFVs (AllF y f1) = y `Set.delete` getFVs f1
+    getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
 chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
-chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVs (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVs f) ]) where
+chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInMyPresburgerFormulaRep f) ]) where
     getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
     getMaxVarOf = foldr max 0
 
