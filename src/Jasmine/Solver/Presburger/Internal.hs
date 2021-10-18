@@ -1,4 +1,4 @@
-module Jasmine.PresburgerSolver where
+module Jasmine.Solver.Presburger.Internal where
 
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
@@ -375,8 +375,8 @@ consMySubst (x, t) sigma z = if x == z then t else applyMySubstToVar z sigma
 makeMySubst :: [(MyVar, PresburgerTermRep)] -> MySubst
 makeMySubst = foldr consMySubst nilMySubst
 
-substitutePresburger :: (MyVar, PresburgerTermRep) -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-substitutePresburger = runMySubst . makeMySubst . one
+substitute :: (MyVar, PresburgerTermRep) -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+substitute = runMySubst . makeMySubst . one
 
 applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
 applyMySubstToVar x sigma = sigma x

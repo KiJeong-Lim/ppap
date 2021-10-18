@@ -69,7 +69,9 @@ executable ppap
     Calc.ControlSystem.Util
     Calc.Main
     Jasmine.Main
-    Jasmine.PresburgerSolver
+    Jasmine.Solver.Presburger.Internal
+    Jasmine.Solver.Presburger.Test
+    Jasmine.Solver.Presburger
     LGS.Main
     LGS.Make
     LGS.Read
