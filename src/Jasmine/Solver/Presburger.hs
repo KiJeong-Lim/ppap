@@ -12,6 +12,11 @@ checkPresburgerFormulaIsSentence = null . getFVsInPresburgerFormulaRep
 checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic :: MyPresburgerFormulaRep -> MyProp
 checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
 
+mkNumeral :: MyNat -> PresburgerTermRep
+mkNumeral n
+    | n < 0 = error "mkNumeral: negative input"
+    | otherwise = recNat mkZero (const mkSucc) n
+
 mkIVar :: MyVar -> PresburgerTermRep
 mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "mkIVar: bad individual variable"
 
