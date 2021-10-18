@@ -1,4 +1,5 @@
-% natural deduction checker
+% Natural Deduction Checker
+% Author = Ki-jeong Lim ( gijungdduk@naver.com )
 
 kind parity (type -> type -> type).
 type pair (A -> B -> parity A B).
