@@ -312,8 +312,8 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     getLCM :: MyNat -> MyNat -> MyNat
     getLCM n1 n2 = (n1 * n2) `div` (getGCD n1 n2)
 
-checkTruthOfMyPresburgerFormulaRep :: MyPresburgerFormula -> Maybe MyProp
-checkTruthOfMyPresburgerFormulaRep = tryEvalFormula where
+checkTruthOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
+checkTruthOfMyPresburgerFormula = tryEvalFormula where
     tryEvalTerm :: PresburgerTerm -> Maybe MyNat
     tryEvalTerm (PresburgerTerm con coeffs) = if Map.null coeffs then pure con else Nothing
     tryEvalFormula :: MyPresburgerFormula -> Maybe MyProp
