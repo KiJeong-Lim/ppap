@@ -3,6 +3,15 @@ module Jasmine.Solver.Presburger where
 import Jasmine.Solver.Presburger.Internal
 import Z.Algo.Function
 
+substitutePresburger :: MyVar -> PresburgerTermRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+substitutePresburger = curry substitute
+
+checkPresburgerFormulaIsSentence :: MyPresburgerFormulaRep -> Bool
+checkPresburgerFormulaIsSentence = null . getFVsInPresburgerFormulaRep
+
+checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic :: MyPresburgerFormulaRep -> MyProp
+checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
+
 mkIVar :: MyVar -> PresburgerTermRep
 mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "mkIVar: bad individual variable"
 
@@ -40,7 +49,7 @@ mkConF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormul
 mkConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
 
 mkDisF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-mkDisF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
+mkDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
 
 mkImpF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 mkImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
@@ -53,12 +62,3 @@ mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "mkAll
 
 mkExsF :: MyVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "mkExsF: bad individual variable"
-
-substitutePresburger :: MyVar -> PresburgerTermRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-substitutePresburger = curry substitute
-
-checkPresburgerFormulaIsSentence :: MyPresburgerFormulaRep -> Bool
-checkPresburgerFormulaIsSentence = null . getFVsInPresburgerFormulaRep
-
-checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic :: MyPresburgerFormulaRep -> MyProp
-checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
