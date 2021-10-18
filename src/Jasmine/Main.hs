@@ -4,6 +4,9 @@ import Jasmine.PresburgerSolver
 import Z.Algo.Function
 import Z.System.Shelly
 
+checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic :: MyPresburgerFormulaRep -> MyProp
+checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
+
 testPresburger :: IO ()
 testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 12] where
     getCase :: Int -> MyPresburgerFormulaRep
@@ -19,13 +22,11 @@ testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 12] where
     getCase 10 = (AllF 1 (AllF 2 (IffF (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2))) (NegF (EqnF (IVar 1) (Zero))))))
     getCase 11 = (AllF 1 (AllF 2 (LeqF (Plus (Succ (Zero)) (IVar 2)) (Plus (IVar 1) (IVar 2)))))
     getCase 12 = (ExsF 1 (AllF 2 (LtnF (IVar 2) (IVar 1))))
-    checkGivenSentenceIsInTheory :: MyPresburgerFormulaRep -> MyProp
-    checkGivenSentenceIsInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
     analyze :: MyPresburgerFormulaRep -> String
     analyze f
         | null (getFVsInPresburgerFormulaRep f) = concat
             [ "Presburger>"
-            , if checkGivenSentenceIsInTheory f
+            , if checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic f
                 then " The formula ``" ++ shows f "\'\' is a true sentence."
                 else " The formula ``" ++ shows f "\'\' is a false sentence."
             ]
