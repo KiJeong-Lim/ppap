@@ -23,7 +23,7 @@ testPresburger = mapM_ (shelly . analyze . getCase) [1 .. 12] where
     checkTruth = fromJust . checkMyPresburgerFormulaIsTheory . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
     analyze :: MyPresburgerFormulaRep -> String
     analyze f
-        | null (getFVs f) = concat
+        | null (getFVsInMyPresburgerFormulaRep f) = concat
             [ "Presburger>"
             , if checkTruth f
                 then " The formula ``" ++ shows f "\'\' is a true sentence."

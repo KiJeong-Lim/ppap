@@ -343,11 +343,11 @@ getFVsInMyPresburgerFormulaRep :: MyPresburgerFormulaRep -> Set.Set MyVar
 getFVsInMyPresburgerFormulaRep = getFVs where
     getFVs :: MyPresburgerFormulaRep -> Set.Set MyVar
     getFVs (ValF b) = Set.empty
-    getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-    getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-    getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-    getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
-    getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
+    getFVs (EqnF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
+    getFVs (LtnF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
+    getFVs (LeqF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
+    getFVs (GtnF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
+    getFVs (ModF t1 r t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
     getFVs (NegF f1) = getFVs f1
     getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
     getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
