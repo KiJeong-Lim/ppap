@@ -108,7 +108,7 @@ instance Functor PresburgerFormula where
     fmap = mapTermInPresburgerFormula
 
 showsMyVar :: MyVar -> ShowS
-showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?v" . (if x < 0 then strstr "_" else id) . shows (abs x)
+showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?v" . (if x > 0 then id else strstr "_") . shows (abs x)
 
 theMinNumOfMyVar :: MyVar
 theMinNumOfMyVar = 1
