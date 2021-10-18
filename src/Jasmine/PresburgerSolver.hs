@@ -57,7 +57,7 @@ data PresburgerTermRep
     | Plus (PresburgerTermRep) (PresburgerTermRep)
     deriving (Eq)
 
-instance Show PresburgerTerm where
+instance Show (PresburgerTerm) where
     showsPrec 0 (PresburgerTerm con coeffs) = strcat
         [ ppunc " + "
             [ if n == 1
@@ -94,7 +94,7 @@ instance Show term => Show (PresburgerFormula term) where
         dispatch (AllF y f1) = myPrecIs 3 $ strstr "forall " . showsMyVar y . strstr ", " . showsPrec 3 f1
         dispatch (ExsF y f1) = myPrecIs 3 $ strstr "exists " . showsMyVar y . strstr ", " . showsPrec 3 f1
 
-instance Show PresburgerTermRep where
+instance Show (PresburgerTermRep) where
     showsPrec prec = dispatch where
         myPrecIs :: Precedence -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
@@ -104,7 +104,7 @@ instance Show PresburgerTermRep where
         dispatch (Succ t1) = myPrecIs 10 $ strstr "S " . showsPrec 11 t1
         dispatch (Plus t1 t2) = myPrecIs 6 $ showsPrec 6 t1 . strstr " + " . showsPrec 7 t2
 
-instance Functor PresburgerFormula where
+instance Functor (PresburgerFormula) where
     fmap = mapTermInPresburgerFormula
 
 showsMyVar :: MyVar -> ShowS
