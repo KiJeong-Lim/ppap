@@ -165,7 +165,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     eliminateExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     eliminateExsF = curry step1 where
         step1 :: (MyVar, MyPresburgerFormula) -> MyPresburgerFormula
-        step1 = fmap orcat (map . step2 . fst <*> makeDNF . eliminateNegF . snd) where
+        step1 = fmap (orcat . uncurry callWithStrictArg) (map . step2 <^> makeDNF . eliminateNegF) where
             runNegation :: MyPresburgerFormula -> MyPresburgerFormula
             runNegation (ValF b) = mkValF (not b)
             runNegation (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
