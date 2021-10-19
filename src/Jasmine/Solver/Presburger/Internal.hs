@@ -346,17 +346,11 @@ getFVsInPresburgerFormulaRep = getFVs where
     getFVs (AllF y f1) = y `Set.delete` getFVs f1
     getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
-chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
-chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (sigma x) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
-
 getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
 getMaxVarOf zs = foldr (\z1 -> \acc -> \z2 -> callWithStrictArg acc (max z1 z2)) id zs theMinNumOfMyVar
 
-nilMySubst :: MySubst
-nilMySubst z = IVar z
-
-consMySubst :: (MyVar, PresburgerTermRep) -> MySubst -> MySubst
-consMySubst (x, t) sigma z = if x == z then t else sigma z
+chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
+chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
 
 applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
 applyMySubstToVar x sigma = sigma x
@@ -385,6 +379,12 @@ runMySubst = flip applyMySubstToFormulaRep where
     applyMySubstToQuantifier :: MyPresburgerFormulaRep -> MySubst -> MyVar -> MyPresburgerFormulaRep
     applyMySubstToQuantifier (AllF y f1) sigma z = AllF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
     applyMySubstToQuantifier (ExsF y f1) sigma z = ExsF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
+
+nilMySubst :: MySubst
+nilMySubst z = IVar z
+
+consMySubst :: (MyVar, PresburgerTermRep) -> MySubst -> MySubst
+consMySubst (x, t) sigma z = if x == z then t else sigma z
 
 mapTermInPresburgerFormula :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
 mapTermInPresburgerFormula = go where

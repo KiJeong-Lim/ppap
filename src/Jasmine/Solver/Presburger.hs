@@ -32,7 +32,7 @@ applySubstitution :: [(Var, Term)] -> Formula -> Formula
 applySubstitution = runMySubst . foldr consMySubst nilMySubst
 
 composeSubstitution :: [(Var, Term)] -> [(Var, Term)] -> [(Var, Term)]
-composeSubstitution outer_map inner_map = map (fmap (flip applyMySubstToTermRep (foldr consMySubst nilMySubst outer_map))) inner_map ++ outer_map
+composeSubstitution outer_map inner_map = [ (x, applyMySubstToTermRep t (foldr consMySubst nilMySubst outer_map)) | (x, t) <- inner_map ] ++ outer_map
 
 mkNum :: MyNat -> Term
 mkNum n = if n < 0 then error "Presburger.mkNum: A negative input is given..." else recNat mkZero (const mkSucc) n
