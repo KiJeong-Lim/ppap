@@ -109,7 +109,49 @@ instance Show (PresburgerTermRep) where
         dispatch (Plus t1 t2) = myPrecIs 6 $ showsPrec 6 t1 . strstr " + " . showsPrec 7 t2
 
 instance Functor (PresburgerFormula) where
-    fmap = mapTermInPresburgerFormula
+    fmap = mapTermInPresburgerFormula where
+        mapTermInPresburgerFormula :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
+        mapTermInPresburgerFormula = go where
+            mkValF :: MyProp -> PresburgerFormula term
+            mkValF b = ValF b
+            mkEqnF :: term -> term -> PresburgerFormula term
+            mkEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
+            mkLtnF :: term -> term -> PresburgerFormula term
+            mkLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
+            mkLeqF :: term -> term -> PresburgerFormula term
+            mkLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
+            mkGtnF :: term -> term -> PresburgerFormula term
+            mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
+            mkModF :: term -> PositiveInteger -> term -> PresburgerFormula term
+            mkModF t1 r t2 = t1 `seq` t2 `seq` ModF t1 r t2
+            mkNegF :: PresburgerFormula term -> PresburgerFormula term
+            mkNegF f1 = f1 `seq` NegF f1
+            mkDisF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
+            mkDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
+            mkConF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
+            mkConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
+            mkImpF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
+            mkImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
+            mkIffF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
+            mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
+            mkAllF :: MyVar -> PresburgerFormula term -> PresburgerFormula term
+            mkAllF y f1 = f1 `seq` AllF y f1
+            mkExsF :: MyVar -> PresburgerFormula term -> PresburgerFormula term
+            mkExsF y f1 = f1 `seq` ExsF y f1
+            go :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
+            go z (ValF b) = mkValF b
+            go z (EqnF t1 t2) = mkEqnF (z t1) (z t2)
+            go z (LtnF t1 t2) = mkLtnF (z t1) (z t2)
+            go z (LeqF t1 t2) = mkLeqF (z t1) (z t2)
+            go z (GtnF t1 t2) = mkGtnF (z t1) (z t2)
+            go z (ModF t1 r t2) = mkModF (z t1) r (z t2)
+            go z (NegF f1) = mkNegF (go z f1)
+            go z (DisF f1 f2) = mkDisF (go z f1) (go z f2)
+            go z (ConF f1 f2) = mkConF (go z f1) (go z f2)
+            go z (ImpF f1 f2) = mkImpF (go z f1) (go z f2)
+            go z (IffF f1 f2) = mkIffF (go z f1) (go z f2)
+            go z (AllF y f1) = mkAllF y (go z f1)
+            go z (ExsF y f1) = mkExsF y (go z f1)
 
 showsMyVar :: MyVar -> ShowS
 showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?v" . (if x > 0 then id else strstr "_") . shows (abs x)
@@ -117,8 +159,8 @@ showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?
 theMinNumOfMyVar :: MyVar
 theMinNumOfMyVar = 1
 
-congruenceModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
-congruenceModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "congruenceModulo: r must be positive"
+areCongruenctModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
+areCongruenctModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "areCongruenctModulo: r must be positive"
 
 compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
 compilePresburgerTerm = go where
@@ -199,20 +241,23 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
                 mkKlass (ModF t1 r t2) = constructModF (extractCoefficient t1) r (extractCoefficient t2)
                 mkKlass f = KlassEtc f
                 constructEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                constructEqnF (m1, t1) (m2, t2) = case m1 `compare` m2 of
-                    (LT) -> KlassEqn (m2 - m1) t2 t1
-                    (EQ) -> KlassEtc (mkEqnF t1 t2)
-                    (GT) -> KlassEqn (m1 - m2) t1 t2
+                constructEqnF (m1, t1) (m2, t2)
+                    = case m1 `compare` m2 of
+                        (LT) -> KlassEqn (m2 - m1) t2 t1
+                        (EQ) -> KlassEtc (mkEqnF t1 t2)
+                        (GT) -> KlassEqn (m1 - m2) t1 t2
                 constructLtnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                constructLtnF (m1, t1) (m2, t2) = case m1 `compare` m2 of
-                    (LT) -> KlassGtn (m2 - m1) t2 t1
-                    (EQ) -> KlassEtc (mkLtnF t1 t2)
-                    (GT) -> KlassLtn (m1 - m2) t1 t2
+                constructLtnF (m1, t1) (m2, t2)
+                    = case m1 `compare` m2 of
+                        (LT) -> KlassGtn (m2 - m1) t2 t1
+                        (EQ) -> KlassEtc (mkLtnF t1 t2)
+                        (GT) -> KlassLtn (m1 - m2) t1 t2
                 constructModF :: (MyCoefficient, PresburgerTerm) -> PositiveInteger -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                constructModF (m1, t1) r (m2, t2) = case m1 `compare` m2 of
-                    (LT) -> KlassMod (m2 - m1) t2 r t1
-                    (EQ) -> KlassEtc (mkModF t1 r t2)
-                    (GT) -> KlassMod (m1 - m2) t1 r t2
+                constructModF (m1, t1) r (m2, t2)
+                    = case m1 `compare` m2 of
+                        (LT) -> KlassMod (m2 - m1) t2 r t1
+                        (EQ) -> KlassEtc (mkModF t1 r t2)
+                        (GT) -> KlassMod (m1 - m2) t1 r t2
             standardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass])
             standardizeCoefficient my_klasses = maybe (Left my_klasses) (curry Right <*> theStandardizedKlasses) theMaybeLCM where
                 theMaybeLCM :: Maybe PositiveInteger
@@ -289,13 +334,15 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkNegF (NegF f1) = f1
     mkNegF f1 = NegF f1
     mkDisF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
-    mkDisF (ValF b1) f2 = if b1 then ValF b1 else f2
-    mkDisF f1 (ValF b2) = if b2 then ValF b2 else f1
-    mkDisF f1 f2 = DisF f1 f2
+    mkDisF f1 f2 = fromJust (go f1 (f2, f1) /> go f2 (f1, f2) /> Just (DisF f1 f2)) where
+        go :: MyPresburgerFormula -> (MyPresburgerFormula, MyPresburgerFormula) -> Maybe MyPresburgerFormula
+        go (ValF b) = if b then Just . snd else Just . fst
+        go _ = const Nothing
     mkConF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
-    mkConF (ValF b1) f2 = if b1 then f2 else ValF b1
-    mkConF f1 (ValF b2) = if b2 then f1 else ValF b2
-    mkConF f1 f2 = ConF f1 f2
+    mkConF f1 f2 = fromJust (go f1 (f2, f1) /> go f2 (f1, f2) /> Just (ConF f1 f2)) where
+        go :: MyPresburgerFormula -> (MyPresburgerFormula, MyPresburgerFormula) -> Maybe MyPresburgerFormula
+        go (ValF b) = if b then Just . fst else Just . snd
+        go _ = const Nothing
     mkImpF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
     mkImpF f1 f2 = mkDisF (mkNegF f1) f2
     mkIffF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
@@ -306,7 +353,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkExsF y f1 = f1 `seq` ExsF y f1
     constructModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
     constructModF t1 r t2
-        | r > 0 = if getCoefficients t1 == getCoefficients t2 then mkValF (congruenceModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
+        | r > 0 = if getCoefficients t1 == getCoefficients t2 then mkValF (areCongruenctModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
         | otherwise = error "constructModF: r must be positive"
     multiply :: MyNat -> PresburgerTerm -> PresburgerTerm
     multiply k t
@@ -329,7 +376,7 @@ checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
     tryEvalFormula (LtnF t1 t2) = pure (<) <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (LeqF t1 t2) = pure (<=) <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (GtnF t1 t2) = pure (>) <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalFormula (ModF t1 r t2) = pure congruenceModulo <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
+    tryEvalFormula (ModF t1 r t2) = pure areCongruenctModulo <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
     tryEvalFormula (NegF f1) = pure not <*> tryEvalFormula f1
     tryEvalFormula (DisF f1 f2) = pure (||) <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ConF f1 f2) = pure (&&) <*> tryEvalFormula f1 <*> tryEvalFormula f2
@@ -363,8 +410,8 @@ getFVsInPresburgerFormulaRep = getFVs where
     getFVs (AllF y f1) = y `Set.delete` getFVs f1
     getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
-chiOfPresburger :: MyPresburgerFormulaRep -> MySubst -> MyVar
-chiOfPresburger f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
+chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
+chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (sigma x) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
 
 getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
 getMaxVarOf xs = foldr (\x1 -> \acc -> \x2 -> callWithStrictArg acc (max x1 x2)) id xs theMinNumOfMyVar
@@ -373,16 +420,12 @@ nilMySubst :: MySubst
 nilMySubst z = IVar z
 
 consMySubst :: (MyVar, PresburgerTermRep) -> MySubst -> MySubst
-consMySubst (x, t) sigma z = if x == z then t else applyMySubstToVar z sigma
-
-mkMySubst :: [(MyVar, PresburgerTermRep)] -> MySubst
-mkMySubst = foldr consMySubst nilMySubst
-
-applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
-applyMySubstToVar x sigma = sigma x
+consMySubst (x, t) sigma z = if x == z then t else sigma z
 
 runMySubst :: MySubst -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 runMySubst = flip applyMySubstToFormulaRep where
+    applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
+    applyMySubstToVar x sigma = sigma x
     applyMySubstToTermRep :: PresburgerTermRep -> MySubst -> PresburgerTermRep
     applyMySubstToTermRep (IVar x) = applyMySubstToVar x
     applyMySubstToTermRep (Zero) = pure Zero
@@ -400,50 +443,7 @@ runMySubst = flip applyMySubstToFormulaRep where
     applyMySubstToFormulaRep (ConF f1 f2) = pure ConF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
     applyMySubstToFormulaRep (ImpF f1 f2) = pure ImpF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
     applyMySubstToFormulaRep (IffF f1 f2) = pure IffF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
-    applyMySubstToFormulaRep f = applyMySubstToQuantifier f <*> chiOfPresburger f
+    applyMySubstToFormulaRep f = applyMySubstToQuantifier f <*> chi f
     applyMySubstToQuantifier :: MyPresburgerFormulaRep -> MySubst -> MyVar -> MyPresburgerFormulaRep
     applyMySubstToQuantifier (AllF y f1) sigma z = AllF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
     applyMySubstToQuantifier (ExsF y f1) sigma z = ExsF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
-
-mapTermInPresburgerFormula :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
-mapTermInPresburgerFormula = go where
-    mkValF :: MyProp -> PresburgerFormula term
-    mkValF b = ValF b
-    mkEqnF :: term -> term -> PresburgerFormula term
-    mkEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
-    mkLtnF :: term -> term -> PresburgerFormula term
-    mkLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
-    mkLeqF :: term -> term -> PresburgerFormula term
-    mkLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
-    mkGtnF :: term -> term -> PresburgerFormula term
-    mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
-    mkModF :: term -> PositiveInteger -> term -> PresburgerFormula term
-    mkModF t1 r t2 = t1 `seq` t2 `seq` ModF t1 r t2
-    mkNegF :: PresburgerFormula term -> PresburgerFormula term
-    mkNegF f1 = f1 `seq` NegF f1
-    mkDisF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
-    mkConF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
-    mkImpF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
-    mkIffF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
-    mkAllF :: MyVar -> PresburgerFormula term -> PresburgerFormula term
-    mkAllF y f1 = f1 `seq` AllF y f1
-    mkExsF :: MyVar -> PresburgerFormula term -> PresburgerFormula term
-    mkExsF y f1 = f1 `seq` ExsF y f1
-    go :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
-    go z (ValF b) = mkValF b
-    go z (EqnF t1 t2) = mkEqnF (z t1) (z t2)
-    go z (LtnF t1 t2) = mkLtnF (z t1) (z t2)
-    go z (LeqF t1 t2) = mkLeqF (z t1) (z t2)
-    go z (GtnF t1 t2) = mkGtnF (z t1) (z t2)
-    go z (ModF t1 r t2) = mkModF (z t1) r (z t2)
-    go z (NegF f1) = mkNegF (go z f1)
-    go z (DisF f1 f2) = mkDisF (go z f1) (go z f2)
-    go z (ConF f1 f2) = mkConF (go z f1) (go z f2)
-    go z (ImpF f1 f2) = mkImpF (go z f1) (go z f2)
-    go z (IffF f1 f2) = mkIffF (go z f1) (go z f2)
-    go z (AllF y f1) = mkAllF y (go z f1)
-    go z (ExsF y f1) = mkExsF y (go z f1)

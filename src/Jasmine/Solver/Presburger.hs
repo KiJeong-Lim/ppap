@@ -16,7 +16,7 @@ checkGivenSentenceIsInTheory :: Formula -> MyProp
 checkGivenSentenceIsInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
 
 makeSubst :: [(Var, Term)] -> MySubst
-makeSubst = mkMySubst
+makeSubst = foldr consMySubst nilMySubst
 
 applySubst :: MySubst -> Formula -> Formula
 applySubst = runMySubst
