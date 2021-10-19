@@ -274,9 +274,9 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkGtnF :: PresburgerTerm -> PresburgerTerm -> MyPresburgerFormula
     mkGtnF t1 t2 = mkLtnF t2 t1
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    mkModF t1 r t2 = if r > 0 then makeCongruence (reduceTermWithMod t1) r (reduceTermWithMod t2) else error "mkModF: r must be positive" where
-        reduceTermWithMod :: PresburgerTerm -> PresburgerTerm
-        reduceTermWithMod (PresburgerTerm con coeffs) = PresburgerTerm (con `mod` r) (Map.filter (\n -> not (n == 0)) (Map.map (\n -> n `mod` r) coeffs))
+    mkModF t1 r t2 = if r > 0 then makeCongruence (modify t1) r (modify t2) else error "mkModF: r must be positive" where
+        modify :: PresburgerTerm -> PresburgerTerm
+        modify (PresburgerTerm con coeffs) = PresburgerTerm (con `mod` r) (Map.filter (\n -> not (n == 0)) (Map.map (\n -> n `mod` r) coeffs))
     mkNegF :: MyPresburgerFormula -> MyPresburgerFormula
     mkNegF (ValF b) = mkValF (not b)
     mkNegF (NegF f1) = f1
