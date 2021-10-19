@@ -92,7 +92,7 @@ instance Show term => Show (PresburgerFormula term) where
         dispatch (ModF t1 r t2) = myPrecIs 4 $ shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
         dispatch (NegF f1) = myPrecIs 3 $ strstr "~ " . showsPrec 4 f1
         dispatch (DisF f1 f2) = myPrecIs 1 $ showsPrec 1 f1 . strstr " \\/ " . showsPrec 2 f2
-        dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 2 f1 . strstr " /\\ " . showsPrec 3 f2
+        dispatch (ConF f1 f2) = myPrecIs 2 $ showsPrec 3 f1 . strstr " /\\ " . showsPrec 2 f2
         dispatch (ImpF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " -> " . showsPrec 0 f2
         dispatch (IffF f1 f2) = myPrecIs 0 $ showsPrec 1 f1 . strstr " <-> " . showsPrec 1 f2
         dispatch (AllF y f1) = myPrecIs 3 $ strstr "forall " . showsMyVar y . strstr ", " . showsPrec 3 f1
@@ -217,7 +217,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                         (EQ) -> KlassEtc (mkModF t1 r t2)
                         (GT) -> KlassMod (m1 - m2) t1 r t2
             andcatKlasses :: [PresburgerKlass] -> MyPresburgerFormula
-            andcatKlasses my_klasses = if null theCoefficients then andcatTrivialKlasses my_klasses else callWithStrictArg (curry (mkConF . andcatTrivialKlasses . snd <*> andcatNontrivialKlasses) <*> standardizeCoefficient) (List.foldl' getLCM (head theCoefficients) (tail theCoefficients)) where
+            andcatKlasses my_klasses = if null theCoefficients then andcatTrivialKlasses my_klasses else callWithStrictArg (curry (mkConF . andcatTrivialKlasses . snd <*> andcatNontrivialKlasses) <*> standardizeCoefficient) (List.foldl' getLCM 1 theCoefficients) where
                 theCoefficients :: [PositiveInteger]
                 theCoefficients = do
                     my_klass <- my_klasses
