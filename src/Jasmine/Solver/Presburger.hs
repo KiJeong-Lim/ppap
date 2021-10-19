@@ -26,7 +26,7 @@ eliminateQuantifier = discompileFormula . eliminateQuantifierReferringToTheBookW
     discompileFormula :: MyPresburgerFormula -> MyPresburgerFormulaRep
     discompileFormula f = fmap (maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed so not discompilable...")) id . discompileTerm) f
     discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
-    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con < 0 then Nothing else pure (recNat mkZero (const mkSucc) con)) <*> (sequence [ if n > 0 then pure (recNat (IVar x) (const (flip mkPlus (IVar x))) (n - 1)) else Nothing | (x, n) <- Map.toAscList coeffs ])
+    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con < 0 then Nothing else pure (recNat mkZero (const mkSucc) con)) <*> (mapM (uncurry $ \var -> \coeff -> if coeff > 0 then pure (recNat (IVar var) (const (flip mkPlus (IVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
 
 applySubstitution :: [(Var, Term)] -> Formula -> Formula
 applySubstitution = runMySubst . foldr consMySubst nilMySubst

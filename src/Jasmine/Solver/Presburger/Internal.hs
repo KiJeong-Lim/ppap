@@ -77,7 +77,7 @@ instance Show (PresburgerTerm) where
                 (EQ) -> id
                 (GT) -> strstr " + " . shows (abs con)
             ]
-    showsPrec prec t = if prec >= 5 then strstr "(" . shows t . strstr ")" else shows t
+    showsPrec prec t = if prec >= 5 then strstr "(" . showsPrec 0 t . strstr ")" else shows t
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
@@ -188,7 +188,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
             makeDNF f = [one f]
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
-        step2 x = either andcatKlassEtcs (mkConF . andcatKlassEtcs . snd <*> forNontrivialKlasses) . tryStandardizeCoefficient . constructKlasses where
+        step2 x = either andcatTrivialKlasses (mkConF . andcatTrivialKlasses . snd <*> andcatNontrivialKlasses) . refineKlasses . constructKlasses where
             constructKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
             constructKlasses = map mkKlass where
                 extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
@@ -216,8 +216,8 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                         (LT) -> KlassMod (m2 - m1) t2 r t1
                         (EQ) -> KlassEtc (mkModF t1 r t2)
                         (GT) -> KlassMod (m1 - m2) t1 r t2
-            tryStandardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass])
-            tryStandardizeCoefficient my_klasses = if null theCoefficients then Left my_klasses else callWithStrictArg (curry Right <*> makeAllCoefficientBe) (List.foldl' getLCM (head theCoefficients) (tail theCoefficients)) where
+            refineKlasses :: [PresburgerKlass] -> Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass])
+            refineKlasses my_klasses = if null theCoefficients then Left my_klasses else callWithStrictArg (curry Right <*> standardizeCoefficient) (List.foldl' getLCM (head theCoefficients) (tail theCoefficients)) where
                 theCoefficients :: [PositiveInteger]
                 theCoefficients = do
                     my_klass <- my_klasses
@@ -227,18 +227,18 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                         (KlassGtn m t1 t2) -> return m
                         (KlassMod m t1 r t2) -> return m
                         (KlassEtc f) -> []
-                makeAllCoefficientBe :: PositiveInteger -> [PresburgerKlass]
-                makeAllCoefficientBe theLCM = map dispatch my_klasses where
+                standardizeCoefficient :: PositiveInteger -> [PresburgerKlass]
+                standardizeCoefficient theLCM = map dispatch my_klasses where
                     dispatch :: PresburgerKlass -> PresburgerKlass
                     dispatch (KlassEqn m t1 t2) = KlassEqn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
                     dispatch (KlassLtn m t1 t2) = KlassLtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
                     dispatch (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
                     dispatch (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) ((theLCM `div` m) * r) (multiply (theLCM `div` m) t2)
                     dispatch (KlassEtc f) = KlassEtc f
-            andcatKlassEtcs :: [PresburgerKlass] -> MyPresburgerFormula
-            andcatKlassEtcs my_klasses = andcat [ f | (KlassEtc f) <- my_klasses ]
-            forNontrivialKlasses :: (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
-            forNontrivialKlasses (m, my_klasses) = step3
+            andcatTrivialKlasses :: [PresburgerKlass] -> MyPresburgerFormula
+            andcatTrivialKlasses my_klasses = andcat [ f | (KlassEtc f) <- my_klasses ]
+            andcatNontrivialKlasses :: (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
+            andcatNontrivialKlasses (m, my_klasses) = step3
                 ( [ (t1, t2) | (KlassEqn _ t1 t2) <- my_klasses ]
                 , [ (t1, t2) | (KlassLtn _ t1 t2) <- my_klasses ]
                 , (mkNum 1, mkNum 0) : [ (t1, t2) | (KlassGtn _ t1 t2) <- my_klasses ]
