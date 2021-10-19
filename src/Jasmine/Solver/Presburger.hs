@@ -15,8 +15,8 @@ type Formula = MyPresburgerFormulaRep
 isSentence :: Formula -> Bool
 isSentence = Set.null . getFVsInPresburgerFormulaRep
 
-tryGetTruthValue :: Formula -> Maybe MyProp
-tryGetTruthValue = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
+tryEval :: Formula -> Maybe MyProp
+tryEval = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = fmap discompile . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
@@ -26,8 +26,8 @@ eliminateQuantifier = fmap discompile . eliminateQuantifierReferringToTheBookWri
 applySubst :: [(Var, Term)] -> Formula -> Formula
 applySubst = runMySubst . foldr consMySubst nilMySubst
 
-checkGivenSentenceIsInTheory :: Formula -> MyProp
-checkGivenSentenceIsInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
+isInTheory :: Formula -> MyProp
+isInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
 
 mkNumeral :: MyNat -> Term
 mkNumeral n = if n < 0 then error "mkNumeral: negative input" else recNat mkZero (const mkSucc) n

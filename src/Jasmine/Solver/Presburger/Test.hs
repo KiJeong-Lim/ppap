@@ -21,5 +21,5 @@ testPresburger = mapM_ (shelly . showString "Presburger> " . testCase . getCase)
     testCase :: Formula -> String
     testCase f
         | not (isSentence f) = "The formula ``" ++ shows f "\'\' is not a sentence."
-        | checkGivenSentenceIsInTheory f = "The formula ``" ++ shows f "\'\' is a true sentence."
+        | isInTheory f = "The formula ``" ++ shows f "\'\' is a true sentence."
         | otherwise = "The formula ``" ++ shows f "\'\' is a false sentence."
