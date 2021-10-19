@@ -18,19 +18,19 @@ isSentence = Set.null . getFVsInPresburgerFormulaRep
 tryEval :: Formula -> Maybe MyProp
 tryEval = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
 
-eliminateQuantifier :: Formula -> Formula
-eliminateQuantifier = fmap discompile . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
-    discompile :: PresburgerTerm -> PresburgerTermRep
-    discompile (PresburgerTerm con coeffs) = List.foldl' mkPlus (if con < 0 then error "eliminateQuantifier.discompile: constant term must not be negative" else recNat mkZero (const mkSucc) con) [ if n > 0 then recNat (IVar x) (\k -> \prev -> mkPlus prev (IVar x)) (n - 1) else error "eliminateQuantifier.discompile: coefficient must be positive" | (x, n) <- Map.toAscList coeffs ]
-
 applySubst :: [(Var, Term)] -> Formula -> Formula
 applySubst = runMySubst . foldr consMySubst nilMySubst
 
 isInTheory :: Formula -> MyProp
 isInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
 
-mkNumeral :: MyNat -> Term
-mkNumeral n = if n < 0 then error "mkNumeral: negative input" else recNat mkZero (const mkSucc) n
+eliminateQuantifier :: Formula -> Formula
+eliminateQuantifier = fmap discompile . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
+    discompile :: PresburgerTerm -> PresburgerTermRep
+    discompile (PresburgerTerm con coeffs) = List.foldl' mkPlus (if con < 0 then error "eliminateQuantifier.discompile: constant term must not be negative" else recNat mkZero (const mkSucc) con) [ if n > 0 then recNat (IVar x) (const (flip mkPlus (IVar x))) (n - 1) else error "eliminateQuantifier.discompile: coefficient must be positive" | (x, n) <- Map.toAscList coeffs ]
+
+mkNum :: MyNat -> Term
+mkNum n = if n < 0 then error "mkNum: negative input" else recNat mkZero (const mkSucc) n
 
 mkIVar :: Var -> Term
 mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "mkIVar: bad individual variable"
