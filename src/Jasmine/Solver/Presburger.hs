@@ -15,8 +15,8 @@ type Formula = MyPresburgerFormulaRep
 isSentence :: Formula -> Bool
 isSentence = Set.null . getFVsInPresburgerFormulaRep
 
-tryEval :: Formula -> Maybe MyProp
-tryEval = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
+tryEvaluate :: Formula -> Maybe MyProp
+tryEvaluate = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
 
 isInTheory :: Formula -> MyProp
 isInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
@@ -26,13 +26,13 @@ eliminateQuantifier = discompileFormula . eliminateQuantifierReferringToTheBookW
     discompileFormula :: MyPresburgerFormula -> MyPresburgerFormulaRep
     discompileFormula f = fmap (maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed so not discompilable...")) id . discompileTerm) f
     discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
-    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con < 0 then Nothing else Just (recNat mkZero (const mkSucc) con)) <*> (sequence [ if n > 0 then Just (recNat (IVar x) (const (flip mkPlus (IVar x))) (n - 1)) else Nothing | (x, n) <- Map.toAscList coeffs ])
+    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con < 0 then Nothing else pure (recNat mkZero (const mkSucc) con)) <*> (sequence [ if n > 0 then pure (recNat (IVar x) (const (flip mkPlus (IVar x))) (n - 1)) else Nothing | (x, n) <- Map.toAscList coeffs ])
 
-applySubst :: [(Var, Term)] -> Formula -> Formula
-applySubst = runMySubst . foldr consMySubst nilMySubst
+applySubstitution :: [(Var, Term)] -> Formula -> Formula
+applySubstitution = runMySubst . foldr consMySubst nilMySubst
 
-composeSubst :: [(Var, Term)] -> [(Var, Term)] -> [(Var, Term)]
-composeSubst outer_map inner_map = map (fmap (flip applyMySubstToTermRep (foldr consMySubst nilMySubst outer_map))) inner_map ++ outer_map
+composeSubstitution :: [(Var, Term)] -> [(Var, Term)] -> [(Var, Term)]
+composeSubstitution outer_map inner_map = map (fmap (flip applyMySubstToTermRep (foldr consMySubst nilMySubst outer_map))) inner_map ++ outer_map
 
 mkNum :: MyNat -> Term
 mkNum n = if n < 0 then error "Presburger.mkNum: A negative input is given..." else recNat mkZero (const mkSucc) n
