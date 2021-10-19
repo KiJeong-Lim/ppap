@@ -240,7 +240,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
             forExtras :: [PresburgerKlass] -> MyPresburgerFormula
             forExtras my_klasses = andcat [ f | (KlassEtc f) <- my_klasses ]
             forMatters :: (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
-            forMatters (m, my_klasses) = step3 
+            forMatters (m, my_klasses) = step3
                 ( [ (t1, t2) | (KlassEqn _ t1 t2) <- my_klasses ]
                 , [ (t1, t2) | (KlassLtn _ t1 t2) <- my_klasses ]
                 , (mkNum 1, mkNum 0) : [ (t1, t2) | (KlassGtn _ t1 t2) <- my_klasses ]
