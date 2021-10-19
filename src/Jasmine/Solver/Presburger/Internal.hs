@@ -188,7 +188,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
             makeDNF f = [one f]
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
-        step2 x = either andcatTrivialKlasses (mkConF . andcatTrivialKlasses . snd <*> andcatNontrivialKlasses) . refineKlasses . constructKlasses where
+        step2 x = andcatKlasses . constructKlasses where
             constructKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
             constructKlasses = map mkKlass where
                 extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
@@ -216,8 +216,8 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                         (LT) -> KlassMod (m2 - m1) t2 r t1
                         (EQ) -> KlassEtc (mkModF t1 r t2)
                         (GT) -> KlassMod (m1 - m2) t1 r t2
-            refineKlasses :: [PresburgerKlass] -> Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass])
-            refineKlasses my_klasses = if null theCoefficients then Left my_klasses else callWithStrictArg (curry Right <*> standardizeCoefficient) (List.foldl' getLCM (head theCoefficients) (tail theCoefficients)) where
+            andcatKlasses :: [PresburgerKlass] -> MyPresburgerFormula
+            andcatKlasses my_klasses = if null theCoefficients then andcatTrivialKlasses my_klasses else callWithStrictArg (curry (mkConF . andcatTrivialKlasses . snd <*> andcatNontrivialKlasses) <*> standardizeCoefficient) (List.foldl' getLCM (head theCoefficients) (tail theCoefficients)) where
                 theCoefficients :: [PositiveInteger]
                 theCoefficients = do
                     my_klass <- my_klasses
