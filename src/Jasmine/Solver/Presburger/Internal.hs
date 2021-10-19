@@ -188,16 +188,16 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
             makeDNF f = [one f]
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
-        step2 x = andcatKlasses . constructKlasses where
-            constructKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
-            constructKlasses = map mkKlass where
+        step2 x = andcatKlasses . toKlasses where
+            toKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
+            toKlasses = map constructKlass where
                 extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
                 extractCoefficient t = maybe (0, t) (\n -> (n, PresburgerTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
-                mkKlass :: MyPresburgerFormula -> PresburgerKlass
-                mkKlass (EqnF t1 t2) = constructEqnF (extractCoefficient t1) (extractCoefficient t2)
-                mkKlass (LtnF t1 t2) = constructLtnF (extractCoefficient t1) (extractCoefficient t2)
-                mkKlass (ModF t1 r t2) = constructModF (extractCoefficient t1) r (extractCoefficient t2)
-                mkKlass f = KlassEtc f
+                constructKlass :: MyPresburgerFormula -> PresburgerKlass
+                constructKlass (EqnF t1 t2) = constructEqnF (extractCoefficient t1) (extractCoefficient t2)
+                constructKlass (LtnF t1 t2) = constructLtnF (extractCoefficient t1) (extractCoefficient t2)
+                constructKlass (ModF t1 r t2) = constructModF (extractCoefficient t1) r (extractCoefficient t2)
+                constructKlass f = KlassEtc f
                 constructEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
                 constructEqnF (m1, t1) (m2, t2)
                     = case m1 `compare` m2 of
@@ -235,16 +235,16 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                     dispatch (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
                     dispatch (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) ((theLCM `div` m) * r) (multiply (theLCM `div` m) t2)
                     dispatch (KlassEtc f) = KlassEtc f
-                andcatTrivialKlasses :: [PresburgerKlass] -> MyPresburgerFormula
-                andcatTrivialKlasses my_klasses = andcat [ f | (KlassEtc f) <- my_klasses ]
-                andcatNontrivialKlasses :: (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
-                andcatNontrivialKlasses (m, my_klasses) = step3
-                    ( [ (t1, t2) | (KlassEqn _ t1 t2) <- my_klasses ]
-                    , [ (t1, t2) | (KlassLtn _ t1 t2) <- my_klasses ]
-                    , (mkNum 1, mkNum 0) : [ (t1, t2) | (KlassGtn _ t1 t2) <- my_klasses ]
-                    , (mkNum 0, m, mkNum 0) : [ (t1, r, t2) | (KlassMod _ t1 r t2) <- my_klasses ]
-                    , List.foldl' getLCM m [ r | (KlassMod _ t1 r t2) <- my_klasses ]
-                    )
+            andcatTrivialKlasses :: [PresburgerKlass] -> MyPresburgerFormula
+            andcatTrivialKlasses klasses = andcat [ f | (KlassEtc f) <- klasses ]
+            andcatNontrivialKlasses :: (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
+            andcatNontrivialKlasses (m, klasses) = step3
+                ( [ (t1, t2) | (KlassEqn _ t1 t2) <- klasses ]
+                , [ (t1, t2) | (KlassLtn _ t1 t2) <- klasses ]
+                , (mkNum 1, mkNum 0) : [ (t1, t2) | (KlassGtn _ t1 t2) <- klasses ]
+                , (mkNum 0, m, mkNum 0) : [ (t1, r, t2) | (KlassMod _ t1 r t2) <- klasses ]
+                , List.foldl' getLCM m [ r | (KlassMod _ t1 r t2) <- klasses ]
+                )
         step3 :: ([(PresburgerTerm, PresburgerTerm)], [(PresburgerTerm, PresburgerTerm)], [(PresburgerTerm, PresburgerTerm)], [(PresburgerTerm, PositiveInteger, PresburgerTerm)], PositiveInteger) -> MyPresburgerFormula
         step3 (theEqns0, theLtns0, theGtns0, theMods0, theR)
             = case theEqns0 of
