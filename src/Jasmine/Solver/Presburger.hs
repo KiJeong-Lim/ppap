@@ -15,18 +15,32 @@ type Formula = MyPresburgerFormulaRep
 isSentence :: Formula -> Bool
 isSentence = Set.null . getFVsInPresburgerFormulaRep
 
-tryEvaluate :: Formula -> Maybe MyProp
+tryEvaluate :: Formula -> Maybe Bool
 tryEvaluate = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
 
-isInTheory :: Formula -> MyProp
+isInTheory :: Formula -> Bool
 isInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
 
 eliminateQuantifier :: Formula -> Formula
-eliminateQuantifier = discompileFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
-    discompileFormula :: MyPresburgerFormula -> MyPresburgerFormulaRep
-    discompileFormula f = fmap (maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed so not discompilable...")) id . discompileTerm) f
+eliminateQuantifier = convert . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
+    convert :: MyPresburgerFormula -> MyPresburgerFormulaRep
+    convert f = maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
     discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
-    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con < 0 then Nothing else pure (recNat mkZero (const mkSucc) con)) <*> (mapM (uncurry $ \var -> \coeff -> if coeff > 0 then pure (recNat (IVar var) (const (flip mkPlus (IVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
+    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (mapM (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (IVar var) (const (flip mkPlus (IVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
+    discompileFormula :: MyPresburgerFormula -> Maybe MyPresburgerFormulaRep
+    discompileFormula (ValF b) = pure (ValF b)
+    discompileFormula (EqnF t1 t2) = pure EqnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (LtnF t1 t2) = pure LtnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (LeqF t1 t2) = pure LeqF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (GtnF t1 t2) = pure GtnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (ModF t1 r t2) = pure ModF <*> discompileTerm t1 <*> (if r > 0 then pure r else Nothing) <*> discompileTerm t2
+    discompileFormula (NegF f1) = pure NegF <*> discompileFormula f1
+    discompileFormula (DisF f1 f2) = pure DisF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (ConF f1 f2) = pure ConF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (ImpF f1 f2) = pure ImpF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (IffF f1 f2) = pure IffF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (AllF y f1) = pure AllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
+    discompileFormula (ExsF y f1) = pure ExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
 
 applySubstitution :: [(Var, Term)] -> Formula -> Formula
 applySubstitution = runMySubst . foldr consMySubst nilMySubst
@@ -35,7 +49,7 @@ composeSubstitution :: [(Var, Term)] -> [(Var, Term)] -> [(Var, Term)]
 composeSubstitution outer_map inner_map = [ (x, applyMySubstToTermRep t (foldr consMySubst nilMySubst outer_map)) | (x, t) <- inner_map ] ++ outer_map
 
 mkNum :: MyNat -> Term
-mkNum n = if n < 0 then error "Presburger.mkNum: A negative input is given..." else recNat mkZero (const mkSucc) n
+mkNum n = if n >= 0 then recNat mkZero (const mkSucc) n else error "Presburger.mkNum: A negative input is given..."
 
 mkIVar :: Var -> Term
 mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "Presburger.mkIVar: A bad individual variable given..."

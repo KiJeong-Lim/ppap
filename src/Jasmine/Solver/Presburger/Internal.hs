@@ -184,6 +184,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
             eliminateNegF (ConF f1 f2) = mkConF (eliminateNegF f1) (eliminateNegF f2)
             eliminateNegF f = f
             makeDNF :: MyPresburgerFormula -> [[MyPresburgerFormula]]
+            makeDNF (ValF b) = if b then pure [] else []
             makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
             makeDNF f = [one f]
@@ -197,7 +198,6 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                 constructKlass (EqnF t1 t2) = constructEqnF (extractCoefficient t1) (extractCoefficient t2)
                 constructKlass (LtnF t1 t2) = constructLtnF (extractCoefficient t1) (extractCoefficient t2)
                 constructKlass (ModF t1 r t2) = constructModF (extractCoefficient t1) r (extractCoefficient t2)
-                constructKlass f = KlassEtc f
                 constructEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
                 constructEqnF (m1, t1) (m2, t2)
                     = case m1 `compare` m2 of
