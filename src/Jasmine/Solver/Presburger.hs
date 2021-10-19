@@ -5,7 +5,7 @@ import Z.Algo.Function
 
 type Var = MyVar
 
-type TermRep = PresburgerTermRep
+type Term = PresburgerTermRep
 
 type Formula = MyPresburgerFormulaRep
 
@@ -15,43 +15,43 @@ isSentence = null . getFVsInPresburgerFormulaRep
 checkGivenSentenceIsInTheory :: Formula -> MyProp
 checkGivenSentenceIsInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
 
-makeSubst :: [(Var, TermRep)] -> MySubst
+makeSubst :: [(Var, Term)] -> MySubst
 makeSubst = mkMySubst
 
 applySubst :: MySubst -> Formula -> Formula
 applySubst = runMySubst
 
-substituteOne :: Var -> TermRep -> Formula -> Formula
+substituteOne :: Var -> Term -> Formula -> Formula
 substituteOne = curry substitute
 
-makeNumeral :: MyNat -> TermRep
+makeNumeral :: MyNat -> Term
 makeNumeral n = if n < 0 then error "makeNumeral: negative input" else recNat makeZero (const makeSucc) n
 
-makeIVar :: Var -> TermRep
+makeIVar :: Var -> Term
 makeIVar x = if x >= theMinNumOfMyVar then IVar x else error "makeIVar: bad individual variable"
 
-makeZero :: TermRep
+makeZero :: Term
 makeZero = Zero
 
-makeSucc :: TermRep -> TermRep
+makeSucc :: Term -> Term
 makeSucc t1 = t1 `seq` Succ t1
 
-makePlus :: TermRep -> TermRep -> TermRep
+makePlus :: Term -> Term -> Term
 makePlus t1 t2 = t1 `seq` t2 `seq` Plus t1 t2
 
-makeEqnF :: TermRep -> TermRep -> Formula
+makeEqnF :: Term -> Term -> Formula
 makeEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
 
-makeLtnF :: TermRep -> TermRep -> Formula
+makeLtnF :: Term -> Term -> Formula
 makeLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
 
-makeLeqF :: TermRep -> TermRep -> Formula
+makeLeqF :: Term -> Term -> Formula
 makeLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
 
-makeGtnF :: TermRep -> TermRep -> Formula
+makeGtnF :: Term -> Term -> Formula
 makeGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
 
-makeModF :: TermRep -> PositiveInteger -> TermRep -> Formula
+makeModF :: Term -> PositiveInteger -> Term -> Formula
 makeModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "makeModF: r must be positive"
 
 makeBotF :: Formula
