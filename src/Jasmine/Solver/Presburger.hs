@@ -1,5 +1,8 @@
 module Jasmine.Solver.Presburger where
 
+import qualified Data.List as List
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import Jasmine.Solver.Presburger.Internal
 import Z.Algo.Function
 
@@ -10,70 +13,72 @@ type Term = PresburgerTermRep
 type Formula = MyPresburgerFormulaRep
 
 isSentence :: Formula -> Bool
-isSentence = null . getFVsInPresburgerFormulaRep
+isSentence = Set.null . getFVsInPresburgerFormulaRep
+
+tryGetTruthValue :: Formula -> Maybe MyProp
+tryGetTruthValue = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
+
+eliminateQuantifier :: Formula -> Formula
+eliminateQuantifier = fmap discompile . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
+    discompile :: PresburgerTerm -> PresburgerTermRep
+    discompile (PresburgerTerm con coeffs) = List.foldl' mkPlus (if con < 0 then error "eliminateQuantifier.discompile: constant term must not be negative" else recNat mkZero (const mkSucc) con) [ if n > 0 then recNat (IVar x) (\k -> \prev -> mkPlus prev (IVar x)) (n - 1) else error "eliminateQuantifier.discompile: coefficient must be positive" | (x, n) <- Map.toAscList coeffs ]
+
+applySubst :: [(Var, Term)] -> Formula -> Formula
+applySubst = runMySubst . foldr consMySubst nilMySubst
 
 checkGivenSentenceIsInTheory :: Formula -> MyProp
-checkGivenSentenceIsInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
+checkGivenSentenceIsInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
 
-makeSubst :: [(Var, Term)] -> MySubst
-makeSubst = foldr consMySubst nilMySubst
+mkNumeral :: MyNat -> Term
+mkNumeral n = if n < 0 then error "mkNumeral: negative input" else recNat mkZero (const mkSucc) n
 
-applySubst :: MySubst -> Formula -> Formula
-applySubst = runMySubst
+mkIVar :: Var -> Term
+mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "mkIVar: bad individual variable"
 
-substituteOne :: Var -> Term -> Formula -> Formula
-substituteOne = curry (applySubst . makeSubst . pure)
+mkZero :: Term
+mkZero = Zero
 
-makeNumeral :: MyNat -> Term
-makeNumeral n = if n < 0 then error "makeNumeral: negative input" else recNat makeZero (const makeSucc) n
+mkSucc :: Term -> Term
+mkSucc t1 = t1 `seq` Succ t1
 
-makeIVar :: Var -> Term
-makeIVar x = if x >= theMinNumOfMyVar then IVar x else error "makeIVar: bad individual variable"
+mkPlus :: Term -> Term -> Term
+mkPlus t1 t2 = t1 `seq` t2 `seq` Plus t1 t2
 
-makeZero :: Term
-makeZero = Zero
+mkEqnF :: Term -> Term -> Formula
+mkEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
 
-makeSucc :: Term -> Term
-makeSucc t1 = t1 `seq` Succ t1
+mkLtnF :: Term -> Term -> Formula
+mkLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
 
-makePlus :: Term -> Term -> Term
-makePlus t1 t2 = t1 `seq` t2 `seq` Plus t1 t2
+mkLeqF :: Term -> Term -> Formula
+mkLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
 
-makeEqnF :: Term -> Term -> Formula
-makeEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
+mkGtnF :: Term -> Term -> Formula
+mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
 
-makeLtnF :: Term -> Term -> Formula
-makeLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
+mkModF :: Term -> PositiveInteger -> Term -> Formula
+mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "mkModF: r must be positive"
 
-makeLeqF :: Term -> Term -> Formula
-makeLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
+mkBotF :: Formula
+mkBotF = ValF False
 
-makeGtnF :: Term -> Term -> Formula
-makeGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
+mkNegF :: Formula -> Formula
+mkNegF f1 = f1 `seq` NegF f1
 
-makeModF :: Term -> PositiveInteger -> Term -> Formula
-makeModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "makeModF: r must be positive"
+mkConF :: Formula -> Formula -> Formula
+mkConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
 
-makeBotF :: Formula
-makeBotF = ValF False
+mkDisF :: Formula -> Formula -> Formula
+mkDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
 
-makeNegF :: Formula -> Formula
-makeNegF f1 = f1 `seq` NegF f1
+mkImpF :: Formula -> Formula -> Formula
+mkImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
 
-makeConF :: Formula -> Formula -> Formula
-makeConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
+mkIffF :: Formula -> Formula -> Formula
+mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
 
-makeDisF :: Formula -> Formula -> Formula
-makeDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
+mkAllF :: Var -> Formula -> Formula
+mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "mkAllF: bad individual variable"
 
-makeImpF :: Formula -> Formula -> Formula
-makeImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
-
-makeIffF :: Formula -> Formula -> Formula
-makeIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
-
-makeAllF :: Var -> Formula -> Formula
-makeAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "makeAllF: bad individual variable"
-
-makeExsF :: Var -> Formula -> Formula
-makeExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "makeExsF: bad individual variable"
+mkExsF :: Var -> Formula -> Formula
+mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "mkExsF: bad individual variable"
