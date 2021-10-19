@@ -65,12 +65,12 @@ instance Show (PresburgerTerm) where
         | otherwise = strcat
             [ ppunc " + "
                 [ case coeff of
-                    1 -> showsMyVar x
+                    1 -> showsMyVar var
                     n -> strcat
                         [ if n < 0 then strstr "(" . shows n . strstr ")" else shows n
-                        , strstr " " . showsMyVar x
+                        , strstr " " . showsMyVar var
                         ]
-                | (x, coeff) <- Map.toAscList coeffs
+                | (var, coeff) <- Map.toAscList coeffs
                 ]
             , case con `compare` 0 of
                 (LT) -> strstr " - " . shows (abs con)
