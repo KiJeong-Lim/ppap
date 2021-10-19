@@ -298,7 +298,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkDisF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
     mkDisF f1 f2 = fromJust (trick f1 (f1, f2) /> trick f2 (f2, f1) /> Just (DisF f1 f2))
     mkConF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
-    mkConF f1 f2 = fromJust (trick f1 (f2, f1) /> trick f2 (f1, f2) /> Just (ConF f1 f2))
+    mkConF f1 f2 = fromJust (trick f2 (f1, f2) /> trick f1 (f2, f1) /> Just (ConF f1 f2))
     mkImpF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
     mkImpF f1 f2 = mkDisF (mkNegF f1) f2
     mkIffF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
@@ -320,8 +320,8 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     getLCM :: PositiveInteger -> PositiveInteger -> PositiveInteger
     getLCM k1 k2 = (k1 * k2) `div` (getGCD k1 k2)
     trick :: MyPresburgerFormula -> (MyPresburgerFormula, MyPresburgerFormula) -> Maybe MyPresburgerFormula
-    trick (ValF b) = if b then Just . fst else Just . snd
-    trick _ = const Nothing
+    trick (ValF b) = if b then pure . fst else pure . snd
+    trick _ = pure Nothing
 
 checkTruthValueOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
 checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
