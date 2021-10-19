@@ -372,11 +372,11 @@ nilMySubst z = IVar z
 consMySubst :: (MyVar, PresburgerTermRep) -> MySubst -> MySubst
 consMySubst (x, t) sigma z = if x == z then t else applyMySubstToVar z sigma
 
-makeMySubst :: [(MyVar, PresburgerTermRep)] -> MySubst
-makeMySubst = foldr consMySubst nilMySubst
+mkMySubst :: [(MyVar, PresburgerTermRep)] -> MySubst
+mkMySubst = foldr consMySubst nilMySubst
 
 substitute :: (MyVar, PresburgerTermRep) -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-substitute = runMySubst . makeMySubst . one
+substitute = runMySubst . mkMySubst . one
 
 applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
 applyMySubstToVar x sigma = sigma x

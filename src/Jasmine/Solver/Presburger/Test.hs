@@ -5,7 +5,7 @@ import Jasmine.Solver.Presburger.Internal
 import Z.System.Shelly
 
 testPresburger :: IO ()
-testPresburger = mapM_ (shelly . showString "Presburger>" . runCase . getCase) [1 .. 12] where
+testPresburger = mapM_ (shelly . showString "Presburger> " . runCase . getCase) [1 .. 12] where
     getCase :: Int -> MyPresburgerFormulaRep
     getCase 1 = (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
     getCase 2 = (AllF 1 (LeqF (IVar 1) (IVar 1)))
@@ -21,6 +21,6 @@ testPresburger = mapM_ (shelly . showString "Presburger>" . runCase . getCase) [
     getCase 12 = (ExsF 1 (AllF 2 (LtnF (IVar 2) (IVar 1))))
     runCase :: MyPresburgerFormulaRep -> String
     runCase f
-        | not (null (getFVsInPresburgerFormulaRep f)) = " The formula ``" ++ shows f "\'\' is not a sentence."
-        | checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic f = " The formula ``" ++ shows f "\'\' is a true sentence."
-        | otherwise = " The formula ``" ++ shows f "\'\' is a false sentence."
+        | not (isSentence f) = "The formula ``" ++ shows f "\'\' is not a sentence."
+        | checkGivenSentenceIsInTheory f = "The formula ``" ++ shows f "\'\' is a true sentence."
+        | otherwise = "The formula ``" ++ shows f "\'\' is a false sentence."

@@ -3,67 +3,77 @@ module Jasmine.Solver.Presburger where
 import Jasmine.Solver.Presburger.Internal
 import Z.Algo.Function
 
-substitutePresburger :: MyVar -> PresburgerTermRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-substitutePresburger = curry substitute
+type Var = MyVar
 
-checkPresburgerFormulaIsSentence :: MyPresburgerFormulaRep -> Bool
-checkPresburgerFormulaIsSentence = null . getFVsInPresburgerFormulaRep
+type TermRep = PresburgerTermRep
 
-checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic :: MyPresburgerFormulaRep -> MyProp
-checkGivenSentenceIsInTheTheoryOfPresburgerArithmetic = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
+type Formula = MyPresburgerFormulaRep
 
-makeNumeral :: MyNat -> PresburgerTermRep
-makeNumeral n
-    | n < 0 = error "makeNumeral: negative input"
-    | otherwise = recNat makeZero (const makeSucc) n
+isSentence :: Formula -> Bool
+isSentence = null . getFVsInPresburgerFormulaRep
 
-makeIVar :: MyVar -> PresburgerTermRep
+checkGivenSentenceIsInTheory :: Formula -> MyProp
+checkGivenSentenceIsInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm
+
+makeSubst :: [(Var, TermRep)] -> MySubst
+makeSubst = mkMySubst
+
+applySubst :: MySubst -> Formula -> Formula
+applySubst = runMySubst
+
+substituteOne :: Var -> TermRep -> Formula -> Formula
+substituteOne = curry substitute
+
+makeNumeral :: MyNat -> TermRep
+makeNumeral n = if n < 0 then error "makeNumeral: negative input" else recNat makeZero (const makeSucc) n
+
+makeIVar :: Var -> TermRep
 makeIVar x = if x >= theMinNumOfMyVar then IVar x else error "makeIVar: bad individual variable"
 
-makeZero :: PresburgerTermRep
+makeZero :: TermRep
 makeZero = Zero
 
-makeSucc :: PresburgerTermRep -> PresburgerTermRep
+makeSucc :: TermRep -> TermRep
 makeSucc t1 = t1 `seq` Succ t1
 
-makePlus :: PresburgerTermRep -> PresburgerTermRep -> PresburgerTermRep
+makePlus :: TermRep -> TermRep -> TermRep
 makePlus t1 t2 = t1 `seq` t2 `seq` Plus t1 t2
 
-makeEqnF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+makeEqnF :: TermRep -> TermRep -> Formula
 makeEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
 
-makeLtnF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+makeLtnF :: TermRep -> TermRep -> Formula
 makeLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
 
-makeLeqF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+makeLeqF :: TermRep -> TermRep -> Formula
 makeLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
 
-makeGtnF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+makeGtnF :: TermRep -> TermRep -> Formula
 makeGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
 
-makeModF :: PresburgerTermRep -> PositiveInteger -> PresburgerTermRep -> MyPresburgerFormulaRep
+makeModF :: TermRep -> PositiveInteger -> TermRep -> Formula
 makeModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "makeModF: r must be positive"
 
-makeBotF :: MyPresburgerFormulaRep
+makeBotF :: Formula
 makeBotF = ValF False
 
-makeNegF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+makeNegF :: Formula -> Formula
 makeNegF f1 = f1 `seq` NegF f1
 
-makeConF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+makeConF :: Formula -> Formula -> Formula
 makeConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
 
-makeDisF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+makeDisF :: Formula -> Formula -> Formula
 makeDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
 
-makeImpF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+makeImpF :: Formula -> Formula -> Formula
 makeImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
 
-makeIffF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+makeIffF :: Formula -> Formula -> Formula
 makeIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
 
-makeAllF :: MyVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+makeAllF :: Var -> Formula -> Formula
 makeAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "makeAllF: bad individual variable"
 
-makeExsF :: MyVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+makeExsF :: Var -> Formula -> Formula
 makeExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "makeExsF: bad individual variable"
