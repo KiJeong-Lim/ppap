@@ -58,22 +58,26 @@ data PresburgerTermRep
     deriving (Eq)
 
 instance Show (PresburgerTerm) where
-    showsPrec 0 (PresburgerTerm con coeffs) = strcat
-        [ ppunc " + "
-            [ if n == 1
-                then showsMyVar x
-                else strcat
-                    [ if n < 0 then strstr "(" . shows n . strstr ")" else shows n
-                    , strstr " " . showsMyVar x
-                    ]
-            | (x, n) <- Map.toAscList coeffs
+    showsPrec 0 (PresburgerTerm con coeffs)
+        | Map.null coeffs = shows con
+        | otherwise = strcat
+            [ ppunc " + "
+                [ if n == 1
+                    then showsMyVar x
+                    else strcat
+                        [ if n < 0 then strstr "(" . shows n . strstr ")" else shows n
+                        , strstr " " . showsMyVar x
+                        ]
+                | (x, n) <- Map.toAscList coeffs
+                ]
+            , case con `compare` 0 of
+                (LT) -> strstr " - " . shows (abs con)
+                (EQ) -> id
+                (GT) -> strstr " + " . shows (abs con)
             ]
-        , case con `compare` 0 of
-            (LT) -> if Map.null coeffs then shows con else strstr " - " . shows (abs con)
-            (EQ) -> if Map.null coeffs then shows con else id
-            (GT) -> if Map.null coeffs then shows con else strstr " + " . shows (abs con)
-        ]
-    showsPrec prec t = if prec > 5 then strstr "(" . shows t . strstr ")" else shows t
+    showsPrec prec t
+        | prec >= 5 = strstr "(" . shows t . strstr ")"
+        | otherwise = shows t
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
@@ -137,9 +141,9 @@ compilePresburgerTerm = go where
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier where
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
-    orcat fs = if null fs then mkBotF else List.foldl' mkDisF (head fs) (tail fs)
+    orcat fs = if null fs then mkValF False else List.foldl' mkDisF (head fs) (tail fs)
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
-    andcat = foldr mkConF mkTopF
+    andcat = foldr mkConF (mkValF True)
     eliminateQuantifier :: MyPresburgerFormula -> MyPresburgerFormula
     eliminateQuantifier = asterify . simplify where
         simplify :: MyPresburgerFormula -> MyPresburgerFormula
@@ -184,28 +188,31 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
             makeDNF f = [one f]
         step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
-        step2 x = buildBigConF . standardizeCoefficient . mkKlasses where
-            mkKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
-            mkKlasses = map mkKlass where
+        step2 x = buildBigConF . standardizeCoefficient . constructKlasses where
+            constructKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
+            constructKlasses = map mkKlass where
                 extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
                 extractCoefficient t = maybe (0, t) (\n -> (n, PresburgerTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
                 mkKlass :: MyPresburgerFormula -> PresburgerKlass
-                mkKlass (EqnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
-                    ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        (LT) -> KlassEqn (m2 - m1) t2' t1'
-                        (EQ) -> KlassEtc (mkEqnF t1' t2')
-                        (GT) -> KlassEqn (m1 - m2) t1' t2'
-                mkKlass (LtnF t1 t2) = case (extractCoefficient t1, extractCoefficient t2) of
-                    ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        (LT) -> KlassGtn (m2 - m1) t2' t1'
-                        (EQ) -> KlassEtc (mkLtnF t1' t2')
-                        (GT) -> KlassLtn (m1 - m2) t1' t2'
-                mkKlass (ModF t1 r t2) = case (extractCoefficient t1, extractCoefficient t2) of
-                    ((m1, t1'), (m2, t2')) -> case m1 `compare` m2 of
-                        (LT) -> KlassMod (m2 - m1) t2' r t1'
-                        (EQ) -> KlassEtc (mkModF t1' r t2')
-                        (GT) -> KlassMod (m1 - m2) t1' r t2'
+                mkKlass (EqnF t1 t2) = constructEqnF (extractCoefficient t1) (extractCoefficient t2)
+                mkKlass (LtnF t1 t2) = constructLtnF (extractCoefficient t1) (extractCoefficient t2)
+                mkKlass (ModF t1 r t2) = constructModF (extractCoefficient t1) r (extractCoefficient t2)
                 mkKlass f = KlassEtc f
+                constructEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+                constructEqnF (m1, t1) (m2, t2) = case m1 `compare` m2 of
+                    (LT) -> KlassEqn (m2 - m1) t2 t1
+                    (EQ) -> KlassEtc (mkEqnF t1 t2)
+                    (GT) -> KlassEqn (m1 - m2) t1 t2
+                constructLtnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+                constructLtnF (m1, t1) (m2, t2) = case m1 `compare` m2 of
+                    (LT) -> KlassGtn (m2 - m1) t2 t1
+                    (EQ) -> KlassEtc (mkLtnF t1 t2)
+                    (GT) -> KlassLtn (m1 - m2) t1 t2
+                constructModF :: (MyCoefficient, PresburgerTerm) -> PositiveInteger -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+                constructModF (m1, t1) r (m2, t2) = case m1 `compare` m2 of
+                    (LT) -> KlassMod (m2 - m1) t2 r t1
+                    (EQ) -> KlassEtc (mkModF t1 r t2)
+                    (GT) -> KlassMod (m1 - m2) t1 r t2
             standardizeCoefficient :: [PresburgerKlass] -> Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass])
             standardizeCoefficient my_klasses = maybe (Left my_klasses) (curry Right <*> theStandardizedKlasses) theMaybeLCM where
                 theMaybeLCM :: Maybe PositiveInteger
@@ -274,7 +281,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkGtnF :: PresburgerTerm -> PresburgerTerm -> MyPresburgerFormula
     mkGtnF t1 t2 = mkLtnF t2 t1
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    mkModF t1 r t2 = if r > 0 then makeCongruence (modify t1) r (modify t2) else error "mkModF: r must be positive" where
+    mkModF t1 r t2 = if r > 0 then constructModF (modify t1) r (modify t2) else error "mkModF: r must be positive" where
         modify :: PresburgerTerm -> PresburgerTerm
         modify (PresburgerTerm con coeffs) = PresburgerTerm (con `mod` r) (Map.filter (\n -> not (n == 0)) (Map.map (\n -> n `mod` r) coeffs))
     mkNegF :: MyPresburgerFormula -> MyPresburgerFormula
@@ -282,12 +289,12 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkNegF (NegF f1) = f1
     mkNegF f1 = NegF f1
     mkDisF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
-    mkDisF (ValF b1) f2 = if b1 then mkTopF else f2
-    mkDisF f1 (ValF b2) = if b2 then mkTopF else f1
+    mkDisF (ValF b1) f2 = if b1 then ValF b1 else f2
+    mkDisF f1 (ValF b2) = if b2 then ValF b2 else f1
     mkDisF f1 f2 = DisF f1 f2
     mkConF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
-    mkConF (ValF b1) f2 = if b1 then f2 else mkBotF
-    mkConF f1 (ValF b2) = if b2 then f1 else mkBotF
+    mkConF (ValF b1) f2 = if b1 then f2 else ValF b1
+    mkConF f1 (ValF b2) = if b2 then f1 else ValF b2
     mkConF f1 f2 = ConF f1 f2
     mkImpF :: MyPresburgerFormula -> MyPresburgerFormula -> MyPresburgerFormula
     mkImpF f1 f2 = mkDisF (mkNegF f1) f2
@@ -297,14 +304,10 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkAllF y f1 = mkNegF (mkExsF y (mkNegF f1))
     mkExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     mkExsF y f1 = f1 `seq` ExsF y f1
-    mkTopF :: MyPresburgerFormula
-    mkTopF = mkValF True
-    mkBotF :: MyPresburgerFormula
-    mkBotF = mkValF False
-    makeCongruence :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    makeCongruence t1 r t2
+    constructModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
+    constructModF t1 r t2
         | r > 0 = if getCoefficients t1 == getCoefficients t2 then mkValF (congruenceModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
-        | otherwise = error "makeCongruence: negative input"
+        | otherwise = error "constructModF: r must be positive"
     multiply :: MyNat -> PresburgerTerm -> PresburgerTerm
     multiply k t
         | k == 0 = mkNum 0
@@ -374,9 +377,6 @@ consMySubst (x, t) sigma z = if x == z then t else applyMySubstToVar z sigma
 
 mkMySubst :: [(MyVar, PresburgerTermRep)] -> MySubst
 mkMySubst = foldr consMySubst nilMySubst
-
-substitute :: (MyVar, PresburgerTermRep) -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-substitute = runMySubst . mkMySubst . one
 
 applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
 applyMySubstToVar x sigma = sigma x

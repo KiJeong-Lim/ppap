@@ -22,7 +22,7 @@ applySubst :: MySubst -> Formula -> Formula
 applySubst = runMySubst
 
 substituteOne :: Var -> Term -> Formula -> Formula
-substituteOne = curry substitute
+substituteOne = curry (applySubst . makeSubst . pure)
 
 makeNumeral :: MyNat -> Term
 makeNumeral n = if n < 0 then error "makeNumeral: negative input" else recNat makeZero (const makeSucc) n
