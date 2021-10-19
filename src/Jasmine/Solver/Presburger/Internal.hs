@@ -104,7 +104,7 @@ instance Show (PresburgerTermRep) where
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: PresburgerTermRep -> ShowS
         dispatch (IVar x) = myPrecIs 11 $ showsMyVar x
-        dispatch (Zero) = myPrecIs 11 $ strstr "0"
+        dispatch (Zero) = myPrecIs 11 $ strstr "O"
         dispatch (Succ t1) = myPrecIs 10 $ strstr "S " . showsPrec 11 t1
         dispatch (Plus t1 t2) = myPrecIs 6 $ showsPrec 6 t1 . strstr " + " . showsPrec 7 t2
 
