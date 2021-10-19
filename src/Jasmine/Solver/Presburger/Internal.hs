@@ -159,8 +159,8 @@ showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?
 theMinNumOfMyVar :: MyVar
 theMinNumOfMyVar = 1
 
-areCongruenctModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
-areCongruenctModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "areCongruenctModulo: r must be positive"
+areCongruentModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
+areCongruentModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "areCongruentModulo: r must be positive"
 
 compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
 compilePresburgerTerm = go where
@@ -326,7 +326,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkGtnF :: PresburgerTerm -> PresburgerTerm -> MyPresburgerFormula
     mkGtnF t1 t2 = mkLtnF t2 t1
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    mkModF t1 r t2 = if r > 0 then constructModF (modify t1) r (modify t2) else error "mkModF: r must be positive" where
+    mkModF t1 r t2 = if r > 0 then mkCongruence (modify t1) r (modify t2) else error "mkModF: r must be positive" where
         modify :: PresburgerTerm -> PresburgerTerm
         modify (PresburgerTerm con coeffs) = PresburgerTerm (con `mod` r) (Map.filter (\n -> not (n == 0)) (Map.map (\n -> n `mod` r) coeffs))
     mkNegF :: MyPresburgerFormula -> MyPresburgerFormula
@@ -351,10 +351,10 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
     mkAllF y f1 = mkNegF (mkExsF y (mkNegF f1))
     mkExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     mkExsF y f1 = f1 `seq` ExsF y f1
-    constructModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    constructModF t1 r t2
-        | r > 0 = if getCoefficients t1 == getCoefficients t2 then mkValF (areCongruenctModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
-        | otherwise = error "constructModF: r must be positive"
+    mkCongruence :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
+    mkCongruence t1 r t2
+        | r > 0 = if getCoefficients t1 == getCoefficients t2 then mkValF (areCongruentModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
+        | otherwise = error "mkCongruence: r must be positive"
     multiply :: MyNat -> PresburgerTerm -> PresburgerTerm
     multiply k t
         | k == 0 = mkNum 0
@@ -376,7 +376,7 @@ checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
     tryEvalFormula (LtnF t1 t2) = pure (<) <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (LeqF t1 t2) = pure (<=) <*> tryEvalTerm t1 <*> tryEvalTerm t2
     tryEvalFormula (GtnF t1 t2) = pure (>) <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalFormula (ModF t1 r t2) = pure areCongruenctModulo <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
+    tryEvalFormula (ModF t1 r t2) = pure areCongruentModulo <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
     tryEvalFormula (NegF f1) = pure not <*> tryEvalFormula f1
     tryEvalFormula (DisF f1 f2) = pure (||) <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (ConF f1 f2) = pure (&&) <*> tryEvalFormula f1 <*> tryEvalFormula f2
