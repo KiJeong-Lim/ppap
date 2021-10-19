@@ -18,22 +18,27 @@ isSentence = Set.null . getFVsInPresburgerFormulaRep
 tryEval :: Formula -> Maybe MyProp
 tryEval = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
 
-applySubst :: [(Var, Term)] -> Formula -> Formula
-applySubst = runMySubst . foldr consMySubst nilMySubst
-
 isInTheory :: Formula -> MyProp
 isInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
 
 eliminateQuantifier :: Formula -> Formula
-eliminateQuantifier = fmap discompile . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
-    discompile :: PresburgerTerm -> PresburgerTermRep
-    discompile (PresburgerTerm con coeffs) = List.foldl' mkPlus (if con < 0 then error "eliminateQuantifier.discompile: constant term must not be negative" else recNat mkZero (const mkSucc) con) [ if n > 0 then recNat (IVar x) (const (flip mkPlus (IVar x))) (n - 1) else error "eliminateQuantifier.discompile: coefficient must be positive" | (x, n) <- Map.toAscList coeffs ]
+eliminateQuantifier = discompileFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
+    discompileFormula :: MyPresburgerFormula -> MyPresburgerFormulaRep
+    discompileFormula f = fmap (maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed so not discompilable...")) id . discompileTerm) f
+    discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
+    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con < 0 then Nothing else Just (recNat mkZero (const mkSucc) con)) <*> (sequence [ if n > 0 then Just (recNat (IVar x) (const (flip mkPlus (IVar x))) (n - 1)) else Nothing | (x, n) <- Map.toAscList coeffs ])
+
+applySubst :: [(Var, Term)] -> Formula -> Formula
+applySubst = runMySubst . foldr consMySubst nilMySubst
+
+composeSubst :: [(Var, Term)] -> [(Var, Term)] -> [(Var, Term)]
+composeSubst outer_map inner_map = map (fmap (flip applyMySubstToTermRep (foldr consMySubst nilMySubst outer_map))) inner_map ++ outer_map
 
 mkNum :: MyNat -> Term
-mkNum n = if n < 0 then error "mkNum: negative input" else recNat mkZero (const mkSucc) n
+mkNum n = if n < 0 then error "Presburger.mkNum: A negative input is given..." else recNat mkZero (const mkSucc) n
 
 mkIVar :: Var -> Term
-mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "mkIVar: bad individual variable"
+mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "Presburger.mkIVar: A bad individual variable given..."
 
 mkZero :: Term
 mkZero = Zero
@@ -57,7 +62,7 @@ mkGtnF :: Term -> Term -> Formula
 mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
 
 mkModF :: Term -> PositiveInteger -> Term -> Formula
-mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "mkModF: r must be positive"
+mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "Presburger.mkModF: The second input must be positive..."
 
 mkBotF :: Formula
 mkBotF = ValF False
@@ -78,7 +83,7 @@ mkIffF :: Formula -> Formula -> Formula
 mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
 
 mkAllF :: Var -> Formula -> Formula
-mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "mkAllF: bad individual variable"
+mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "Presburger.mkAllF: A bad individual variable is given..."
 
 mkExsF :: Var -> Formula -> Formula
-mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "mkExsF: bad individual variable"
+mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Presburger.mkExsF: A bad individual variable is given..."

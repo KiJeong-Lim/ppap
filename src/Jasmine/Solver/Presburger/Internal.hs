@@ -77,9 +77,7 @@ instance Show (PresburgerTerm) where
                 (EQ) -> id
                 (GT) -> strstr " + " . shows (abs con)
             ]
-    showsPrec prec t
-        | prec >= 5 = strstr "(" . shows t . strstr ")"
-        | otherwise = shows t
+    showsPrec prec t = if prec >= 5 then strstr "(" . shows t . strstr ")" else shows t
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
@@ -360,15 +358,17 @@ nilMySubst z = IVar z
 consMySubst :: (MyVar, PresburgerTermRep) -> MySubst -> MySubst
 consMySubst (x, t) sigma z = if x == z then t else sigma z
 
+applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
+applyMySubstToVar x sigma = sigma x
+
+applyMySubstToTermRep :: PresburgerTermRep -> MySubst -> PresburgerTermRep
+applyMySubstToTermRep (IVar x) = applyMySubstToVar x
+applyMySubstToTermRep (Zero) = pure Zero
+applyMySubstToTermRep (Succ t1) = pure Succ <*> applyMySubstToTermRep t1
+applyMySubstToTermRep (Plus t1 t2) = pure Plus <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
+
 runMySubst :: MySubst -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 runMySubst = flip applyMySubstToFormulaRep where
-    applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
-    applyMySubstToVar x sigma = sigma x
-    applyMySubstToTermRep :: PresburgerTermRep -> MySubst -> PresburgerTermRep
-    applyMySubstToTermRep (IVar x) = applyMySubstToVar x
-    applyMySubstToTermRep (Zero) = pure Zero
-    applyMySubstToTermRep (Succ t1) = pure Succ <*> applyMySubstToTermRep t1
-    applyMySubstToTermRep (Plus t1 t2) = pure Plus <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
     applyMySubstToFormulaRep :: MyPresburgerFormulaRep -> MySubst -> MyPresburgerFormulaRep
     applyMySubstToFormulaRep (ValF b) = pure (ValF b)
     applyMySubstToFormulaRep (EqnF t1 t2) = pure EqnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
