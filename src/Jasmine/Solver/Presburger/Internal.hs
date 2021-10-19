@@ -227,13 +227,13 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = eliminateQuantifier 
                             (KlassMod m t1 r t2) -> return m
                             (KlassEtc f) -> []
                 theStandardizedKlasses :: PositiveInteger -> [PresburgerKlass]
-                theStandardizedKlasses theLCM = map myLoop my_klasses where
-                    myLoop :: PresburgerKlass -> PresburgerKlass
-                    myLoop (KlassEqn m t1 t2) = KlassEqn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    myLoop (KlassLtn m t1 t2) = KlassLtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    myLoop (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    myLoop (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiply (theLCM `div` m) t2)
-                    myLoop (KlassEtc f) = KlassEtc f
+                theStandardizedKlasses theLCM = map dispatch my_klasses where
+                    dispatch :: PresburgerKlass -> PresburgerKlass
+                    dispatch (KlassEqn m t1 t2) = KlassEqn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
+                    dispatch (KlassLtn m t1 t2) = KlassLtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
+                    dispatch (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
+                    dispatch (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) (r * (theLCM `div` m)) (multiply (theLCM `div` m) t2)
+                    dispatch (KlassEtc f) = KlassEtc f
             buildBigConF :: Either [PresburgerKlass] (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
             buildBigConF (Left my_klasses) = andcat [ f | (KlassEtc f) <- my_klasses ]
             buildBigConF (Right (m, my_klasses)) = mkConF (andcat [ f | (KlassEtc f) <- my_klasses ]) (step3 [ (t1, t2) | (KlassEqn _ t1 t2) <- my_klasses ] [ (t1, t2) | (KlassLtn _ t1 t2) <- my_klasses ] ((mkNum 1, mkNum 0) : [ (t1, t2) | (KlassGtn _ t1 t2) <- my_klasses ]) ((m, (mkNum 0, mkNum 0)) : [ (r, (t1, t2)) | (KlassMod _ t1 r t2) <- my_klasses ]))
