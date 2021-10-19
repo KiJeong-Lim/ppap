@@ -23,15 +23,15 @@ makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <-
     theClosure = refine (recNat myInit myStep (length qs)) where
         refine :: [((MyNode, MyNode), MyExpr)] -> Map.Map (MyNode, MyNode) MyExpr
         refine = Map.map (reduceExpr ReduceLv1) . Map.fromList
-        lookup :: Map.Map (MyNode, MyNode) MyExpr -> (MyNode, MyNode) -> MyExpr
-        lookup = curry (maybe nullRE id . uncurry (flip Map.lookup))
+        at :: Map.Map (MyNode, MyNode) MyExpr -> (MyNode, MyNode) -> MyExpr
+        at = curry (maybe nullRE id . uncurry (flip Map.lookup))
         myInit :: [((MyNode, MyNode), MyExpr)]
         myInit = do
             q_i <- qs
             q_j <- qs
             return
                 ( (q_i, q_j)
-                , lookup table0 (q_i, q_j)
+                , table0 `at` (q_i, q_j)
                 )
         myStep :: Int -> [((MyNode, MyNode), MyExpr)] -> [((MyNode, MyNode), MyExpr)]
         myStep k prev = do
@@ -41,7 +41,7 @@ makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <-
             q_j <- qs
             return
                 ( (q_i, q_j)
-                , unionRE (lookup table (q_i, q_j)) (concatRE (lookup table (q_i, q_k)) (concatRE (starRE (lookup table (q_k, q_k))) (lookup table (q_k, q_j))))
+                , unionRE (table `at` (q_i, q_j)) (concatRE (table `at` (q_i, q_k)) (concatRE (starRE (table `at` (q_k, q_k))) (table `at` (q_k, q_j))))
                 )
         unionRE :: MyExpr -> MyExpr -> MyExpr
         unionRE e1 e2 = e1 + e2
