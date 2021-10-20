@@ -77,7 +77,7 @@ instance Show (PresburgerTerm) where
                 (EQ) -> id
                 (GT) -> strstr " + " . shows (abs con)
             ]
-    showsPrec prec t = if prec >= 5 then strstr "(" . showsPrec 0 t . strstr ")" else shows t
+    showsPrec prec t = if prec >= 5 then strstr "(" . showsPrec 0 t . strstr ")" else showsPrec 0 t
 
 instance Show term => Show (PresburgerFormula term) where
     showsPrec prec = dispatch where
