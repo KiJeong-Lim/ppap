@@ -22,18 +22,18 @@ strcat :: [ShowS] -> ShowS
 strcat = foldr (.) id
 
 nl :: ShowS
-nl str = "\n" ++ str
+nl = showString "\n"
 
 pindent :: Indentation -> ShowS
-pindent space str1 = if space < 0 then str1 else replicate space ' ' ++ str1
+pindent space = if space < 0 then id else showString (replicate space ' ')
 
 ppunc :: String -> [ShowS] -> ShowS
-ppunc str [] = id
-ppunc str (delta1 : deltas2) = delta1 . foldr (\delta2 -> \acc -> strstr str . delta2 . acc) id deltas2
+ppunc str deltas
+    | null deltas = id
+    | otherwise = head deltas . foldr (\delta -> \acc -> strstr str . delta . acc) id (tail deltas)
 
 plist :: Indentation -> [ShowS] -> ShowS
-plist space [] = strstr "[]"
-plist space (delta1 : deltas2) = nl . pindent space . strstr "[ " . delta1 . foldr (\delta2 -> \acc -> nl . pindent space . strstr ", " . delta2 . acc) (nl . pindent space . strstr "]") deltas2
+plist space deltas = if null deltas then strstr "[]" else nl . pindent space . strstr "[ " . ppunc ("\n" ++ replicate space ' ' ++ ", ") deltas . nl . pindent space . strstr "]"
 
 quotify :: ShowS -> ShowS
 quotify ss = shows (ss "")
