@@ -28,12 +28,12 @@ pindent :: Indentation -> ShowS
 pindent space = if space < 0 then id else showString (replicate space ' ')
 
 ppunc :: String -> [ShowS] -> ShowS
-ppunc str deltas
-    | null deltas = id
-    | otherwise = head deltas . foldr (\delta -> \acc -> strstr str . delta . acc) id (tail deltas)
+ppunc str deltas = if null deltas then id else head deltas . foldr (\delta -> \acc -> strstr str . delta . acc) id (tail deltas)
 
 plist :: Indentation -> [ShowS] -> ShowS
-plist space deltas = if null deltas then strstr "[]" else nl . pindent space . strstr "[ " . ppunc ("\n" ++ replicate space ' ' ++ ", ") deltas . nl . pindent space . strstr "]"
+plist space deltas = if null deltas then strstr "[]" else nl . pindent space . strstr "[ " . ppunc (runShowS (nl . pindent space . strstr ", ")) deltas . nl . pindent space . strstr "]" where
+    runShowS :: ShowS -> String
+    runShowS ss = ss ""
 
 quotify :: ShowS -> ShowS
 quotify ss = shows (ss "")
