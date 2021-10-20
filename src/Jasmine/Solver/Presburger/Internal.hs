@@ -195,23 +195,23 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                 extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
                 extractCoefficient t = maybe (0, t) (\n -> (n, PresburgerTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
                 constructKlass :: MyPresburgerFormula -> PresburgerKlass
-                constructKlass (EqnF t1 t2) = constructEqnF (extractCoefficient t1) (extractCoefficient t2)
-                constructKlass (LtnF t1 t2) = constructLtnF (extractCoefficient t1) (extractCoefficient t2)
-                constructKlass (ModF t1 r t2) = constructModF (extractCoefficient t1) r (extractCoefficient t2)
-                constructEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                constructEqnF (m1, t1) (m2, t2)
+                constructKlass (EqnF t1 t2) = forEqnF (extractCoefficient t1) (extractCoefficient t2)
+                constructKlass (LtnF t1 t2) = forLtnF (extractCoefficient t1) (extractCoefficient t2)
+                constructKlass (ModF t1 r t2) = forModF (extractCoefficient t1) r (extractCoefficient t2)
+                forEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+                forEqnF (m1, t1) (m2, t2)
                     = case m1 `compare` m2 of
                         (LT) -> KlassEqn (m2 - m1) t2 t1
                         (EQ) -> KlassEtc (mkEqnF t1 t2)
                         (GT) -> KlassEqn (m1 - m2) t1 t2
-                constructLtnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                constructLtnF (m1, t1) (m2, t2)
+                forLtnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+                forLtnF (m1, t1) (m2, t2)
                     = case m1 `compare` m2 of
                         (LT) -> KlassGtn (m2 - m1) t2 t1
                         (EQ) -> KlassEtc (mkLtnF t1 t2)
                         (GT) -> KlassLtn (m1 - m2) t1 t2
-                constructModF :: (MyCoefficient, PresburgerTerm) -> PositiveInteger -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                constructModF (m1, t1) r (m2, t2)
+                forModF :: (MyCoefficient, PresburgerTerm) -> PositiveInteger -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+                forModF (m1, t1) r (m2, t2)
                     = case m1 `compare` m2 of
                         (LT) -> KlassMod (m2 - m1) t2 r t1
                         (EQ) -> KlassEtc (mkModF t1 r t2)
