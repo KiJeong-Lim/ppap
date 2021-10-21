@@ -116,8 +116,8 @@ eliminateQuantifier = convert . eliminateQuantifierReferringToTheBookWrittenByPe
     convert :: MyPresburgerFormula -> MyPresburgerFormulaRep
     convert f = maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
 
-runTerm :: Term -> (MyNat, Map.Map Var PositiveInteger)
-runTerm = fmap (pure (curry id) <*> getConstantTerm <*> getCoefficients) compilePresburgerTerm
+runTerm :: Term -> (Map.Map Var PositiveInteger, MyNat)
+runTerm = fmap (pure (curry id) <*> getCoefficients <*> getConstantTerm) compilePresburgerTerm
 
 runFormula :: Formula -> [[AtomFormula]]
 runFormula = makeDNF . simplify . eliminateQuantifier where
