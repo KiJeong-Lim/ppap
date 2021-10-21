@@ -27,4 +27,11 @@ convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithou
 convertQuery :: GenUniqueM m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> FreeVariableEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
 convertQuery used_mtvs assumptions var_name_env query
     | Map.null used_mtvs = convertWithoutChecking var_name_env [] "query" query
-    | otherwise = throwE ("*** converting-error:\n  ? query must have no free type variables.")
+    | otherwise = do
+        extra_env <- sequence
+            [ do
+                uni <- getNewUnique
+                return (mtv, LVar (LV_ty_var uni))
+            | (mtv, small_id) <- Map.toAscList used_mtvs
+            ]
+        convertWithoutChecking (var_name_env `Map.union` Map.fromAscList extra_env) [] "query" query
