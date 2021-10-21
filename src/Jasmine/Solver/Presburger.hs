@@ -21,7 +21,7 @@ data AtomFormula
 
 instance Show AtomFormula where
     showsPrec prec f = if prec >= 5 then strstr "(" . showsAtomFormula f . strstr ")" else showsAtomFormula f
-    showList fs = strstr "[" . (if null fs then id else ppunc ", " (map showsAtomFormula fs)) . strstr "]"
+    showList fs = strstr "[" . ppunc ", " (map showsAtomFormula fs) . strstr "]"
 
 isSentence :: Formula -> Bool
 isSentence = Set.null . getFVsInPresburgerFormulaRep
