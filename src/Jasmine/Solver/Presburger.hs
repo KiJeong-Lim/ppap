@@ -14,17 +14,14 @@ type Term = PresburgerTermRep
 type Formula = MyPresburgerFormulaRep
 
 data AtomFormula
-    = EqF Term Term
-    | LtF Term Term
-    | CMF Term PositiveInteger Term
+    = EqF !Term !Term
+    | LtF !Term !Term
+    | CMF !Term PositiveInteger !Term
     deriving (Eq)
 
 instance Show AtomFormula where
-    showsPrec prec atom_f = if prec >= 5 then strstr "(" . showsAtomFormula atom_f . strstr ")" else showsAtomFormula atom_f where
-        showsAtomFormula :: AtomFormula -> ShowS
-        showsAtomFormula (EqF t1 t2) = shows t1 . strstr " = " . shows t2
-        showsAtomFormula (LtF t1 t2) = shows t1 . strstr " < " . shows t2
-        showsAtomFormula (CMF t1 r t2) = shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
+    showsPrec prec f = if prec >= 5 then strstr "(" . showsAtomFormula f . strstr ")" else showsAtomFormula f
+    showList fs = strstr "[" . (if null fs then id else ppunc ", " (map showsAtomFormula fs)) . strstr "]"
 
 isSentence :: Formula -> Bool
 isSentence = Set.null . getFVsInPresburgerFormulaRep
@@ -98,52 +95,65 @@ mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Presb
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = convert . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
     discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
-    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (traverse (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (IVar var) (const (flip mkPlus (IVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
+    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (traverse (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (mkIVar var) (const (flip mkPlus (mkIVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
     discompileFormula :: MyPresburgerFormula -> Maybe MyPresburgerFormulaRep
-    discompileFormula (ValF b) = pure ValF <*> pure b
-    discompileFormula (EqnF t1 t2) = pure EqnF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (LtnF t1 t2) = pure LtnF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (LeqF t1 t2) = pure LeqF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (GtnF t1 t2) = pure GtnF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (ModF t1 r t2) = pure ModF <*> discompileTerm t1 <*> (if r > 0 then pure r else Nothing) <*> discompileTerm t2
-    discompileFormula (NegF f1) = pure NegF <*> discompileFormula f1
-    discompileFormula (DisF f1 f2) = pure DisF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (ConF f1 f2) = pure ConF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (ImpF f1 f2) = pure ImpF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (IffF f1 f2) = pure IffF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (AllF y f1) = pure AllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
-    discompileFormula (ExsF y f1) = pure ExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
+    discompileFormula (ValF b) = pure mkValF <*> pure b
+    discompileFormula (EqnF t1 t2) = pure mkEqnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (LtnF t1 t2) = pure mkLtnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (LeqF t1 t2) = pure mkLeqF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (GtnF t1 t2) = pure mkGtnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (ModF t1 r t2) = pure mkModF <*> discompileTerm t1 <*> (if r > 0 then pure r else Nothing) <*> discompileTerm t2
+    discompileFormula (NegF f1) = pure mkNegF <*> discompileFormula f1
+    discompileFormula (DisF f1 f2) = pure mkDisF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (ConF f1 f2) = pure mkConF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (ImpF f1 f2) = pure mkImpF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (IffF f1 f2) = pure mkIffF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (AllF y f1) = pure mkAllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
+    discompileFormula (ExsF y f1) = pure mkExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
     convert :: MyPresburgerFormula -> MyPresburgerFormulaRep
     convert f = maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
+    mkValF :: Bool -> Formula
+    mkValF b = b `seq` ValF b
 
 destTerm :: Term -> (Map.Map Var PositiveInteger, MyNat)
 destTerm = fmap (pure (curry id) <*> getCoefficients <*> getConstantTerm) compilePresburgerTerm
 
 destFormula :: Formula -> [[AtomFormula]]
 destFormula = makeDNF . simplify . eliminateQuantifier where
-    mkValF :: Bool -> Formula
-    mkValF b = b `seq` ValF b
     runNegation :: Formula -> Formula
     runNegation (ValF b) = mkValF (not b)
     runNegation (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
     runNegation (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
+    runNegation (LeqF t1 t2) = mkGtnF t1 t2
+    runNegation (GtnF t1 t2) = mkLeqF t1 t2
     runNegation (ModF t1 r t2) = List.foldl' mkDisF mkBotF [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
     runNegation (NegF f1) = f1
     runNegation (DisF f1 f2) = mkConF (runNegation f1) (runNegation f2)
     runNegation (ConF f1 f2) = mkDisF (runNegation f1) (runNegation f2)
+    runImplication :: Formula -> Formula -> Formula
+    runImplication f1 f2 = mkDisF (runNegation f1) f2
+    runBiconditional :: Formula -> Formula -> Formula
+    runBiconditional f1 f2 = mkConF (runImplication f1 f2) (runImplication f2 f1)
     simplify :: Formula -> Formula
     simplify (NegF f1) = runNegation (simplify f1)
     simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
     simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f2)
-    simplify (ImpF f1 f2) = mkDisF (runNegation (simplify f1)) (simplify f2)
-    simplify (IffF f1 f2) = mkConF (mkDisF (runNegation (simplify f1)) (simplify f2)) (mkDisF (runNegation (simplify f2)) (simplify f1))
+    simplify (ImpF f1 f2) = runImplication (simplify f1) (simplify f2)
+    simplify (IffF f1 f2) = runBiconditional (simplify f1) (simplify f2)
     simplify f = f
     makeDNF :: Formula -> [[AtomFormula]]
     makeDNF (ValF b) = if b then pure mempty else []
-    makeDNF (EqnF t1 t2) = [[EqF t1 t2]]
-    makeDNF (LtnF t1 t2) = [[LtF t1 t2]]
-    makeDNF (LeqF t1 t2) = [[LtF t1 t2], [EqF t1 t2]]
-    makeDNF (GtnF t1 t2) = [[LtF t2 t1]]
-    makeDNF (ModF t1 r t2) = [[CMF t1 r t2]]
+    makeDNF (EqnF t1 t2) = pure [EqF t1 t2]
+    makeDNF (LtnF t1 t2) = pure [LtF t1 t2]
+    makeDNF (LeqF t1 t2) = pure [LtF t1 t2] ++ pure [EqF t1 t2]
+    makeDNF (GtnF t1 t2) = pure [LtF t2 t1]
+    makeDNF (ModF t1 r t2) = pure [CMF t1 r t2]
     makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
     makeDNF (ConF f1 f2) = pure mappend <*> makeDNF f1 <*> makeDNF f2
+    mkValF :: Bool -> Formula
+    mkValF b = b `seq` ValF b
+
+showsAtomFormula :: AtomFormula -> ShowS
+showsAtomFormula (EqF t1 t2) = shows t1 . strstr " = " . shows t2
+showsAtomFormula (LtF t1 t2) = shows t1 . strstr " < " . shows t2
+showsAtomFormula (CMF t1 r t2) = shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
