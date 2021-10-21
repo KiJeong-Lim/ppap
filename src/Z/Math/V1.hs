@@ -39,7 +39,7 @@ instance Show val => Show (ElemExpr val) where
             ]
         tryMatchPrimitive _ = Nothing
 
-instance Functor ElemExpr where
+instance Functor (ElemExpr) where
     fmap f (PluEE e1 e2) = PluEE (fmap f e1) (fmap f e2)
     fmap f (NegEE e1) = NegEE (fmap f e1)
     fmap f (MulEE e1 e2) = MulEE (fmap f e1) (fmap f e2)
@@ -65,7 +65,7 @@ instance Fractional val => Fractional (ElemExpr val) where
     recip e1 = AppEE (AppEE (VarEE "_DIV_") (PosEE 1)) e1
     e1 / e2 = AppEE (AppEE (VarEE "_DIV_") e1) e2
 
-instance IsExpr ElemExpr where
+instance IsExpr (ElemExpr) where
     evalExpr = evalElemExpr
     reduceExpr = reduceElemExpr
     embed = LitEE
