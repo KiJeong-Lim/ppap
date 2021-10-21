@@ -32,6 +32,6 @@ convertQuery used_mtvs assumptions var_name_env query
             [ do
                 uni <- getNewUnique
                 return (mtv, LVar (LV_ty_var uni))
-            | (mtv, small_id) <- Map.toAscList used_mtvs
+            | (mtv, small_id) <- Map.toDescList used_mtvs
             ]
-        convertWithoutChecking (var_name_env `Map.union` Map.fromAscList extra_env) [] "query" query
+        convertWithoutChecking (foldr (uncurry Map.insert) var_name_env extra_env) [] "query" query
