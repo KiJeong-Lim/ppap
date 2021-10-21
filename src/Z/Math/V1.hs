@@ -80,6 +80,7 @@ evalElemExprWith = go where
     go wild_card env (MulEE e1 e2) = (go wild_card env e1) * (go wild_card env e2)
     go wild_card env (PosEE n) = fromInteger n
     go wild_card env (LitEE v) = v
+    go wild_card env (VarEE "0") = 0
     go wild_card env e = fromErrMsgM (wild_card env e)
 
 evalElemExpr :: Fractional val => EvalEnv val -> ElemExpr val -> val
@@ -87,7 +88,6 @@ evalElemExpr = evalElemExprWith myWildCard where
     myWildCard :: Fractional val => EvalEnv val -> ElemExpr val -> ErrMsgM val
     myWildCard env e = addErrMsg "evalElemExpr" (tryMatchPrimitive env e /> callWith e [] env)
     tryMatchPrimitive :: Fractional val => EvalEnv val -> ElemExpr val -> Maybe val
-    tryMatchPrimitive env (VarEE "0") = return 0
     tryMatchPrimitive env (VarEE "0+") = return (1 / _INF_)
     tryMatchPrimitive env (VarEE "0-") = return (negate 1 / _INF_)
     tryMatchPrimitive env (VarEE "_INF_") = return _INF_
@@ -105,5 +105,5 @@ evalElemExpr = evalElemExprWith myWildCard where
     callWith _ es env = Nothing
 
 reduceElemExpr :: ReductionOption -> ElemExpr val -> ElemExpr val
-reduceElemExpr ReduceLv2 = id
+reduceElemExpr (ReduceLv2) = id
 reduceElemExpr _ = id
