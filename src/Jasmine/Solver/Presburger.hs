@@ -146,7 +146,7 @@ destFormula = makeDNF . simplify . eliminateQuantifier where
     posOf :: Formula -> [[AtomFormula]]
     posOf (EqnF t1 t2) = pure [EqF t1 t2]
     posOf (LtnF t1 t2) = pure [LtF t1 t2]
-    posOf (LeqF t1 t2) = pure [LtF (mkSucc t1) t2]
+    posOf (LeqF t1 t2) = pure [LtF t1 (mkSucc t2)]
     posOf (GtnF t1 t2) = pure [LtF t2 t1]
     posOf (ModF t1 r t2) = pure [CMF t1 r t2]
     negOf :: Formula -> [[AtomFormula]]
