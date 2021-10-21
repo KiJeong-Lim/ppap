@@ -11,7 +11,7 @@ data ElemExpr val
     = PluEE (ElemExpr val) (ElemExpr val)
     | NegEE (ElemExpr val)
     | MulEE (ElemExpr val) (ElemExpr val)
-    | PosEE (Integer)
+    | PosEE (PositiveInteger)
     | LitEE (val)
     | VarEE (VarID)
     | AppEE (ElemExpr val) (ElemExpr val)
@@ -58,7 +58,7 @@ instance Num val => Num (ElemExpr val) where
     fromInteger n = case n `compare` 0 of
         LT -> NegEE (PosEE (abs n))
         EQ -> VarEE "0"
-        GT -> PosEE n
+        GT -> PosEE (abs n)
 
 instance Fractional val => Fractional (ElemExpr val) where
     fromRational r = AppEE (AppEE (VarEE "_DIV_") (fromInteger (numerator r))) (fromInteger (denominator r))
@@ -75,9 +75,9 @@ instance IsExpr ElemExpr where
 evalElemExprWith :: Num val => (EvalEnv val -> ElemExpr val -> ErrMsgM val) -> EvalEnv val -> ElemExpr val -> val
 evalElemExprWith = go where
     go :: Num val => (EvalEnv val -> ElemExpr val -> ErrMsgM val) -> EvalEnv val -> ElemExpr val -> val
-    go wild_card env (PluEE e1 e2) = go wild_card env e1 + go wild_card env e2
-    go wild_card env (NegEE e1) = - go wild_card env e1
-    go wild_card env (MulEE e1 e2) = go wild_card env e1 * go wild_card env e2
+    go wild_card env (PluEE e1 e2) = (go wild_card env e1) + (go wild_card env e2)
+    go wild_card env (NegEE e1) = negate (go wild_card env e1)
+    go wild_card env (MulEE e1 e2) = (go wild_card env e1) * (go wild_card env e2)
     go wild_card env (PosEE n) = fromInteger n
     go wild_card env (LitEE v) = v
     go wild_card env e = fromErrMsgM (wild_card env e)
@@ -89,7 +89,7 @@ evalElemExpr = evalElemExprWith myWildCard where
     tryMatchPrimitive :: Fractional val => EvalEnv val -> ElemExpr val -> Maybe val
     tryMatchPrimitive env (VarEE "0") = return 0
     tryMatchPrimitive env (VarEE "0+") = return (1 / _INF_)
-    tryMatchPrimitive env (VarEE "0-") = return (- 1 / _INF_)
+    tryMatchPrimitive env (VarEE "0-") = return (negate 1 / _INF_)
     tryMatchPrimitive env (VarEE "_INF_") = return _INF_
     tryMatchPrimitive env (AppEE (VarEE "_ABS_") e1) = return (abs (evalElemExpr env e1))
     tryMatchPrimitive env (AppEE (AppEE (VarEE "_DIV_") e1) e2) = return (evalElemExpr env e1 / evalElemExpr env e2)
