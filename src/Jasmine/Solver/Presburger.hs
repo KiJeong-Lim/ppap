@@ -16,7 +16,7 @@ type Formula = MyPresburgerFormulaRep
 data AtomFormula
     = EqF !Term !Term
     | LtF !Term !Term
-    | CMF !Term PositiveInteger !Term
+    | CMF !Term !PositiveInteger !Term
     deriving (Eq)
 
 instance Show AtomFormula where
@@ -120,36 +120,41 @@ destTerm = fmap (pure (curry id) <*> getCoefficients <*> getConstantTerm) compil
 
 destFormula :: Formula -> [[AtomFormula]]
 destFormula = makeDNF . simplify . eliminateQuantifier where
-    runNegation :: Formula -> Formula
-    runNegation (ValF b) = mkValF (not b)
-    runNegation (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
-    runNegation (LtnF t1 t2) = mkDisF (mkEqnF t1 t2) (mkGtnF t1 t2)
-    runNegation (LeqF t1 t2) = mkGtnF t1 t2
-    runNegation (GtnF t1 t2) = mkLeqF t1 t2
-    runNegation (ModF t1 r t2) = List.foldl' mkDisF mkBotF [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
-    runNegation (NegF f1) = f1
-    runNegation (DisF f1 f2) = mkConF (runNegation f1) (runNegation f2)
-    runNegation (ConF f1 f2) = mkDisF (runNegation f1) (runNegation f2)
-    runImplication :: Formula -> Formula -> Formula
-    runImplication f1 f2 = mkDisF (runNegation f1) f2
-    runBiconditional :: Formula -> Formula -> Formula
-    runBiconditional f1 f2 = mkConF (runImplication f1 f2) (runImplication f2 f1)
+    runNeg :: Formula -> Formula
+    runNeg (ValF b) = mkValF (not b)
+    runNeg (NegF f1) = f1
+    runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
+    runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
+    runNeg atom_f = mkNegF atom_f
+    runImp :: Formula -> Formula -> Formula
+    runImp f1 f2 = mkDisF (runNeg f1) f2
+    runIff :: Formula -> Formula -> Formula
+    runIff f1 f2 = mkConF (runImp f1 f2) (runImp f2 f1)
     simplify :: Formula -> Formula
-    simplify (NegF f1) = runNegation (simplify f1)
+    simplify (NegF f1) = runNeg (simplify f1)
     simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
     simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f2)
-    simplify (ImpF f1 f2) = runImplication (simplify f1) (simplify f2)
-    simplify (IffF f1 f2) = runBiconditional (simplify f1) (simplify f2)
+    simplify (ImpF f1 f2) = runImp (simplify f1) (simplify f2)
+    simplify (IffF f1 f2) = runIff (simplify f1) (simplify f2)
     simplify f = f
     makeDNF :: Formula -> [[AtomFormula]]
     makeDNF (ValF b) = if b then pure mempty else []
-    makeDNF (EqnF t1 t2) = pure [EqF t1 t2]
-    makeDNF (LtnF t1 t2) = pure [LtF t1 t2]
-    makeDNF (LeqF t1 t2) = pure [LtF t1 t2] ++ pure [EqF t1 t2]
-    makeDNF (GtnF t1 t2) = pure [LtF t2 t1]
-    makeDNF (ModF t1 r t2) = pure [CMF t1 r t2]
     makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
     makeDNF (ConF f1 f2) = pure mappend <*> makeDNF f1 <*> makeDNF f2
+    makeDNF (NegF atom_f) = negOf atom_f
+    makeDNF atom_f = posOf atom_f
+    posOf :: Formula -> [[AtomFormula]]
+    posOf (EqnF t1 t2) = pure [EqF t1 t2]
+    posOf (LtnF t1 t2) = pure [LtF t1 t2]
+    posOf (LeqF t1 t2) = pure [LtF (mkSucc t1) t2]
+    posOf (GtnF t1 t2) = pure [LtF t2 t1]
+    posOf (ModF t1 r t2) = pure [CMF t1 r t2]
+    negOf :: Formula -> [[AtomFormula]]
+    negOf (EqnF t1 t2) = pure [LtF t1 t2] ++ pure [LtF t2 t1]
+    negOf (LtnF t1 t2) = posOf (LeqF t2 t1)
+    negOf (LeqF t1 t2) = posOf (GtnF t1 t2)
+    negOf (GtnF t1 t2) = posOf (LeqF t1 t2)
+    negOf (ModF t1 r t2) = [ [CMF t1 r (mkPlus t2 (mkNum i))] | i <- [1 .. r - 1] ]
     mkValF :: Bool -> Formula
     mkValF b = b `seq` ValF b
 
