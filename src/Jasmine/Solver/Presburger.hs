@@ -120,22 +120,22 @@ destTerm = fmap (pure (curry id) <*> getCoefficients <*> getConstantTerm) compil
 
 destFormula :: Formula -> [[AtomFormula]]
 destFormula = makeDNF . simplify . eliminateQuantifier where
-    runNeg :: Formula -> Formula
-    runNeg (ValF b) = mkValF (not b)
-    runNeg (NegF f1) = f1
-    runNeg (DisF f1 f2) = mkConF (runNeg f1) (runNeg f2)
-    runNeg (ConF f1 f2) = mkDisF (runNeg f1) (runNeg f2)
-    runNeg atom_f = mkNegF atom_f
-    runImp :: Formula -> Formula -> Formula
-    runImp f1 f2 = mkDisF (runNeg f1) f2
-    runIff :: Formula -> Formula -> Formula
-    runIff f1 f2 = mkConF (runImp f1 f2) (runImp f2 f1)
+    unNegF :: Formula -> Formula
+    unNegF (ValF b) = mkValF (not b)
+    unNegF (NegF f1) = f1
+    unNegF (DisF f1 f2) = mkConF (unNegF f1) (unNegF f2)
+    unNegF (ConF f1 f2) = mkDisF (unNegF f1) (unNegF f2)
+    unNegF atom_f = mkNegF atom_f
+    unImpF :: Formula -> Formula -> Formula
+    unImpF f1 f2 = mkDisF (unNegF f1) f2
+    unIffF :: Formula -> Formula -> Formula
+    unIffF f1 f2 = mkConF (unImpF f1 f2) (unImpF f2 f1)
     simplify :: Formula -> Formula
-    simplify (NegF f1) = runNeg (simplify f1)
+    simplify (NegF f1) = unNegF (simplify f1)
     simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
     simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f2)
-    simplify (ImpF f1 f2) = runImp (simplify f1) (simplify f2)
-    simplify (IffF f1 f2) = runIff (simplify f1) (simplify f2)
+    simplify (ImpF f1 f2) = unImpF (simplify f1) (simplify f2)
+    simplify (IffF f1 f2) = unIffF (simplify f1) (simplify f2)
     simplify f = f
     makeDNF :: Formula -> [[AtomFormula]]
     makeDNF (ValF b) = if b then pure mempty else []
@@ -151,10 +151,10 @@ destFormula = makeDNF . simplify . eliminateQuantifier where
     posOf (ModF t1 r t2) = pure [CMF t1 r t2]
     negOf :: Formula -> [[AtomFormula]]
     negOf (EqnF t1 t2) = pure [LtF t1 t2] ++ pure [LtF t2 t1]
-    negOf (LtnF t1 t2) = posOf (LeqF t2 t1)
-    negOf (LeqF t1 t2) = posOf (GtnF t1 t2)
-    negOf (GtnF t1 t2) = posOf (LeqF t1 t2)
-    negOf (ModF t1 r t2) = [ [CMF t1 r (mkPlus t2 (mkNum i))] | i <- [1 .. r - 1] ]
+    negOf (LtnF t1 t2) = pure [LtF t2 (mkSucc t1)]
+    negOf (LeqF t1 t2) = pure [LtF t2 t1]
+    negOf (GtnF t1 t2) = pure [LtF t1 (mkSucc t2)]
+    negOf (ModF t1 r t2) = [1 .. r - 1] >>= (\i -> pure [CMF t1 r (mkPlus t2 (mkNum i))])
     mkValF :: Bool -> Formula
     mkValF b = b `seq` ValF b
 
