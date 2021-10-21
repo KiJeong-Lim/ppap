@@ -98,8 +98,6 @@ mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Presb
 
 eliminateQuantifier :: Formula -> Formula
 eliminateQuantifier = convert . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
-    convert :: MyPresburgerFormula -> MyPresburgerFormulaRep
-    convert f = maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
     discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
     discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (traverse (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (IVar var) (const (flip mkPlus (IVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
     discompileFormula :: MyPresburgerFormula -> Maybe MyPresburgerFormulaRep
@@ -116,6 +114,8 @@ eliminateQuantifier = convert . eliminateQuantifierReferringToTheBookWrittenByPe
     discompileFormula (IffF f1 f2) = pure IffF <*> discompileFormula f1 <*> discompileFormula f2
     discompileFormula (AllF y f1) = pure AllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
     discompileFormula (ExsF y f1) = pure ExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
+    convert :: MyPresburgerFormula -> MyPresburgerFormulaRep
+    convert f = maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
 
 toDisjunctiveNormalFormOfAtomFormulae :: Formula -> [[AtomFormula]]
 toDisjunctiveNormalFormOfAtomFormulae = toDNF . eliminateQuantifier where

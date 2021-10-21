@@ -4,7 +4,7 @@ import Jasmine.Solver.Presburger
 import Z.System.Shelly
 
 testPresburger :: IO ()
-testPresburger = mapM_ (shelly . showString "Presburger> " . testCase . getCase) [1 .. 12] where
+testPresburger = mapM_ (shelly . showString "Presburger> " . runCase . getCase) [1 .. 12] where
     getCase :: Int -> Formula
     getCase 1 = (mkAllF 1 (mkAllF 2 (mkEqnF (mkPlus (mkIVar 1) (mkIVar 2)) (mkPlus (mkIVar 2) (mkIVar 1)))))
     getCase 2 = (mkAllF 1 (mkLeqF (mkIVar 1) (mkIVar 1)))
@@ -18,8 +18,7 @@ testPresburger = mapM_ (shelly . showString "Presburger> " . testCase . getCase)
     getCase 10 = (mkAllF 1 (mkAllF 2 (mkIffF (mkLeqF (mkPlus (mkSucc (mkZero)) (mkIVar 2)) (mkPlus (mkIVar 1) (mkIVar 2))) (mkNegF (mkEqnF (mkIVar 1) (mkZero))))))
     getCase 11 = (mkAllF 1 (mkAllF 2 (mkLeqF (mkPlus (mkSucc (mkZero)) (mkIVar 2)) (mkPlus (mkIVar 1) (mkIVar 2)))))
     getCase 12 = (mkExsF 1 (mkAllF 2 (mkLtnF (mkIVar 2) (mkIVar 1))))
-    testCase :: Formula -> String
-    testCase f
-        | not (isSentence f) = "The formula ``" ++ shows f "\'\' is not a sentence."
-        | isInTheory f = "The formula ``" ++ shows f "\'\' is a true sentence."
-        | otherwise = "The formula ``" ++ shows f "\'\' is a false sentence."
+    runCase :: Formula -> String
+    runCase f
+        | isSentence f = if isInTheory f then "The formula ``" ++ shows f "\'\' is a true sentence." else "The formula ``" ++ shows f "\'\' is a false sentence."
+        | otherwise = "The formula ``" ++ shows f "\'\' is not a sentence."
