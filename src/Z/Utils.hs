@@ -1,5 +1,7 @@
 module Z.Utils where
 
+import Control.Monad
+import Data.Function
 import Data.List
 import System.IO
 
@@ -14,10 +16,10 @@ class OStreamObject a where
     hput :: Handle -> a -> IO ()
 
 instance OStreamMaker Handle where
-    mkOStream = pure
+    mkOStream = return
 
 instance OStreamMaker a => OStreamMaker (IO a) where
-    mkOStream m = m >>= mkOStream
+    mkOStream = id >=> mkOStream
 
 instance OStreamObject Char where
     hput = hPutChar
@@ -38,9 +40,10 @@ instance OStreamObject Bool where
     hput h b = hPutStr h (if b then "true" else "false")
 
 hPutShowS :: Handle -> ShowS -> IO ()
-hPutShowS my_handle = hPutStr my_handle . initShowS where
-    initShowS :: ShowS -> String
-    initShowS string_stream = string_stream ""
+hPutShowS my_handle = hPutStr my_handle . initShowS
+
+initShowS :: ShowS -> String
+initShowS string_stream = string_stream ""
 
 cout :: Handle
 cout = stdout
@@ -62,7 +65,7 @@ splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
 splitUnless cond = foldr (\x -> maybe [one x] (uncurry $ \xs -> mappend (if cond x (head xs) then [one x ++ xs] else [one x] ++ [xs])) . uncons) []
 
 splitBy :: Eq a => a -> [a] -> [[a]]
-splitBy x0 = callWithStrictArg (uncurry $ \xs -> if null xs then maybe [] (mappend (one xs) . splitBy x0 . snd) . uncons else mappend (one xs) . splitBy x0) . span (\x -> x /= x0)
+splitBy x0 = fix $ \my_fix -> callWithStrictArg (uncurry $ \xs -> if null xs then maybe [] (mappend (one xs) . my_fix . snd) . uncons else mappend (one xs) . my_fix) . span (\x -> x /= x0)
 
 calcTab :: Int -> Int
 calcTab n = myTabSize - (n `mod` myTabSize) where
@@ -76,9 +79,11 @@ one :: a -> [a]
 one = callWithStrictArg pure
 
 modifySep :: Eq a => a -> (a -> [b]) -> ([a] -> [b]) -> ([a] -> [b])
-modifySep x f g = concat . foldr (\ys -> \acc -> if null acc then ys : acc else ys : f x : acc) [] . map g . splitBy x
+modifySep x0 f g = callWithStrictArg (\zs -> concat . foldr (\ys -> \acc -> if null acc then ys : acc else ys : zs : acc) [] . map g . splitBy x0) (f x0)
 
 findAllPermutationsOf :: [a] -> [[a]]
-findAllPermutationsOf xs = swag (\at -> uncurry $ \i -> \j -> maybe . at <*> flip pure <*> flip lookup [(i, at j), (j, at i)]) [0 .. length xs - 1] (\k -> xs !! k) where
-    swag :: ((Int -> a) -> (Int, Int) -> (Int -> a)) -> [Int] -> ((Int -> a) -> [[a]])
-    swag my_swap my_range = foldr (\n -> \kont -> \at -> [0 .. n] >>= kont . curry (my_swap at) n) (\at -> return (map at my_range)) my_range
+findAllPermutationsOf xs = swag [0 .. length xs - 1] (\k -> xs !! k) where
+    swag :: [Int] -> ((Int -> a) -> [[a]])
+    swag my_range = foldr (\n -> \kont -> \at -> [0 .. n] >>= kont . curry (applySwapping at) n) (\at -> return (map at my_range)) my_range
+    applySwapping :: (Int -> a) -> (Int, Int) -> (Int -> a)
+    applySwapping at (i, j) = maybe . at <*> flip pure <*> flip lookup [(i, at j), (j, at i)]
