@@ -1,5 +1,6 @@
 module Z.Utils where
 
+import Data.List
 import System.IO
 
 infixl 1 <<
@@ -53,18 +54,10 @@ seed << x = do
     return h
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
-splitUnless cond (x1 : x2 : xs)
-    | cond x1 x2 = case splitUnless cond (x2 : xs) of
-        y : ys -> (x1 : y) : ys
-splitUnless cond [] = []
-splitUnless cond (x1 : xs) = [x1] : splitUnless cond xs
+splitUnless cond = foldr (\x -> maybe [one x] (uncurry $ \xs -> mappend (if cond x (head xs) then [one x ++ xs] else [one x] ++ [xs])) . uncons) []
 
 splitBy :: Eq a => a -> [a] -> [[a]]
-splitBy x0 [] = [[]]
-splitBy x0 (x : xs)
-    | x == x0 = [] : splitBy x0 xs
-    | otherwise = case splitBy x0 xs of
-        y : ys -> (x : y) : ys
+splitBy x0 = (uncurry $ \xs -> if null xs then maybe [] (mappend (one xs) . splitBy x0 . snd) . uncons else mappend (one xs) . splitBy x0) . span (\x -> x /= x0)
 
 calcTab :: Int -> Int
 calcTab n = myTabSize - (n `mod` myTabSize) where
@@ -78,10 +71,7 @@ one :: a -> [a]
 one = callWithStrictArg pure
 
 modifySep :: Eq a => a -> (a -> [b]) -> ([a] -> [b]) -> ([a] -> [b])
-modifySep x f g = connect (f x) . map g . splitBy x where
-    connect :: [b] -> [[b]] -> [b]
-    connect xs [] = []
-    connect xs (ys : zss) = ys ++ foldr (\zs -> \acc -> xs ++ zs ++ acc) [] zss
+modifySep x f g = concat . foldr (\ys -> \acc -> if null acc then ys : acc else ys : f x : acc) [] . map g . splitBy x
 
 findAllPermutationsOf :: [a] -> [[a]]
 findAllPermutationsOf xs = swag (\at -> uncurry $ \i -> \j -> maybe . at <*> flip pure <*> flip lookup [(i, at j), (j, at i)]) [0 .. length xs - 1] (\k -> xs !! k) where
