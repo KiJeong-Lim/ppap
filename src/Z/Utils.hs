@@ -26,16 +26,21 @@ instance OStreamObject a => OStreamObject [a] where
     hput = mapM_ . hput
 
 instance OStreamObject Int where
-    hput h = hPutStr h . show
+    hput h = hPutShowS h . shows
 
 instance OStreamObject Double where
-    hput h = hPutStr h . show
+    hput h = hPutShowS h . shows
 
 instance OStreamObject Integer where
-    hput h = hPutStr h . show
+    hput h = hPutShowS h . shows
 
 instance OStreamObject Bool where
-    hput h b = hput h (if b then "true" else "false")
+    hput h b = hPutStr h (if b then "true" else "false")
+
+hPutShowS :: Handle -> ShowS -> IO ()
+hPutShowS my_handle = hPutStr my_handle . initShowS where
+    initShowS :: ShowS -> String
+    initShowS string_stream = string_stream ""
 
 cout :: Handle
 cout = stdout
@@ -57,7 +62,7 @@ splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
 splitUnless cond = foldr (\x -> maybe [one x] (uncurry $ \xs -> mappend (if cond x (head xs) then [one x ++ xs] else [one x] ++ [xs])) . uncons) []
 
 splitBy :: Eq a => a -> [a] -> [[a]]
-splitBy x0 = (uncurry $ \xs -> if null xs then maybe [] (mappend (one xs) . splitBy x0 . snd) . uncons else mappend (one xs) . splitBy x0) . span (\x -> x /= x0)
+splitBy x0 = callWithStrictArg (uncurry $ \xs -> if null xs then maybe [] (mappend (one xs) . splitBy x0 . snd) . uncons else mappend (one xs) . splitBy x0) . span (\x -> x /= x0)
 
 calcTab :: Int -> Int
 calcTab n = myTabSize - (n `mod` myTabSize) where

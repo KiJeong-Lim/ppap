@@ -37,3 +37,18 @@ writeFileNow = go where
             else return ()
         hClose my_handle
         return my_handle_is_okay
+
+drawupFile :: FilePath -> ShowS -> IO Bool
+drawupFile = go where
+    go :: FilePath -> ShowS -> IO Bool
+    go path ss = do
+        my_handle <- openFile path WriteMode
+        my_handle_is_open <- hIsOpen my_handle
+        my_handle_is_okay <- if my_handle_is_open then hIsWritable my_handle else return False
+        if my_handle_is_okay
+            then do
+                hPutShowS my_handle ss
+                hFlush my_handle
+            else return ()
+        hClose my_handle
+        return my_handle_is_okay
