@@ -1,6 +1,5 @@
 module Z.Utils where
 
-import Control.Monad.Trans.Cont
 import System.IO
 
 infixl 1 <<
@@ -84,16 +83,7 @@ modifySep x f g = connect (f x) . map g . splitBy x where
     connect xs [] = []
     connect xs (ys : zss) = ys ++ foldr (\zs -> \acc -> xs ++ zs ++ acc) [] zss
 
-findEveryPermutationOf :: [a] -> [[a]]
-findEveryPermutationOf xs = myLoop (length xs) (\k -> xs !! k) where
-    mySwap :: (Int -> a) -> (Int, Int) -> (Int -> a)
-    mySwap at (i, j) k
-        | k == i = at j
-        | k == j = at i
-        | otherwise = at k
-    myLoop :: Int -> (Int -> a) -> [[a]]
-    myLoop n at
-        | n == 0 = return (map at [0 .. length xs - 1])
-        | otherwise = do
-            i <- [0 .. n - 1]
-            myLoop (n - 1) (mySwap at (i, n - 1))
+findAllPermutationsOf :: [a] -> [[a]]
+findAllPermutationsOf xs = foldr (\n -> \acc -> \at -> [0 .. n] >>= acc . curry (interchange at) n) (\at -> return (map at [0 .. length xs - 1])) [0 .. length xs - 1] (\k -> xs !! k) where
+    interchange :: (Int -> a) -> (Int, Int) -> (Int -> a)
+    interchange at (i, j) k = maybe (at k) id (lookup k [(i, at j), (j, at i)])
