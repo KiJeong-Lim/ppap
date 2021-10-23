@@ -190,5 +190,4 @@ genLexer xblocks = do
             | (line, destructor) <- zip [1, 2 .. length destructors] destructors 
             ]
         tellLine (strstr "        fmap (maybe id (:) maybe_token) (doLexing str1)")
-        tellLine (strstr "")
         return ()

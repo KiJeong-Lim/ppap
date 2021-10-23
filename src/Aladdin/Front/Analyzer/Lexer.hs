@@ -191,4 +191,3 @@ runAladdinLexer = doLexing . addLoc 1 1 where
             ((29, this), ((row1, col1), (row2, col2))) -> return Nothing
             ((30, this), ((row1, col1), (row2, col2))) -> return Nothing
         fmap (maybe id (:) maybe_token) (doLexing str1)
-
