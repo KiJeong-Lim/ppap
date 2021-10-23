@@ -72,7 +72,7 @@ calcTab n = myTabSize - (n `mod` myTabSize) where
     myTabSize = 4
 
 callWithStrictArg :: (a -> b) -> a -> b
-callWithStrictArg f x = x `seq` f x
+callWithStrictArg = ($!)
 
 one :: a -> [a]
 one = callWithStrictArg pure
@@ -86,4 +86,4 @@ modifySep x f g = connect (f x) . map g . splitBy x where
 findAllPermutationsOf :: [a] -> [[a]]
 findAllPermutationsOf xs = foldr (\n -> \acc -> \at -> [0 .. n] >>= acc . curry (interchange at) n) (\at -> return (map at [0 .. length xs - 1])) [0 .. length xs - 1] (\k -> xs !! k) where
     interchange :: (Int -> a) -> (Int, Int) -> (Int -> a)
-    interchange at (i, j) k = maybe (at k) id (lookup k [(i, at j), (j, at i)])
+    interchange at (i, j) = pure maybe <*> at <*> pure id <*> flip lookup [(i, at j), (j, at i)]
