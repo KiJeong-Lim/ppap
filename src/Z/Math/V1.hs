@@ -55,14 +55,15 @@ instance Num val => Num (ElemExpr val) where
     negate e1 = NegEE e1
     abs e1 = AppEE (VarEE "_ABS_") e1
     signum e1 = AppEE (AppEE (VarEE "_DIV_") e1) (AppEE (VarEE "_ABS_") e1)
-    fromInteger n = case n `compare` 0 of
-        LT -> NegEE (PosEE (abs n))
-        EQ -> VarEE "0"
-        GT -> PosEE (abs n)
+    fromInteger n
+        = case n `compare` 0 of
+            (LT) -> NegEE (PosEE (abs n))
+            (EQ) -> VarEE "0"
+            (GT) -> PosEE (abs n)
 
 instance Fractional val => Fractional (ElemExpr val) where
     fromRational r = AppEE (AppEE (VarEE "_DIV_") (fromInteger (numerator r))) (fromInteger (denominator r))
-    recip e1 = AppEE (AppEE (VarEE "_DIV_") (PosEE 1)) e1
+    recip e1 = AppEE (AppEE (VarEE "_DIV_") 1) e1
     e1 / e2 = AppEE (AppEE (VarEE "_DIV_") e1) e2
 
 instance IsExpr (ElemExpr) where
@@ -105,5 +106,4 @@ evalElemExpr = evalElemExprWith myWildCard where
     callWith _ es env = Nothing
 
 reduceElemExpr :: ReductionOption -> ElemExpr val -> ElemExpr val
-reduceElemExpr (ReduceLv2) = id
 reduceElemExpr _ = id
