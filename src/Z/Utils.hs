@@ -84,6 +84,6 @@ modifySep x f g = connect (f x) . map g . splitBy x where
     connect xs (ys : zss) = ys ++ foldr (\zs -> \acc -> xs ++ zs ++ acc) [] zss
 
 findAllPermutationsOf :: [a] -> [[a]]
-findAllPermutationsOf xs = foldr (\n -> \acc -> \at -> [0 .. n] >>= acc . curry (interchange at) n) (\at -> return (map at [0 .. length xs - 1])) [0 .. length xs - 1] (\k -> xs !! k) where
-    interchange :: (Int -> a) -> (Int, Int) -> (Int -> a)
-    interchange at (i, j) = pure maybe <*> at <*> pure id <*> flip lookup [(i, at j), (j, at i)]
+findAllPermutationsOf xs = withFunny (\at -> \i -> \j -> pure maybe <*> at <*> pure id <*> flip lookup [(i, at j), (j, at i)]) [0 .. length xs - 1] (\k -> xs !! k) where
+    withFunny :: ((Int -> a) -> Int -> Int -> (Int -> a)) -> [Int] -> ((Int -> a) -> [[a]])
+    withFunny my_swap my_range = foldr (\n -> \kont -> \at -> [0 .. n] >>= kont . my_swap at n) (\at -> return (map at my_range)) my_range
