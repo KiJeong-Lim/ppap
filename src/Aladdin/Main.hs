@@ -65,12 +65,62 @@ theDefaultModuleName = "aladdin"
 
 runAladdin :: UniqueGenT IO ()
 runAladdin = do
-    consistency_ptr <- lift $ newIORef ""
-    file_dir <- lift $ shelly "Aladdin =<< "
-    maybe_file_name <- case matchFileDirWithExtension file_dir of
-        ("", "") -> return Nothing
-        (file_name, ".aladdin") -> return (Just file_name)
-        (file_name, "") -> return (Just file_name)
+    file_dir <- lift $ do
+        putStr "Aladdin =<< "
+        hFlush stdout
+        getLine
+    case matchFileDirWithExtension file_dir of
+        ("", "") -> do
+            lift $ shelly "aladdin> No module loaded."
+            runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
+        (file_name, ".aladdin") -> do
+            src <- lift $ readFile file_dir
+            lift $ shelly ("aladdin> Compiling " ++ file_name ++ " (" ++ file_dir ++ ")")
+            case runAnalyzer src of
+                Left err_msg -> do
+                    lift $ putStrLn err_msg
+                    runAladdin
+                Right output -> case output of
+                    Left query1 -> do
+                        lift $ putStrLn "*** parsing-error: it is not a program."
+                        runAladdin
+                    Right program1 -> do
+                        result <- runExceptT $ do
+                            module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
+                            facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
+                            facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
+                            return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = file_name })
+                        case result of
+                            Left err_msg -> do
+                                lift $ putStrLn err_msg
+                                runAladdin
+                            Right program2 -> do
+                                lift $ shelly (file_name ++ "> Ok, one module loaded.")
+                                runREPL program2
+        (file_name, "") -> do
+            src <- lift $ readFile (file_name ++ ".aladdin")
+            lift $ shelly ("aladdin> Compiling " ++ file_name ++ " (" ++ file_name ++ ".aladdin)")
+            case runAnalyzer src of
+                Left err_msg -> do
+                    lift $ putStrLn err_msg
+                    runAladdin
+                Right output -> case output of
+                    Left query1 -> do
+                        lift $ putStrLn "*** parsing-error: it is not a program."
+                        runAladdin
+                    Right program1 -> do
+                        result <- runExceptT $ do
+                            module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
+                            facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
+                            facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
+                            return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = file_name })
+                        case result of
+                            Left err_msg -> do
+                                lift $ putStrLn err_msg
+                                runAladdin
+                            Right program2 -> do
+                                lift $ shelly (file_name ++ "> Ok, one module loaded.")
+                                runREPL program2
         (file_name, '.' : wrong_extension) -> do
             lift $ writeIORef consistency_ptr (theDefaultModuleName ++ "> " ++ shows wrong_extension " is a non-executable file extension.")
             return Nothing
