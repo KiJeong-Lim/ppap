@@ -136,13 +136,16 @@ instance Show RegEx where
     showList = undefined
 
 instance Failable (MyPC val) where
-    alt = liftPC2 (\p1 -> \p2 -> mkPB $ pure alt <*> runPB p1 <*> runPB p2)
+    alt = liftBinaryOp $ mkPB . uncurry alt . (runPB <^> runPB)
 
 instance FailableZero (MyPC val) where
-    nil = MyPC (mkPB $ pure nil)
+    nil = liftNullaryOp $ mkPB . const nil
 
-liftPC2 :: (PB LocChr val -> PB LocChr val -> PB LocChr val) -> (MyPC val -> MyPC val -> MyPC val)
-liftPC2 fun p1 p2 = MyPC (fun (unMyPC p1) (unMyPC p2))
+liftBinaryOp :: ((PB LocChr val, PB LocChr val) -> PB LocChr val) -> (MyPC val -> MyPC val -> MyPC val)
+liftBinaryOp my_op = curry $ MyPC . my_op . (unMyPC <^> unMyPC)
+
+liftNullaryOp :: (() -> PB LocChr val) -> MyPC val
+liftNullaryOp my_op = MyPC (my_op ())
 
 initRow :: Row
 initRow = 1
@@ -151,7 +154,7 @@ initCol :: Col
 initCol = 1
 
 addLoc :: Src -> LocStr
-addLoc = go initRow initCol where
+addLoc = flip (foldr (\ch -> \kont -> uncurry $ \r -> \c -> ((r, c), ch) : kont (getNextRow r ch, getNextCol c ch)) (const [])) (initRow, initCol) where
     getNextRow :: Row -> Char -> Row
     getNextRow r '\n' = succ r
     getNextRow r _ = r
@@ -159,9 +162,6 @@ addLoc = go initRow initCol where
     getNextCol c '\n' = initCol
     getNextCol c '\t' = c + calcTab (c - initCol)
     getNextCol c _ = succ c
-    go :: Row -> Col -> String -> LocStr
-    go r c [] = []
-    go r c (ch : str) = ((r, c), ch) : go (getNextRow r ch) (getNextCol c ch) str
 
 makeMessageForParsingError :: FilePath -> Src -> LocStr -> ErrMsg
 makeMessageForParsingError path src lstr = show theMsgDoc where
