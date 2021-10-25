@@ -10,7 +10,7 @@ type Doc = Doc_
 class PrettyPrintable a where
     pretty :: Precedence -> a -> Doc
 
-instance OStreamObject Doc_ where
+instance OStreamCargo Doc_ where
     hput h = hput h . shows
 
 instance PrettyPrintable Char where

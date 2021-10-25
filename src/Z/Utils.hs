@@ -11,42 +11,42 @@ type Precedence = Int
 
 data Flush
     = Flush
-    deriving (Eq, Show)
+    deriving (Eq, Ord, Show)
 
-class OStreamMaker seed where
-    mkOStream :: seed -> IO Handle
+class OStreamTrain os where
+    getHandleFrom :: os -> IO Handle
 
-class OStreamObject a where
+class OStreamCargo a where
     hput :: Handle -> a -> IO ()
 
-instance OStreamMaker (Handle) where
-    mkOStream = return
+instance OStreamTrain (Handle) where
+    getHandleFrom = return
 
-instance OStreamMaker a => OStreamMaker (IO a) where
-    mkOStream = id >=> mkOStream
+instance OStreamTrain a => OStreamTrain (IO a) where
+    getHandleFrom = id >=> getHandleFrom
 
-instance OStreamObject (Char) where
+instance OStreamCargo (Char) where
     hput = hPutChar
 
-instance OStreamObject a => OStreamObject [a] where
+instance OStreamCargo a => OStreamCargo [a] where
     hput = mapM_ . hput
 
-instance (Monoid a, OStreamObject b) => OStreamObject (a -> b) where
+instance (Monoid a, OStreamCargo b) => OStreamCargo (a -> b) where
     hput h = hput h . withZero
 
-instance OStreamObject (Flush) where
+instance OStreamCargo (Flush) where
     hput = const . hFlush
 
-instance OStreamObject (Int) where
+instance OStreamCargo (Int) where
     hput h = hput h . shows
 
-instance OStreamObject (Double) where
+instance OStreamCargo (Double) where
     hput h = hput h . shows
 
-instance OStreamObject (Integer) where
+instance OStreamCargo (Integer) where
     hput h = hput h . shows
 
-instance OStreamObject (Bool) where
+instance OStreamCargo (Bool) where
     hput h b = hput h (if b then "true" else "false")
 
 withZero :: Monoid a => (a -> b) -> b
@@ -61,11 +61,11 @@ cerr = stderr
 endl :: Char
 endl = '\n'
 
-(<<) :: (OStreamMaker seed, OStreamObject a) => seed -> a -> IO Handle
-seed << obj = do
-    h <- mkOStream seed
-    hput h obj
-    return h
+(<<) :: (OStreamTrain os, OStreamCargo a) => os -> a -> IO Handle
+my_ostream << your_cargo = do
+    my_handle <- getHandleFrom my_ostream
+    hput my_handle your_cargo
+    return my_handle
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
 splitUnless is_related_to = foldr (\x -> maybe [one x] (uncurry $ \xs -> mappend (if x `is_related_to` head xs then [one x ++ xs] else [one x] ++ [xs])) . uncons) []
