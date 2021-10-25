@@ -90,10 +90,10 @@ shelly = go where
     go :: String -> IO String
     go msg = do
         can_prettify <- supportsPretty
-        cout << (if can_prettify then elaborate msg else msg)
+        cout << (if can_prettify then elaborate msg else msg) << Flush
         if not (null msg) && last msg == ' '
             then getLine
             else do
                 delay 100
-                cout << endl
+                cout << endl << Flush
                 return ""

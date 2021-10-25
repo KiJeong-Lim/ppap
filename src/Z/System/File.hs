@@ -24,31 +24,31 @@ readFileNow = go where
         return (fmap unlines maybe_contents)
 
 writeFileNow :: FilePath -> String -> IO Bool
-writeFileNow = go where
-    go :: FilePath -> String -> IO Bool
-    go path content = do
+writeFileNow path = go where
+    go :: String -> IO Bool
+    go content = do
         my_handle <- openFile path WriteMode
         my_handle_is_open <- hIsOpen my_handle
         my_handle_is_okay <- if my_handle_is_open then hIsWritable my_handle else return False
         if my_handle_is_okay
             then do
-                hPutStr my_handle content
-                hFlush my_handle
+                my_handle << content << Flush
+                return ()
             else return ()
         hClose my_handle
         return my_handle_is_okay
 
 drawupFile :: FilePath -> ShowS -> IO Bool
-drawupFile = go where
-    go :: FilePath -> ShowS -> IO Bool
-    go path ss = do
+drawupFile path = go where
+    go :: ShowS -> IO Bool
+    go string_stream = do
         my_handle <- openFile path WriteMode
         my_handle_is_open <- hIsOpen my_handle
         my_handle_is_okay <- if my_handle_is_open then hIsWritable my_handle else return False
         if my_handle_is_okay
             then do
-                hPutShowS my_handle ss
-                hFlush my_handle
+                my_handle << string_stream << Flush
+                return ()
             else return ()
         hClose my_handle
         return my_handle_is_okay
