@@ -50,7 +50,7 @@ instance OStreamObject (Bool) where
     hput h b = hput h (if b then "true" else "false")
 
 withZero :: Monoid a => (a -> b) -> b
-withZero = flip callWithStrictArg mempty
+withZero to_be_initialized = to_be_initialized mempty
 
 cout :: Handle
 cout = stdout
@@ -62,13 +62,13 @@ endl :: Char
 endl = '\n'
 
 (<<) :: (OStreamMaker seed, OStreamObject a) => seed -> a -> IO Handle
-seed << x = do
+seed << obj = do
     h <- mkOStream seed
-    hput h x
+    hput h obj
     return h
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
-splitUnless cond = foldr (\x -> maybe [one x] (uncurry $ \xs -> mappend (if cond x (head xs) then [one x ++ xs] else [one x] ++ [xs])) . uncons) []
+splitUnless is_related_to = foldr (\x -> maybe [one x] (uncurry $ \xs -> mappend (if x `is_related_to` head xs then [one x ++ xs] else [one x] ++ [xs])) . uncons) []
 
 splitBy :: Eq a => a -> [a] -> [[a]]
 splitBy x0 = fix $ \my_fix -> callWithStrictArg (uncurry $ \xs -> if null xs then maybe [] (mappend (one xs) . my_fix . snd) . uncons else mappend (one xs) . my_fix) . span (\x -> x /= x0)
