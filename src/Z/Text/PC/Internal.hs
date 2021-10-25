@@ -139,13 +139,13 @@ instance Failable (MyPC val) where
     alt = liftBinaryOp $ mkPB . uncurry alt . (runPB <^> runPB)
 
 instance FailableZero (MyPC val) where
-    nil = liftNullaryOp $ mkPB . const nil
+    nil = liftNullaryOp $ mkPB . const nil . id
 
 liftBinaryOp :: ((PB LocChr val, PB LocChr val) -> PB LocChr val) -> (MyPC val -> MyPC val -> MyPC val)
 liftBinaryOp my_op = curry $ MyPC . my_op . (unMyPC <^> unMyPC)
 
 liftNullaryOp :: (() -> PB LocChr val) -> MyPC val
-liftNullaryOp my_op = withZero $ MyPC . my_op
+liftNullaryOp my_op = withZero $ MyPC . my_op . id
 
 initRow :: Row
 initRow = 1
