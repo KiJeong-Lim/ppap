@@ -40,10 +40,10 @@ instance OStreamObject Bool where
     hput h b = hPutStr h (if b then "true" else "false")
 
 hPutShowS :: Handle -> ShowS -> IO ()
-hPutShowS my_handle = hPutStr my_handle . initShowS
+hPutShowS my_handle = hPutStr my_handle . withZero
 
-initShowS :: ShowS -> String
-initShowS string_stream = string_stream ""
+withZero :: Monoid a => (a -> b) -> b
+withZero = flip callWithStrictArg mempty
 
 cout :: Handle
 cout = stdout

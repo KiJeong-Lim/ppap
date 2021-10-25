@@ -145,7 +145,7 @@ liftBinaryOp :: ((PB LocChr val, PB LocChr val) -> PB LocChr val) -> (MyPC val -
 liftBinaryOp my_op = curry $ MyPC . my_op . (unMyPC <^> unMyPC)
 
 liftNullaryOp :: (() -> PB LocChr val) -> MyPC val
-liftNullaryOp my_op = MyPC (my_op ())
+liftNullaryOp my_op = withZero $ MyPC . my_op
 
 initRow :: Row
 initRow = 1

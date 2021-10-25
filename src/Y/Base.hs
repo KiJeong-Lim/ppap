@@ -33,7 +33,7 @@ ppunc str deltas = if null deltas then id else head deltas . foldr (\delta -> \a
 plist :: Indentation -> [ShowS] -> ShowS
 plist space deltas
     | null deltas = strstr "[]"
-    | otherwise = nl . pindent space . strstr "[ " . ppunc (initShowS (nl . pindent space . strstr ", ")) deltas . nl . pindent space . strstr "]" where
+    | otherwise = nl . pindent space . strstr "[ " . ppunc (withZero (nl . pindent space . strstr ", ")) deltas . nl . pindent space . strstr "]"
 
 quotify :: ShowS -> ShowS
-quotify = shows . initShowS
+quotify = shows . withZero
