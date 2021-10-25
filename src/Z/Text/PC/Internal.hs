@@ -154,7 +154,7 @@ initCol :: Col
 initCol = 1
 
 addLoc :: Src -> LocStr
-addLoc = flip (foldr (\ch -> \kont -> uncurry $ \r -> \c -> ((r, c), ch) : kont (getNextRow r ch, getNextCol c ch)) (const [])) (initRow, initCol) where
+addLoc = foldr (\ch -> \kont -> uncurry $ \r -> \c -> ((r, c), ch) : kont (getNextRow r ch, getNextCol c ch)) (const []) <*> pure (initRow, initCol) where
     getNextRow :: Row -> Char -> Row
     getNextRow r '\n' = succ r
     getNextRow r _ = r

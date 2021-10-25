@@ -16,9 +16,9 @@ runPC :: FilePath -> PC val -> Src -> Either ErrMsg val
 runPC path p src = either (callWithStrictArg Left . makeMessageForParsingError path src) (callWithStrictArg return) (execPC p src)
 
 acceptPC :: (Char -> Bool) -> PC Char
-acceptPC cond = MyPC (mkPB go) where
-    go :: LocStr -> [(Char, LocStr)]
-    go lstr = [ (ch, drop 1 lstr) | (_, ch) <- take 1 lstr, cond ch ]
+acceptPC = MyPC . mkPB . go where
+    go :: (Char -> Bool) -> LocStr -> [(Char, LocStr)]
+    go cond lstr = [ (ch, drop 1 lstr) | (_, ch) <- take 1 lstr, cond ch ]
 
 consumePC :: String -> PC ()
 consumePC = mapM_ acceptPC . map (==)
@@ -27,23 +27,23 @@ matchPC :: String -> PC ()
 matchPC = MyPC . go where
     go :: String -> PB LocChr ()
     go expecteds = mkPB $ \lstr0 -> case splitAt (length expecteds) lstr0 of
-        (token, lstr1) -> if map snd token == expecteds then [((), lstr1)] else []
+        (token, lstr1) -> if map snd token == expecteds then one ((), lstr1) else []
 
 eofPC :: PC ()
 eofPC = MyPC go where
     go :: PB LocChr ()
-    go = mkPB $ \lstr0 -> if null lstr0 then [((), lstr0)] else []
+    go = mkPB $ \lstr0 -> if null lstr0 then one ((), lstr0) else []
 
 regexPC :: RegExRep -> PC String
 regexPC = myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression
 
 intPC :: PC Int
-intPC = read <$> regexPC "['-']? ['0'-'9']+"
+intPC = pure read <*> regexPC "['-']? ['0'-'9']+"
 
 negPC :: PC val -> PC ()
-negPC p1 = ((p1 *> return True) /> return False) >>= go where
-    go :: Bool -> PC ()
-    go p1_passed = if p1_passed then empty else return ()
+negPC p1 = do
+    p1_passed <- (p1 *> return True) /> return False
+    if p1_passed then empty else return ()
 
 acceptQuote :: PC String
 acceptQuote = pure read <*> regexPC "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\'])* \"\\\"\""
@@ -52,7 +52,7 @@ skipWhite :: PC Int
 skipWhite = MyPC go where
     go :: PB LocChr Int
     go = mkPB $ \lstr0 -> case span (\lch -> snd lch == ' ') lstr0 of
-        (ws, lstr1) -> [(length ws, lstr1)]
+        (ws, lstr1) -> one (length ws, lstr1)
 
 smallid :: PC String
 smallid = regexPC "[\'a\'-\'z\'] [\'a\'-\'z\' \'0\'-\'9\' \'_\']*"

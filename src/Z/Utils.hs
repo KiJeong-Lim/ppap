@@ -46,11 +46,11 @@ instance OStreamCargo (Double) where
 instance OStreamCargo (Integer) where
     hput h = hput h . shows
 
-instance OStreamCargo (Bool) where
-    hput h b = hput h (if b then "true" else "false")
-
 withZero :: Monoid a => (a -> b) -> b
 withZero to_be_initialized = to_be_initialized mempty
+
+kons :: a -> [a] -> [a]
+kons = (:)
 
 cout :: Handle
 cout = stdout
@@ -68,13 +68,13 @@ my_ostream << your_cargo = do
     return my_handle
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
-splitUnless is_related_to = foldr (\x -> maybe [one x] (uncurry $ \xs -> mappend (if x `is_related_to` head xs then [one x ++ xs] else [one x] ++ [xs])) . uncons) []
+splitUnless is_related_to = foldr (\x -> recList [one x] (\xs -> const $ if x `is_related_to` head xs then kons (one x ++ xs) else kons (one x) . kons xs)) []
 
 splitBy :: Eq a => a -> [a] -> [[a]]
-splitBy x0 = fix $ \go -> callWithStrictArg (uncurry $ \xs -> if null xs then maybe [] (mappend (one xs) . go . snd) . uncons else mappend (one xs) . go) . span (\x -> x /= x0)
+splitBy x0 = fix $ \go -> uncurry (\xs -> if null xs then maybe [] (kons xs . go . snd) . uncons else kons xs . go) . span (\x -> x /= x0)
 
 calcTab :: Int -> Int
-calcTab n = callWithStrictArg (\my_tab_width -> my_tab_width - (n `mod` my_tab_width)) 4
+calcTab n = 4 & (\my_tab_width -> my_tab_width - n `mod` my_tab_width)
 
 callWithStrictArg :: (a -> b) -> a -> b
 callWithStrictArg = ($!)
@@ -83,7 +83,7 @@ one :: a -> [a]
 one = callWithStrictArg pure
 
 modifySep :: Eq a => a -> (a -> [b]) -> ([a] -> [b]) -> ([a] -> [b])
-modifySep x0 f1 f2 = callWithStrictArg (\zs -> concat . foldr (\ys -> \acc -> if null acc then ys : acc else ys : zs : acc) [] . map f2 . splitBy x0) (f1 x0)
+modifySep x0 f1 f2 = f1 x0 & (\zs -> concat . foldr (\ys -> \acc -> if null acc then ys : acc else ys : zs : acc) [] . map f2 . splitBy x0)
 
 findAllPermutationsOf :: [a] -> [[a]]
 findAllPermutationsOf xs = swag (\at -> uncurry $ \i -> \j -> maybe . at <*> flip pure <*> flip lookup [(i, at j), (j, at i)]) [0 .. length xs - 1] (\k -> xs !! k) where
