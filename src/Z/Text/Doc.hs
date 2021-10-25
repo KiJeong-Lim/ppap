@@ -11,7 +11,7 @@ class PrettyPrintable a where
     pretty :: Precedence -> a -> Doc
 
 instance OStreamObject Doc_ where
-    hput h = hput h . show
+    hput h = hput h . shows
 
 instance PrettyPrintable Char where
     pretty _ ch = pstr ("\'" ++ dispatchChar ch ++ "\'")
@@ -34,7 +34,7 @@ pstr :: String -> Doc
 pstr str = if null str then DocNull else DocText str
 
 pp :: Show a => a -> Doc
-pp = pstr . show
+pp = pstr . withZero . shows
 
 (+>) :: Doc -> Doc -> Doc
 DocNull +> doc = doc
