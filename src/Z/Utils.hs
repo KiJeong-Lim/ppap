@@ -43,8 +43,8 @@ instance OStreamCargo (Int) where
 instance OStreamCargo (Double) where
     hput h = hput h . shows
 
-instance OStreamCargo (Integer) where
-    hput h = hput h . shows
+instance OStreamCargo (Bool) where
+    hput h b = hput h (if b then "true" else "false")
 
 withZero :: Monoid a => (a -> b) -> b
 withZero to_be_initialized = to_be_initialized mempty
@@ -86,7 +86,7 @@ modifySep :: Eq a => a -> (a -> [b]) -> ([a] -> [b]) -> ([a] -> [b])
 modifySep x0 f1 f2 = f1 x0 & (\zs -> concat . foldr (\ys -> \acc -> if null acc then ys : acc else ys : zs : acc) [] . map f2 . splitBy x0)
 
 findAllPermutationsOf :: [a] -> [[a]]
-findAllPermutationsOf xs = swag (\at -> uncurry $ \i -> \j -> maybe . at <*> flip pure <*> flip lookup [(i, at j), (j, at i)]) [0 .. length xs - 1] (\k -> xs !! k) where
+findAllPermutationsOf = swag (\at -> uncurry $ \i -> \j -> maybe . at <*> curry snd <*> flip lookup [(i, at j), (j, at i)]) . zipWith const [0 ..] <*> (!!) where
     swag :: ((Int -> a) -> (Int, Int) -> (Int -> a)) -> [Int] -> ((Int -> a) -> [[a]])
     swag applySwapping my_range = foldr (\n -> \kont -> \at -> [0 .. n] >>= kont . curry (applySwapping at) n) (\at -> return (map at my_range)) my_range
 

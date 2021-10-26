@@ -8,12 +8,14 @@ class Outputable a where
     pprint :: Precedence -> a -> ShowS
 
 instance Outputable Integer where
-    pprint prec = if prec == 0 then by3digits else shows where
-        by3digits :: Integer -> ShowS
-        by3digits n
-            | n < 0 = strstr "- " . by3digits (abs n)
-            | n >= 1000 = by3digits (n `div` 1000) . shows (n `mod` 1000)
-            | otherwise = shows n
+    pprint prec = if prec == 0 then byDigitsOf 3 else shows where
+        byDigitsOf :: Int -> Integer -> ShowS
+        byDigitsOf k n
+            | n < 0 = strstr "- " . byDigitsOf k (negate n)
+            | otherwise = if n >= (10 ^ k) then byDigitsOf k (n `div` (10 ^ k)) . strstr " " . strcat [ shows ((n `div` (10 ^ i)) `mod` 10) | i <- [k - 1, k - 2 .. 0] ] else shows n
+
+instance OStreamCargo Integer where
+    hput h = hput h . pprint 0
 
 strstr :: String -> ShowS
 strstr = showString
@@ -31,9 +33,7 @@ ppunc :: String -> [ShowS] -> ShowS
 ppunc str deltas = if null deltas then id else head deltas . foldr (\delta -> \acc -> strstr str . delta . acc) id (tail deltas)
 
 plist :: Indentation -> [ShowS] -> ShowS
-plist space deltas
-    | null deltas = strstr "[]"
-    | otherwise = nl . pindent space . strstr "[ " . ppunc (withZero (nl . pindent space . strstr ", ")) deltas . nl . pindent space . strstr "]"
+plist space deltas = if null deltas then strstr "[]" else nl . pindent space . strstr "[ " . ppunc (withZero (nl . pindent space . strstr ", ")) deltas . nl . pindent space . strstr "]"
 
 quotify :: ShowS -> ShowS
 quotify = shows . withZero
