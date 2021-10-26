@@ -40,5 +40,5 @@ writeFileNow path my_content = do
             return ()
         else return ()
     my_result <- if my_handle_is_okay then hIsWritable my_handle else return False
-    hClose my_handle
+    my_result `seq` hClose my_handle
     return my_result
