@@ -1,39 +1,44 @@
 module Z.System.File where
 
-import Control.Monad
+import Control.Monad.Fix
+import Control.Monad.Trans.Class
+import Control.Monad.Trans.Maybe
 import System.IO
 import Z.Utils
 
 readFileNow :: FilePath -> IO (Maybe String)
-readFileNow = go where
-    readContentNow :: Handle -> IO [String]
-    readContentNow my_handle = do
-        my_handle_is_eof <- hIsEOF my_handle
-        if my_handle_is_eof
-            then return []
-            else do
-                content <- hGetLine my_handle
-                contents <- readContentNow my_handle
-                content `seq` return (content : contents)
-    go :: FilePath -> IO (Maybe String)
-    go path = do
-        my_handle <- openFile path ReadMode
-        my_handle_is_open <- hIsOpen my_handle
-        my_handle_is_okay <- if my_handle_is_open then hIsReadable my_handle else return False
+readFileNow path = do
+    my_handle <- openFile path ReadMode
+    my_handle_is_open <- hIsOpen my_handle
+    my_result <- runMaybeT $ do
+        my_handle_is_okay <- if my_handle_is_open then lift (hIsReadable my_handle) else return False
         if my_handle_is_okay
             then do
-                contents <- readContentNow my_handle
-                callWithStrictArg (return . Just) (unlines contents)
-            else return Nothing
+                my_content <- fix $ \get_content -> do
+                    let my_cons ch str = ch `seq` str `seq` ch : str
+                    my_handle_is_eof <- lift (hIsEOF my_handle)
+                    if my_handle_is_eof
+                        then return ""
+                        else do
+                            content1 <- lift (hGetLine my_handle)
+                            my_handle_is_still_okay <- lift (hIsReadable my_handle)
+                            content2 <- if my_handle_is_still_okay then get_content else fail ""
+                            return (foldr my_cons (my_cons '\n' content2) content1)
+                callWithStrictArg return my_content
+            else fail ""
+    my_result `seq` hClose my_handle
+    return my_result
 
 writeFileNow :: OStreamCargo a => FilePath -> a -> IO Bool
-writeFileNow path content = do
+writeFileNow path my_content = do
     my_handle <- openFile path WriteMode
     my_handle_is_open <- hIsOpen my_handle
     my_handle_is_okay <- if my_handle_is_open then hIsWritable my_handle else return False
-    when my_handle_is_okay $ do
-        my_handle << content << Flush
-        return ()
-    well_printed <- if my_handle_is_okay then hIsWritable my_handle else return False
+    if my_handle_is_okay
+        then do
+            my_handle << my_content << Flush
+            return ()
+        else return ()
+    my_result <- if my_handle_is_okay then hIsWritable my_handle else return False
     hClose my_handle
-    return well_printed
+    return my_result
