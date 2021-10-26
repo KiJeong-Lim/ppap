@@ -15,7 +15,7 @@ readFileNow path = do
         if my_handle_is_okay
             then do
                 my_content <- fix $ \get_content -> do
-                    let my_cons ch str = ch `seq` str `seq` ch : str
+                    let my_append = foldr (\ch -> \kont -> \str -> ch `seq` str `seq` kont (ch : str)) id
                     my_handle_is_eof <- lift (hIsEOF my_handle)
                     if my_handle_is_eof
                         then return ""
@@ -23,7 +23,7 @@ readFileNow path = do
                             content1 <- lift (hGetLine my_handle)
                             my_handle_is_still_okay <- lift (hIsReadable my_handle)
                             content2 <- if my_handle_is_still_okay then get_content else fail ""
-                            return (foldr my_cons (my_cons '\n' content2) content1)
+                            return (my_append content1 (my_append "\n" content2))
                 callWithStrictArg return my_content
             else fail ""
     my_result `seq` hClose my_handle
