@@ -3,7 +3,7 @@
 ## The 1st version
 
 ```hs
-module Jasmine.Solver.Presburger where
+module Jasmine.Solver.Presburger.Internal where
 
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map

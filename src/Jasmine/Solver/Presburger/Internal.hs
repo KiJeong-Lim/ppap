@@ -314,7 +314,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
         | k >= 0 = PresburgerTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
         | otherwise = error "multiply: negative input"
     getLCM :: PositiveInteger -> PositiveInteger -> PositiveInteger
-    getLCM k1 k2 = (k1 * k2) `div` (getGCD k1 k2)
+    getLCM k1 k2 = maybe ((k1 * k2) `div` (getGCD k1 k2)) id (lookup 1 [(k1, k2), (k2, k1)])
     trick :: MyPresburgerFormula -> (MyPresburgerFormula, MyPresburgerFormula) -> Maybe MyPresburgerFormula
     trick (ValF b) = if b then pure . fst else pure . snd
     trick _ = pure Nothing
@@ -350,19 +350,19 @@ getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
 getMaxVarOf zs = foldr (\z1 -> \acc -> \z2 -> callWithStrictArg acc (max z1 z2)) id zs theMinNumOfMyVar
 
 chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
-chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (applyMySubstToVar x sigma) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
-
-applyMySubstToVar :: MyVar -> MySubst -> PresburgerTermRep
-applyMySubstToVar x sigma = sigma x
+chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (sigma x) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
 
 applyMySubstToTermRep :: PresburgerTermRep -> MySubst -> PresburgerTermRep
-applyMySubstToTermRep (IVar x) = applyMySubstToVar x
+applyMySubstToTermRep (IVar x) = flip callWithStrictArg x
 applyMySubstToTermRep (Zero) = pure Zero
 applyMySubstToTermRep (Succ t1) = pure Succ <*> applyMySubstToTermRep t1
 applyMySubstToTermRep (Plus t1 t2) = pure Plus <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
 
-runMySubst :: MySubst -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-runMySubst = flip applyMySubstToFormulaRep where
+runTermSubst :: [(MyVar, PresburgerTermRep)] -> PresburgerTermRep -> PresburgerTermRep
+runTermSubst = flip applyMySubstToTermRep . foldr consMySubst nilMySubst
+
+runFormulaSubst :: [(MyVar, PresburgerTermRep)] -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+runFormulaSubst = flip applyMySubstToFormulaRep . foldr consMySubst nilMySubst where
     applyMySubstToFormulaRep :: MyPresburgerFormulaRep -> MySubst -> MyPresburgerFormulaRep
     applyMySubstToFormulaRep (ValF b) = pure (ValF b)
     applyMySubstToFormulaRep (EqnF t1 t2) = pure EqnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2

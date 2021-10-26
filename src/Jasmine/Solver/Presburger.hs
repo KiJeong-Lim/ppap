@@ -14,9 +14,9 @@ type Term = PresburgerTermRep
 type Formula = MyPresburgerFormulaRep
 
 data AtomFormula
-    = EqF !Term !Term
-    | LtF !Term !Term
-    | CMF !Term !PositiveInteger !Term
+    = EqF Term Term
+    | LtF Term Term
+    | CMF Term PositiveInteger Term
     deriving (Eq)
 
 instance Show AtomFormula where
@@ -33,16 +33,16 @@ isInTheory :: Formula -> Bool
 isInTheory = fromJust . checkTruthValueOfMyPresburgerFormula . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm 
 
 applySubstitution :: [(Var, Term)] -> Formula -> Formula
-applySubstitution = runMySubst . foldr consMySubst nilMySubst
+applySubstitution = runFormulaSubst
 
 composeSubstitution :: [(Var, Term)] -> [(Var, Term)] -> [(Var, Term)]
-composeSubstitution outer_map inner_map = [ (x, applyMySubstToTermRep t (foldr consMySubst nilMySubst outer_map)) | (x, t) <- inner_map ] ++ outer_map
+composeSubstitution outer_map inner_map = [ (x, runTermSubst outer_map t) | (x, t) <- inner_map ] ++ outer_map
 
 mkNum :: MyNat -> Term
-mkNum n = if n >= 0 then recNat mkZero (const mkSucc) n else error "Presburger.mkNum: A negative input is given..."
+mkNum n = if n >= 0 then recNat mkZero (const mkSucc) n else error "Presburger.mkNum> A negative input is given..."
 
 mkIVar :: Var -> Term
-mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "Presburger.mkIVar: A bad individual variable given..."
+mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "Presburger.mkIVar> A bad individual variable given..."
 
 mkZero :: Term
 mkZero = Zero
@@ -66,7 +66,7 @@ mkGtnF :: Term -> Term -> Formula
 mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
 
 mkModF :: Term -> PositiveInteger -> Term -> Formula
-mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "Presburger.mkModF: The second input must be positive..."
+mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "Presburger.mkModF> The second input must be positive..."
 
 mkBotF :: Formula
 mkBotF = ValF False
@@ -87,13 +87,13 @@ mkIffF :: Formula -> Formula -> Formula
 mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
 
 mkAllF :: Var -> Formula -> Formula
-mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "Presburger.mkAllF: A bad individual variable is given..."
+mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "Presburger.mkAllF> A bad individual variable is given..."
 
 mkExsF :: Var -> Formula -> Formula
-mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Presburger.mkExsF: A bad individual variable is given..."
+mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Presburger.mkExsF> A bad individual variable is given..."
 
 eliminateQuantifier :: Formula -> Formula
-eliminateQuantifier = convert . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
+eliminateQuantifier = convertToRep . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
     discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
     discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (traverse (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (mkIVar var) (const (flip mkPlus (mkIVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
     discompileFormula :: MyPresburgerFormula -> Maybe MyPresburgerFormulaRep
@@ -110,8 +110,8 @@ eliminateQuantifier = convert . eliminateQuantifierReferringToTheBookWrittenByPe
     discompileFormula (IffF f1 f2) = pure mkIffF <*> discompileFormula f1 <*> discompileFormula f2
     discompileFormula (AllF y f1) = pure mkAllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
     discompileFormula (ExsF y f1) = pure mkExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
-    convert :: MyPresburgerFormula -> MyPresburgerFormulaRep
-    convert f = maybe (error ("Presburger.eliminateQuantifier: The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
+    convertToRep :: MyPresburgerFormula -> MyPresburgerFormulaRep
+    convertToRep f = maybe (error ("Presburger.eliminateQuantifier> The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
     mkValF :: Bool -> Formula
     mkValF b = b `seq` ValF b
 

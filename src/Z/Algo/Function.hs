@@ -90,7 +90,7 @@ mkCantorPair = recNat (0, 0) (\n -> uncurry $ \x -> \y -> if null [0, 1 .. pred 
 getGCD :: Integral int => int -> int -> PositiveInteger
 getGCD x y
     | negate 1 `elem` map signum [x, y] = Function.on getGCD abs x y
-    | 0 `elem` [x, y] = if x == y then error "getGCD: only zero inputs" else Function.on (+) toInteger x y
+    | 0 `elem` [x, y] = if x == y then error "Z.Algo.Function.getGCD> only zero inputs" else Function.on (+) toInteger x y
     | otherwise = Function.on euclid toInteger x y
     where
         euclid :: MyNat -> MyNat -> PositiveInteger
