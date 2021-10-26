@@ -68,7 +68,7 @@ my_ostream << your_cargo = do
     return my_handle
 
 splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
-splitUnless is_related_to = foldr (\x -> recList [one x] (\xs -> const $ if x `is_related_to` head xs then kons (one x ++ xs) else kons (one x) . kons xs)) []
+splitUnless is_related_to = foldr (\x -> recList [one x] (\xs -> const . (if x `is_related_to` head xs then kons (one x ++ xs) else kons (one x) . kons xs))) []
 
 splitBy :: Eq a => a -> [a] -> [[a]]
 splitBy x0 = fix $ \go -> uncurry (\xs -> if null xs then maybe [] (kons xs . go . snd) . uncons else kons xs . go) . span (\x -> x /= x0)
