@@ -27,7 +27,7 @@ runPGS dir = do
                 shelly "PGS >>= tell (generating-failed)"
                 return ()
             Right delta -> do
-                drawupFile (dir ++ ".hs") delta
+                writeFileNow (dir ++ ".hs") delta
                 shelly "PGS >>= tell (the-parser-has-been-generated)"
                 return ()
 

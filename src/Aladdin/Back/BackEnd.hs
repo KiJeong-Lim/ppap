@@ -70,7 +70,7 @@ runREPL program = lift (newIORef False) >>= go where
                     case response of
                         ":q" -> do
                             shelly "Aladdin >>= quit"
-                            return ()
+                            exitSuccess
                         ":d" -> do
                             modifyIORef isDebugging not
                             debugging <- readIORef isDebugging

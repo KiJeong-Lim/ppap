@@ -27,7 +27,7 @@ runLGS dir = do
                 shelly "LGS >>= tell (generating-failed)"
                 return ()
             Right delta -> do
-                drawupFile (dir ++ ".hs") delta
+                writeFileNow (dir ++ ".hs") delta
                 shelly "LGS >>= tell (the-lexer-has-been-generated)"
                 return ()
 
