@@ -23,6 +23,11 @@ instance Show AtomFormula where
     showsPrec prec f = if prec >= 5 then strstr "(" . showsAtomFormula f . strstr ")" else showsAtomFormula f
     showList fs = strstr "[" . ppunc ", " (map showsAtomFormula fs) . strstr "]"
 
+showsAtomFormula :: AtomFormula -> ShowS
+showsAtomFormula (EqF t1 t2) = shows t1 . strstr " = " . shows t2
+showsAtomFormula (LtF t1 t2) = shows t1 . strstr " < " . shows t2
+showsAtomFormula (CMF t1 r t2) = shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
+
 isSentence :: Formula -> Bool
 isSentence = Set.null . getFVsInPresburgerFormulaRep
 
@@ -39,10 +44,10 @@ composeSubstitution :: [(Var, Term)] -> [(Var, Term)] -> [(Var, Term)]
 composeSubstitution outer_map inner_map = [ (x, runTermSubst outer_map t) | (x, t) <- inner_map ] ++ outer_map
 
 mkNum :: MyNat -> Term
-mkNum n = if n >= 0 then recNat mkZero (const mkSucc) n else error "Presburger.mkNum> A negative input is given..."
+mkNum n = if n >= 0 then recNat mkZero (const mkSucc) n else error "Jasmine.Solver.Presburger.mkNum> A negative input is given..."
 
 mkIVar :: Var -> Term
-mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "Presburger.mkIVar> A bad individual variable given..."
+mkIVar x = if x >= theMinNumOfMyVar then IVar x else error "Jasmine.Solver.Presburger.mkIVar> A bad individual variable given..."
 
 mkZero :: Term
 mkZero = Zero
@@ -66,7 +71,7 @@ mkGtnF :: Term -> Term -> Formula
 mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
 
 mkModF :: Term -> PositiveInteger -> Term -> Formula
-mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "Presburger.mkModF> The second input must be positive..."
+mkModF t1 r t2 = if r > 0 then t1 `seq` t2 `seq` ModF t1 r t2 else error "Jasmine.Solver.Presburger.mkModF> The second input must be positive..."
 
 mkBotF :: Formula
 mkBotF = ValF False
@@ -87,13 +92,13 @@ mkIffF :: Formula -> Formula -> Formula
 mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
 
 mkAllF :: Var -> Formula -> Formula
-mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "Presburger.mkAllF> A bad individual variable is given..."
+mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "Jasmine.Solver.Presburger.mkAllF> A bad individual variable is given..."
 
 mkExsF :: Var -> Formula -> Formula
-mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Presburger.mkExsF> A bad individual variable is given..."
+mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Jasmine.Solver.Presburger.mkExsF> A bad individual variable is given..."
 
 eliminateQuantifier :: Formula -> Formula
-eliminateQuantifier = convertToRep . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
+eliminateQuantifier = convertFormulaToRep . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
     discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
     discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (traverse (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (mkIVar var) (const (flip mkPlus (mkIVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
     discompileFormula :: MyPresburgerFormula -> Maybe MyPresburgerFormulaRep
@@ -110,8 +115,8 @@ eliminateQuantifier = convertToRep . eliminateQuantifierReferringToTheBookWritte
     discompileFormula (IffF f1 f2) = pure mkIffF <*> discompileFormula f1 <*> discompileFormula f2
     discompileFormula (AllF y f1) = pure mkAllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
     discompileFormula (ExsF y f1) = pure mkExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
-    convertToRep :: MyPresburgerFormula -> MyPresburgerFormulaRep
-    convertToRep f = maybe (error ("Presburger.eliminateQuantifier> The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
+    convertFormulaToRep :: MyPresburgerFormula -> MyPresburgerFormulaRep
+    convertFormulaToRep f = maybe (error ("Jasmine.Solver.Presburger.eliminateQuantifier> The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
     mkValF :: Bool -> Formula
     mkValF b = b `seq` ValF b
 
@@ -157,8 +162,3 @@ destFormula = makeDNF . simplify . eliminateQuantifier where
     negOf (ModF t1 r t2) = [1 .. r - 1] >>= (\i -> pure [CMF t1 r (mkPlus t2 (mkNum i))])
     mkValF :: Bool -> Formula
     mkValF b = b `seq` ValF b
-
-showsAtomFormula :: AtomFormula -> ShowS
-showsAtomFormula (EqF t1 t2) = shows t1 . strstr " = " . shows t2
-showsAtomFormula (LtF t1 t2) = shows t1 . strstr " < " . shows t2
-showsAtomFormula (CMF t1 r t2) = shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2

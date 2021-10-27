@@ -15,7 +15,7 @@ type MyPresburgerFormula = PresburgerFormula PresburgerTerm
 
 type MyPresburgerFormulaRep = PresburgerFormula PresburgerTermRep
 
-type MySubst = MyVar -> PresburgerTermRep
+type Subst = MyVar -> PresburgerTermRep
 
 type MyProp = Bool
 
@@ -349,42 +349,42 @@ getFVsInPresburgerFormulaRep = getFVs where
 getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
 getMaxVarOf zs = foldr (\z1 -> \acc -> \z2 -> callWithStrictArg acc (max z1 z2)) id zs theMinNumOfMyVar
 
-chi :: MyPresburgerFormulaRep -> MySubst -> MyVar
+chi :: MyPresburgerFormulaRep -> Subst -> MyVar
 chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (sigma x) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
 
-applyMySubstToTermRep :: PresburgerTermRep -> MySubst -> PresburgerTermRep
-applyMySubstToTermRep (IVar x) = flip callWithStrictArg x
-applyMySubstToTermRep (Zero) = pure Zero
-applyMySubstToTermRep (Succ t1) = pure Succ <*> applyMySubstToTermRep t1
-applyMySubstToTermRep (Plus t1 t2) = pure Plus <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
+applySubstToTermRep :: PresburgerTermRep -> Subst -> PresburgerTermRep
+applySubstToTermRep (IVar x) = flip callWithStrictArg x
+applySubstToTermRep (Zero) = pure Zero
+applySubstToTermRep (Succ t1) = pure Succ <*> applySubstToTermRep t1
+applySubstToTermRep (Plus t1 t2) = pure Plus <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
 
 runTermSubst :: [(MyVar, PresburgerTermRep)] -> PresburgerTermRep -> PresburgerTermRep
-runTermSubst = flip applyMySubstToTermRep . foldr consMySubst nilMySubst
+runTermSubst = flip applySubstToTermRep . foldr consSubst nilSubst
 
 runFormulaSubst :: [(MyVar, PresburgerTermRep)] -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-runFormulaSubst = flip applyMySubstToFormulaRep . foldr consMySubst nilMySubst where
-    applyMySubstToFormulaRep :: MyPresburgerFormulaRep -> MySubst -> MyPresburgerFormulaRep
-    applyMySubstToFormulaRep (ValF b) = pure (ValF b)
-    applyMySubstToFormulaRep (EqnF t1 t2) = pure EqnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
-    applyMySubstToFormulaRep (LtnF t1 t2) = pure LtnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
-    applyMySubstToFormulaRep (LeqF t1 t2) = pure LeqF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
-    applyMySubstToFormulaRep (GtnF t1 t2) = pure GtnF <*> applyMySubstToTermRep t1 <*> applyMySubstToTermRep t2
-    applyMySubstToFormulaRep (ModF t1 r t2) = pure ModF <*> applyMySubstToTermRep t1 <*> pure r <*> applyMySubstToTermRep t2
-    applyMySubstToFormulaRep (NegF f1) = pure NegF <*> applyMySubstToFormulaRep f1
-    applyMySubstToFormulaRep (DisF f1 f2) = pure DisF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
-    applyMySubstToFormulaRep (ConF f1 f2) = pure ConF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
-    applyMySubstToFormulaRep (ImpF f1 f2) = pure ImpF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
-    applyMySubstToFormulaRep (IffF f1 f2) = pure IffF <*> applyMySubstToFormulaRep f1 <*> applyMySubstToFormulaRep f2
-    applyMySubstToFormulaRep f = applyMySubstToQuantifier f <*> chi f
-    applyMySubstToQuantifier :: MyPresburgerFormulaRep -> MySubst -> MyVar -> MyPresburgerFormulaRep
-    applyMySubstToQuantifier (AllF y f1) sigma z = AllF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
-    applyMySubstToQuantifier (ExsF y f1) sigma z = ExsF z (applyMySubstToFormulaRep f1 (consMySubst (y, IVar z) sigma))
+runFormulaSubst = flip applySubstToFormulaRep . foldr consSubst nilSubst where
+    applySubstToFormulaRep :: MyPresburgerFormulaRep -> Subst -> MyPresburgerFormulaRep
+    applySubstToFormulaRep (ValF b) = pure ValF <*> pure b
+    applySubstToFormulaRep (EqnF t1 t2) = pure EqnF <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
+    applySubstToFormulaRep (LtnF t1 t2) = pure LtnF <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
+    applySubstToFormulaRep (LeqF t1 t2) = pure LeqF <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
+    applySubstToFormulaRep (GtnF t1 t2) = pure GtnF <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
+    applySubstToFormulaRep (ModF t1 r t2) = pure ModF <*> applySubstToTermRep t1 <*> pure r <*> applySubstToTermRep t2
+    applySubstToFormulaRep (NegF f1) = pure NegF <*> applySubstToFormulaRep f1
+    applySubstToFormulaRep (DisF f1 f2) = pure DisF <*> applySubstToFormulaRep f1 <*> applySubstToFormulaRep f2
+    applySubstToFormulaRep (ConF f1 f2) = pure ConF <*> applySubstToFormulaRep f1 <*> applySubstToFormulaRep f2
+    applySubstToFormulaRep (ImpF f1 f2) = pure ImpF <*> applySubstToFormulaRep f1 <*> applySubstToFormulaRep f2
+    applySubstToFormulaRep (IffF f1 f2) = pure IffF <*> applySubstToFormulaRep f1 <*> applySubstToFormulaRep f2
+    applySubstToFormulaRep f = applySubstToQuantifier f <*> chi f
+    applySubstToQuantifier :: MyPresburgerFormulaRep -> Subst -> MyVar -> MyPresburgerFormulaRep
+    applySubstToQuantifier (AllF y f1) sigma z = AllF z (applySubstToFormulaRep f1 (consSubst (y, IVar z) sigma))
+    applySubstToQuantifier (ExsF y f1) sigma z = ExsF z (applySubstToFormulaRep f1 (consSubst (y, IVar z) sigma))
 
-nilMySubst :: MySubst
-nilMySubst z = IVar z
+nilSubst :: Subst
+nilSubst z = IVar z
 
-consMySubst :: (MyVar, PresburgerTermRep) -> MySubst -> MySubst
-consMySubst (x, t) sigma z = if x == z then t else sigma z
+consSubst :: (MyVar, PresburgerTermRep) -> Subst -> Subst
+consSubst (x, t) sigma z = if x == z then t else sigma z
 
 mapTermInPresburgerFormula :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
 mapTermInPresburgerFormula = go where
