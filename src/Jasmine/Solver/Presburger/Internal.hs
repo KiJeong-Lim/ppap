@@ -19,12 +19,12 @@ type MySubst = MyVar -> PresburgerTermRep
 
 type MyProp = Bool
 
-type MyCoefficientEnvForMyVar = Map.Map MyVar MyCoefficient
+type MyCoefficientEnvironmentForMyVar = Map.Map MyVar MyCoefficient
 
 data PresburgerTerm
     = PresburgerTerm 
         { getConstantTerm :: !(MyNat)
-        , getCoefficients :: !(MyCoefficientEnvForMyVar)
+        , getCoefficients :: !(MyCoefficientEnvironmentForMyVar)
         }
     deriving (Eq)
 
@@ -135,7 +135,7 @@ compilePresburgerTerm = go where
     mkSucc (PresburgerTerm con1 coeffs1) = PresburgerTerm (succ con1) coeffs1
     mkPlus :: PresburgerTerm -> PresburgerTerm -> PresburgerTerm
     mkPlus (PresburgerTerm con1 coeffs1) (PresburgerTerm con2 coeffs2) = PresburgerTerm (con1 + con2) (foldr plusCoeff coeffs1 (Map.toAscList coeffs2))
-    plusCoeff :: (MyVar, MyCoefficient) -> MyCoefficientEnvForMyVar -> MyCoefficientEnvForMyVar
+    plusCoeff :: (MyVar, MyCoefficient) -> MyCoefficientEnvironmentForMyVar -> MyCoefficientEnvironmentForMyVar
     plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
@@ -318,7 +318,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
     trick :: MyPresburgerFormula -> (MyPresburgerFormula, MyPresburgerFormula) -> Maybe MyPresburgerFormula
     trick (ValF b) = if b then pure . fst else pure . snd
     trick _ = pure Nothing
-    plusCoeff :: (MyVar, MyCoefficient) -> MyCoefficientEnvForMyVar -> MyCoefficientEnvForMyVar
+    plusCoeff :: (MyVar, MyCoefficient) -> MyCoefficientEnvironmentForMyVar -> MyCoefficientEnvironmentForMyVar
     plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 insertFVsInPresburgerTermRep :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
