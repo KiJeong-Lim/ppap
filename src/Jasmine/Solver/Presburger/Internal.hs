@@ -48,7 +48,7 @@ data PresburgerKlass
     = KlassEqn !(MyCoefficient) !(PresburgerTerm) !(PresburgerTerm)
     | KlassLtn !(MyCoefficient) !(PresburgerTerm) !(PresburgerTerm)
     | KlassGtn !(MyCoefficient) !(PresburgerTerm) !(PresburgerTerm)
-    | KlassMod !(MyCoefficient) !(PresburgerTerm) !(PositiveInteger) !(PresburgerTerm)
+    | KlassMod !(MyCoefficient) !(PresburgerTerm) (PositiveInteger) !(PresburgerTerm)
     | KlassEtc !(MyPresburgerFormula)
     deriving (Eq, Show)
 
