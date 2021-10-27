@@ -15,7 +15,7 @@ readFileNow path = do
         if my_handle_is_okay
             then do
                 my_content <- fix $ \get_content -> do
-                    let my_append = callWithStrictArg . foldr (callWithStrictArg . fmap . kons) id
+                    let my_append = foldr (fmap . kons) id
                     my_handle_is_eof <- lift (hIsEOF my_handle)
                     if my_handle_is_eof
                         then return ""

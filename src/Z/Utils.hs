@@ -50,7 +50,7 @@ withZero :: Monoid a => (a -> b) -> b
 withZero to_be_initialized = to_be_initialized mempty
 
 kons :: a -> [a] -> [a]
-kons = (:)
+kons my_hd my_tl = my_hd `seq` my_tl `seq` my_hd : my_tl
 
 cout :: Handle
 cout = stdout
@@ -77,7 +77,7 @@ calcTab :: Int -> Int
 calcTab n = 4 & (\my_tab_width -> my_tab_width - n `mod` my_tab_width)
 
 callWithStrictArg :: (a -> b) -> a -> b
-callWithStrictArg = ($!)
+callWithStrictArg f x = f $! x
 
 one :: a -> [a]
 one = callWithStrictArg pure

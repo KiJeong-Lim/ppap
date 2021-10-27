@@ -71,6 +71,7 @@ executable ppap
     Jasmine.Main
     Jasmine.Solver.Presburger.Internal
     Jasmine.Solver.Presburger.Test
+    Jasmine.Solver.HOPU
     Jasmine.Solver.Presburger
     LGS.Main
     LGS.Make
@@ -91,6 +92,7 @@ executable ppap
     Z.Algo.Sorting
     Z.Math.Classes
     Z.Math.V1
+    Z.Math.Z2
     Z.System.File
     Z.System.Machine
     Z.System.Path
