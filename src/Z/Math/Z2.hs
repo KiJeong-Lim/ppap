@@ -31,13 +31,13 @@ instance Fractional (Z2) where
     x1 / x2 = divZ2 x1 x2
 
 instance Read (Z2) where
-    readsPrec prec ('1' : str) = curry pure (Z2 { asBool = True }) str
-    readsPrec prec ('0' : str) = curry pure (Z2 { asBool = False }) str
+    readsPrec prec ('1' : str) = curry pure (Z2 { asBool = (True) }) str
+    readsPrec prec ('0' : str) = curry pure (Z2 { asBool = (False) }) str
     readsPrec prec _ = fail ""
 
 instance Show (Z2) where
-    showsPrec prec (Z2 { asBool = True }) str = ('1' : str)
-    showsPrec prec (Z2 { asBool = False }) str = ('0' : str)
+    showsPrec prec (Z2 { asBool = (True) }) str = ('1' : str)
+    showsPrec prec (Z2 { asBool = (False) }) str = ('0' : str)
 
 toZ2 :: Integer -> Z2
 toZ2 n = Z2 { asBool = n `mod` 2 == 1 }
