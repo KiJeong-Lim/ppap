@@ -38,11 +38,8 @@ ppap = do
     case matchCommand command of
         Nothing -> do
             shelly ("ppap >>= tell (invalid-command=" ++ shows command ")")
-            shelly ("ppap >>= quit")
-            return ()
-        Just ("", []) -> do
-            shelly ("ppap >>= quit")
-            return ()
+            ppap
+        Just ("", []) -> return ()
         Just ("Aladdin", []) -> do
             shelly ("ppap >>= exec (Aladdin.main)")
             Aladdin.main
@@ -54,12 +51,20 @@ ppap = do
             Calc.runCalc ("calc-example1.calc")
             shelly ("ppap >>= quit")
             return ()
+        Just ("Jasmine", []) -> do
+            shelly ("ppap >>= exec (Jasmine.main)")
+            Jasmine.main
         Just ("LGS", []) -> do
             shelly ("ppap >>= exec (LGS.main)")
             LGS.main
         Just ("LGS", ["quick"]) -> do
             shelly ("ppap >>= eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")")
             LGS.runLGS ("src/Aladdin/Front/Analyzer/Lexer")
+            shelly ("ppap >>= quit")
+            return ()
+        Just ("PGS", ["Jasmine"]) -> do
+            shelly ("ppap >>= eval (LGS.runLGS \"src/Jasmine/Analyzer/Lexer\")")
+            PGS.runPGS ("src/Jasmine/Analyzer/Lexer")
             shelly ("ppap >>= quit")
             return ()
         Just ("PGS", []) -> do
@@ -69,6 +74,10 @@ ppap = do
             shelly ("ppap >>= eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")")
             PGS.runPGS ("src/Aladdin/Front/Analyzer/Parser")
             shelly ("ppap >>= quit")
+        Just ("PGS", ["Jasmine"]) -> do
+            shelly ("ppap >>= eval (PGS.runPGS \"src/Jasmine/Analyzer/Parser\")")
+            PGS.runPGS ("src/Jasmine/Analyzer/Parser")
+            shelly ("ppap >>= quit")
             return ()
         Just ("TEST", []) -> do
             shelly ("ppap >>= exec (TEST.main)")
@@ -77,9 +86,14 @@ ppap = do
             shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
 
-main :: IO ()
-main = do
+copyright :: IO ()
+copyright = do
     shelly ("ppap> Copyright (c) 2021, Kijeong Lim")
     shelly ("ppap> All rights reserved")
+    return ()
+
+main :: IO ()
+main = do
+    copyright
     ppap
     return ()
