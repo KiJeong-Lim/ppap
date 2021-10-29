@@ -61,7 +61,7 @@ data CollectionOfProperKlasses
         , _Ltns :: [(PresburgerTerm, PresburgerTerm)]
         , _Gtns :: [(PresburgerTerm, PresburgerTerm)]
         , _Mods :: [(PositiveInteger, (PresburgerTerm, PresburgerTerm))]
-        , _TheR :: (PositiveInteger)
+        , _TheR :: !(PositiveInteger)
         }
     deriving (Show)
 
