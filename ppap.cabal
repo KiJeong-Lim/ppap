@@ -81,6 +81,7 @@ executable ppap
     Jasmine.Solver.Presburger.Internal
     Jasmine.Solver.Presburger.Test
     Jasmine.Solver.HOPU
+    Jasmine.Solver.Main
     Jasmine.Solver.Presburger
     Jasmine.TypeChecker.Main
     Jasmine.Main
