@@ -15,12 +15,14 @@ type MyPresburgerFormula = PresburgerFormula PresburgerTerm
 
 type MyPresburgerFormulaRep = PresburgerFormula PresburgerTermRep
 
+type MyCoefficientEnvironmentOfMyVar = Map.Map MyVar MyCoefficient
+
 type MyProp = Bool
 
 data PresburgerTerm
     = PresburgerTerm 
         { getConstantTerm :: !(MyNat)
-        , getCoefficients :: !(Map.Map MyVar MyCoefficient)
+        , getCoefficients :: !(MyCoefficientEnvironmentOfMyVar)
         }
     deriving (Eq)
 
@@ -133,13 +135,15 @@ theMinNumOfMyVar :: MyVar
 theMinNumOfMyVar = 1
 
 showsMyVar :: MyVar -> ShowS
-showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?v" . (if x > 0 then id else strstr "_") . shows (abs x)
+showsMyVar x
+    | x >= theMinNumOfMyVar = strstr "v" . shows x
+    | otherwise = strstr "?v" . (if x > 0 then id else strstr "_") . shows (abs x)
 
 areCongruentModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
 areCongruentModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "areCongruentModulo: r must be positive"
 
-plusCoeff :: (MyVar, MyCoefficient) -> Map.Map MyVar MyCoefficient -> Map.Map MyVar MyCoefficient
-plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
+plusCoeff :: (MyVar, MyCoefficient) -> MyCoefficientEnvironmentOfMyVar -> MyCoefficientEnvironmentOfMyVar
+plusCoeff = uncurry $ \x -> \n -> Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
 compilePresburgerTerm = go where
@@ -159,10 +163,6 @@ compilePresburgerTerm = go where
 
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify where
-    orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
-    orcat = List.foldl' mkDisF (mkValF False)
-    andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
-    andcat = foldr mkConF (mkValF True)
     simplify :: MyPresburgerFormula -> MyPresburgerFormula
     simplify (ValF b) = mkValF b
     simplify (EqnF t1 t2) = mkEqnF t1 t2
@@ -184,9 +184,9 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
     asterify (ExsF y f1) = eliminateExsF y (asterify f1)
     asterify f = f
     eliminateExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
-    eliminateExsF = curry step1 where
-        step1 :: (MyVar, MyPresburgerFormula) -> MyPresburgerFormula
-        step1 = fmap (orcat . uncurry callWithStrictArg) (map . step2 <^> makeDNF . eliminateNegF) where
+    eliminateExsF = curry $ (orcat . uncurry callWithStrictArg) . (map . curry (step3 . uncurry step2) <^> step1) where
+        step1 :: MyPresburgerFormula -> [[MyPresburgerFormula]]
+        step1 = makeDNF . eliminateNegF where
             runNegation :: MyPresburgerFormula -> MyPresburgerFormula
             runNegation (ValF b) = mkValF (not b)
             runNegation (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkGtnF t1 t2)
@@ -205,91 +205,91 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
             makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
             makeDNF (ConF f1 f2) = pure (++) <*> makeDNF f1 <*> makeDNF f2
             makeDNF f = [one f]
-        step2 :: MyVar -> [MyPresburgerFormula] -> MyPresburgerFormula
-        step2 x = andcatKlasses . toKlasses where
-            toKlasses :: [MyPresburgerFormula] -> [PresburgerKlass]
-            toKlasses = map constructKlass where
-                extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
-                extractCoefficient t = maybe (0, t) (\n -> (n, PresburgerTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
-                constructKlass :: MyPresburgerFormula -> PresburgerKlass
-                constructKlass (EqnF t1 t2) = forEqnF (extractCoefficient t1) (extractCoefficient t2)
-                constructKlass (LtnF t1 t2) = forLtnF (extractCoefficient t1) (extractCoefficient t2)
-                constructKlass (ModF t1 r t2) = forModF (extractCoefficient t1) r (extractCoefficient t2)
-                forEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                forEqnF (m1, t1) (m2, t2)
-                    = case m1 `compare` m2 of
-                        (LT) -> KlassEqn (m2 - m1) t2 t1
-                        (EQ) -> KlassEtc (mkEqnF t1 t2)
-                        (GT) -> KlassEqn (m1 - m2) t1 t2
-                forLtnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                forLtnF (m1, t1) (m2, t2)
-                    = case m1 `compare` m2 of
-                        (LT) -> KlassGtn (m2 - m1) t2 t1
-                        (EQ) -> KlassEtc (mkLtnF t1 t2)
-                        (GT) -> KlassLtn (m1 - m2) t1 t2
-                forModF :: (MyCoefficient, PresburgerTerm) -> PositiveInteger -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
-                forModF (m1, t1) r (m2, t2)
-                    = case m1 `compare` m2 of
-                        (LT) -> KlassMod (m2 - m1) t2 r t1
-                        (EQ) -> KlassEtc (mkModF t1 r t2)
-                        (GT) -> KlassMod (m1 - m2) t1 r t2
-            andcatKlasses :: [PresburgerKlass] -> MyPresburgerFormula
-            andcatKlasses my_klasses = if areOnlyEtcs then andcatEtcs else andcatKlasses' $! List.foldl' getLCM 1 theCoefficients where
-                areOnlyEtcs :: Bool
-                areOnlyEtcs = null theCoefficients
-                theCoefficients :: [PositiveInteger]
-                theCoefficients = do
-                    klass <- my_klasses
-                    case klass of
-                        (KlassEqn m t1 t2) -> return m
-                        (KlassLtn m t1 t2) -> return m
-                        (KlassGtn m t1 t2) -> return m
-                        (KlassMod m t1 r t2) -> return m
-                        (KlassEtc f) -> []
-                andcatEtcs :: MyPresburgerFormula
-                andcatEtcs = andcat [ f | (KlassEtc f) <- my_klasses ]
-                andcatKlasses' :: PositiveInteger -> MyPresburgerFormula
-                andcatKlasses' my_lcm = mkConF andcatEtcs (step3 theCollectionOfProperKlasses) where
-                    theEqns :: [(PresburgerTerm, PresburgerTerm)]
-                    theEqns = [ (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2) | (KlassEqn m t1 t2) <- my_klasses ]
-                    theLtns :: [(PresburgerTerm, PresburgerTerm)]
-                    theLtns = [ (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2) | (KlassLtn m t1 t2) <- my_klasses ]
-                    theGtns :: [(PresburgerTerm, PresburgerTerm)]
-                    theGtns = [ (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2) | (KlassGtn m t1 t2) <- my_klasses ]
-                    theMods :: [(PositiveInteger, (PresburgerTerm, PresburgerTerm))]
-                    theMods = [ ((my_lcm `div` m) * r, (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2)) | (KlassMod m t1 r t2) <- my_klasses ]
-                    theCollectionOfProperKlasses :: CollectionOfProperKlasses
-                    theCollectionOfProperKlasses = CollectionOfProperKlasses
-                        { _Eqns = theEqns
-                        , _Ltns = theLtns
-                        , _Gtns = (mkNum 1, mkNum 0) : theGtns
-                        , _Mods = (my_lcm, (mkNum 0, mkNum 0)) : theMods
-                        , _TheR = List.foldl' getLCM my_lcm (map fst theMods)
-                        }
-        step3 :: CollectionOfProperKlasses -> MyPresburgerFormula
-        step3 (CollectionOfProperKlasses theEqns0 theLtns0 theGtns0 theMods0 theR)
-            = case theEqns0 of
-                [] -> orcat
-                    [ andcat
-                        [ andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns0 ]
-                        , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v', _v) <- theGtns0 ]
-                        , orcat
-                            [ andcat
-                                [ mkLtnF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
-                                , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (r, (w, w')) <- theMods0 ]
+        step2 :: MyVar -> [MyPresburgerFormula] -> ([PresburgerKlass], [PositiveInteger])
+        step2 x = (curry id <*> collectCoefficients) . map toKlass where
+            extractCoefficient :: PresburgerTerm -> (MyCoefficient, PresburgerTerm)
+            extractCoefficient t = maybe (0, t) (\n -> (n, PresburgerTerm (getConstantTerm t) (Map.delete x (getCoefficients t)))) (Map.lookup x (getCoefficients t))
+            toKlass :: MyPresburgerFormula -> PresburgerKlass
+            toKlass (EqnF t1 t2) = forEqnF (extractCoefficient t1) (extractCoefficient t2)
+            toKlass (LtnF t1 t2) = forLtnF (extractCoefficient t1) (extractCoefficient t2)
+            toKlass (ModF t1 r t2) = forModF (extractCoefficient t1) r (extractCoefficient t2)
+            forEqnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+            forEqnF (m1, t1) (m2, t2)
+                = case m1 `compare` m2 of
+                    (LT) -> KlassEqn (m2 - m1) t2 t1
+                    (EQ) -> KlassEtc (mkEqnF t1 t2)
+                    (GT) -> KlassEqn (m1 - m2) t1 t2
+            forLtnF :: (MyCoefficient, PresburgerTerm) -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+            forLtnF (m1, t1) (m2, t2)
+                = case m1 `compare` m2 of
+                    (LT) -> KlassGtn (m2 - m1) t2 t1
+                    (EQ) -> KlassEtc (mkLtnF t1 t2)
+                    (GT) -> KlassLtn (m1 - m2) t1 t2
+            forModF :: (MyCoefficient, PresburgerTerm) -> PositiveInteger -> (MyCoefficient, PresburgerTerm) -> PresburgerKlass
+            forModF (m1, t1) r (m2, t2)
+                = case m1 `compare` m2 of
+                    (LT) -> KlassMod (m2 - m1) t2 r t1
+                    (EQ) -> KlassEtc (mkModF t1 r t2)
+                    (GT) -> KlassMod (m1 - m2) t1 r t2
+            collectCoefficients :: [PresburgerKlass] -> [PositiveInteger]
+            collectCoefficients klasses = do
+                klass <- klasses
+                case klass of
+                    (KlassEqn m t1 t2) -> return m
+                    (KlassLtn m t1 t2) -> return m
+                    (KlassGtn m t1 t2) -> return m
+                    (KlassMod m t1 r t2) -> return m
+                    (KlassEtc f) -> []
+        step3 :: ([PresburgerKlass], [PositiveInteger]) -> MyPresburgerFormula
+        step3 = andcatKlasses . fst <*> null . snd <*> List.foldl' getGCD 1 . snd where
+            andcatKlasses :: [PresburgerKlass] -> Bool -> PositiveInteger -> MyPresburgerFormula
+            andcatKlasses klasses thereIsNoProperKlass the_lcm = andcat (if thereIsNoProperKlass then theImproperKlasses else andcatProperKlasses myProperKlasses : theImproperKlasses) where
+                myEqns :: [(PresburgerTerm, PresburgerTerm)]
+                myEqns = [ mkPair (multiplication (the_lcm `div` m) t1) (multiplication (the_lcm `div` m) t2) | (KlassEqn m t1 t2) <- klasses ]
+                myLtns :: [(PresburgerTerm, PresburgerTerm)]
+                myLtns = [ mkPair (multiplication (the_lcm `div` m) t1) (multiplication (the_lcm `div` m) t2) | (KlassLtn m t1 t2) <- klasses ]
+                myGtns :: [(PresburgerTerm, PresburgerTerm)]
+                myGtns = [ mkPair (multiplication (the_lcm `div` m) t1) (multiplication (the_lcm `div` m) t2) | (KlassGtn m t1 t2) <- klasses ]
+                myMods :: [(PositiveInteger, (PresburgerTerm, PresburgerTerm))]
+                myMods = [ ((the_lcm `div` m) * r, mkPair (multiplication (the_lcm `div` m) t1) (multiplication (the_lcm `div` m) t2)) | (KlassMod m t1 r t2) <- klasses ]
+                theImproperKlasses :: [MyPresburgerFormula]
+                theImproperKlasses = [ f | (KlassEtc f) <- klasses ]
+                myProperKlasses :: CollectionOfProperKlasses
+                myProperKlasses = CollectionOfProperKlasses
+                    { _Eqns = myEqns
+                    , _Ltns = myLtns
+                    , _Gtns = (mkPair (mkNum 1) (mkNum 0)) : myGtns
+                    , _Mods = (the_lcm, mkPair (mkNum 0) (mkNum 0)) : myMods
+                    , _TheR = List.foldl' getLCM the_lcm (map fst myMods)
+                    }
+            andcatProperKlasses :: CollectionOfProperKlasses -> MyPresburgerFormula
+            andcatProperKlasses (CollectionOfProperKlasses theEqns0 theLtns0 theGtns0 theMods0 theR)
+                = case theEqns0 of
+                    [] -> orcat
+                        [ andcat
+                            [ andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns0 ]
+                            , andcat [ mkLeqF (mkPlus v' _v) (mkPlus v _v') | (_v', _v) <- theGtns0 ]
+                            , orcat
+                                [ andcat
+                                    [ mkLtnF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
+                                    , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (r, (w, w')) <- theMods0 ]
+                                    ]
+                                | s <- [1 .. theR]
                                 ]
-                            | s <- [1 .. theR]
                             ]
+                        | (u, u') <- theLtns0
+                        , (v', v) <- theGtns0
                         ]
-                    | (u, u') <- theLtns0
-                    , (v', v) <- theGtns0
-                    ]
-                ((t, t') : theEqns') -> andcat
-                    [ andcat [ mkEqnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theEqns' ]
-                    , andcat [ mkLtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theLtns0 ]
-                    , andcat [ mkGtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theGtns0 ]
-                    , andcat [ mkModF (mkPlus t' t1) r (mkPlus t2 t) | (r, (t1, t2)) <- theMods0 ]
-                    ]
+                    ((t1, t2) : theEqns1) -> andcat
+                        [ andcat [ mkEqnF (mkPlus t2 t) (mkPlus t' t1) | (t, t') <- theEqns1 ]
+                        , andcat [ mkLtnF (mkPlus t2 u) (mkPlus u' t1) | (u, u') <- theLtns0 ]
+                        , andcat [ mkGtnF (mkPlus t2 v) (mkPlus v' t1) | (v, v') <- theGtns0 ]
+                        , andcat [ mkModF (mkPlus t2 w) r (mkPlus w' t1) | (r, (w, w')) <- theMods0 ]
+                        ]
+    orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
+    orcat = List.foldl' mkDisF (mkValF False)
+    andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
+    andcat = foldr mkConF (mkValF True)
     mkNum :: MyNat -> PresburgerTerm
     mkNum k = PresburgerTerm k Map.empty
     mkPlus :: PresburgerTerm -> PresburgerTerm -> PresburgerTerm
@@ -305,7 +305,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
     mkGtnF :: PresburgerTerm -> PresburgerTerm -> MyPresburgerFormula
     mkGtnF t1 t2 = mkLtnF t2 t1
     mkModF :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    mkModF t1 r t2 = if r > 0 then mkCongruence (modify t1) r (modify t2) else error "mkModF: r must be positive" where
+    mkModF t1 r t2 = if r > 0 then congruence (modify t1) r (modify t2) else error "mkModF: r must be positive" where
         modify :: PresburgerTerm -> PresburgerTerm
         modify (PresburgerTerm con coeffs) = PresburgerTerm (con `mod` r) (Map.filter (\n -> not (n == 0)) (Map.map (\n -> n `mod` r) coeffs))
     mkNegF :: MyPresburgerFormula -> MyPresburgerFormula
@@ -324,21 +324,21 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
     mkAllF y f1 = mkNegF (mkExsF y (mkNegF f1))
     mkExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     mkExsF y f1 = f1 `seq` ExsF y f1
-    mkCongruence :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
-    mkCongruence t1 r t2
+    congruence :: PresburgerTerm -> PositiveInteger -> PresburgerTerm -> MyPresburgerFormula
+    congruence t1 r t2
         | r > 0 = if getCoefficients t1 == getCoefficients t2 then mkValF (areCongruentModulo (getConstantTerm t1) r (getConstantTerm t2)) else ModF t1 r t2
-        | otherwise = error "mkCongruence: r must be positive"
-    multiply :: MyNat -> PresburgerTerm -> PresburgerTerm
-    multiply k t
-        | k == 0 = mkNum 0
-        | k == 1 = t
-        | k >= 0 = PresburgerTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
-        | otherwise = error "multiply: negative input"
+        | otherwise = error "congruence: r must be positive"
+    multiplication :: MyNat -> PresburgerTerm -> PresburgerTerm
+    multiplication k t
+        | k >= 0 = if k == 1 then t else PresburgerTerm (getConstantTerm t * k) (Map.map (\n -> n * k) (getCoefficients t))
+        | otherwise = error "multiplication: negative input"
     getLCM :: PositiveInteger -> PositiveInteger -> PositiveInteger
     getLCM k1 k2 = maybe ((k1 * k2) `div` (getGCD k1 k2)) id (lookup 1 [(k1, k2), (k2, k1)])
     trick :: MyPresburgerFormula -> (MyPresburgerFormula, MyPresburgerFormula) -> Maybe MyPresburgerFormula
     trick (ValF b) = if b then pure . fst else pure . snd
     trick _ = pure Nothing
+    mkPair :: a -> b -> (a, b)
+    mkPair = curry id
 
 addFVs :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
 addFVs (IVar x) = if x >= theMinNumOfMyVar then Set.insert x else id
