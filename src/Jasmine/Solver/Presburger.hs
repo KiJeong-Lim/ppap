@@ -96,7 +96,7 @@ destTerm :: Term -> LinearExpression
 destTerm = compilePresburgerTerm >>= pure (curry return) <*> getConstantTerm <*> getCoefficients
 
 destFormula :: Formula -> DisjunctionOfConjunctionsOfAtomFormulas
-destFormula = makeDNF . simplify . either (\err_msg -> error ("Jasmine.Solver.Presburger.destFormula> " ++ err_msg)) id . convertFormulaToRep . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
+destFormula = makeDNF . simplify . either (\err_msg -> error ("Jasmine.Solver.Presburger.destFormula> " ++ err_msg)) id . toFormulaRep . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
     unNegF :: Formula -> Formula
     unNegF (ValF b) = ValF (not b)
     unNegF (NegF f1) = f1
