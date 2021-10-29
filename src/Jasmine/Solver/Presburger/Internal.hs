@@ -249,22 +249,22 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
                 andcatEtcs :: MyPresburgerFormula
                 andcatEtcs = andcat [ f | (KlassEtc f) <- my_klasses ]
                 andcatKlasses' :: PositiveInteger -> MyPresburgerFormula
-                andcatKlasses' theLCM = mkConF (step3 theCollectionOfProperKlasses) andcatEtcs where
+                andcatKlasses' my_lcm = mkConF andcatEtcs (step3 theCollectionOfProperKlasses) where
                     theEqns :: [(PresburgerTerm, PresburgerTerm)]
-                    theEqns = [ (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2) | (KlassEqn m t1 t2) <- my_klasses ]
+                    theEqns = [ (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2) | (KlassEqn m t1 t2) <- my_klasses ]
                     theLtns :: [(PresburgerTerm, PresburgerTerm)]
-                    theLtns = [ (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2) | (KlassLtn m t1 t2) <- my_klasses ]
+                    theLtns = [ (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2) | (KlassLtn m t1 t2) <- my_klasses ]
                     theGtns :: [(PresburgerTerm, PresburgerTerm)]
-                    theGtns = [ (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2) | (KlassGtn m t1 t2) <- my_klasses ]
+                    theGtns = [ (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2) | (KlassGtn m t1 t2) <- my_klasses ]
                     theMods :: [(PositiveInteger, (PresburgerTerm, PresburgerTerm))]
-                    theMods = [ ((theLCM `div` m) * r, (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2)) | (KlassMod m t1 r t2) <- my_klasses ]
+                    theMods = [ ((my_lcm `div` m) * r, (multiply (my_lcm `div` m) t1, multiply (my_lcm `div` m) t2)) | (KlassMod m t1 r t2) <- my_klasses ]
                     theCollectionOfProperKlasses :: CollectionOfProperKlasses
                     theCollectionOfProperKlasses = CollectionOfProperKlasses
                         { _Eqns = theEqns
                         , _Ltns = theLtns
                         , _Gtns = (mkNum 1, mkNum 0) : theGtns
-                        , _Mods = (theLCM, (mkNum 0, mkNum 0)) : theMods
-                        , _TheR = List.foldl' getLCM theLCM (map fst theMods)
+                        , _Mods = (my_lcm, (mkNum 0, mkNum 0)) : theMods
+                        , _TheR = List.foldl' getLCM my_lcm (map fst theMods)
                         }
         step3 :: CollectionOfProperKlasses -> MyPresburgerFormula
         step3 (CollectionOfProperKlasses theEqns0 theLtns0 theGtns0 theMods0 theR)
