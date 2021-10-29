@@ -74,6 +74,7 @@ ppap = do
             shelly ("ppap >>= eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")")
             PGS.runPGS ("src/Aladdin/Front/Analyzer/Parser")
             shelly ("ppap >>= quit")
+            return ()
         Just ("PGS", ["Jasmine"]) -> do
             shelly ("ppap >>= eval (PGS.runPGS \"src/Jasmine/Analyzer/Parser\")")
             PGS.runPGS ("src/Jasmine/Analyzer/Parser")
@@ -96,4 +97,3 @@ main :: IO ()
 main = do
     copyright
     ppap
-    return ()
