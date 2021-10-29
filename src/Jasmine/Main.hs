@@ -1,6 +1,6 @@
 module Jasmine.Main where
 
-import Jasmine.Interpreter.Main
+import Jasmine.API
 
 main :: IO ()
 main = runJasmine

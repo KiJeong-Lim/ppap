@@ -68,10 +68,10 @@ executable ppap
     Calc.ControlSystem.Test
     Calc.ControlSystem.Util
     Calc.Main
+    Jasmine.Analyzer.Export
     Jasmine.Analyzer.Grammar
-    Jasmine.Analyzer.Main
-    Jasmine.Compiler.Main
-    Jasmine.Desugarer.Main
+    Jasmine.Compiler.Export
+    Jasmine.Desugarer.Export
     Jasmine.Interpreter.Main
     Jasmine.Interpreter.Runtime
     Jasmine.Header.CoreTerm.Read
@@ -80,10 +80,11 @@ executable ppap
     Jasmine.Header.CoreTerm
     Jasmine.Solver.Presburger.Internal
     Jasmine.Solver.Presburger.Test
+    Jasmine.Solver.Export
     Jasmine.Solver.HOPU
-    Jasmine.Solver.Main
     Jasmine.Solver.Presburger
-    Jasmine.TypeChecker.Main
+    Jasmine.TypeChecker.Export
+    Jasmine.API
     Jasmine.Main
     LGS.Main
     LGS.Make

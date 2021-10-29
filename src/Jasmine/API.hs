@@ -1,4 +1,4 @@
-module Jasmine.Interpreter.Main where
+module Jasmine.API where
 
 runJasmine :: IO ()
 runJasmine = return ()
