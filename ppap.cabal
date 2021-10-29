@@ -72,12 +72,13 @@ executable ppap
     Jasmine.Analyzer.Grammar
     Jasmine.Compiler.Export
     Jasmine.Desugarer.Export
-    Jasmine.Interpreter.Main
+    Jasmine.Interpreter.Export
     Jasmine.Interpreter.Runtime
     Jasmine.Header.CoreTerm.Read
     Jasmine.Header.CoreTerm.Show
     Jasmine.Header.CoreTerm.Util
     Jasmine.Header.CoreTerm
+    Jasmine.Header.Export
     Jasmine.Solver.Presburger.Internal
     Jasmine.Solver.Presburger.Test
     Jasmine.Solver.Export
