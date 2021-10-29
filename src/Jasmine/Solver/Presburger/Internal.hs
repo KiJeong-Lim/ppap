@@ -15,16 +15,12 @@ type MyPresburgerFormula = PresburgerFormula PresburgerTerm
 
 type MyPresburgerFormulaRep = PresburgerFormula PresburgerTermRep
 
-type Subst = MyVar -> PresburgerTermRep
-
 type MyProp = Bool
-
-type MyCoefficientEnvironmentForMyVar = Map.Map MyVar MyCoefficient
 
 data PresburgerTerm
     = PresburgerTerm 
         { getConstantTerm :: !(MyNat)
-        , getCoefficients :: !(MyCoefficientEnvironmentForMyVar)
+        , getCoefficients :: !(Map.Map MyVar MyCoefficient)
         }
     deriving (Eq)
 
@@ -58,6 +54,16 @@ data PresburgerTermRep
     | Succ (PresburgerTermRep)
     | Plus (PresburgerTermRep) (PresburgerTermRep)
     deriving (Eq)
+
+data CollectionOfProperKlasses
+    = CollectionOfProperKlasses
+        { _Eqns :: [(PresburgerTerm, PresburgerTerm)]
+        , _Ltns :: [(PresburgerTerm, PresburgerTerm)]
+        , _Gtns :: [(PresburgerTerm, PresburgerTerm)]
+        , _Mods :: [(PositiveInteger, (PresburgerTerm, PresburgerTerm))]
+        , _TheR :: !(PositiveInteger)
+        }
+    deriving (Show)
 
 instance Show (PresburgerTerm) where
     showsPrec 0 (PresburgerTerm con coeffs)
@@ -103,13 +109,25 @@ instance Show (PresburgerTermRep) where
         myPrecIs :: Precedence -> ShowS -> ShowS
         myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
         dispatch :: PresburgerTermRep -> ShowS
-        dispatch (IVar x) = myPrecIs 11 $ showsMyVar x
-        dispatch (Zero) = myPrecIs 11 $ strstr "O"
-        dispatch (Succ t1) = myPrecIs 10 $ strstr "S " . showsPrec 11 t1
-        dispatch (Plus t1 t2) = myPrecIs 6 $ showsPrec 6 t1 . strstr " + " . showsPrec 7 t2
+        dispatch (IVar x) = myPrecIs 2 $ showsMyVar x
+        dispatch (Zero) = myPrecIs 2 $ strstr "O"
+        dispatch (Succ t1) = myPrecIs 1 $ strstr "S " . showsPrec 2 t1
+        dispatch (Plus t1 t2) = myPrecIs 0 $ showsPrec 0 t1 . strstr " + " . showsPrec 1 t2
 
 instance Functor (PresburgerFormula) where
-    fmap = mapTermInPresburgerFormula
+    fmap z (ValF b) = ValF b
+    fmap z (EqnF t1 t2) = EqnF (z t1) (z t2)
+    fmap z (LtnF t1 t2) = LtnF (z t1) (z t2)
+    fmap z (LeqF t1 t2) = LeqF (z t1) (z t2)
+    fmap z (GtnF t1 t2) = GtnF (z t1) (z t2)
+    fmap z (ModF t1 r t2) = ModF (z t1) r (z t2)
+    fmap z (NegF f1) = NegF (fmap z f1)
+    fmap z (DisF f1 f2) = DisF (fmap z f1) (fmap z f2)
+    fmap z (ConF f1 f2) = ConF (fmap z f1) (fmap z f2)
+    fmap z (ImpF f1 f2) = ImpF (fmap z f1) (fmap z f2)
+    fmap z (IffF f1 f2) = IffF (fmap z f1) (fmap z f2)
+    fmap z (AllF y f1) = AllF y (fmap z f1)
+    fmap z (ExsF y f1) = ExsF y (fmap z f1)
 
 theMinNumOfMyVar :: MyVar
 theMinNumOfMyVar = 1
@@ -119,6 +137,9 @@ showsMyVar x = if x >= theMinNumOfMyVar then strstr "v" . shows x else strstr "?
 
 areCongruentModulo :: MyNat -> PositiveInteger -> MyNat -> MyProp
 areCongruentModulo n1 r n2 = if r > 0 then n1 `mod` r == n2 `mod` r else error "areCongruentModulo: r must be positive"
+
+plusCoeff :: (MyVar, MyCoefficient) -> Map.Map MyVar MyCoefficient -> Map.Map MyVar MyCoefficient
+plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 compilePresburgerTerm :: PresburgerTermRep -> PresburgerTerm
 compilePresburgerTerm = go where
@@ -135,37 +156,33 @@ compilePresburgerTerm = go where
     mkSucc (PresburgerTerm con1 coeffs1) = PresburgerTerm (succ con1) coeffs1
     mkPlus :: PresburgerTerm -> PresburgerTerm -> PresburgerTerm
     mkPlus (PresburgerTerm con1 coeffs1) (PresburgerTerm con2 coeffs2) = PresburgerTerm (con1 + con2) (foldr plusCoeff coeffs1 (Map.toAscList coeffs2))
-    plusCoeff :: (MyVar, MyCoefficient) -> MyCoefficientEnvironmentForMyVar -> MyCoefficientEnvironmentForMyVar
-    plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
 eliminateQuantifierReferringToTheBookWrittenByPeterHinman :: MyPresburgerFormula -> MyPresburgerFormula
-eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimination where
+eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify where
     orcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     orcat = List.foldl' mkDisF (mkValF False)
     andcat :: [MyPresburgerFormula] -> MyPresburgerFormula
     andcat = foldr mkConF (mkValF True)
-    applyQuantifierElimination :: MyPresburgerFormula -> MyPresburgerFormula
-    applyQuantifierElimination = asterify . simplify where
-        simplify :: MyPresburgerFormula -> MyPresburgerFormula
-        simplify (ValF b) = mkValF b
-        simplify (EqnF t1 t2) = mkEqnF t1 t2
-        simplify (LtnF t1 t2) = mkLtnF t1 t2
-        simplify (LeqF t1 t2) = mkLeqF t1 t2
-        simplify (GtnF t1 t2) = mkGtnF t1 t2
-        simplify (ModF t1 r t2) = mkModF t1 r t2
-        simplify (NegF f1) = mkNegF (simplify f1)
-        simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
-        simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f1)
-        simplify (ImpF f1 f2) = mkImpF (simplify f1) (simplify f2)
-        simplify (IffF f1 f2) = mkIffF (simplify f1) (simplify f2)
-        simplify (AllF y f1) = mkAllF y (simplify f1)
-        simplify (ExsF y f1) = mkExsF y (simplify f1)
-        asterify :: MyPresburgerFormula -> MyPresburgerFormula
-        asterify (NegF f1) = mkNegF (asterify f1)
-        asterify (ConF f1 f2) = mkConF (asterify f1) (asterify f2)
-        asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
-        asterify (ExsF y f1) = eliminateExsF y (asterify f1)
-        asterify f = f
+    simplify :: MyPresburgerFormula -> MyPresburgerFormula
+    simplify (ValF b) = mkValF b
+    simplify (EqnF t1 t2) = mkEqnF t1 t2
+    simplify (LtnF t1 t2) = mkLtnF t1 t2
+    simplify (LeqF t1 t2) = mkLeqF t1 t2
+    simplify (GtnF t1 t2) = mkGtnF t1 t2
+    simplify (ModF t1 r t2) = mkModF t1 r t2
+    simplify (NegF f1) = mkNegF (simplify f1)
+    simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
+    simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f1)
+    simplify (ImpF f1 f2) = mkImpF (simplify f1) (simplify f2)
+    simplify (IffF f1 f2) = mkIffF (simplify f1) (simplify f2)
+    simplify (AllF y f1) = mkAllF y (simplify f1)
+    simplify (ExsF y f1) = mkExsF y (simplify f1)
+    asterify :: MyPresburgerFormula -> MyPresburgerFormula
+    asterify (NegF f1) = mkNegF (asterify f1)
+    asterify (ConF f1 f2) = mkConF (asterify f1) (asterify f2)
+    asterify (DisF f1 f2) = mkDisF (asterify f1) (asterify f2)
+    asterify (ExsF y f1) = eliminateExsF y (asterify f1)
+    asterify f = f
     eliminateExsF :: MyVar -> MyPresburgerFormula -> MyPresburgerFormula
     eliminateExsF = curry step1 where
         step1 :: (MyVar, MyPresburgerFormula) -> MyPresburgerFormula
@@ -217,36 +234,40 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                         (EQ) -> KlassEtc (mkModF t1 r t2)
                         (GT) -> KlassMod (m1 - m2) t1 r t2
             andcatKlasses :: [PresburgerKlass] -> MyPresburgerFormula
-            andcatKlasses my_klasses = if null theCoefficients then andcatTrivialKlasses my_klasses else callWithStrictArg (curry (mkConF . andcatTrivialKlasses . snd <*> andcatNontrivialKlasses) <*> standardizeCoefficient) (List.foldl' getLCM 1 theCoefficients) where
+            andcatKlasses my_klasses = if areOnlyEtcs then andcatEtcs else andcatKlasses' $! List.foldl' getLCM 1 theCoefficients where
+                areOnlyEtcs :: Bool
+                areOnlyEtcs = null theCoefficients
                 theCoefficients :: [PositiveInteger]
                 theCoefficients = do
-                    my_klass <- my_klasses
-                    case my_klass of
+                    klass <- my_klasses
+                    case klass of
                         (KlassEqn m t1 t2) -> return m
                         (KlassLtn m t1 t2) -> return m
                         (KlassGtn m t1 t2) -> return m
                         (KlassMod m t1 r t2) -> return m
                         (KlassEtc f) -> []
-                standardizeCoefficient :: PositiveInteger -> [PresburgerKlass]
-                standardizeCoefficient theLCM = map dispatch my_klasses where
-                    dispatch :: PresburgerKlass -> PresburgerKlass
-                    dispatch (KlassEqn m t1 t2) = KlassEqn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    dispatch (KlassLtn m t1 t2) = KlassLtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    dispatch (KlassGtn m t1 t2) = KlassGtn theLCM (multiply (theLCM `div` m) t1) (multiply (theLCM `div` m) t2)
-                    dispatch (KlassMod m t1 r t2) = KlassMod theLCM (multiply (theLCM `div` m) t1) ((theLCM `div` m) * r) (multiply (theLCM `div` m) t2)
-                    dispatch (KlassEtc f) = KlassEtc f
-            andcatTrivialKlasses :: [PresburgerKlass] -> MyPresburgerFormula
-            andcatTrivialKlasses klasses = andcat [ f | (KlassEtc f) <- klasses ]
-            andcatNontrivialKlasses :: (PositiveInteger, [PresburgerKlass]) -> MyPresburgerFormula
-            andcatNontrivialKlasses (m, klasses) = step3
-                ( [ (t1, t2) | (KlassEqn _ t1 t2) <- klasses ]
-                , [ (t1, t2) | (KlassLtn _ t1 t2) <- klasses ]
-                , (mkNum 1, mkNum 0) : [ (t1, t2) | (KlassGtn _ t1 t2) <- klasses ]
-                , (mkNum 0, m, mkNum 0) : [ (t1, r, t2) | (KlassMod _ t1 r t2) <- klasses ]
-                , List.foldl' getLCM m [ r | (KlassMod _ t1 r t2) <- klasses ]
-                )
-        step3 :: ([(PresburgerTerm, PresburgerTerm)], [(PresburgerTerm, PresburgerTerm)], [(PresburgerTerm, PresburgerTerm)], [(PresburgerTerm, PositiveInteger, PresburgerTerm)], PositiveInteger) -> MyPresburgerFormula
-        step3 (theEqns0, theLtns0, theGtns0, theMods0, theR)
+                andcatEtcs :: MyPresburgerFormula
+                andcatEtcs = andcat [ f | (KlassEtc f) <- my_klasses ]
+                andcatKlasses' :: PositiveInteger -> MyPresburgerFormula
+                andcatKlasses' theLCM = mkConF (step3 theCollectionOfProperKlasses) andcatEtcs where
+                    theEqns :: [(PresburgerTerm, PresburgerTerm)]
+                    theEqns = [ (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2) | (KlassEqn m t1 t2) <- my_klasses ]
+                    theLtns :: [(PresburgerTerm, PresburgerTerm)]
+                    theLtns = [ (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2) | (KlassLtn m t1 t2) <- my_klasses ]
+                    theGtns :: [(PresburgerTerm, PresburgerTerm)]
+                    theGtns = [ (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2) | (KlassGtn m t1 t2) <- my_klasses ]
+                    theMods :: [(PositiveInteger, (PresburgerTerm, PresburgerTerm))]
+                    theMods = [ ((theLCM `div` m) * r, (multiply (theLCM `div` m) t1, multiply (theLCM `div` m) t2)) | (KlassMod m t1 r t2) <- my_klasses ]
+                    theCollectionOfProperKlasses :: CollectionOfProperKlasses
+                    theCollectionOfProperKlasses = CollectionOfProperKlasses
+                        { _Eqns = theEqns
+                        , _Ltns = theLtns
+                        , _Gtns = (mkNum 1, mkNum 0) : theGtns
+                        , _Mods = (theLCM, (mkNum 0, mkNum 0)) : theMods
+                        , _TheR = List.foldl' getLCM theLCM (map fst theMods)
+                        }
+        step3 :: CollectionOfProperKlasses -> MyPresburgerFormula
+        step3 (CollectionOfProperKlasses theEqns0 theLtns0 theGtns0 theMods0 theR)
             = case theEqns0 of
                 [] -> orcat
                     [ andcat
@@ -255,7 +276,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                         , orcat
                             [ andcat
                                 [ mkLtnF (mkPlus u (mkPlus v (mkNum s))) (mkPlus u' v')
-                                , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (w, r, w') <- theMods0 ]
+                                , andcat [ mkModF (mkPlus v (mkPlus (mkNum s) w)) r (mkPlus v' w') | (r, (w, w')) <- theMods0 ]
                                 ]
                             | s <- [1 .. theR]
                             ]
@@ -267,7 +288,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
                     [ andcat [ mkEqnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theEqns' ]
                     , andcat [ mkLtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theLtns0 ]
                     , andcat [ mkGtnF (mkPlus t' t1) (mkPlus t2 t) | (t1, t2) <- theGtns0 ]
-                    , andcat [ mkModF (mkPlus t' t1) r (mkPlus t2 t) | (t1, r, t2) <- theMods0 ]
+                    , andcat [ mkModF (mkPlus t' t1) r (mkPlus t2 t) | (r, (t1, t2)) <- theMods0 ]
                     ]
     mkNum :: MyNat -> PresburgerTerm
     mkNum k = PresburgerTerm k Map.empty
@@ -318,52 +339,55 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = applyQuantifierElimi
     trick :: MyPresburgerFormula -> (MyPresburgerFormula, MyPresburgerFormula) -> Maybe MyPresburgerFormula
     trick (ValF b) = if b then pure . fst else pure . snd
     trick _ = pure Nothing
-    plusCoeff :: (MyVar, MyCoefficient) -> MyCoefficientEnvironmentForMyVar -> MyCoefficientEnvironmentForMyVar
-    plusCoeff (x, n) = Map.alter (maybe (callWithStrictArg Just n) (\n' -> callWithStrictArg Just (n + n'))) x
 
-insertFVsInPresburgerTermRep :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
-insertFVsInPresburgerTermRep = addFVs where
-    addFVs :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
-    addFVs (IVar x) = if x >= theMinNumOfMyVar then Set.insert x else id
-    addFVs (Zero) = id
-    addFVs (Succ t1) = addFVs t1
-    addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
+addFVs :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
+addFVs (IVar x) = if x >= theMinNumOfMyVar then Set.insert x else id
+addFVs (Zero) = id
+addFVs (Succ t1) = addFVs t1
+addFVs (Plus t1 t2) = addFVs t1 . addFVs t2
 
-getFVsInPresburgerFormulaRep :: MyPresburgerFormulaRep -> Set.Set MyVar
-getFVsInPresburgerFormulaRep = getFVs where
-    getFVs :: MyPresburgerFormulaRep -> Set.Set MyVar
-    getFVs (ValF b) = Set.empty
-    getFVs (EqnF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
-    getFVs (LtnF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
-    getFVs (LeqF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
-    getFVs (GtnF t1 t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
-    getFVs (ModF t1 r t2) = insertFVsInPresburgerTermRep t1 (insertFVsInPresburgerTermRep t2 Set.empty)
-    getFVs (NegF f1) = getFVs f1
-    getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
-    getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
-    getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
-    getFVs (IffF f1 f2) = getFVs f1 `Set.union` getFVs f2
-    getFVs (AllF y f1) = y `Set.delete` getFVs f1
-    getFVs (ExsF y f1) = y `Set.delete` getFVs f1
+getFVs :: MyPresburgerFormulaRep -> Set.Set MyVar
+getFVs (ValF b) = Set.empty
+getFVs (EqnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (LtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (LeqF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (GtnF t1 t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (ModF t1 r t2) = addFVs t1 (addFVs t2 Set.empty)
+getFVs (NegF f1) = getFVs f1
+getFVs (DisF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (ConF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (ImpF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (IffF f1 f2) = getFVs f1 `Set.union` getFVs f2
+getFVs (AllF y f1) = y `Set.delete` getFVs f1
+getFVs (ExsF y f1) = y `Set.delete` getFVs f1
 
-getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
-getMaxVarOf zs = foldr (\z1 -> \acc -> \z2 -> callWithStrictArg acc (max z1 z2)) id zs theMinNumOfMyVar
+chi :: MyPresburgerFormulaRep -> (MyVar -> PresburgerTermRep) -> MyVar
+chi f sigma = succ (getMaxVarOf [ getMaxVarOf (addFVs (sigma x) Set.empty) | x <- Set.toAscList (getFVs f) ]) where
+    getMaxVarOf :: Foldable container_of => container_of MyVar -> MyVar
+    getMaxVarOf = flip (foldr (\z1 -> \acc -> \z2 -> callWithStrictArg acc (max z1 z2)) id) theMinNumOfMyVar
 
-chi :: MyPresburgerFormulaRep -> Subst -> MyVar
-chi f sigma = succ (getMaxVarOf [ getMaxVarOf (insertFVsInPresburgerTermRep (sigma x) Set.empty) | x <- Set.toAscList (getFVsInPresburgerFormulaRep f) ])
+nilSubst :: (MyVar -> PresburgerTermRep)
+nilSubst z = IVar z
 
-applySubstToTermRep :: PresburgerTermRep -> Subst -> PresburgerTermRep
-applySubstToTermRep (IVar x) = flip callWithStrictArg x
-applySubstToTermRep (Zero) = pure Zero
-applySubstToTermRep (Succ t1) = pure Succ <*> applySubstToTermRep t1
-applySubstToTermRep (Plus t1 t2) = pure Plus <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
+consSubst :: (MyVar, PresburgerTermRep) -> (MyVar -> PresburgerTermRep) -> (MyVar -> PresburgerTermRep)
+consSubst (x, t) sigma z = if x == z then t else sigma z
 
 runTermSubst :: [(MyVar, PresburgerTermRep)] -> PresburgerTermRep -> PresburgerTermRep
-runTermSubst = flip applySubstToTermRep . foldr consSubst nilSubst
+runTermSubst = flip applySubstToTermRep . foldr consSubst nilSubst where
+    applySubstToTermRep :: PresburgerTermRep -> (MyVar -> PresburgerTermRep) -> PresburgerTermRep
+    applySubstToTermRep (IVar x) = flip callWithStrictArg x
+    applySubstToTermRep (Zero) = pure Zero
+    applySubstToTermRep (Succ t1) = pure Succ <*> applySubstToTermRep t1
+    applySubstToTermRep (Plus t1 t2) = pure Plus <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
 
 runFormulaSubst :: [(MyVar, PresburgerTermRep)] -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 runFormulaSubst = flip applySubstToFormulaRep . foldr consSubst nilSubst where
-    applySubstToFormulaRep :: MyPresburgerFormulaRep -> Subst -> MyPresburgerFormulaRep
+    applySubstToTermRep :: PresburgerTermRep -> (MyVar -> PresburgerTermRep) -> PresburgerTermRep
+    applySubstToTermRep (IVar x) = flip callWithStrictArg x
+    applySubstToTermRep (Zero) = pure Zero
+    applySubstToTermRep (Succ t1) = pure Succ <*> applySubstToTermRep t1
+    applySubstToTermRep (Plus t1 t2) = pure Plus <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
+    applySubstToFormulaRep :: MyPresburgerFormulaRep -> (MyVar -> PresburgerTermRep) -> MyPresburgerFormulaRep
     applySubstToFormulaRep (ValF b) = pure ValF <*> pure b
     applySubstToFormulaRep (EqnF t1 t2) = pure EqnF <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
     applySubstToFormulaRep (LtnF t1 t2) = pure LtnF <*> applySubstToTermRep t1 <*> applySubstToTermRep t2
@@ -376,63 +400,14 @@ runFormulaSubst = flip applySubstToFormulaRep . foldr consSubst nilSubst where
     applySubstToFormulaRep (ImpF f1 f2) = pure ImpF <*> applySubstToFormulaRep f1 <*> applySubstToFormulaRep f2
     applySubstToFormulaRep (IffF f1 f2) = pure IffF <*> applySubstToFormulaRep f1 <*> applySubstToFormulaRep f2
     applySubstToFormulaRep f = applySubstToQuantifier f <*> chi f
-    applySubstToQuantifier :: MyPresburgerFormulaRep -> Subst -> MyVar -> MyPresburgerFormulaRep
+    applySubstToQuantifier :: MyPresburgerFormulaRep -> (MyVar -> PresburgerTermRep) -> MyVar -> MyPresburgerFormulaRep
     applySubstToQuantifier (AllF y f1) sigma z = AllF z (applySubstToFormulaRep f1 (consSubst (y, IVar z) sigma))
     applySubstToQuantifier (ExsF y f1) sigma z = ExsF z (applySubstToFormulaRep f1 (consSubst (y, IVar z) sigma))
-
-nilSubst :: Subst
-nilSubst z = IVar z
-
-consSubst :: (MyVar, PresburgerTermRep) -> Subst -> Subst
-consSubst (x, t) sigma z = if x == z then t else sigma z
-
-mapTermInPresburgerFormula :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
-mapTermInPresburgerFormula = go where
-    mkValF :: MyProp -> PresburgerFormula term
-    mkValF b = ValF b
-    mkEqnF :: term -> term -> PresburgerFormula term
-    mkEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
-    mkLtnF :: term -> term -> PresburgerFormula term
-    mkLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
-    mkLeqF :: term -> term -> PresburgerFormula term
-    mkLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
-    mkGtnF :: term -> term -> PresburgerFormula term
-    mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
-    mkModF :: term -> PositiveInteger -> term -> PresburgerFormula term
-    mkModF t1 r t2 = t1 `seq` t2 `seq` ModF t1 r t2
-    mkNegF :: PresburgerFormula term -> PresburgerFormula term
-    mkNegF f1 = f1 `seq` NegF f1
-    mkDisF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
-    mkConF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
-    mkImpF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
-    mkIffF :: PresburgerFormula term -> PresburgerFormula term -> PresburgerFormula term
-    mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
-    mkAllF :: MyVar -> PresburgerFormula term -> PresburgerFormula term
-    mkAllF y f1 = f1 `seq` AllF y f1
-    mkExsF :: MyVar -> PresburgerFormula term -> PresburgerFormula term
-    mkExsF y f1 = f1 `seq` ExsF y f1
-    go :: (old_term -> term) -> PresburgerFormula old_term -> PresburgerFormula term
-    go z (ValF b) = mkValF b
-    go z (EqnF t1 t2) = mkEqnF (z t1) (z t2)
-    go z (LtnF t1 t2) = mkLtnF (z t1) (z t2)
-    go z (LeqF t1 t2) = mkLeqF (z t1) (z t2)
-    go z (GtnF t1 t2) = mkGtnF (z t1) (z t2)
-    go z (ModF t1 r t2) = mkModF (z t1) r (z t2)
-    go z (NegF f1) = mkNegF (go z f1)
-    go z (DisF f1 f2) = mkDisF (go z f1) (go z f2)
-    go z (ConF f1 f2) = mkConF (go z f1) (go z f2)
-    go z (ImpF f1 f2) = mkImpF (go z f1) (go z f2)
-    go z (IffF f1 f2) = mkIffF (go z f1) (go z f2)
-    go z (AllF y f1) = mkAllF y (go z f1)
-    go z (ExsF y f1) = mkExsF y (go z f1)
 
 checkTruthValueOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
 checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
     tryEvalTerm :: PresburgerTerm -> Maybe MyNat
-    tryEvalTerm (PresburgerTerm con coeffs) = if all (\n -> n == 0) (Map.elems coeffs) then pure con else fail "some individual variable occurs"
+    tryEvalTerm (PresburgerTerm con coeffs) = if all (\n -> n == 0) (Map.elems coeffs) then pure con else Nothing
     tryEvalFormula :: MyPresburgerFormula -> Maybe MyProp
     tryEvalFormula (ValF b) = pure b
     tryEvalFormula (EqnF t1 t2) = pure (==) <*> tryEvalTerm t1 <*> tryEvalTerm t2
@@ -447,3 +422,58 @@ checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
     tryEvalFormula (IffF f1 f2) = pure (==) <*> tryEvalFormula f1 <*> tryEvalFormula f2
     tryEvalFormula (AllF y f1) = tryEvalFormula f1
     tryEvalFormula (ExsF y f1) = tryEvalFormula f1
+
+convertFormulaToRep :: MyPresburgerFormula -> ErrMsgM MyPresburgerFormulaRep
+convertFormulaToRep = pure addErrMsg <*> mkErrMsg <*> discompileFormula where
+    mkErrMsg :: MyPresburgerFormula -> String
+    mkErrMsg f = "The formula ``" ++ shows f "\'\' is ill-formed..."
+    discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
+    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (traverse (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (mkIVar var) (const (flip mkPlus (mkIVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
+    discompileFormula :: MyPresburgerFormula -> Maybe MyPresburgerFormulaRep
+    discompileFormula (ValF b) = pure mkValF <*> pure b
+    discompileFormula (EqnF t1 t2) = pure mkEqnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (LtnF t1 t2) = pure mkLtnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (LeqF t1 t2) = pure mkLeqF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (GtnF t1 t2) = pure mkGtnF <*> discompileTerm t1 <*> discompileTerm t2
+    discompileFormula (ModF t1 r t2) = pure mkModF <*> discompileTerm t1 <*> (if r > 0 then pure r else Nothing) <*> discompileTerm t2
+    discompileFormula (NegF f1) = pure mkNegF <*> discompileFormula f1
+    discompileFormula (DisF f1 f2) = pure mkDisF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (ConF f1 f2) = pure mkConF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (ImpF f1 f2) = pure mkImpF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (IffF f1 f2) = pure mkIffF <*> discompileFormula f1 <*> discompileFormula f2
+    discompileFormula (AllF y f1) = pure mkAllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
+    discompileFormula (ExsF y f1) = pure mkExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
+    mkIVar :: MyVar -> PresburgerTermRep
+    mkIVar x = IVar x
+    mkZero :: PresburgerTermRep
+    mkZero = Zero
+    mkSucc :: PresburgerTermRep -> PresburgerTermRep
+    mkSucc t1 = t1 `seq` Succ t1
+    mkPlus :: PresburgerTermRep -> PresburgerTermRep -> PresburgerTermRep
+    mkPlus t1 t2 = t1 `seq` t2 `seq` Plus t1 t2
+    mkValF :: MyProp -> MyPresburgerFormulaRep
+    mkValF b = b `seq` ValF b
+    mkEqnF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+    mkEqnF t1 t2 = t1 `seq` t2 `seq` EqnF t1 t2
+    mkLtnF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+    mkLtnF t1 t2 = t1 `seq` t2 `seq` LtnF t1 t2
+    mkLeqF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+    mkLeqF t1 t2 = t1 `seq` t2 `seq` LeqF t1 t2
+    mkGtnF :: PresburgerTermRep -> PresburgerTermRep -> MyPresburgerFormulaRep
+    mkGtnF t1 t2 = t1 `seq` t2 `seq` GtnF t1 t2
+    mkModF :: PresburgerTermRep -> PositiveInteger -> PresburgerTermRep -> MyPresburgerFormulaRep
+    mkModF t1 r t2 = t1 `seq` t2 `seq` ModF t1 r t2
+    mkNegF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+    mkNegF f1 = f1 `seq` NegF f1
+    mkConF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+    mkConF f1 f2 = f1 `seq` f2 `seq` ConF f1 f2
+    mkDisF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+    mkDisF f1 f2 = f1 `seq` f2 `seq` DisF f1 f2
+    mkImpF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+    mkImpF f1 f2 = f1 `seq` f2 `seq` ImpF f1 f2
+    mkIffF :: MyPresburgerFormulaRep -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+    mkIffF f1 f2 = f1 `seq` f2 `seq` IffF f1 f2
+    mkAllF :: MyVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+    mkAllF y f1 = f1 `seq` AllF y f1
+    mkExsF :: MyVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
+    mkExsF y f1 = f1 `seq` ExsF y f1

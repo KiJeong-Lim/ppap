@@ -13,23 +13,18 @@ type Term = PresburgerTermRep
 
 type Formula = MyPresburgerFormulaRep
 
+type DisjunctionOfConjunctionsOfAtomFormulas = [[AtomFormula]]
+
+type LinearExpression = (MyNat, Map.Map Var PositiveInteger)
+
 data AtomFormula
     = EqF Term Term
     | LtF Term Term
     | CMF Term PositiveInteger Term
-    deriving (Eq)
-
-instance Show AtomFormula where
-    showsPrec prec f = if prec >= 5 then strstr "(" . showsAtomFormula f . strstr ")" else showsAtomFormula f
-    showList fs = strstr "[" . ppunc ", " (map showsAtomFormula fs) . strstr "]"
-
-showsAtomFormula :: AtomFormula -> ShowS
-showsAtomFormula (EqF t1 t2) = shows t1 . strstr " = " . shows t2
-showsAtomFormula (LtF t1 t2) = shows t1 . strstr " < " . shows t2
-showsAtomFormula (CMF t1 r t2) = shows t1 . strstr " ==_{" . shows r . strstr "} " . shows t2
+    deriving (Eq, Show)
 
 isSentence :: Formula -> Bool
-isSentence = Set.null . getFVsInPresburgerFormulaRep
+isSentence = Set.null . getFVs
 
 tryEvaluate :: Formula -> Maybe Bool
 tryEvaluate = checkTruthValueOfMyPresburgerFormula . fmap compilePresburgerTerm
@@ -97,40 +92,21 @@ mkAllF y f1 = if y >= theMinNumOfMyVar then f1 `seq` AllF y f1 else error "Jasmi
 mkExsF :: Var -> Formula -> Formula
 mkExsF y f1 = if y >= theMinNumOfMyVar then f1 `seq` ExsF y f1 else error "Jasmine.Solver.Presburger.mkExsF> A bad individual variable is given..."
 
-eliminateQuantifier :: Formula -> Formula
-eliminateQuantifier = convertFormulaToRep . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
-    discompileTerm :: PresburgerTerm -> Maybe PresburgerTermRep
-    discompileTerm (PresburgerTerm con coeffs) = pure (List.foldl' mkPlus) <*> (if con >= 0 then pure (recNat mkZero (const mkSucc) con) else Nothing) <*> (traverse (uncurry $ \var -> \coeff -> if var >= theMinNumOfMyVar && coeff > 0 then pure (recNat (mkIVar var) (const (flip mkPlus (mkIVar var))) (coeff - 1)) else Nothing) (Map.toAscList coeffs))
-    discompileFormula :: MyPresburgerFormula -> Maybe MyPresburgerFormulaRep
-    discompileFormula (ValF b) = pure mkValF <*> pure b
-    discompileFormula (EqnF t1 t2) = pure mkEqnF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (LtnF t1 t2) = pure mkLtnF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (LeqF t1 t2) = pure mkLeqF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (GtnF t1 t2) = pure mkGtnF <*> discompileTerm t1 <*> discompileTerm t2
-    discompileFormula (ModF t1 r t2) = pure mkModF <*> discompileTerm t1 <*> (if r > 0 then pure r else Nothing) <*> discompileTerm t2
-    discompileFormula (NegF f1) = pure mkNegF <*> discompileFormula f1
-    discompileFormula (DisF f1 f2) = pure mkDisF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (ConF f1 f2) = pure mkConF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (ImpF f1 f2) = pure mkImpF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (IffF f1 f2) = pure mkIffF <*> discompileFormula f1 <*> discompileFormula f2
-    discompileFormula (AllF y f1) = pure mkAllF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
-    discompileFormula (ExsF y f1) = pure mkExsF <*> (if y >= theMinNumOfMyVar then pure y else Nothing) <*> discompileFormula f1
-    convertFormulaToRep :: MyPresburgerFormula -> MyPresburgerFormulaRep
-    convertFormulaToRep f = maybe (error ("Jasmine.Solver.Presburger.eliminateQuantifier> The formula ``" ++ shows f "\'\' is ill-formed...")) id (discompileFormula f)
-    mkValF :: Bool -> Formula
-    mkValF b = b `seq` ValF b
+destTerm :: Term -> LinearExpression
+destTerm = compilePresburgerTerm >>= pure (curry return) <*> getConstantTerm <*> getCoefficients
 
-destTerm :: Term -> (Map.Map Var PositiveInteger, MyNat)
-destTerm = fmap (pure (curry id) <*> getCoefficients <*> getConstantTerm) compilePresburgerTerm
-
-destFormula :: Formula -> [[AtomFormula]]
-destFormula = makeDNF . simplify . eliminateQuantifier where
+destFormula :: Formula -> DisjunctionOfConjunctionsOfAtomFormulas
+destFormula = makeDNF . simplify . either (\err_msg -> error ("Jasmine.Solver.Presburger.destFormula> " ++ err_msg)) id . convertFormulaToRep . eliminateQuantifierReferringToTheBookWrittenByPeterHinman . fmap compilePresburgerTerm where
     unNegF :: Formula -> Formula
-    unNegF (ValF b) = mkValF (not b)
+    unNegF (ValF b) = ValF (not b)
     unNegF (NegF f1) = f1
     unNegF (DisF f1 f2) = mkConF (unNegF f1) (unNegF f2)
     unNegF (ConF f1 f2) = mkDisF (unNegF f1) (unNegF f2)
-    unNegF atom_f = mkNegF atom_f
+    unNegF (EqnF t1 t2) = mkDisF (mkLtnF t1 t2) (mkLtnF t2 t1)
+    unNegF (LtnF t1 t2) = mkLtnF t2 (mkSucc t1)
+    unNegF (LeqF t1 t2) = mkLtnF t2 t1
+    unNegF (GtnF t1 t2) = mkLtnF t1 (mkSucc t2)
+    unNegF (ModF t1 r t2) = foldr mkDisF mkBotF [ mkModF t1 r (mkPlus t2 (mkNum i)) | i <- [1 .. r - 1] ]
     unImpF :: Formula -> Formula -> Formula
     unImpF f1 f2 = mkDisF (unNegF f1) f2
     unIffF :: Formula -> Formula -> Formula
@@ -142,23 +118,12 @@ destFormula = makeDNF . simplify . eliminateQuantifier where
     simplify (ImpF f1 f2) = unImpF (simplify f1) (simplify f2)
     simplify (IffF f1 f2) = unIffF (simplify f1) (simplify f2)
     simplify f = f
-    makeDNF :: Formula -> [[AtomFormula]]
+    makeDNF :: Formula -> DisjunctionOfConjunctionsOfAtomFormulas
     makeDNF (ValF b) = if b then pure mempty else []
     makeDNF (DisF f1 f2) = makeDNF f1 ++ makeDNF f2
     makeDNF (ConF f1 f2) = pure mappend <*> makeDNF f1 <*> makeDNF f2
-    makeDNF (NegF atom_f) = negOf atom_f
-    makeDNF atom_f = posOf atom_f
-    posOf :: Formula -> [[AtomFormula]]
-    posOf (EqnF t1 t2) = pure [EqF t1 t2]
-    posOf (LtnF t1 t2) = pure [LtF t1 t2]
-    posOf (LeqF t1 t2) = pure [LtF t1 (mkSucc t2)]
-    posOf (GtnF t1 t2) = pure [LtF t2 t1]
-    posOf (ModF t1 r t2) = pure [CMF t1 r t2]
-    negOf :: Formula -> [[AtomFormula]]
-    negOf (EqnF t1 t2) = pure [LtF t1 t2] ++ pure [LtF t2 t1]
-    negOf (LtnF t1 t2) = pure [LtF t2 (mkSucc t1)]
-    negOf (LeqF t1 t2) = pure [LtF t2 t1]
-    negOf (GtnF t1 t2) = pure [LtF t1 (mkSucc t2)]
-    negOf (ModF t1 r t2) = [1 .. r - 1] >>= (\i -> pure [CMF t1 r (mkPlus t2 (mkNum i))])
-    mkValF :: Bool -> Formula
-    mkValF b = b `seq` ValF b
+    makeDNF (EqnF t1 t2) = pure [EqF t1 t2]
+    makeDNF (LtnF t1 t2) = pure [LtF t1 t2]
+    makeDNF (LeqF t1 t2) = pure [LtF t1 (mkSucc t2)]
+    makeDNF (GtnF t1 t2) = pure [LtF t2 t1]
+    makeDNF (ModF t1 r t2) = pure [CMF t1 r t2]

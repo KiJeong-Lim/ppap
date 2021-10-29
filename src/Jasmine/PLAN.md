@@ -7,7 +7,7 @@
 ```
 <Program> -> <ModuleDecl> <ImportDecl>* <SubmoduleDefn>*
 
-<Query> -> "?-" <Goal> $nl
+<Query> -> "?-" <fmapal> $nl
 <Query> -> <Command>
 
 <ModuleDecl> -> "module" <ModuleName> $nl
