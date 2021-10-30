@@ -1,6 +1,10 @@
 module Jasmine.Main where
 
 import Jasmine.API
+import Z.System.Shelly
 
 main :: IO ()
-main = runJasmine
+main = do
+    runJasmine
+    shelly ("Jasmine >>= quit")
+    return ()
