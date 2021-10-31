@@ -79,9 +79,10 @@ executable ppap
     Jasmine.Header.CoreTerm.Util
     Jasmine.Header.CoreTerm
     Jasmine.Header.Export
+    Jasmine.Solver.HOPU.Internal
+    Jasmine.Solver.HOPU.Test
     Jasmine.Solver.Presburger.Internal
     Jasmine.Solver.Presburger.Test
-    Jasmine.Solver.Export
     Jasmine.Solver.HOPU
     Jasmine.Solver.Presburger
     Jasmine.TypeChecker.Export
