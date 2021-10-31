@@ -85,7 +85,7 @@ runAladdin = do
                     my_file_name = modifySep '/' (const ".") id file_name
                 src <- lift $ readFile my_file_dir
                 file_abs_dir <- fmap (maybe my_file_dir id) (lift $ makePathAbsolutely my_file_dir)
-                lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ my_file_name ++ "    ( " ++ file_abs_dir ++ ", interpreted )")
+                lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ my_file_name ++ " ( " ++ file_abs_dir ++ ", interpreted )")
                 case runAnalyzer src of
                     Left err_msg -> do
                         lift $ putStrLn err_msg
