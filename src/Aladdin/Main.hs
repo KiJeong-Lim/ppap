@@ -82,9 +82,10 @@ runAladdin = do
                 runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
             Just file_name -> do
                 let my_file_dir = file_name ++ ".aladdin"
+                    my_file_name = modifySep '/' (const ".") id file_name
                 src <- lift $ readFile my_file_dir
                 file_abs_dir <- fmap (maybe my_file_dir id) (lift $ makePathAbsolutely my_file_dir)
-                lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ file_name ++ "    ( " ++ file_abs_dir ++ ", interpreted )")
+                lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ my_file_name ++ "    ( " ++ file_abs_dir ++ ", interpreted )")
                 case runAnalyzer src of
                     Left err_msg -> do
                         lift $ putStrLn err_msg
@@ -98,13 +99,13 @@ runAladdin = do
                                 module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
                                 facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
                                 facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
-                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = file_name })
+                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = my_file_name })
                             case result of
                                 Left err_msg -> do
                                     lift $ putStrLn err_msg
                                     runAladdin
                                 Right program2 -> do
-                                    lift $ shelly (file_name ++ "> Ok, one module loaded.")
+                                    lift $ shelly (my_file_name ++ "> Ok, one module loaded.")
                                     runREPL program2
         inconsistent_proof -> do
             lift $ shelly inconsistent_proof
