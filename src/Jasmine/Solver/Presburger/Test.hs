@@ -32,7 +32,7 @@ testPresburger = mapM_ (shelly . testCase . getCase) [1 .. 12] where
             | f_is_a_theorem = "The formula ``" ++ shows f "\'\' is a true sentence."
             | otherwise = "The formula ``" ++ shows f "\'\' is a false sentence."
     at :: [a] -> Int -> a
-    at xs i = xs !! (i + 1)
+    at xs i = xs !! (i - 1)
     isSentence :: MyPresburgerFormulaRep -> Bool
     isSentence = null . getFVs
     isInTheory :: MyPresburgerFormulaRep -> Bool
