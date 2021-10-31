@@ -32,11 +32,15 @@ Aladdin >>= quit
 
 # Aladdin
 
-- My dialect of lambda-Prolog
+- My dialect of λProlog
 
 # Calc
 
 - My calculator
+
+# Jasmine
+
+- The successor of Aladdin
 
 # LGS
 
