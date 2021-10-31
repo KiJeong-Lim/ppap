@@ -1,1 +1,1 @@
-module Jasmine.Solve.HOPU.Test where
+module Jasmine.Solver.HOPU.Test where

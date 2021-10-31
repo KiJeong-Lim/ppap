@@ -340,6 +340,25 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
     trick (ValF b) = if b then pure . fst else pure . snd
     trick _ = pure Nothing
 
+checkTruthValueOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
+checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
+    tryEvalTerm :: PresburgerTerm -> Maybe MyNat
+    tryEvalTerm (PresburgerTerm con coeffs) = if all (\n -> n == 0) (Map.elems coeffs) then pure con else Nothing
+    tryEvalFormula :: MyPresburgerFormula -> Maybe MyProp
+    tryEvalFormula (ValF b) = pure b
+    tryEvalFormula (EqnF t1 t2) = pure (==) <*> tryEvalTerm t1 <*> tryEvalTerm t2
+    tryEvalFormula (LtnF t1 t2) = pure (<) <*> tryEvalTerm t1 <*> tryEvalTerm t2
+    tryEvalFormula (LeqF t1 t2) = pure (<=) <*> tryEvalTerm t1 <*> tryEvalTerm t2
+    tryEvalFormula (GtnF t1 t2) = pure (>) <*> tryEvalTerm t1 <*> tryEvalTerm t2
+    tryEvalFormula (ModF t1 r t2) = pure areCongruentModulo <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
+    tryEvalFormula (NegF f1) = pure not <*> tryEvalFormula f1
+    tryEvalFormula (DisF f1 f2) = pure (||) <*> tryEvalFormula f1 <*> tryEvalFormula f2
+    tryEvalFormula (ConF f1 f2) = pure (&&) <*> tryEvalFormula f1 <*> tryEvalFormula f2
+    tryEvalFormula (ImpF f1 f2) = pure (<=) <*> tryEvalFormula f1 <*> tryEvalFormula f2
+    tryEvalFormula (IffF f1 f2) = pure (==) <*> tryEvalFormula f1 <*> tryEvalFormula f2
+    tryEvalFormula (AllF y f1) = tryEvalFormula f1
+    tryEvalFormula (ExsF y f1) = tryEvalFormula f1
+
 addFVs :: PresburgerTermRep -> Set.Set MyVar -> Set.Set MyVar
 addFVs (IVar x) = Set.insert x
 addFVs (Zero) = id
@@ -403,25 +422,6 @@ runFormulaSubst = flip applySubstToFormulaRep . foldr consSubst nilSubst where
     applySubstToQuantifier :: MyPresburgerFormulaRep -> (MyVar -> PresburgerTermRep) -> MyVar -> MyPresburgerFormulaRep
     applySubstToQuantifier (AllF y f1) sigma z = AllF z (applySubstToFormulaRep f1 (consSubst (y, IVar z) sigma))
     applySubstToQuantifier (ExsF y f1) sigma z = ExsF z (applySubstToFormulaRep f1 (consSubst (y, IVar z) sigma))
-
-checkTruthValueOfMyPresburgerFormula :: MyPresburgerFormula -> Maybe MyProp
-checkTruthValueOfMyPresburgerFormula = tryEvalFormula where
-    tryEvalTerm :: PresburgerTerm -> Maybe MyNat
-    tryEvalTerm (PresburgerTerm con coeffs) = if all (\n -> n == 0) (Map.elems coeffs) then pure con else Nothing
-    tryEvalFormula :: MyPresburgerFormula -> Maybe MyProp
-    tryEvalFormula (ValF b) = pure b
-    tryEvalFormula (EqnF t1 t2) = pure (==) <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalFormula (LtnF t1 t2) = pure (<) <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalFormula (LeqF t1 t2) = pure (<=) <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalFormula (GtnF t1 t2) = pure (>) <*> tryEvalTerm t1 <*> tryEvalTerm t2
-    tryEvalFormula (ModF t1 r t2) = pure areCongruentModulo <*> tryEvalTerm t1 <*> pure r <*> tryEvalTerm t2
-    tryEvalFormula (NegF f1) = pure not <*> tryEvalFormula f1
-    tryEvalFormula (DisF f1 f2) = pure (||) <*> tryEvalFormula f1 <*> tryEvalFormula f2
-    tryEvalFormula (ConF f1 f2) = pure (&&) <*> tryEvalFormula f1 <*> tryEvalFormula f2
-    tryEvalFormula (ImpF f1 f2) = pure (<=) <*> tryEvalFormula f1 <*> tryEvalFormula f2
-    tryEvalFormula (IffF f1 f2) = pure (==) <*> tryEvalFormula f1 <*> tryEvalFormula f2
-    tryEvalFormula (AllF y f1) = tryEvalFormula f1
-    tryEvalFormula (ExsF y f1) = tryEvalFormula f1
 
 toFormulaRep :: MyPresburgerFormula -> ErrMsgM MyPresburgerFormulaRep
 toFormulaRep = pure addErrMsg <*> mkErrMsg <*> discompileFormula where

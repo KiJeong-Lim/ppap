@@ -1,1 +1,1 @@
-module Jasmine.Solve.HOPU.Internal where
+module Jasmine.Solver.HOPU.Internal where
