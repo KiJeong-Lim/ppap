@@ -16,7 +16,7 @@ ppap> All rights reserved
 ppap =<< Aladdin     
 ppap >>= exec (Aladdin.main)
 Aladdin =<< Example/NDC.aladdin 
-aladdin> Compiling Example.NDC ( C:\\Users\user\source\Repositories\ppap\Example\NDC.aladdin, interpreted )
+Aladdin> Compiling Example.NDC ( C:\\Users\user\source\Repositories\ppap\Example\NDC.aladdin, interpreted )
 Example.NDC> Ok, one module loaded.
 Example.NDC> ?- example1.
 Example.NDC> yes.
