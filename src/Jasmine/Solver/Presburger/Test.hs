@@ -5,7 +5,7 @@ import Z.Algo.Function
 import Z.System.Shelly
 
 testPresburger :: IO ()
-testPresburger = mapM_ (shelly . showString "Presburger> " . runCase . getCase) [1 .. 12] where
+testPresburger = mapM_ (shelly . runCase . getCase) [1 .. 12] where
     getCase :: Int -> MyPresburgerFormulaRep
     getCase 1 = (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
     getCase 2 = (AllF 1 (LeqF (IVar 1) (IVar 1)))
@@ -21,8 +21,8 @@ testPresburger = mapM_ (shelly . showString "Presburger> " . runCase . getCase) 
     getCase 12 = (ExsF 1 (AllF 2 (LtnF (IVar 2) (IVar 1))))
     runCase :: MyPresburgerFormulaRep -> String
     runCase f
-        | isSentence f = if isInTheory f then "The formula ``" ++ shows f "\'\' is a true sentence." else "The formula ``" ++ shows f "\'\' is a false sentence."
-        | otherwise = "The formula ``" ++ shows f "\'\' is not a sentence."
+        | isSentence f = "Presburger> " ++ (if isInTheory f then "The formula ``" ++ shows f "\'\' is a true sentence." else "The formula ``" ++ shows f "\'\' is a false sentence.")
+        | otherwise = "Presburger> " ++ "The formula ``" ++ shows f "\'\' is not a sentence."
     isSentence :: MyPresburgerFormulaRep -> Bool
     isSentence = null . getFVs
     isInTheory :: MyPresburgerFormulaRep -> Bool
