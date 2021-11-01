@@ -5,6 +5,6 @@ import Z.System.Shelly
 
 main :: IO ()
 main = do
-    runJasmine
+    runJasmineAlpha1
     shelly ("Jasmine >>= quit")
     return ()
