@@ -1,6 +1,6 @@
 module Jasmine.Main where
 
-import Jasmine.API
+import Jasmine.Alpha1.API
 import Z.System.Shelly
 
 main :: IO ()

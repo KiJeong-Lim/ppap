@@ -1,6 +1,6 @@
-module Jasmine.Solver.Presburger.Test where
+module Jasmine.Alpha1.Solver.Presburger.Test where
 
-import Jasmine.Solver.Presburger.Internal
+import Jasmine.Alpha1.Solver.Presburger.Internal
 import Z.Algo.Function
 import Z.System.Shelly
 

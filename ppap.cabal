@@ -68,25 +68,26 @@ executable ppap
     Calc.ControlSystem.Test
     Calc.ControlSystem.Util
     Calc.Main
-    Jasmine.Analyzer.Export
-    Jasmine.Analyzer.Grammar
-    Jasmine.Compiler.Export
-    Jasmine.Desugarer.Export
-    Jasmine.Interpreter.Export
-    Jasmine.Interpreter.Runtime
-    Jasmine.Header.CoreTerm.Read
-    Jasmine.Header.CoreTerm.Show
-    Jasmine.Header.CoreTerm.Util
-    Jasmine.Header.CoreTerm
-    Jasmine.Header.Export
-    Jasmine.Solver.HOPU.Internal
-    Jasmine.Solver.HOPU.Test
-    Jasmine.Solver.Presburger.Internal
-    Jasmine.Solver.Presburger.Test
-    Jasmine.Solver.HOPU
-    Jasmine.Solver.Presburger
-    Jasmine.TypeChecker.Export
-    Jasmine.API
+    Jasmine.Alpha1.Analyzer.Export
+    Jasmine.Alpha1.Analyzer.Grammar
+    Jasmine.Alpha1.Compiler.Export
+    Jasmine.Alpha1.Desugarer.Export
+    Jasmine.Alpha1.Interpreter.Export
+    Jasmine.Alpha1.Interpreter.Runtime
+    Jasmine.Alpha1.Header.CoreTerm.Read
+    Jasmine.Alpha1.Header.CoreTerm.Show
+    Jasmine.Alpha1.Header.CoreTerm.Util
+    Jasmine.Alpha1.Header.CoreTerm
+    Jasmine.Alpha1.Header.Export
+    Jasmine.Alpha1.Header.Util
+    Jasmine.Alpha1.Solver.HOPU.Internal
+    Jasmine.Alpha1.Solver.HOPU.Test
+    Jasmine.Alpha1.Solver.Presburger.Internal
+    Jasmine.Alpha1.Solver.Presburger.Test
+    Jasmine.Alpha1.Solver.HOPU
+    Jasmine.Alpha1.Solver.Presburger
+    Jasmine.Alpha1.TypeChecker.Export
+    Jasmine.Alpha1.API
     Jasmine.Main
     LGS.Main
     LGS.Make

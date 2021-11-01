@@ -63,8 +63,8 @@ ppap = do
             shelly ("ppap >>= quit")
             return ()
         Just ("PGS", ["Jasmine"]) -> do
-            shelly ("ppap >>= eval (LGS.runLGS \"src/Jasmine/Analyzer/Lexer\")")
-            PGS.runPGS ("src/Jasmine/Analyzer/Lexer")
+            shelly ("ppap >>= eval (LGS.runLGS \"src/Jasmine/Alpha1/Analyzer/Lexer\")")
+            PGS.runPGS ("src/Jasmine/Alpha1/Analyzer/Lexer")
             shelly ("ppap >>= quit")
             return ()
         Just ("PGS", []) -> do
@@ -76,8 +76,8 @@ ppap = do
             shelly ("ppap >>= quit")
             return ()
         Just ("PGS", ["Jasmine"]) -> do
-            shelly ("ppap >>= eval (PGS.runPGS \"src/Jasmine/Analyzer/Parser\")")
-            PGS.runPGS ("src/Jasmine/Analyzer/Parser")
+            shelly ("ppap >>= eval (PGS.runPGS \"src/Jasmine/Alpha1/Analyzer/Parser\")")
+            PGS.runPGS ("src/Jasmine/Alpha1/Analyzer/Parser")
             shelly ("ppap >>= quit")
             return ()
         Just ("TEST", []) -> do
