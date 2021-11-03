@@ -36,20 +36,20 @@ Aladdin >>= quit
 
 # Aladdin
 
-- My dialect of λProlog
+- My subset of λProlog, which uses higher-order pattern unification.
 
 # Calc
 
-- My calculator
+- My calculator, which is aimed at replacing Matlab.
 
 # Jasmine
 
-- The successor of Aladdin
+- My dialect λProlog, which has Haskell-like syntax.
 
 # LGS
 
-- My lexer generator
+- My lexer generator, which supports the positive lookahead operator `/`.
 
 # PGS
 
-- My parser generator
+- My parser generator, which generates LALR(1) parsers.
