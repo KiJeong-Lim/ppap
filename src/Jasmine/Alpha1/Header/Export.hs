@@ -1,5 +1,16 @@
 module Jasmine.Alpha1.Header.Export
-    (
+    ( SrcPos
+    , LargeId
+    , SmallId
+    , Keyword
+    , SrcLoc (_BegPos, _EndPos)
+    , Unique
+    , UniqueT
+    , HasSrcLoc (..)
+    , HasAnnotation (..)
+    , GeneratingUniqueMonad (..)
+    , mkSrcLoc
+    , runUniqueT
     ) where
 
 import Jasmine.Alpha1.Header.CoreTerm
