@@ -96,12 +96,20 @@ readBlock = mconcat
         consumePC "\\xmatch"
         skipWhite
         regex <- readRegEx
-        maybe_regex <- mconcat
+        right_ctx <- mconcat
             [ do
+                consumePC " +/ "
+                regex' <- readRegEx
+                return (PosRCtx regex')
+            , do
                 consumePC " / "
                 regex' <- readRegEx
-                return (Just regex')
-            , return Nothing
+                return (OddRCtx regex')
+            , do
+                consumePC " -/ "
+                regex' <- readRegEx
+                return (NegRCtx regex')
+            , return NilRCtx
             ]
         skipWhite
         consumePC ":"
@@ -116,7 +124,7 @@ readBlock = mconcat
                 hscode <- many (indent 4 *> regexPC "[.\\'\n']*" <* lend)
                 return (Just hscode)
             ]
-        return (XMatch (regex, maybe_regex) maybe_hscode)
+        return (XMatch (regex, right_ctx) maybe_hscode)
     , do
         consumePC "\\target"
         skipWhite
