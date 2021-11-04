@@ -24,16 +24,16 @@ runPGS dir = do
         Right yblocks -> case runIdentity (runExceptT (genParser yblocks)) of
             Left err -> do
                 writeFileNow (dir ++ ".failed") err
-                shelly "PGS >>= tell (generating-failed)"
+                shelly ("PGS >>= tell (generating-failed)")
                 return ()
             Right delta -> do
                 writeFileNow (dir ++ ".hs") delta
-                shelly "PGS >>= tell (the-parser-has-been-generated)"
+                shelly ("PGS >>= tell (the-parser-has-been-generated)")
                 return ()
 
 main :: IO ()
 main = do
-    dir <- shelly "PGS =<< "
+    dir <- shelly ("PGS =<< ")
     runPGS dir
-    shelly "PGS >>= quit"
+    shelly ("PGS >>= quit")
     return ()

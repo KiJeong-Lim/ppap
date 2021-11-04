@@ -24,16 +24,16 @@ runLGS dir = do
         Right xblocks -> case runIdentity (runExceptT (genLexer xblocks)) of
             Left err -> do
                 writeFileNow (dir ++ ".failed") err
-                shelly "LGS >>= tell (generating-failed)"
+                shelly ("LGS >>= tell (generating-failed)")
                 return ()
             Right delta -> do
                 writeFileNow (dir ++ ".hs") delta
-                shelly "LGS >>= tell (the-lexer-has-been-generated)"
+                shelly ("LGS >>= tell (the-lexer-has-been-generated)")
                 return ()
 
 main :: IO ()
 main = do
-    dir <- shelly "LGS =<< "
+    dir <- shelly ("LGS =<< ")
     runLGS dir
-    shelly "LGS >>= quit"
+    shelly ("LGS >>= quit")
     return ()
