@@ -12,7 +12,7 @@
 \define $big_letter = 'A'-'Z'
 \define $digit = '0'-'9'
 \define $Char = [. \ '\n' \ '\\' \ '\"'] + "\\n" + "\\\\" + "\\\"" + "\\\'" + "\\t"
-\define $SmallId = [$small_letter] ("" + ("_" [$small_letter $digit '_' $big_letter])* [$small_letter $digit $big_letter]+)
+\define $SmallId = [$small_letter] [$small_letter $digit '_' $big_letter]*
 \define $LargeId = [$big_letter] [$small_letter $digit '_' $big_letter]* + "_"
 
 \xmatch $SmallId / "_{" + "":

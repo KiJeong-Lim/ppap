@@ -26,6 +26,8 @@ type CharSetEnv = Map.Map CharSetVar CharSet
 
 type RegExEnv = Map.Map RegExVar RegEx
 
+type ExitNumber = Int
+
 data CharSet
     = CsVar CharSetVar
     | CsSingle Char
@@ -49,19 +51,21 @@ data RegEx
 
 data NFA
     = NFA
-        { getInitialQOfNFA :: ParserS
-        , getFinalQsOfNFA :: Set.Set ParserS
-        , getTransitionsOfNFA :: Map.Map (ParserS, Maybe Char) (Set.Set ParserS)
-        , getMarkedQsOfNFA :: Map.Map ParserS (Bool, ParserS)
+        { getInitialQOfNFA :: !(ParserS)
+        , getFinalQsOfNFA :: !(Set.Set ParserS)
+        , getTransitionsOfNFA :: !(Map.Map (ParserS, Maybe Char) (Set.Set ParserS))
+        , getMarkedQsOfNFA :: !(Map.Map ParserS (Bool, ParserS))
+        , getPseudoFinalsOfNFA :: !(Set.Set ParserS)
         }
     deriving (Eq)
 
 data DFA
     = DFA
         { getInitialQOfDFA :: !(ParserS)
-        , getFinalQsOfDFA :: !(Map.Map ParserS ParserS)
+        , getFinalQsOfDFA :: !(Map.Map ParserS ExitNumber)
         , getTransitionsOfDFA :: !(Map.Map (ParserS, Char) ParserS)
         , getMarkedQsOfDFA :: !(Map.Map ParserS (Bool, Set.Set ParserS))
+        , getPseudoFinalsOfDFA :: !(Set.Set ParserS)
         }
     deriving (Eq)
 
