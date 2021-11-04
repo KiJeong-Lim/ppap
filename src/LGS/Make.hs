@@ -11,6 +11,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import LGS.Util
 import Y.Base
+import Z.Algo.Function
 
 theCsUniv :: Set.Set Char
 theCsUniv = Set.fromList (['a' .. 'z'] ++ ['A' .. 'Z'] ++ " `~0123456789!@#$%^&*()-=_+[]\\{}|;\':\"\n,./<>?")
@@ -333,24 +334,24 @@ mkReConcat re1 (ReWord []) = re1
 mkReConcat re1 re2 = ReConcat re1 re2
 
 mkReStar :: RegEx -> RegEx
-mkReStar (ReZero) = mkReWord []
-mkReStar (ReWord []) = mkReWord []
+mkReStar (ReZero) = mkReEpsilon
+mkReStar (ReWord []) = mkReEpsilon
 mkReStar (ReStar re1) = mkReStar re1
 mkReStar (ReDagger re1) = mkReStar re1
 mkReStar (ReQuest re1) = mkReStar re1
 mkReStar re1 = ReStar re1
 
 mkReDagger :: RegEx -> RegEx
-mkReDagger (ReZero) = mkReWord []
-mkReDagger (ReWord []) = mkReWord []
+mkReDagger (ReZero) = mkReZero
+mkReDagger (ReWord []) = mkReEpsilon
 mkReDagger (ReStar re1) = mkReStar re1
 mkReDagger (ReDagger re1) = mkReDagger re1
 mkReDagger (ReQuest re1) = mkReStar re1
 mkReDagger re1 = ReDagger re1
 
 mkReQuest :: RegEx -> RegEx
-mkReQuest (ReZero) = mkReWord []
-mkReQuest (ReWord []) = mkReWord []
+mkReQuest (ReZero) = mkReEpsilon
+mkReQuest (ReWord []) = mkReEpsilon
 mkReQuest (ReStar re1) = mkReStar re1
 mkReQuest (ReDagger re1) = mkReStar re1
 mkReQuest (ReQuest re1) = mkReQuest re1
@@ -359,15 +360,20 @@ mkReQuest re1 = ReQuest re1
 mkReCharSet :: CharSet -> RegEx
 mkReCharSet chs = chs `seq` ReCharSet chs
 
+mkReEpsilon :: RegEx
+mkReEpsilon = ReWord []
+
 reduceRegEx :: RegEx -> RegEx
 reduceRegEx = reduceRegExOldPassion
 
 makeJumpRegexTable :: DFA -> Map.Map (ParserS, ParserS) RegEx
-makeJumpRegexTable (DFA q0 qfs delta markeds) = makeClosure (length qs) where
+makeJumpRegexTable (DFA q0 qfs delta markeds) = Map.fromAscList [ ((q_from, q_to), theClosure `lookTable` (q_from, q_to)) | q_from <- qs, q_to <- qs ] where
+    lookTable :: Map.Map (ParserS, ParserS) RegEx -> (ParserS, ParserS) -> RegEx
+    lookTable table = maybe ReZero id . flip Map.lookup table
     qs :: [ParserS]
-    qs = Set.toAscList theSetOfAllStatesInGraph where
-        theSetOfAllStatesInGraph :: Set.Set ParserS
-        theSetOfAllStatesInGraph = Set.unions
+    qs = Set.toAscList theSetOfAllStatesInDFA where
+        theSetOfAllStatesInDFA :: Set.Set ParserS
+        theSetOfAllStatesInDFA = Set.unions
             [ Set.singleton q0
             , Map.keysSet qfs
             , Set.unions [ Set.fromList [q, p] | ((q, ch), p) <- Map.toAscList delta ]
@@ -375,60 +381,95 @@ makeJumpRegexTable (DFA q0 qfs delta markeds) = makeClosure (length qs) where
             ]
     makeRegExFromCharSet :: (Char -> Bool) -> RegEx
     makeRegExFromCharSet cond
-        = case List.partition cond (Set.toDescList theCsUniv) of
-            (yess, nos)
-                | length nos < 5 -> mkReCharSet (List.foldl' mkCsDiff mkCsUniv (map mkCsSingle nos))
-                | otherwise -> foldr mkReUnion mkReZero
-                    [ case pair of
-                        (ch1, ch2) -> if ch1 == ch2 then mkReWord [ch1] else mkReCharSet (mkCsEnum ch1 ch2)
-                    | pair <- foldr loop [] yess
-                    ]
+        | length nos < 5 = mkReCharSet (List.foldl' mkCsDiff mkCsUniv (map mkCsSingle nos))
+        | otherwise = foldr mkReUnion mkReZero
+            [ case pair of
+                (ch1, ch2) -> if ch1 == ch2 then mkReWord [ch1] else mkReCharSet (mkCsEnum ch1 ch2)
+            | pair <- foldr loop [] yess
+            ]
         where
             loop :: Char -> [(Char, Char)] -> [(Char, Char)]
             loop ch0 pairs0 = case List.partition (\pair -> snd pair == pred ch0) pairs0 of
                 ([], pairs1) -> (ch0, ch0) : pairs1
                 ([(ch1, ch2)], pairs1) -> (ch1, ch0) : pairs1
-    lookTable :: Map.Map (ParserS, ParserS) RegEx -> (ParserS, ParserS) -> RegEx
-    lookTable table = maybe ReZero id . flip Map.lookup table
-    makeClosure :: Int -> Map.Map (ParserS, ParserS) RegEx
-    makeClosure n
-        | n < 0 = undefined
-        | n == 0 = init
-        | n > 0 = loop (qs !! (n - 1)) (makeClosure (n - 1))
-        where
-            init :: Map.Map (ParserS, ParserS) RegEx
-            init = fromMaybeList
-                [ case reduceRegEx (mkReUnion (if q1 == q2 then mkReWord [] else mkReZero) (makeRegExFromCharSet (\ch -> Map.lookup (q1, ch) delta == Just q2))) of
-                    ReZero -> ((q1, q2), Nothing)
-                    re -> ((q1, q2), Just re)
-                | q1 <- qs
-                , q2 <- qs
-                ]
-            loop :: ParserS -> Map.Map (ParserS, ParserS) RegEx -> Map.Map (ParserS, ParserS) RegEx
-            loop q prev = fromMaybeList
-                [ case reduceRegEx (mkReUnion (prev `lookTable` (q1, q2)) (mkReConcat (prev `lookTable` (q1, q)) (mkReConcat (mkReStar (prev `lookTable` (q, q))) (prev `lookTable` (q, q2))))) of
-                    ReZero -> ((q1, q2), Nothing)
-                    re -> ((q1, q2), Just re)
-                | q1 <- qs
-                , q2 <- qs
-                ]
-            fromMaybeList :: Ord k => [(k, Maybe a)] -> Map.Map k a
-            fromMaybeList pairs = Map.fromList [ mkstrict (k, a) | (k, Just a) <- pairs ]
+            mypartition :: ([Char], [Char])
+            mypartition = List.partition cond (Set.toDescList theCsUniv)
+            yess :: [Char]
+            yess = fst mypartition
+            nos :: [Char]
+            nos = snd mypartition
+    theClosure :: Map.Map (ParserS, ParserS) RegEx
+    theClosure = Map.fromAscList (recNat myBase myStep (length qs))
+    myBase :: [((ParserS, ParserS), RegEx)]
+    myBase = do
+        q_i <- qs
+        q_j <- qs
+        case reduceRegEx (mkReUnion (if q_i == q_j then mkReWord [] else mkReZero) (makeRegExFromCharSet (\ch -> Map.lookup (q_i, ch) delta == Just q_j))) of
+            ReZero -> []
+            re -> return ((q_i, q_j), re)
+    myStep :: ParserS -> [((ParserS, ParserS), RegEx)] -> [((ParserS, ParserS), RegEx)]
+    myStep k prev = do
+        let q_k = qs !! k
+            table = Map.fromAscList prev
+        q_i <- qs
+        q_j <- qs
+        case reduceRegEx (mkReUnion (table `lookTable` (q_i, q_j)) (mkReConcat (table `lookTable` (q_i, q_k)) (mkReConcat (mkReStar (table `lookTable` (q_k, q_k))) (table `lookTable` (q_k, q_j))))) of
+            ReZero -> []
+            re -> return ((q_i, q_j), re)
 
 generateRegexTable :: DFA -> Map.Map ParserS RegEx
-generateRegexTable dfa = result where
-    qs :: [ParserS]
-    qs = Set.toAscList (Set.map fst (Map.keysSet (getTransitionsOfDFA dfa)) `Set.union` Map.keysSet (getFinalQsOfDFA dfa))
+generateRegexTable dfa = Map.fromList mymap where
     theJumpRegexTable :: Map.Map (ParserS, ParserS) RegEx
     theJumpRegexTable = makeJumpRegexTable dfa
-    result :: Map.Map ParserS RegEx
-    result = Map.fromAscList
-        [ mkstrict
-            ( q
-            , theJumpRegexTable Map.! (getInitialQOfDFA dfa, q)
-            )
-        | q <- qs
-        ]
+    mymap :: [(ParserS, RegEx)]
+    mymap = do
+        ((q_from, q_to), path_of_regex) <- Map.toAscList theJumpRegexTable
+        if q_from == getInitialQOfDFA dfa
+            then return
+                ( q_to
+                , elaborateRegEx path_of_regex
+                )
+            else []
+    elaborateRegEx :: RegEx -> RegEx
+    elaborateRegEx = step2 . step1 where
+        unfoldConcat :: RegEx -> [RegEx]
+        unfoldConcat (ReConcat re1 re2) = unfoldConcat re1 ++ unfoldConcat re2
+        unfoldConcat re = [re]
+        matchPrefix :: [RegEx] -> [RegEx] -> Maybe [RegEx]
+        matchPrefix [] res = Just res
+        matchPrefix (re1 : res2) (re3 : res4) = if re1 == re3 then matchPrefix res2 res4 else Nothing
+        matchPrefix _ _ = Nothing
+        step1 :: RegEx -> [RegEx]
+        step1 = go [] . unfoldConcat where
+            go :: [RegEx] -> [RegEx] -> [RegEx]
+            go acc []
+                = reverse acc
+            go acc (re1 : res2)
+                | ReStar re3 <- re1
+                = case matchPrefix (reverse (unfoldConcat re3)) acc of
+                    Nothing -> go (re1 : acc) res2
+                    Just acc_suffix -> go (mkReDagger re3 : acc_suffix) res2
+                | otherwise
+                = go (re1 : acc) res2
+        step2 :: [RegEx] -> RegEx
+        step2 = List.foldl' mkReConcat mkReEpsilon . concat . map go where
+            go :: RegEx -> [RegEx]
+            go (ReQuest re1) = step2aux1 (unfoldConcat re1)
+            go re = [re]
+            isStar :: RegEx -> Bool
+            isStar (ReStar _) = True
+            isStar _ = False
+            isQuest :: RegEx -> Bool
+            isQuest (ReQuest _) = True
+            isQuest _ = False
+            step2aux1 :: [RegEx] -> [RegEx]
+            step2aux1 res1 = case filter (not . isStar) res1 of
+                [ReDagger _] -> do
+                    re2 <- res1
+                    case re2 of
+                        ReDagger re3 -> return (mkReStar re3)
+                        re3 -> return re3
+                res2 -> if all isQuest res2 then res1 else [mkReQuest (List.foldl' mkReConcat mkReEpsilon res1)]
 
 reduceRegExOldPassion :: RegEx -> RegEx
 reduceRegExOldPassion = myMain where

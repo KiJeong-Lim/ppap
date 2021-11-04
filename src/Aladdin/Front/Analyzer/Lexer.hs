@@ -14,7 +14,7 @@ data DFA
         { getInitialQOfDFA :: Int
         , getFinalQsOfDFA :: XMap.Map Int Int
         , getTransitionsOfDFA :: XMap.Map (Int, Char) Int
-        , getMarkedQsOfDFA :: XMap.Map Int (XSet.Set Int)
+        , getMarkedQsOfDFA :: XMap.Map Int (Bool, XSet.Set Int)
         }
     deriving ()
 
@@ -119,13 +119,13 @@ runAladdinLexer = doLexing . addLoc 1 1 where
             ]
         , getMarkedQsOfDFA = XMap.fromAscList []
         }
-    runDFA :: DFA -> (((Int, Int), Char) -> Char) -> [((Int, Int), Char)] -> ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
-    runDFA (DFA q0 qfs deltas markeds) toChar = XIdentity.runIdentity . go where
+    runDFA :: DFA -> [((Int, Int), Char)] -> ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
+    runDFA (DFA q0 qfs deltas markeds) = XIdentity.runIdentity . go where
         loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]
         loop1 q buffer [] = return buffer
         loop1 q buffer (ch : str) = do
             (latest, accepted) <- XState.get
-            case XMap.lookup (q, toChar ch) deltas of
+            case XMap.lookup (q, snd ch) deltas of
                 Nothing -> return (buffer ++ [ch] ++ str)
                 Just p -> case XMap.lookup p qfs of
                     Nothing -> loop1 p (buffer ++ [ch]) str
@@ -135,7 +135,7 @@ runAladdinLexer = doLexing . addLoc 1 1 where
         loop2 :: XSet.Set Int -> Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT [((Int, Int), Char)] XIdentity.Identity [((Int, Int), Char)]
         loop2 qs q [] buffer = return buffer
         loop2 qs q (ch : str) buffer = do
-            case XMap.lookup (q, toChar ch) deltas of
+            case XMap.lookup (q, snd ch) deltas of
                 Nothing -> return (buffer ++ [ch] ++ str)
                 Just p -> case p `XSet.member` qs of
                     False -> loop2 qs p str (buffer ++ [ch])
@@ -143,13 +143,27 @@ runAladdinLexer = doLexing . addLoc 1 1 where
                         accepted <- XState.get
                         XState.put (accepted ++ buffer ++ [ch])
                         loop2 qs p str []
+        loop3 :: XSet.Set Int -> Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT [((Int, Int), Char)] XIdentity.Identity [((Int, Int), Char)]
+        loop3 qs q [] buffer = return buffer
+        loop3 qs q (ch : str) buffer = do
+            case XMap.lookup (q, snd ch) deltas of
+                Nothing -> return (buffer ++ [ch] ++ str)
+                Just p -> case p `XSet.member` qs of
+                    False -> loop3 qs p str (buffer ++ [ch])
+                    True -> do
+                        accepted <- XState.get
+                        XState.put (accepted ++ buffer ++ [ch])
+                        return str
         go :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
         go input = do
             (rest, (latest, accepted)) <- XState.runStateT (loop1 q0 [] input) (Nothing, [])
             case latest >>= flip XMap.lookup markeds of
                 Nothing -> return ((latest, accepted), rest)
-                Just qs -> do
+                Just (True, qs) -> do
                     (rest', accepted') <- XState.runStateT (loop2 qs q0 accepted []) []
+                    return ((latest, accepted'), rest' ++ rest)
+                Just (False, qs) -> do
+                    (rest', accepted') <- XState.runStateT (loop3 qs q0 accepted []) []
                     return ((latest, accepted'), rest' ++ rest)
     addLoc :: Int -> Int -> String -> [((Int, Int), Char)]
     addLoc _ _ [] = []
@@ -158,7 +172,7 @@ runAladdinLexer = doLexing . addLoc 1 1 where
     doLexing [] = return []
     doLexing str0 = do
         let returnJust = return . Just
-        (str1, piece) <- case runDFA theDFA snd str0 of
+        (str1, piece) <- case runDFA theDFA str0 of
             ((_, []), _) -> Left (fst (head str0))
             ((Just label, accepted), rest) -> return (rest, ((label, map snd accepted), (fst (head accepted), fst (head (reverse accepted)))))
             _ -> Left (fst (head str0))
