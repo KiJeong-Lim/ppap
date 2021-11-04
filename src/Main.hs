@@ -62,9 +62,9 @@ ppap = do
             LGS.runLGS ("src/Aladdin/Front/Analyzer/Lexer")
             shelly ("ppap >>= quit")
             return ()
-        Just ("PGS", ["Jasmine"]) -> do
+        Just ("LGS", ["Jasmine"]) -> do
             shelly ("ppap >>= eval (LGS.runLGS \"src/Jasmine/Alpha1/Analyzer/Lexer\")")
-            PGS.runPGS ("src/Jasmine/Alpha1/Analyzer/Lexer")
+            LGS.runLGS ("src/Jasmine/Alpha1/Analyzer/Lexer")
             shelly ("ppap >>= quit")
             return ()
         Just ("PGS", []) -> do
@@ -84,7 +84,7 @@ ppap = do
             shelly ("ppap >>= exec (TEST.main)")
             TEST.main
         Just (cmd, args) -> do
-            shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
+            shelly ("ppap >>= abort (unimplemented)")
             return ()
 
 copyright :: IO ()

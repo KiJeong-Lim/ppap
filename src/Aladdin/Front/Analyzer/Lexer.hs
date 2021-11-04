@@ -119,18 +119,20 @@ runAladdinLexer = doLexing . addLoc 1 1 where
             ]
         , getMarkedQsOfDFA = XMap.fromAscList []
         }
-    runDFA :: DFA -> (ch -> Char) -> [ch] -> ((Maybe Int, [ch]), [ch])
+    runDFA :: DFA -> (((Int, Int), Char) -> Char) -> [((Int, Int), Char)] -> ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
     runDFA (DFA q0 qfs deltas markeds) toChar = XIdentity.runIdentity . go where
+        loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]
         loop1 q buffer [] = return buffer
         loop1 q buffer (ch : str) = do
+            (latest, accepted) <- XState.get
             case XMap.lookup (q, toChar ch) deltas of
                 Nothing -> return (buffer ++ [ch] ++ str)
                 Just p -> case XMap.lookup p qfs of
                     Nothing -> loop1 p (buffer ++ [ch]) str
                     latest' -> do
-                        (latest, accepted) <- XState.get
                         XState.put (latest', accepted ++ buffer ++ [ch])
                         loop1 p [] str
+        loop2 :: XSet.Set Int -> Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT [((Int, Int), Char)] XIdentity.Identity [((Int, Int), Char)]
         loop2 qs q [] buffer = return buffer
         loop2 qs q (ch : str) buffer = do
             case XMap.lookup (q, toChar ch) deltas of
@@ -141,6 +143,7 @@ runAladdinLexer = doLexing . addLoc 1 1 where
                         accepted <- XState.get
                         XState.put (accepted ++ buffer ++ [ch])
                         loop2 qs p str []
+        go :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
         go input = do
             (rest, (latest, accepted)) <- XState.runStateT (loop1 q0 [] input) (Nothing, [])
             case latest >>= flip XMap.lookup markeds of

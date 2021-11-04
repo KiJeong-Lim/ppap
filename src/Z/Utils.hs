@@ -71,7 +71,7 @@ splitUnless :: (a -> a -> Bool) -> [a] -> [[a]]
 splitUnless is_related_to = foldr (\x -> recList [pure x] (\xs -> if x `is_related_to` head xs then const . kons (pure x ++ xs) else const . kons (pure x) . kons xs)) []
 
 splitBy :: Eq a => a -> [a] -> [[a]]
-splitBy x0 = filter (not . null) . fix (\go -> uncurry (\xs -> if null xs then maybe [] (kons xs . go . snd) . uncons else kons xs . go) . span (\x -> x /= x0))
+splitBy x0 = fix (\swag -> flip (recList (\buffer -> [reverse buffer]) (\x -> \xs -> \go -> \buffer -> if x == x0 then [reverse buffer] ++ swag xs else go (x : buffer))) [])
 
 calcTab :: Int -> Int
 calcTab n = 4 & (\my_tab_width -> my_tab_width - n `mod` my_tab_width)
