@@ -71,7 +71,7 @@ genLexer xblocks = do
         | ReVDef var re <- xblocks
         ]
     theDFA <- fmap makeDFAfromREs $ sequence
-        [ case rctx of
+        [ case right_ctx of
             NilRCtx -> do
                 regex1' <- substituteRE re_env regex1
                 regex1'' <- modifyCSinRE (substituteCS chs_env) regex1'
@@ -94,7 +94,7 @@ genLexer xblocks = do
                 regex2' <- substituteRE re_env regex2
                 regex2'' <- modifyCSinRE (substituteCS chs_env) regex2'
                 return (regex1'', NegRCtx regex2'')
-        | XMatch (regex1, rctx) _ <- xblocks
+        | XMatch (regex1, right_ctx) _ <- xblocks
         ]
     let theRegexTable = generateRegexTable theDFA
         theMaxLen = length (show (maybe 0 fst (Set.maxView (Map.keysSet theRegexTable))))

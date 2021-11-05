@@ -99,48 +99,53 @@ getUnitedNFAfromREs xmatch_defns = runIdentity go where
     go :: Identity NFA
     go = do
         let n = length xmatch_defns
+            q0 = 0
         (pragments, (numberOfQs, deltas)) <- flip runStateT (n + 1, Map.empty) $ sequence
-            [ case xmatch_defns !! (i - 1) of
-                (regex, NilRCtx) -> do
-                    (qi, qf) <- loop regex
-                    drawTransition ((0, Nothing), qi)
-                    drawTransition ((qf, Nothing), i)
-                    return Nothing
-                (regex1, PosRCtx regex2) -> do
+            [ case right_ctx of
+                NilRCtx -> do
+                    let label = qf
+                    (qi1, qf1) <- loop regex1
+                    drawTransition ((q0, Nothing), qi1)
+                    drawTransition ((qf1, Nothing), qf)
+                    return ((qf, label), (Nothing, Nothing))
+                PosRCtx regex2 -> do
+                    let label = qf
                     (qi1, qf1) <- loop regex1
                     (qi2, qf2) <- loop regex2
-                    q <- getNewQ
-                    drawTransition ((0, Nothing), qi1)
-                    drawTransition ((qf1, Nothing), q)
-                    drawTransition ((q, Nothing), qi2)
-                    drawTransition ((qf2, Nothing), i)
-                    return (Just (Right (i, (True, q))))
-                (regex1, OddRCtx regex2) -> do
+                    qw <- getNewQ
+                    drawTransition ((q0, Nothing), qi1)
+                    drawTransition ((qf1, Nothing), qw)
+                    drawTransition ((qw, Nothing), qi2)
+                    drawTransition ((qf2, Nothing), qf)
+                    return ((qf, label), (Nothing, Just (label, (True, qw))))
+                OddRCtx regex2 -> do
+                    let label = qf
                     (qi1, qf1) <- loop regex1
                     (qi2, qf2) <- loop regex2
-                    q <- getNewQ
-                    drawTransition ((0, Nothing), qi1)
-                    drawTransition ((qf1, Nothing), q)
-                    drawTransition ((q, Nothing), qi2)
-                    drawTransition ((qf2, Nothing), i)
-                    return (Just (Right (i, (False, q))))
-                (regex1, NegRCtx regex2) -> do
+                    qw <- getNewQ
+                    drawTransition ((q0, Nothing), qi1)
+                    drawTransition ((qf1, Nothing), qw)
+                    drawTransition ((qw, Nothing), qi2)
+                    drawTransition ((qf2, Nothing), qf)
+                    return ((qf, label), (Nothing, Just (label, (False, qw))))
+                NegRCtx regex2 -> do
+                    let label = qf
                     (qi1, qf1) <- loop regex1
                     (qi2, qf2) <- loop regex2
-                    q <- getNewQ
-                    drawTransition ((0, Nothing), qi1)
-                    drawTransition ((qf1, Nothing), i)
-                    drawTransition ((i, Nothing), qi2)
-                    drawTransition ((qf2, Nothing), q)
-                    return (Just (Left q))
-            | i <- [1, 2 .. n]
+                    qw <- getNewQ
+                    drawTransition ((q0, Nothing), qi1)
+                    drawTransition ((qf1, Nothing), qf)
+                    drawTransition ((qf, Nothing), qi2)
+                    drawTransition ((qf2, Nothing), qw)
+                    return ((qf, label), (Just (label, qw), Nothing)) 
+            | (qf, (regex1, right_ctx)) <- zip [1, 2 .. n] xmatch_defns
             ]
         return $ NFA 
-            { getInitialQOfNFA = 0
-            , getFinalQsOfNFA = Set.fromAscList [1, 2 .. n]
+            { getInitialQOfNFA = q0
+            , getFinalQsOfNFA = Map.fromList (map fst pragments)
             , getTransitionsOfNFA = deltas
-            , getMarkedQsOfNFA = Map.fromList [ pair | Just (Right pair) <- pragments ]
-            , getPseudoFinalsOfNFA = Set.fromList [ q | Just (Left q) <- pragments ]
+            , getMarkedQsOfNFA = Map.fromList [ my_item | Just my_item <- map (snd . snd) pragments ]
+            , getPseudoFinalsOfNFA = Map.fromList [ my_item | Just my_item <- map (fst . snd) pragments ]
             }
 
 makeDFAfromNFA :: NFA -> DFA
@@ -177,13 +182,14 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
     go :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, Char) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
     go mapOldToNew = do
         mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theCsUniv)
+        let addItem (qf, label) = if and [ maybe True (not . flip Set.member qs) (Map.lookup label pseudo_finals) | (qs, p) <- Map.toList mapOldToNew', p == qf ] then Map.alter (Just . maybe label (min label)) qf else id
         if mapOldToNew == mapOldToNew'
             then return
-                ( Map.fromList
-                    [ (q', qf)
-                    | qf <- Set.toDescList qfs
-                    , (qs, q') <- Map.toList mapOldToNew'
-                    , qf `Set.member` qs
+                ( foldr addItem Map.empty
+                    [ (p, label)
+                    | (q, label) <- Map.toList qfs
+                    , (qs, p) <- Map.toList mapOldToNew'
+                    , q `Set.member` qs
                     ]
                 , mapOldToNew'
                 )
@@ -202,8 +208,8 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
                     , mkstrict
                         ( b
                         , Set.fromList
-                            [ q' 
-                            | (qs, q') <- Map.toList wanted_map
+                            [ p
+                            | (qs, p) <- Map.toList wanted_map
                             , q `Set.member` qs
                             ]
                         )
@@ -211,9 +217,10 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
                 | (i, (b, q)) <- Map.toAscList markeds
                 ]
             , getPseudoFinalsOfDFA = Set.fromList
-                [ q'
-                | q <- Set.toList pseudo_finals
-                , (qs, q') <- Map.toList wanted_map
+                [ p
+                | (label, q) <- Map.toList pseudo_finals
+                , not (q `Set.member` Map.keysSet new_qfs)
+                , (qs, p) <- Map.toList wanted_map
                 , q `Set.member` qs
                 ]
             }
@@ -232,7 +239,7 @@ makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
     theCharSet :: Set.Set Char
     theCharSet = Set.map snd (Map.keysSet deltas)
     initialKlasses :: [Set.Set ParserS]
-    initialKlasses = (theSetOfAllStates `Set.difference` (pseudo_finals `Set.union` Map.keysSet qfs)) : (pseudo_finals `Set.difference` Map.keysSet qfs) : Map.elems (foldr loop1 Map.empty (Map.toList qfs)) where
+    initialKlasses = if Set.null pseudo_finals then (theSetOfAllStates `Set.difference` (Map.keysSet qfs)) : Map.elems (foldr loop1 Map.empty (Map.toList qfs)) else (theSetOfAllStates `Set.difference` (pseudo_finals `Set.union` Map.keysSet qfs)) : pseudo_finals : Map.elems (foldr loop1 Map.empty (Map.toList qfs)) where
         loop1 :: (ParserS, ExitNumber) -> Map.Map ExitNumber (Set.Set ParserS) -> Map.Map ExitNumber (Set.Set ParserS)
         loop1 (qf, label) = Map.alter (Just . maybe (Set.singleton qf) (Set.insert qf)) label
     finalKlasses :: [Set.Set ParserS]
@@ -288,7 +295,7 @@ deleteDeadStates (DFA q0 qfs deltas markeds pseudo_finals) = result where
         go :: (ParserS, ParserS) -> Map.Map ParserS (Set.Set ParserS) -> Map.Map ParserS (Set.Set ParserS)
         go (p, q) = Map.alter (Just . maybe (Set.singleton q) (Set.insert q)) p
     winners :: Set.Set ParserS
-    winners = go (Set.toAscList (Map.keysSet qfs)) Set.empty where
+    winners = go (Set.toAscList (pseudo_finals `Set.union` Map.keysSet qfs)) Set.empty where
         go :: [ParserS] -> Set.Set ParserS -> Set.Set ParserS
         go [] ps = ps
         go (q : qs) ps = if q `Set.member` ps then go qs ps else go (maybe [] Set.toAscList (Map.lookup q edges) ++ qs) (Set.insert q ps)
@@ -474,13 +481,10 @@ generateRegexTable dfa = Map.fromList mymap where
             isQuest (ReQuest _) = True
             isQuest _ = False
             step2aux1 :: [RegEx] -> [RegEx]
-            step2aux1 res1 = case filter (not . isStar) res1 of
-                [ReDagger _] -> do
-                    re2 <- res1
-                    case re2 of
-                        ReDagger re3 -> return (mkReStar re3)
-                        re3 -> return re3
-                res2 -> if all isQuest res2 then res1 else [mkReQuest (List.foldl' mkReConcat mkReEpsilon res1)]
+            step2aux1 res1 = distributeQuest (filter (not . isStar) res1) where
+                distributeQuest :: [RegEx] -> [RegEx]
+                distributeQuest [re2] = [ if isStar re3 then re3 else mkReQuest re2 | re3 <- res1 ]
+                distributeQuest res2 = if all isQuest res2 then res1 else [mkReQuest (List.foldl' mkReConcat mkReEpsilon res1)]
 
 reduceRegExOldPassion :: RegEx -> RegEx
 reduceRegExOldPassion = myMain where
