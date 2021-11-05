@@ -52,10 +52,10 @@ data RegEx
 data NFA
     = NFA
         { getInitialQOfNFA :: !(ParserS)
-        , getFinalQsOfNFA :: !(Set.Set ParserS)
+        , getFinalQsOfNFA :: !(Map.Map ParserS ExitNumber)
         , getTransitionsOfNFA :: !(Map.Map (ParserS, Maybe Char) (Set.Set ParserS))
         , getMarkedQsOfNFA :: !(Map.Map ParserS (Bool, ParserS))
-        , getPseudoFinalsOfNFA :: !(Set.Set ParserS)
+        , getPseudoFinalsOfNFA :: !(Map.Map ExitNumber ParserS)
         }
     deriving (Eq)
 
