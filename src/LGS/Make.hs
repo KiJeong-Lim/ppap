@@ -474,13 +474,10 @@ generateRegexTable dfa = Map.fromList mymap where
             isQuest (ReQuest _) = True
             isQuest _ = False
             step2aux1 :: [RegEx] -> [RegEx]
-            step2aux1 res1 = case filter (not . isStar) res1 of
-                [ReDagger _] -> do
-                    re2 <- res1
-                    case re2 of
-                        ReDagger re3 -> return (mkReStar re3)
-                        re3 -> return re3
-                res2 -> if all isQuest res2 then res1 else [mkReQuest (List.foldl' mkReConcat mkReEpsilon res1)]
+            step2aux1 res1 = distributeQuest (filter (not . isStar) res1) where
+                distributeQuest :: [RegEx] -> [RegEx]
+                distributeQuest [re2] = [ if isStar re3 then re3 else mkReQuest re2 | re3 <- res1 ]
+                distributeQuest res2 = if all isQuest res2 then res1 else [mkReQuest (List.foldl' mkReConcat mkReEpsilon res1)]
 
 reduceRegExOldPassion :: RegEx -> RegEx
 reduceRegExOldPassion = myMain where
