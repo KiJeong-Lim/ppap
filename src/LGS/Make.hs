@@ -182,7 +182,7 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
     go :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, Char) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
     go mapOldToNew = do
         mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theCsUniv)
-        let addItem (qf, label) = if and [ maybe True (not . flip Set.member qs) (Map.lookup label pseudo_finals) | (qs, p) <- Map.toList mapOldToNew', p == qf ] then Map.alter (Just . maybe label (min label)) qf else id
+        let addItem (qf, label) = if and [ maybe True (\q -> not (q `Set.member` qs)) (Map.lookup label pseudo_finals) | (qs, p) <- Map.toList mapOldToNew', p == qf ] then Map.alter (Just . maybe label (min label)) qf else id
         if mapOldToNew == mapOldToNew'
             then return
                 ( foldr addItem Map.empty
@@ -239,7 +239,12 @@ makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
     theCharSet :: Set.Set Char
     theCharSet = Set.map snd (Map.keysSet deltas)
     initialKlasses :: [Set.Set ParserS]
-    initialKlasses = if Set.null pseudo_finals then (theSetOfAllStates `Set.difference` (Map.keysSet qfs)) : Map.elems (foldr loop1 Map.empty (Map.toList qfs)) else (theSetOfAllStates `Set.difference` (pseudo_finals `Set.union` Map.keysSet qfs)) : pseudo_finals : Map.elems (foldr loop1 Map.empty (Map.toList qfs)) where
+    initialKlasses = filter (not . Set.null) theList where
+        theList :: [Set.Set ParserS]
+        theList = concat
+            [ [theSetOfAllStates `Set.difference` (pseudo_finals `Set.union` Map.keysSet qfs), pseudo_finals]
+            , Map.elems (foldr loop1 Map.empty (Map.toList qfs))
+            ]
         loop1 :: (ParserS, ExitNumber) -> Map.Map ExitNumber (Set.Set ParserS) -> Map.Map ExitNumber (Set.Set ParserS)
         loop1 (qf, label) = Map.alter (Just . maybe (Set.singleton qf) (Set.insert qf)) label
     finalKlasses :: [Set.Set ParserS]
