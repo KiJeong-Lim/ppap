@@ -54,7 +54,7 @@ overlap :: String -> String -> String
 overlap str1 str2 = case (length str1, length str2) of
     (n1, n2) -> if n1 >= n2 then take (n1 - n2) str1 ++ str2 else str2
 
-genLexer :: [XBlock] -> ExceptT ErrMsg Identity (String -> String)
+genLexer :: [XBlock] -> ExceptT ErrMsg Identity [String]
 genLexer xblocks = do
     (_, chs_env) <- flip runStateT Map.empty $ sequence
         [ do
@@ -96,9 +96,6 @@ genLexer xblocks = do
                 return (regex1'', NegRCtx regex2'')
         | XMatch (regex1, right_ctx) _ <- xblocks
         ]
-    let theRegexTable = generateRegexTable theDFA
-        theMaxLen = length (show (maybe 0 fst (Set.maxView (Map.keysSet theRegexTable))))
-        tellLine delta = tell [delta . nl]
     (token_type, lexer_name) <- case [ (token_type, lexer_name) | Target token_type lexer_name <- xblocks ] of
         [pair] -> return pair
         _ -> throwE "A target must exist unique."
@@ -108,7 +105,11 @@ genLexer xblocks = do
     hstail <- case [ hscode | HsTail hscode <- xblocks ] of
         [hscode] -> return hscode
         _ -> throwE "A hstail must exist unique."
-    fmap (strcat . snd) $ runWriterT $ do
+    ((), x_out) <- runWriterT $ do
+        let _this = lexer_name ++ "_this"
+            theRegexTable = generateRegexTable theDFA
+            theMaxLen = length (show (maybe 0 fst (Set.maxView (Map.keysSet theRegexTable))))
+            tellLine string_stream = tell [string_stream "\n"]
         tellLine (ppunc "\n" (map strstr hshead))
         tellLine (strstr "import qualified Control.Monad.Trans.State.Strict as XState")
         tellLine (strstr "import qualified Data.Functor.Identity as XIdentity")
@@ -130,7 +131,7 @@ genLexer xblocks = do
         tellLine (strstr "    deriving ()")
         tellLine (strstr "")
         tellLine (strstr lexer_name . strstr " :: String -> Either (Int, Int) [" . strstr token_type . strstr "]")
-        tellLine (strstr lexer_name . strstr " = doLexing . addLoc 1 1 where")
+        tellLine (strstr lexer_name . strstr " = " . strstr _this . strstr " . addLoc 1 1 where")
         sequence
             [ tellLine (strstr "    -- " . strstr (overlap (replicate theMaxLen ' ') (show q)) . strstr ": " . pprint 0 re)
             | (q, re) <- Map.toAscList theRegexTable
@@ -143,8 +144,8 @@ genLexer xblocks = do
         tellLine (strstr "        , getMarkedQsOfDFA = XMap.fromAscList " . plist 12 [ strstr "(" . shows q . strstr ", (" . shows b . strstr ", XSet.fromAscList [" . ppunc ", " [ shows p | p <- Set.toAscList ps ] . strstr "]))" | (q, (b, ps)) <- Map.toAscList (getMarkedQsOfDFA theDFA) ])
         tellLine (strstr "        , getPseudoFinalsOfDFA = XSet.fromAscList [" . ppunc ", " [ shows q | q <- Set.toAscList (getPseudoFinalsOfDFA theDFA) ] . strstr "]")
         tellLine (strstr "        }")
-        tellLine (strstr "    runDFA :: DFA -> [((Int, Int), Char)] -> ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
-        tellLine (strstr "    runDFA (DFA q0 qfs deltas markeds pseudo_finals) = if XSet.null pseudo_finals then XIdentity.runIdentity . go else undefined where")
+        tellLine (strstr "    runDFA :: DFA -> [((Int, Int), Char)] -> Either (Int, Int) ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
+        tellLine (strstr "    runDFA (DFA q0 qfs deltas markeds pseudo_finals) = if XSet.null pseudo_finals then Right . XIdentity.runIdentity . runFast else runSlow where")
         tellLine (strstr "        loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]")
         tellLine (strstr "        loop1 q buffer [] = return buffer")
         tellLine (strstr "        loop1 q buffer (ch : str) = do")
@@ -178,8 +179,8 @@ genLexer xblocks = do
         tellLine (strstr "                        accepted <- XState.get")
         tellLine (strstr "                        XState.put (accepted ++ buffer ++ [ch])")
         tellLine (strstr "                        return str")
-        tellLine (strstr "        go :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
-        tellLine (strstr "        go input = do")
+        tellLine (strstr "        runFast :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
+        tellLine (strstr "        runFast input = do")
         tellLine (strstr "            (rest, (latest, accepted)) <- XState.runStateT (loop1 q0 [] input) (Nothing, [])")
         tellLine (strstr "            case latest >>= flip XMap.lookup markeds of")
         tellLine (strstr "                Nothing -> return ((latest, accepted), rest)")
@@ -189,33 +190,37 @@ genLexer xblocks = do
         tellLine (strstr "                Just (False, qs) -> do")
         tellLine (strstr "                    (rest', accepted') <- XState.runStateT (loop3 qs q0 accepted []) []")
         tellLine (strstr "                    return ((latest, accepted'), rest' ++ rest)")
+        tellLine (strstr "        runSlow :: [((Int, Int), Char)] -> Either (Int, Int) ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
+        tellLine (strstr "        runSlow = undefined")
         tellLine (strstr "    addLoc :: Int -> Int -> String -> [((Int, Int), Char)]")
         tellLine (strstr "    addLoc _ _ [] = []")
         tellLine (strstr "    addLoc row col (ch : chs) = if ch == \'\\n\' then ((row, col), ch) : addLoc (row + 1) 1 chs else ((row, col), ch) : addLoc row (col + 1) chs")
-        tellLine (strstr "    doLexing :: [((Int, Int), Char)] -> Either (Int, Int) [" . strstr token_type . strstr "]")
-        tellLine (strstr "    doLexing [] = return []")
-        tellLine (strstr "    doLexing str0 = do")
-        tellLine (strstr "        let returnJust = return . Just")
-        tellLine (strstr "        (str1, piece) <- case runDFA theDFA str0 of")
+        tellLine (strstr "    " . strstr _this . strstr " :: [((Int, Int), Char)] -> Either (Int, Int) [" . strstr token_type . strstr "]")
+        tellLine (strstr "    " . strstr _this . strstr " [] = return []")
+        tellLine (strstr "    " . strstr _this . strstr " str0 = do")
+        tellLine (strstr "        let return_one my_token = return [my_token]")
+        tellLine (strstr "        dfa_output <- runDFA theDFA str0")
+        tellLine (strstr "        (str1, piece) <- case dfa_output of")
         tellLine (strstr "            ((_, []), _) -> Left (fst (head str0))")
         tellLine (strstr "            ((Just label, accepted), rest) -> return (rest, ((label, map snd accepted), (fst (head accepted), fst (head (reverse accepted)))))")
         tellLine (strstr "            _ -> Left (fst (head str0))")
-        tellLine (strstr "        maybe_token <- case piece of")
+        tellLine (strstr "        tokens1 <- case piece of")
         let destructors = [ destructor | XMatch _ destructor <- xblocks ]
         sequence
             [ case destructor of
-                Just (hscode : hscodes) -> if null hscodes
-                    then do
-                        tellLine (strstr "            ((" . shows line . strstr ", this), ((row1, col1), (row2, col2))) -> returnJust (" . strstr hscode . strstr ")")
-                        return ()
-                    else do
-                        tellLine (strstr "            ((" . shows line . strstr ", this), ((row1, col1), (row2, col2))) -> returnJust $ " . strstr hscode)
-                        tellLine (ppunc "\n" [ strstr "            " . strstr str | str <- hscodes ])
-                        return ()
-                _ -> do
-                    tellLine (strstr "            ((" . shows line . strstr ", this), ((row1, col1), (row2, col2))) -> return Nothing")
+                Just [hscode] -> do
+                    tellLine (strstr "            ((" . shows label . strstr ", this), ((row1, col1), (row2, col2))) -> return_one (" . strstr hscode . strstr ")")
                     return ()
-            | (line, destructor) <- zip [1, 2 .. length destructors] destructors 
+                Just (hscode : hscodes) -> do
+                    tellLine (strstr "            ((" . shows label . strstr ", this), ((row1, col1), (row2, col2))) -> return_one $ " . strstr hscode)
+                    tellLine (ppunc "\n" [ strstr "            " . strstr str | str <- hscodes ])
+                    return ()
+                _ -> do
+                    tellLine (strstr "            ((" . shows label . strstr ", this), ((row1, col1), (row2, col2))) -> return []")
+                    return ()
+            | (label, destructor) <- zip [1, 2 .. length destructors] destructors 
             ]
-        tellLine (strstr "        fmap (maybe id (:) maybe_token) (doLexing str1)")
+        tellLine (strstr "        tokens2 <- " . strstr _this . strstr " str1")
+        tellLine (strstr "        return (tokens1 ++ tokens2)")
         return ()
+    return x_out

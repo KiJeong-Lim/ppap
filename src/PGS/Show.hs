@@ -63,9 +63,9 @@ substituteNS mapsto = loop where
     loop (NSApp ns1 ns2) = NSApp (loop ns1) (loop ns2)
 
 makeProductionRuleInstances :: Map.Map String ([String], [YMatch]) -> NSym -> StateT ((Int, Map.Map NSym Int), Map.Map NSym (Maybe [([Sym], Precedence)])) (ExceptT ErrMsg Identity) ()
-makeProductionRuleInstances rule_env = fmap (const ()) . go where
-    go :: NSym -> StateT ((Int, Map.Map NSym Int), Map.Map NSym (Maybe [([Sym], Precedence)])) (ExceptT ErrMsg Identity) NSym
-    go ns = do
+makeProductionRuleInstances rule_env = fmap (const ()) . bangbang where
+    bangbang :: NSym -> StateT ((Int, Map.Map NSym Int), Map.Map NSym (Maybe [([Sym], Precedence)])) (ExceptT ErrMsg Identity) NSym
+    bangbang ns = do
         ((max_id_num, id_env), cache) <- get
         case unFoldNSApp ns of
             (nsv, nss) -> case Map.lookup nsv rule_env of
@@ -77,11 +77,11 @@ makeProductionRuleInstances rule_env = fmap (const ()) . go where
                         case Map.lookup ns id_env of
                             Nothing -> do
                                 put ((max_id_num + 1, Map.insert ns max_id_num id_env), Map.insert ns Nothing cache)
-                                mapM go nss
+                                mapM bangbang nss
                                 pairs <- sequence
                                     [ do
                                         pats' <- forM pats $ \pat -> case pat of
-                                            NS ns' -> NS <$> go (substituteNS mapsto ns')
+                                            NS ns' -> NS <$> bangbang (substituteNS mapsto ns')
                                             _ -> return pat
                                         return (pats', prec)
                                     | YMatch prec pats destructors <- match_decls
@@ -91,12 +91,10 @@ makeProductionRuleInstances rule_env = fmap (const ()) . go where
                             _ -> return ()
                         return (substituteNS mapsto ns)
 
-genParser :: [YBlock] -> ExceptT ErrMsg Identity (String -> String)
-genParser blocks = go where
-    naturals :: [Int]
-    naturals = [1, 2 .. ]
-    tellLine :: (String -> String) -> WriterT [String -> String] (ExceptT String Identity) ()
-    tellLine delta = tell [delta . nl]
+genParser :: [YBlock] -> ExceptT ErrMsg Identity [String]
+genParser blocks = myMain where
+    tellLine :: (String -> String) -> WriterT [String] (ExceptT String Identity) ()
+    tellLine string_stream = tell [string_stream "\n"]
     getYTarget :: ExceptT ErrMsg Identity YTarget
     getYTarget = case [ y_target | Target y_target <- blocks ] of
         [] -> throwE "a target block required."
@@ -190,8 +188,8 @@ genParser blocks = go where
         loop [] = []
         loop (((x, y), z) : triples) = case List.partition (\triple -> fst (fst triple) == x) triples of
             (triples1, triples2) -> (x, (y, z) : [ (y, z) | ((_, y), z) <- triples1 ]) : loop triples2
-    go :: ExceptT ErrMsg Identity (String -> String)
-    go = do
+    myMain :: ExceptT ErrMsg Identity [String]
+    myMain = do
         hs_head <- getHsHead
         hs_tail <- getHsTail
         y_target <- getYTarget
@@ -217,16 +215,14 @@ genParser blocks = go where
                 | TerminalInfo patn tsym prec assoc <- terminal_infos
                 ]
             getTSymId TSEOF = return 0
-            getTSymId (TSVar tsv) = case [ n | (n, TerminalInfo patn ts prec assoc) <- zip naturals terminal_infos, ts == TSVar tsv ] of
+            getTSymId (TSVar tsv) = case [ n | (n, TerminalInfo patn ts prec assoc) <- zip [1, 2 .. ] terminal_infos, ts == TSVar tsv ] of
                 [] -> throwE ("the terminal symbol " ++ pprint 0 (TSVar tsv) " hasn't declared.")
                 [n] -> return n
                 _ -> throwE ("the terminal symbol " ++ pprint 0 (TSVar tsv) " has declared twice or more.")
-            getNSymId nsym = case Map.lookup nsym id_env of
-                Nothing -> throwE ("the terminal symbol " ++ pprint 0 nsym " hasn't declared.")
-                Just n -> return n
+            getNSymId nsym = maybe (throwE ("the terminal symbol " ++ pprint 0 nsym " hasn't declared.")) return (Map.lookup nsym id_env)
         checkTerminalOccurence (Set.fromList [ ts | (lhs, Just pairs) <- cache', (rhs, prec) <- pairs, TS ts <- rhs ]) (Set.fromList [ tsym | TerminalInfo patn tsym prec assoc <- terminal_infos ])
         (collection, lalr1) <- catchE (makeCollectionAndLALR1Parser (CFGrammar { getStartSym = start_symbol, getTerminalSyms = terminal_symbols, getProductionRules = production_rules })) $ throwE . show
-        fmap (strcat . snd) $ runWriterT $ do
+        ((), y_out) <- runWriterT $ do
             tellLine (ppunc "\n" (map strstr hs_head))
             tellLine (strstr "import qualified Control.Monad.Trans.Class as Y")
             tellLine (strstr "import qualified Control.Monad.Trans.Except as Y")
@@ -293,7 +289,7 @@ genParser blocks = go where
                                     [ case sym of
                                         NS ns -> makeNSPatn idx
                                         TS ts -> makeTSPatn (Map.fromList [ (tsym, patn) | TerminalInfo patn tsym _ _ <- terminal_infos ]) idx ts
-                                    | (idx, sym) <- zip naturals syms
+                                    | (idx, sym) <- zip [1, 2 .. ] syms
                                     ]
                                 , strstr "])"
                                 ]
@@ -320,7 +316,7 @@ genParser blocks = go where
                                         ]
                                     tellLine $ strcat
                                         [ strstr "        | "
-                                        , makeGuard id_env body_name params_name (zip naturals syms)
+                                        , makeGuard id_env body_name params_name (zip [1, 2 .. ] syms)
                                         , strstr " = "
                                         , des_rep
                                         ]
@@ -447,3 +443,4 @@ genParser blocks = go where
             tellLine (strstr "")
             tellLine (strstr "{- The canonical collection of LR(0) items is:" . nl . pprint 0 collection . nl . strstr "-}")
             return ()
+        return y_out

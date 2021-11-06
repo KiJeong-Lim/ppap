@@ -20,7 +20,7 @@ data DFA
     deriving ()
 
 runAladdinLexer :: String -> Either (Int, Int) [Token]
-runAladdinLexer = doLexing . addLoc 1 1 where
+runAladdinLexer = runAladdinLexer_this . addLoc 1 1 where
     --  1: "\'\\"
     --  2: "\"" ([. \ '\\' \ '\"' \ '\n'] + "\\" ['\"' '\'' '\\' 'n' 't'])* "\\"
     --  3: "\'"
@@ -121,21 +121,19 @@ runAladdinLexer = doLexing . addLoc 1 1 where
         , getMarkedQsOfDFA = XMap.fromAscList []
         , getPseudoFinalsOfDFA = XSet.fromAscList []
         }
-    runDFA :: DFA -> [((Int, Int), Char)] -> ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
-    runDFA (DFA q0 qfs deltas markeds pseudo_finals) = XIdentity.runIdentity . go where
+    runDFA :: DFA -> [((Int, Int), Char)] -> Either (Int, Int) ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
+    runDFA (DFA q0 qfs deltas markeds pseudo_finals) = if XSet.null pseudo_finals then Right . XIdentity.runIdentity . runFast else runSlow where
         loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]
         loop1 q buffer [] = return buffer
         loop1 q buffer (ch : str) = do
             (latest, accepted) <- XState.get
             case XMap.lookup (q, snd ch) deltas of
                 Nothing -> return (buffer ++ [ch] ++ str)
-                Just p 
-                    | p `XSet.member` pseudo_finals -> return (buffer ++ [ch] ++ str)
-                    | otherwise -> case XMap.lookup p qfs of
-                        Nothing -> loop1 p (buffer ++ [ch]) str
-                        latest' -> do
-                            XState.put (latest', accepted ++ buffer ++ [ch])
-                            loop1 p [] str
+                Just p -> case XMap.lookup p qfs of
+                    Nothing -> loop1 p (buffer ++ [ch]) str
+                    latest' -> do
+                        XState.put (latest', accepted ++ buffer ++ [ch])
+                        loop1 p [] str
         loop2 :: XSet.Set Int -> Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT [((Int, Int), Char)] XIdentity.Identity [((Int, Int), Char)]
         loop2 qs q [] buffer = return buffer
         loop2 qs q (ch : str) buffer = do
@@ -158,8 +156,8 @@ runAladdinLexer = doLexing . addLoc 1 1 where
                         accepted <- XState.get
                         XState.put (accepted ++ buffer ++ [ch])
                         return str
-        go :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
-        go input = do
+        runFast :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
+        runFast input = do
             (rest, (latest, accepted)) <- XState.runStateT (loop1 q0 [] input) (Nothing, [])
             case latest >>= flip XMap.lookup markeds of
                 Nothing -> return ((latest, accepted), rest)
@@ -169,46 +167,50 @@ runAladdinLexer = doLexing . addLoc 1 1 where
                 Just (False, qs) -> do
                     (rest', accepted') <- XState.runStateT (loop3 qs q0 accepted []) []
                     return ((latest, accepted'), rest' ++ rest)
+        runSlow :: [((Int, Int), Char)] -> Either (Int, Int) ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
+        runSlow = undefined
     addLoc :: Int -> Int -> String -> [((Int, Int), Char)]
     addLoc _ _ [] = []
     addLoc row col (ch : chs) = if ch == '\n' then ((row, col), ch) : addLoc (row + 1) 1 chs else ((row, col), ch) : addLoc row (col + 1) chs
-    doLexing :: [((Int, Int), Char)] -> Either (Int, Int) [Token]
-    doLexing [] = return []
-    doLexing str0 = do
-        let returnJust = return . Just
-        (str1, piece) <- case runDFA theDFA str0 of
+    runAladdinLexer_this :: [((Int, Int), Char)] -> Either (Int, Int) [Token]
+    runAladdinLexer_this [] = return []
+    runAladdinLexer_this str0 = do
+        let return_one my_token = return [my_token]
+        dfa_output <- runDFA theDFA str0
+        (str1, piece) <- case dfa_output of
             ((_, []), _) -> Left (fst (head str0))
             ((Just label, accepted), rest) -> return (rest, ((label, map snd accepted), (fst (head accepted), fst (head (reverse accepted)))))
             _ -> Left (fst (head str0))
-        maybe_token <- case piece of
-            ((1, this), ((row1, col1), (row2, col2))) -> returnJust (T_dot (SLoc (row1, col1) (row2, col2)))
-            ((2, this), ((row1, col1), (row2, col2))) -> returnJust (T_arrow (SLoc (row1, col1) (row2, col2)))
-            ((3, this), ((row1, col1), (row2, col2))) -> returnJust (T_fatarrow (SLoc (row1, col1) (row2, col2)))
-            ((4, this), ((row1, col1), (row2, col2))) -> returnJust (T_lparen (SLoc (row1, col1) (row2, col2)))
-            ((5, this), ((row1, col1), (row2, col2))) -> returnJust (T_rparen (SLoc (row1, col1) (row2, col2)))
-            ((6, this), ((row1, col1), (row2, col2))) -> returnJust (T_lbracket (SLoc (row1, col1) (row2, col2)))
-            ((7, this), ((row1, col1), (row2, col2))) -> returnJust (T_rbracket (SLoc (row1, col1) (row2, col2)))
-            ((8, this), ((row1, col1), (row2, col2))) -> returnJust (T_quest (SLoc (row1, col1) (row2, col2)))
-            ((9, this), ((row1, col1), (row2, col2))) -> returnJust (T_comma (SLoc (row1, col1) (row2, col2)))
-            ((10, this), ((row1, col1), (row2, col2))) -> returnJust (T_fatarrow (SLoc (row1, col1) (row2, col2)))
-            ((11, this), ((row1, col1), (row2, col2))) -> returnJust (T_if (SLoc (row1, col1) (row2, col2)))
-            ((12, this), ((row1, col1), (row2, col2))) -> returnJust (T_Eq (SLoc (row1, col1) (row2, col2)))
-            ((13, this), ((row1, col1), (row2, col2))) -> returnJust (T_succ (SLoc (row1, col1) (row2, col2)))
-            ((14, this), ((row1, col1), (row2, col2))) -> returnJust (T_pi (SLoc (row1, col1) (row2, col2)))
-            ((15, this), ((row1, col1), (row2, col2))) -> returnJust (T_sigma (SLoc (row1, col1) (row2, col2)))
-            ((16, this), ((row1, col1), (row2, col2))) -> returnJust (T_semicolon (SLoc (row1, col1) (row2, col2)))
-            ((17, this), ((row1, col1), (row2, col2))) -> returnJust (T_cut (SLoc (row1, col1) (row2, col2)))
-            ((18, this), ((row1, col1), (row2, col2))) -> returnJust (T_true (SLoc (row1, col1) (row2, col2)))
-            ((19, this), ((row1, col1), (row2, col2))) -> returnJust (T_fail (SLoc (row1, col1) (row2, col2)))
-            ((20, this), ((row1, col1), (row2, col2))) -> returnJust (T_bslash (SLoc (row1, col1) (row2, col2)))
-            ((21, this), ((row1, col1), (row2, col2))) -> returnJust (T_cons (SLoc (row1, col1) (row2, col2)))
-            ((22, this), ((row1, col1), (row2, col2))) -> returnJust (T_kind (SLoc (row1, col1) (row2, col2)))
-            ((23, this), ((row1, col1), (row2, col2))) -> returnJust (T_type (SLoc (row1, col1) (row2, col2)))
-            ((24, this), ((row1, col1), (row2, col2))) -> returnJust (T_smallid (SLoc (row1, col1) (row2, col2)) this)
-            ((25, this), ((row1, col1), (row2, col2))) -> returnJust (T_largeid (SLoc (row1, col1) (row2, col2)) this)
-            ((26, this), ((row1, col1), (row2, col2))) -> returnJust (T_nat_lit (SLoc (row1, col1) (row2, col2)) (read this))
-            ((27, this), ((row1, col1), (row2, col2))) -> returnJust (T_str_lit (SLoc (row1, col1) (row2, col2)) (read this))
-            ((28, this), ((row1, col1), (row2, col2))) -> returnJust (T_chr_lit (SLoc (row1, col1) (row2, col2)) (read this))
-            ((29, this), ((row1, col1), (row2, col2))) -> return Nothing
-            ((30, this), ((row1, col1), (row2, col2))) -> return Nothing
-        fmap (maybe id (:) maybe_token) (doLexing str1)
+        tokens1 <- case piece of
+            ((1, this), ((row1, col1), (row2, col2))) -> return_one (T_dot (SLoc (row1, col1) (row2, col2)))
+            ((2, this), ((row1, col1), (row2, col2))) -> return_one (T_arrow (SLoc (row1, col1) (row2, col2)))
+            ((3, this), ((row1, col1), (row2, col2))) -> return_one (T_fatarrow (SLoc (row1, col1) (row2, col2)))
+            ((4, this), ((row1, col1), (row2, col2))) -> return_one (T_lparen (SLoc (row1, col1) (row2, col2)))
+            ((5, this), ((row1, col1), (row2, col2))) -> return_one (T_rparen (SLoc (row1, col1) (row2, col2)))
+            ((6, this), ((row1, col1), (row2, col2))) -> return_one (T_lbracket (SLoc (row1, col1) (row2, col2)))
+            ((7, this), ((row1, col1), (row2, col2))) -> return_one (T_rbracket (SLoc (row1, col1) (row2, col2)))
+            ((8, this), ((row1, col1), (row2, col2))) -> return_one (T_quest (SLoc (row1, col1) (row2, col2)))
+            ((9, this), ((row1, col1), (row2, col2))) -> return_one (T_comma (SLoc (row1, col1) (row2, col2)))
+            ((10, this), ((row1, col1), (row2, col2))) -> return_one (T_fatarrow (SLoc (row1, col1) (row2, col2)))
+            ((11, this), ((row1, col1), (row2, col2))) -> return_one (T_if (SLoc (row1, col1) (row2, col2)))
+            ((12, this), ((row1, col1), (row2, col2))) -> return_one (T_Eq (SLoc (row1, col1) (row2, col2)))
+            ((13, this), ((row1, col1), (row2, col2))) -> return_one (T_succ (SLoc (row1, col1) (row2, col2)))
+            ((14, this), ((row1, col1), (row2, col2))) -> return_one (T_pi (SLoc (row1, col1) (row2, col2)))
+            ((15, this), ((row1, col1), (row2, col2))) -> return_one (T_sigma (SLoc (row1, col1) (row2, col2)))
+            ((16, this), ((row1, col1), (row2, col2))) -> return_one (T_semicolon (SLoc (row1, col1) (row2, col2)))
+            ((17, this), ((row1, col1), (row2, col2))) -> return_one (T_cut (SLoc (row1, col1) (row2, col2)))
+            ((18, this), ((row1, col1), (row2, col2))) -> return_one (T_true (SLoc (row1, col1) (row2, col2)))
+            ((19, this), ((row1, col1), (row2, col2))) -> return_one (T_fail (SLoc (row1, col1) (row2, col2)))
+            ((20, this), ((row1, col1), (row2, col2))) -> return_one (T_bslash (SLoc (row1, col1) (row2, col2)))
+            ((21, this), ((row1, col1), (row2, col2))) -> return_one (T_cons (SLoc (row1, col1) (row2, col2)))
+            ((22, this), ((row1, col1), (row2, col2))) -> return_one (T_kind (SLoc (row1, col1) (row2, col2)))
+            ((23, this), ((row1, col1), (row2, col2))) -> return_one (T_type (SLoc (row1, col1) (row2, col2)))
+            ((24, this), ((row1, col1), (row2, col2))) -> return_one (T_smallid (SLoc (row1, col1) (row2, col2)) this)
+            ((25, this), ((row1, col1), (row2, col2))) -> return_one (T_largeid (SLoc (row1, col1) (row2, col2)) this)
+            ((26, this), ((row1, col1), (row2, col2))) -> return_one (T_nat_lit (SLoc (row1, col1) (row2, col2)) (read this))
+            ((27, this), ((row1, col1), (row2, col2))) -> return_one (T_str_lit (SLoc (row1, col1) (row2, col2)) (read this))
+            ((28, this), ((row1, col1), (row2, col2))) -> return_one (T_chr_lit (SLoc (row1, col1) (row2, col2)) (read this))
+            ((29, this), ((row1, col1), (row2, col2))) -> return []
+            ((30, this), ((row1, col1), (row2, col2))) -> return []
+        tokens2 <- runAladdinLexer_this str1
+        return (tokens1 ++ tokens2)

@@ -179,8 +179,8 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
             Just p' -> do
                 put (Map.insert (q', ch) p' deltas')
                 drawGraph mapOldToNew triples
-    go :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, Char) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
-    go mapOldToNew = do
+    bangbang :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, Char) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
+    bangbang mapOldToNew = do
         mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theCsUniv)
         let addItem (qf, label) = if and [ maybe True (\q -> not (q `Set.member` qs)) (Map.lookup label pseudo_finals) | (qs, p) <- Map.toList mapOldToNew', p == qf ] then Map.alter (Just . maybe label (min label)) qf else id
         if mapOldToNew == mapOldToNew'
@@ -193,11 +193,11 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
                     ]
                 , mapOldToNew'
                 )
-            else go mapOldToNew'
+            else bangbang mapOldToNew'
     result :: Identity DFA
     result = do
         let new_q0 = 0
-        ((new_qfs, wanted_map), new_deltas) <- runStateT (go (Map.singleton (eClosure (Set.singleton q0)) new_q0)) Map.empty
+        ((new_qfs, wanted_map), new_deltas) <- runStateT (bangbang (Map.singleton (eClosure (Set.singleton q0)) new_q0)) Map.empty
         return $ DFA 
             { getInitialQOfDFA = new_q0
             , getFinalQsOfDFA = new_qfs
