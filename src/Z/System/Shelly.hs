@@ -9,7 +9,7 @@ import Z.System.Util
 import Z.Utils
 
 shelly :: String -> IO String
-shelly = go where
+shelly = shellymain where
     identifierPM :: PM String
     identifierPM = pure (:) <*> acceptCharIf (\ch -> ch `elem` ['$'] ++ ['a' .. 'z'] ++ ['A' .. 'Z']) <*> many (acceptCharIf (\ch -> ch `elem` ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ ['.', '_', '-']))
     numberPM :: PM String
@@ -53,7 +53,7 @@ shelly = go where
                 skipWhite
                 args <- many (atomPM False <* skipWhite)
                 return (fun ++ concat args)
-            , return ""
+            , litPM
             ]
         consumeStr ")"
         let my_colorize = if paren_be_colored then color Green else id
@@ -87,8 +87,8 @@ shelly = go where
             (my_suffix_left, my_suffix_right) -> if null my_suffix_left then my_prefix ++ my_suffix_left ++ my_suffix_right else color Cyan (my_prefix ++ my_suffix_left) ++ my_suffix_right
     elaborate :: String -> String
     elaborate str = maybe (smallshell str) concat (foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ])
-    go :: String -> IO String
-    go msg = do
+    shellymain :: String -> IO String
+    shellymain msg = do
         can_prettify <- supportsPretty
         cout << (if can_prettify then elaborate msg else msg) << Flush
         if not (null msg) && last msg == ' '

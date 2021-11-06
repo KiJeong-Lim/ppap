@@ -84,7 +84,7 @@ ppap = do
             shelly ("ppap >>= exec (TEST.main)")
             TEST.main
         Just (cmd, args) -> do
-            shelly ("ppap >>= abort (unimplemented)")
+            shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
 
 copyright :: IO ()
