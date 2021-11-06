@@ -29,7 +29,7 @@ mkstrict :: (a, b) -> (a, b)
 mkstrict pair = fst pair `seq` snd pair `seq` pair
 
 getUnitedNFAfromREs :: [(RegEx, RightContext)] -> NFA
-getUnitedNFAfromREs xmatch_defns = runIdentity go where
+getUnitedNFAfromREs = runIdentity . go where
     getNewQ :: StateT (ParserS, Map.Map (ParserS, Maybe Char) (Set.Set ParserS)) Identity ParserS
     getNewQ = do
         (maximumOfQs, deltas) <- get
@@ -96,10 +96,10 @@ getUnitedNFAfromREs xmatch_defns = runIdentity go where
         drawTransition ((qf1, Nothing), qf)
         drawTransition ((qi, Nothing), qf)
         return (qi, qf)
-    go :: Identity NFA
-    go = do
-        let n = length xmatch_defns
-            q0 = 0
+    go :: [(RegEx, RightContext)] -> Identity NFA
+    go xmatch_defns = do
+        let q0 = 0
+            n = length xmatch_defns
         (pragments, (numberOfQs, deltas)) <- flip runStateT (n + 1, Map.empty) $ sequence
             [ case right_ctx of
                 NilRCtx -> do
