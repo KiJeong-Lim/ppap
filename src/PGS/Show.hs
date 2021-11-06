@@ -160,28 +160,31 @@ genParser blocks = myMain where
     guardIdx :: Int -> String -> String
     guardIdx idx = strstr "guard" . shows idx
     makeGuard :: Map.Map NSym Int -> String -> [String] -> [(Int, Sym)] -> String -> String
-    makeGuard id_env body_name params_name zipped_sym = if null [ (idx, ns) | (idx, NS ns) <- zipped_sym ] then strstr "otherwise" else guard where
-        guard :: String -> String
-        guard = strcat
-            [ strstr "["
-            , ppunc ", " [ guardIdx idx | (idx, NS ns) <- zipped_sym ]
-            , strstr "] `elem` ["
-            , ppunc ", "
-                [ strcat
-                    [ strstr "["
-                    , ppunc ", "
-                        [ case Map.lookup (substituteNS (zip params_name (snd (unFoldNSApp ns1))) ns) id_env of
-                            Nothing -> error "makeGuard"
-                            Just num -> showsPrec 0 num
-                        | (idx, NS ns) <- zipped_sym
+    makeGuard id_env body_name params_name zipped_sym
+        | null [ (idx, ns) | (idx, NS ns) <- zipped_sym ] = strstr "otherwise"
+        | otherwise = guard
+        where
+            guard :: String -> String
+            guard = strcat
+                [ strstr "["
+                , ppunc ", " [ guardIdx idx | (idx, NS ns) <- zipped_sym ]
+                , strstr "] `elem` ["
+                , ppunc ", "
+                    [ strcat
+                        [ strstr "["
+                        , ppunc ", "
+                            [ case Map.lookup (substituteNS (zip params_name (snd (unFoldNSApp ns1))) ns) id_env of
+                                Nothing -> error "makeGuard"
+                                Just num -> showsPrec 0 num
+                            | (idx, NS ns) <- zipped_sym
+                            ]
+                        , strstr "]"
                         ]
-                    , strstr "]"
+                    | (ns1, num1) <- Map.toList id_env
+                    , body_name == fst (unFoldNSApp ns1)
                     ]
-                | (ns1, num1) <- Map.toList id_env
-                , body_name == fst (unFoldNSApp ns1)
+                , strstr "]"
                 ]
-            , strstr "]"
-            ]
     formatTable :: Ord a => [((a, b), c)] -> [(a, [(b, c)])]
     formatTable = sortByMerging (\pair1 -> \pair2 -> fst pair1 <= fst pair2) . loop where
         loop :: Eq a => [((a, b), c)] -> [(a, [(b, c)])]
