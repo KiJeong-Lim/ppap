@@ -103,13 +103,13 @@ getUnitedNFAfromREs = runIdentity . go where
         (pragments, (numberOfQs, deltas)) <- flip runStateT (n + 1, Map.empty) $ sequence
             [ case right_ctx of
                 NilRCtx -> do
-                    let label = qf
+                    let qf = label
                     (qi1, qf1) <- loop regex1
                     drawTransition ((q0, Nothing), qi1)
                     drawTransition ((qf1, Nothing), qf)
                     return ((qf, label), (Nothing, Nothing))
                 PosRCtx regex2 -> do
-                    let label = qf
+                    let qf = label
                     (qi1, qf1) <- loop regex1
                     (qi2, qf2) <- loop regex2
                     qw <- getNewQ
@@ -119,7 +119,7 @@ getUnitedNFAfromREs = runIdentity . go where
                     drawTransition ((qf2, Nothing), qf)
                     return ((qf, label), (Nothing, Just (label, (True, qw))))
                 OddRCtx regex2 -> do
-                    let label = qf
+                    let qf = label
                     (qi1, qf1) <- loop regex1
                     (qi2, qf2) <- loop regex2
                     qw <- getNewQ
@@ -129,7 +129,7 @@ getUnitedNFAfromREs = runIdentity . go where
                     drawTransition ((qf2, Nothing), qf)
                     return ((qf, label), (Nothing, Just (label, (False, qw))))
                 NegRCtx regex2 -> do
-                    let label = qf
+                    let qf = label
                     (qi1, qf1) <- loop regex1
                     (qi2, qf2) <- loop regex2
                     qw <- getNewQ
@@ -138,7 +138,7 @@ getUnitedNFAfromREs = runIdentity . go where
                     drawTransition ((qf, Nothing), qi2)
                     drawTransition ((qf2, Nothing), qw)
                     return ((qf, label), (Just (label, qw), Nothing)) 
-            | (qf, (regex1, right_ctx)) <- zip [1, 2 .. n] xmatch_defns
+            | (label, (regex1, right_ctx)) <- zip [1, 2 .. n] xmatch_defns
             ]
         return $ NFA 
             { getInitialQOfNFA = q0
