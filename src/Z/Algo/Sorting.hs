@@ -39,11 +39,11 @@ getTSortedSCCs = runIdentity . go where
     splitByRel [] = return []
     splitByRel (cur : nexts) = do
         visteds <- get
-        cur_res <- when' (not (cur `Set.member` visteds)) $ do
-            ges <- sortByRel [cur]
-            return [SCC { hasLoop = cur `elem` ges, getCell = Set.fromAscList ges }]
-        next_res <- splitByRel nexts
-        return (cur_res ++ next_res)
+        cur_out <- when' (not (cur `Set.member` visteds)) $ do
+            scc <- sortByRel [cur]
+            return [SCC { hasLoop = cur `elem` scc, getCell = Set.fromAscList scc }]
+        next_out <- splitByRel nexts
+        return (cur_out ++ next_out)
     go :: Ord node => Map.Map node (Set.Set node) -> Identity [StrongConnectedComponent node]
     go given_digraph = do
         let nodes = Set.toAscList (foldr Set.union (Map.keysSet given_digraph) (Map.elems given_digraph))
