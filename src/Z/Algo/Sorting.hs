@@ -16,7 +16,7 @@ type DigraphOf vertex = Map.Map vertex (Set.Set vertex)
 data StrongConnectedComponent vertex
     = SCC
         { hasLoop :: !(Bool)
-        , getCell :: !(Set.Set vertex)
+        , myNodes :: !(Set.Set vertex)
         }
     deriving (Eq, Ord, Show)
 
@@ -41,7 +41,7 @@ getTSortedSCCs = runIdentity . go where
         visteds <- get
         cur_out <- when' (not (cur `Set.member` visteds)) $ do
             scc <- sortByRel [cur]
-            return [SCC { hasLoop = cur `elem` scc, getCell = Set.fromAscList scc }]
+            return [SCC { hasLoop = cur `elem` scc, myNodes = Set.fromAscList scc }]
         next_out <- splitByRel nexts
         return (cur_out ++ next_out)
     go :: Ord node => Map.Map node (Set.Set node) -> Identity [StrongConnectedComponent node]
