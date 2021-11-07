@@ -9,13 +9,18 @@ import qualified Data.Set as Set
 import Z.Algo.Function
 import Z.Utils
 
-type IsCircular = Bool
+type IncreasingOrdering element = element -> element -> Bool
 
-type IncreasingOrdering a = a -> a -> Bool
+type DigraphOf vertex = Map.Map vertex (Set.Set vertex)
 
-type DigraphOf vertices = Map.Map vertices (Set.Set vertices)
+data StrongConnectedComponent vertex
+    = SCC
+        { hasLoop :: !(Bool)
+        , getCell :: !(Set.Set vertex)
+        }
+    deriving (Eq, Ord, Show)
 
-getTSortedSCCs :: Ord node => DigraphOf node -> [(IsCircular, Set.Set node)]
+getTSortedSCCs :: Ord vertex => DigraphOf vertex -> [StrongConnectedComponent vertex]
 getTSortedSCCs = runIdentity . go where
     when' :: (Functor m, Monoid a) => Bool -> m a -> m a
     when' cond = if cond then id else fmap (const mempty)
@@ -30,30 +35,30 @@ getTSortedSCCs = runIdentity . go where
             return (cur : gts)
         lts <- sortByRel nexts
         return (lts ++ ges)
-    splitByRel :: Ord node => [node] -> StateT (Set.Set node) (ReaderT (node -> [node]) Identity) [(IsCircular, Set.Set node)]
+    splitByRel :: Ord node => [node] -> StateT (Set.Set node) (ReaderT (node -> [node]) Identity) [StrongConnectedComponent node]
     splitByRel [] = return []
     splitByRel (cur : nexts) = do
         visteds <- get
         cur_res <- when' (not (cur `Set.member` visteds)) $ do
             ges <- sortByRel [cur]
-            return (one (cur `elem` ges, Set.fromAscList ges))
+            return [SCC { hasLoop = cur `elem` ges, getCell = Set.fromAscList ges }]
         next_res <- splitByRel nexts
         return (cur_res ++ next_res)
-    go :: Ord node => Map.Map node (Set.Set node) -> Identity [(IsCircular, Set.Set node)]
+    go :: Ord node => Map.Map node (Set.Set node) -> Identity [StrongConnectedComponent node]
     go given_digraph = do
         let nodes = Set.toAscList (foldr Set.union (Map.keysSet given_digraph) (Map.elems given_digraph))
             froms = maybe [] Set.toAscList . flip Map.lookup given_digraph
             intos = Set.toAscList . Map.keysSet . flip Map.filter given_digraph . Set.member
-        (sortedVertices, _) <- runReaderT (runStateT (sortByRel nodes) Set.empty) froms
-        (sortedSCCs, _) <- runReaderT (runStateT (splitByRel nodes) Set.empty) intos
-        return sortedSCCs
+        (sorted_nodes, _) <- runReaderT (runStateT (sortByRel nodes) Set.empty) froms
+        (sorted_sccs, _) <- runReaderT (runStateT (splitByRel sorted_nodes) Set.empty) intos
+        return sorted_sccs
 
-sortByMerging :: IncreasingOrdering a -> [a] -> [a]
+sortByMerging :: IncreasingOrdering element -> [element] -> [element]
 sortByMerging = go where
+    merge :: IncreasingOrdering a -> [a] -> [a] -> [a]
+    merge leq (y : ys) (z : zs) = if y `leq` z then y : merge leq ys (z : zs) else z : merge leq (y : ys) zs
+    merge leq ys zs = ys ++ zs
     go :: IncreasingOrdering a -> [a] -> [a]
     go leq xs = case length xs `div` 2 of
         0 -> xs
         n -> uncurry (merge leq) . (go leq <^> go leq) $ (splitAt n xs)
-    merge :: IncreasingOrdering a -> [a] -> [a] -> [a]
-    merge leq (y : ys) (z : zs) = if y `leq` z then y : merge leq ys (z : zs) else z : merge leq (y : ys) zs
-    merge leq ys zs = ys ++ zs
