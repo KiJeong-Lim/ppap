@@ -105,10 +105,6 @@ readBlock = mconcat
                 consumePC " / "
                 regex' <- readRegEx
                 return (OddRCtx regex')
-            , do
-                consumePC " -/ "
-                regex' <- readRegEx
-                return (NegRCtx regex')
             , return NilRCtx
             ]
         skipWhite
