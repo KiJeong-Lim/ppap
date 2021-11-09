@@ -88,7 +88,7 @@ modifySep x0 f1 f2 = f1 x0 & (\zs -> concat . foldr (\ys -> \acc -> if null acc 
 findAllPermutationsOf :: [a] -> [[a]]
 findAllPermutationsOf = swag (\at -> uncurry $ \i -> \j -> maybe . at <*> curry snd <*> flip lookup [(i, at j), (j, at i)]) . zipWith const [0 ..] <*> (!!) where
     swag :: ((Int -> a) -> (Int, Int) -> (Int -> a)) -> [Int] -> ((Int -> a) -> [[a]])
-    swag applySwapping my_range = foldr (\n -> \kont -> \at -> [0 .. n] >>= kont . curry (applySwapping at) n) (\at -> return (map at my_range)) my_range
+    swag my_swap all_idxes = foldr (\n -> \kont -> \at -> [0 .. n] >>= kont . curry (my_swap at) n) (\at -> return (map at all_idxes)) all_idxes
 
 recList :: (r) -> (a -> [a] -> r -> r) -> ([a] -> r)
 recList for_nil for_cons = snd . foldr (\my_hd -> uncurry $ \my_tl -> \my_result -> (my_hd : my_tl, for_cons my_hd my_tl my_result)) ([], for_nil)
