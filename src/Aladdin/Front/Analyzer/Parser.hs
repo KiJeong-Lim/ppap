@@ -41,7 +41,7 @@ data ParsingTree
     deriving ()
 
 runAladdinParser :: [Token] -> Either (Maybe (Token)) (Either TermRep [DeclRep])
-runAladdinParser = fmap (getEither getQuery (getSequence getDecl)) . runLR1 theLR1Parser where
+runAladdinParser = fmap (getEither getQuery (getSequence getDecl)) . runLALR1 theLALR1Parser where
     getQuery :: ParsingTree -> (TermRep)
     getQuery (PTBranch _ [PTLeaf (T_quest loc_1), _2@(PTBranch guard2 _), PTLeaf (T_dot loc_3)])
         | [guard2] `elem` [[3]] = (getTermRep0 _2)
@@ -188,8 +188,8 @@ runAladdinParser = fmap (getEither getQuery (getSequence getDecl)) . runLR1 theL
     toTerminal (T_nat_lit loc contents) = 25
     toTerminal (T_chr_lit loc contents) = 26
     toTerminal (T_str_lit loc contents) = 27
-    runLR1 :: LR1Parser -> [Token] -> Either (Maybe (Token)) ParsingTree
-    runLR1 (LR1Parser getInitS getActionT getReduceT) = go where
+    runLALR1 :: LR1Parser -> [Token] -> Either (Maybe (Token)) ParsingTree
+    runLALR1 (LR1Parser getInitS getActionT getReduceT) = go where
         loop inputs = do
             let cur = if null inputs then 0 else toTerminal (head inputs)
                 exception = Y.lift (if null inputs then Left Nothing else Left (Just (head inputs)))
@@ -211,8 +211,8 @@ runAladdinParser = fmap (getEither getQuery (getSequence getDecl)) . runLR1 theL
             (_, (_, result)) <- Y.runStateT (loop tokens) ([getInitS], [])
             case result of
                 [output] -> return output
-    theLR1Parser :: LR1Parser
-    theLR1Parser = LR1Parser
+    theLALR1Parser :: LR1Parser
+    theLALR1Parser = LR1Parser
         { getInitialS = 0
         , getActionTable = YMap.fromAscList 
             [ ((0, 0), Reduce (12, [])), ((0, 3), Shift 19), ((0, 5), Shift 18), ((0, 7), Shift 22), ((0, 12), Shift 21), ((0, 13), Shift 23), ((0, 14), Shift 26), ((0, 16), Shift 14), ((0, 17), Shift 27), ((0, 18), Shift 15), ((0, 21), Shift 16), ((0, 22), Shift 28), ((0, 23), Shift 24), ((0, 24), Shift 17), ((0, 25), Shift 20), ((0, 26), Shift 13), ((0, 27), Shift 25)

@@ -18,17 +18,24 @@ import Z.Text.PC
 import Z.Utils
 
 instance Show Conflict where
-    show = flip (showsPrec 0) ""
+    show = flip (shows) ""
     showList = undefined
     showsPrec _ (Conflict (action1, action2) (q, t) (Cannonical0 vertices root edges))
         = strcat
             [ strstr "couldn't resolve conflict:" . nl
-            , strstr "  ? " . pprint 0 action1 . strstr " v.s. " . pprint 0 action2 . strstr " at (" . showsPrec 0 q . strstr ", " . showsPrec 0 (TS t) . strstr ")" . nl
-            , strstr "  ? collection = Cannonical0" . nl
-            , strstr "    { getVertices = " . plist 6 [ showsPrec 0 q . strstr ": " . plist 8 (map (pprint 0) items) | (q, items) <- formatedVertices ] . nl
-            , strstr "    , getRoot = " . showsPrec 0 root . nl
-            , strstr "    , getEdges = " . plist 6 [ showsPrec 0 q . strstr ": " . plist 8 [ pprint 0 sym . strstr " +-> " . showsPrec 0 p | (sym, p) <- pairs ] | (q, pairs) <- formatedEdges ] . nl
-            , strstr "    }" . nl
+            , strstr "  ? " . pprint 0 action1 . strstr " v.s. " . pprint 0 action2 . strstr " at { state = " . shows q . strstr ", terminal = " . pprint 0 (TS t) . strstr " }" . nl
+            , strstr "  ? collection = {" . nl
+            , strstr "    getParserSInfo :: ParserS -> ParserSInfo" . nl
+            , ppunc "\n"
+                [ ppunc "\n"
+                    [ strstr "    getParserSInfo " . shows q . strstr " = ParserSInfo"
+                    , strstr "        { myItems = " . plist 12 (map (quotify . pprint 0) items)
+                    , strstr "        , myNexts = " . plist 12 [ quotify (pprint 0 sym . strstr " +-> " . shows p) | (sym, p) <- maybe [] id (lookup q formatedEdges) ]
+                    , strstr "        }"
+                    ]
+                | (q, items) <- formatedVertices
+                ]
+            , nl . strstr "  }" . nl
             ]
         where
             formatedVertices :: [(ParserS, [LR0Item])]
@@ -45,7 +52,7 @@ instance Show Conflict where
                     [] -> []
                     ((q, sym), p) : triples' -> return
                         ( q
-                        , (sym, p) : [ (sym', p') | ((q', sym'), p') <- triples' ]
+                        , sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) ((sym, p) : [ (sym', p') | ((q', sym'), p') <- triples' ])
                         )
 
 unFoldNSApp :: NSym -> (String, [NSym])
@@ -123,9 +130,9 @@ genParser blocks = myMain where
         go 1 ns = go 2 ns
         go _ ns = strstr "(" . go 0 ns . strstr ")"
     patTsIdx :: Int -> String -> String -> String
-    patTsIdx idx field = strstr field . strstr "_" . showsPrec 0 idx
+    patTsIdx idx field = strstr field . strstr "_" . shows idx
     patNsIdx :: Int -> String -> String
-    patNsIdx idx = strstr "_" . showsPrec 0 idx
+    patNsIdx idx = strstr "_" . shows idx
     makeNSPatn :: Int -> String -> String
     makeNSPatn idx = strcat
         [ patNsIdx idx
@@ -144,7 +151,7 @@ genParser blocks = myMain where
                 return (patTsIdx idx field)
             , do
                 quote <- acceptQuote
-                return (showsPrec 0 quote)
+                return (shows quote)
             , do
                 negPC (acceptSmallId <|> acceptQuote)
                 hs_src <- some (acceptPC (\ch -> ch /= ' '))
@@ -175,7 +182,7 @@ genParser blocks = myMain where
                         , ppunc ", "
                             [ case Map.lookup (substituteNS (zip params_name (snd (unFoldNSApp ns1))) ns) id_env of
                                 Nothing -> error "makeGuard"
-                                Just num -> showsPrec 0 num
+                                Just num -> shows num
                             | (idx, NS ns) <- zipped_sym
                             ]
                         , strstr "]"
@@ -267,7 +274,7 @@ genParser blocks = myMain where
             tellLine (strstr "    deriving ()")
             tellLine (strstr "")
             tellLine (strstr parser_name . strstr " :: [" . strstr token_type . strstr "] -> Either (Maybe (" . strstr token_type . strstr ")) (" . strstr result_type . strstr ")")
-            tellLine (strstr parser_name . strstr " = fmap (" . getGetRep start_symbol . strstr ") . runLR1 theLR1Parser where")
+            tellLine (strstr parser_name . strstr " = fmap (" . getGetRep start_symbol . strstr ") . runLALR1 theLALR1Parser where")
             sequence
                 [ do
                     let body_name = fst body
@@ -298,11 +305,11 @@ genParser blocks = myMain where
                                 ]
                             sequence
                                 [ do
-                                    let mkIndexErr idx = "the length of rhs is " ++ showsPrec 0 (length syms) (", but the index " ++ showsPrec 0 idx " is greater than or equal to it.")
+                                    let mkIndexErr idx = "the length of rhs is " ++ shows (length syms) (", but the index " ++ shows idx " is greater than or equal to it.")
                                     des_rep <- fmap (ppunc  "        ") $ sequence
                                         [ lift $ fmap strcat $ sequence
                                             [ case de of
-                                                DsStrLit str -> return (showsPrec 0 str)
+                                                DsStrLit str -> return (shows str)
                                                 DsSource hs_src -> return (strstr hs_src)
                                                 DsNSPatn idx
                                                     | idx <= length syms -> case syms !! (idx - 1) of
@@ -336,11 +343,11 @@ genParser blocks = myMain where
             sequence
                 [ do
                     tsym_id <- lift (getTSymId tsym)
-                    tellLine (strstr "    toTerminal (" . strstr patn . strstr ") = " . showsPrec 0 tsym_id)
+                    tellLine (strstr "    toTerminal (" . strstr patn . strstr ") = " . shows tsym_id)
                 | TerminalInfo patn tsym prec assoc <- terminal_infos
                 ]
-            tellLine (strstr "    runLR1 :: LR1Parser -> [" . strstr token_type . strstr "] -> Either (Maybe (" . strstr token_type . strstr ")) ParsingTree")
-            tellLine (strstr "    runLR1 (LR1Parser getInitS getActionT getReduceT) = go where")
+            tellLine (strstr "    runLALR1 :: LR1Parser -> [" . strstr token_type . strstr "] -> Either (Maybe (" . strstr token_type . strstr ")) ParsingTree")
+            tellLine (strstr "    runLALR1 (LR1Parser getInitS getActionT getReduceT) = go where")
             tellLine (strstr "        loop inputs = do")
             tellLine (strstr "            let cur = if null inputs then 0 else toTerminal (head inputs)")
             tellLine (strstr "                exception = Y.lift (if null inputs then Left Nothing else Left (Just (head inputs)))")
@@ -362,9 +369,9 @@ genParser blocks = myMain where
             tellLine (strstr "            (_, (_, result)) <- Y.runStateT (loop tokens) ([getInitS], [])")
             tellLine (strstr "            case result of")
             tellLine (strstr "                [output] -> return output")
-            tellLine (strstr "    theLR1Parser :: LR1Parser")
-            tellLine (strstr "    theLR1Parser = LR1Parser")
-            tellLine (strstr "        { getInitialS = " . showsPrec 0 (getInitialS lalr1))
+            tellLine (strstr "    theLALR1Parser :: LR1Parser")
+            tellLine (strstr "    theLALR1Parser = LR1Parser")
+            tellLine (strstr "        { getInitialS = " . shows (getInitialS lalr1))
             action_table_rep <- lift $ sequence
                 [ fmap (ppunc ", ") $ do
                     pairs' <- sequence
@@ -377,11 +384,11 @@ genParser blocks = myMain where
                         [ case action of
                             Shift p -> return $ strcat
                                 [ strstr "(("
-                                , showsPrec 0 q
+                                , shows q
                                 , strstr ", "
-                                , showsPrec 0 tsym_id
+                                , shows tsym_id
                                 , strstr "), Shift "
-                                , showsPrec 0 p
+                                , shows p
                                 , strstr ")"
                                 ]
                             Reduce (lhs, rhs) -> do
@@ -390,28 +397,28 @@ genParser blocks = myMain where
                                     [ case sym of
                                         NS ns -> do
                                             ns_rep <- getNSymId ns
-                                            return (strstr "NS " . showsPrec 0 ns_rep)
+                                            return (strstr "NS " . shows ns_rep)
                                         TS ts -> do
                                             ts_rep <- getTSymId ts
-                                            return (strstr "TS " . showsPrec 0 ts_rep)
+                                            return (strstr "TS " . shows ts_rep)
                                     | sym <- rhs
                                     ]
                                 return $ strcat
                                     [ strstr "(("
-                                    , showsPrec 0 q
+                                    , shows q
                                     , strstr ", "
-                                    , showsPrec 0 tsym_id
+                                    , shows tsym_id
                                     , strstr "), Reduce ("
-                                    , showsPrec 0 lhs_rep
+                                    , shows lhs_rep
                                     , strstr ", ["
                                     , ppunc ", " rhs_rep
                                     , strstr "]))"
                                     ]
                             Accept -> return $ strcat
                                 [ strstr "(("
-                                , showsPrec 0 q
+                                , shows q
                                 , strstr ", "
-                                , showsPrec 0 tsym_id
+                                , shows tsym_id
                                 , strstr "), Accept)"
                                 ]
                         | (tsym_id, action) <- sortByMerging (\pair1 -> \pair2 -> fst pair1 <= fst pair2) pairs'
@@ -430,11 +437,11 @@ genParser blocks = myMain where
                     return
                         [ strcat
                             [ strstr "(("
-                            , showsPrec 0 q
+                            , shows q
                             , strstr ", "
-                            , showsPrec 0 nsym_id
+                            , shows nsym_id
                             , strstr "), "
-                            , showsPrec 0 p
+                            , shows p
                             , strstr ")"
                             ]
                         | (nsym_id, p) <- sortByMerging (\pair1 -> \pair2 -> fst pair1 <= fst pair2) pairs'

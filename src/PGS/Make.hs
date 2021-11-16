@@ -51,9 +51,9 @@ instance Outputable Cannonical0 where
             [ strstr "getParserSInfo :: ParserS -> ParserSInfo"
             , ppunc "\n"
                 [ ppunc "\n"
-                    [ strstr "getParserSInfo " . showsPrec 0 q . strstr " = ParserSInfo"
+                    [ strstr "getParserSInfo " . shows q . strstr " = ParserSInfo"
                     , strstr "    { myItems = " . plist 8 (map (quotify . pprint 0) items)
-                    , strstr "    , myNexts = " . plist 8 [ quotify (pprint 0 sym . strstr " +-> " . showsPrec 0 p) | (sym, p) <- maybe [] id (lookup q formatedEdges) ]
+                    , strstr "    , myNexts = " . plist 8 [ quotify (pprint 0 sym . strstr " +-> " . shows p) | (sym, p) <- maybe [] id (lookup q formatedEdges) ]
                     , strstr "    }"
                     ]
                 | (q, items) <- formatedVertices
@@ -78,15 +78,15 @@ instance Outputable Cannonical0 where
                         )
 
 instance Outputable Action where
-    pprint _ (Shift p) = strstr "SHIFT: " . showsPrec 0 p . strstr ";"
+    pprint _ (Shift p) = strstr "SHIFT: " . shows p . strstr ";"
     pprint _ (Reduce (lhs, rhs)) = strstr "REDUCE: <" . pprint 0 lhs . strstr "> ::= " . ppunc " " (map (pprint 0) rhs) . strstr ";"
     pprint _ (Accept) = strstr "ACCEPT;"
 
 instance Outputable LR1Parser where
     pprint _ (LR1Parser initS actionT reduceT) = strcat
-        [ strstr "initS: " . showsPrec 0 initS . nl
-        , strstr "actionT: " . plist 2 [ strstr "(" . showsPrec 0 q . strstr ", " . pprint 0 (TS t) . strstr ") +-> " . pprint 0 action | ((q, t), action) <- Map.toList actionT ] . nl
-        , strstr "reduceT: " . plist 2 [ strstr "(" . showsPrec 0 q . strstr ", " . pprint 0 (NS nt) . showsPrec 0 p | ((q, nt), p) <- Map.toList reduceT ] . nl
+        [ strstr "initS: " . shows initS . nl
+        , strstr "actionT: " . plist 2 [ strstr "(" . shows q . strstr ", " . pprint 0 (TS t) . strstr ") +-> " . pprint 0 action | ((q, t), action) <- Map.toList actionT ] . nl
+        , strstr "reduceT: " . plist 2 [ strstr "(" . shows q . strstr ", " . pprint 0 (NS nt) . shows p | ((q, nt), p) <- Map.toList reduceT ] . nl
         ]
 
 makeCollectionAndLALR1Parser :: CFGrammar -> ExceptT Conflict Identity (Cannonical0, LR1Parser)
