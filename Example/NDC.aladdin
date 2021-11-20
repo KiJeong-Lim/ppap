@@ -1,6 +1,8 @@
 % Natural Deduction Checker
 % Author = Ki-jeong Lim ( gijungdduk@naver.com )
 
+(* comment1 *)
+
 kind parity (type -> type -> type).
 type pair (A -> B -> parity A B).
 
@@ -147,3 +149,5 @@ check_meta_proof Axioms (poly_proof PolyProof) (prime_scheme PrimeScheme) :- pi 
 
 type example1 (o).
 example1 :- check_meta_proof [] (poly_proof (P\ mono_proof (not_elim (disjunction (papp P []) (negation (papp P []))) (Hyp1\ bottom_intro contradiction (or_intro2 (disjunction (papp P []) (negation (papp P []))) (not_intro (negation (papp P [])) (Hyp2\ bottom_intro contradiction (or_intro1 (disjunction (papp P []) (negation (papp P []))) (by_assumption Hyp2)) (by_assumption Hyp1)))) (by_assumption Hyp1))))) (prime_scheme (P\ primitive_scheme (disjunction (papp P []) (negation (papp P []))))).
+
+(* comment2 *)

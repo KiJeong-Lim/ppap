@@ -75,6 +75,7 @@
     T_chr_lit (SLoc (row1, col1) (row2, col2)) (read this)
 \xmatch [' ' '\n']+: skip
 \xmatch "%" [. \ '\n']*: skip
+\xmatch "(*" ([. \ '*'] + "*" [. \ ')'])* "*)": skip
 
 \hstail {
 }
