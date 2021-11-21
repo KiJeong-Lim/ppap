@@ -106,6 +106,7 @@ executable ppap
     Y.Base
     Z.Algo.Function
     Z.Algo.Sorting
+    Z.Math.V1.Internal
     Z.Math.Classes
     Z.Math.V1
     Z.Math.Z2

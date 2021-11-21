@@ -15,7 +15,7 @@ data ExprCall
 
 class Functor expr => IsExpr expr where
     evalExpr :: Fractional a => [(ExprCall, expr a)] -> expr a -> a
-    reduceExpr :: (Eq a, Num a) => ReductionOption -> expr a -> expr a
+    reduceExpr :: (Eq a, Fractional a) => ReductionOption -> expr a -> expr a
     embed :: Num a => a -> expr a
     var :: VarID -> expr a
     getExprRep :: Show a => expr a -> ShowS
