@@ -283,7 +283,7 @@ factoronce = curry (normalize . uncurry (go 1 `on` unprod . normalize)) where
             return (e1', e2 : es')
 
 reduceCoreToFraction :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val
-reduceCoreToFraction = uncurry unfractionalize . fractionalize where
+reduceCoreToFraction = prettify . uncurry unfractionalize . fractionalize where
     fractionalize :: (Eq val, Fractional val) => CoreExpr val -> (CoreExpr val, CoreExpr val)
     fractionalize (PluCE e1 e2) = fracplu (fractionalize e1) (fractionalize e2)
     fractionalize (NegCE e1) = fracneg (fractionalize e1)
@@ -308,3 +308,21 @@ reduceCoreToFraction = uncurry unfractionalize . fractionalize where
 
 testunit1 :: CoreExpr Double
 testunit1 = 3 * (1 + 3 * VarCE 1 + VarCE 2) / negate (VarCE 2 * 2 + 2 * VarCE 1 * 3 + 2)
+
+prettify :: (Eq val, Num val) => CoreExpr val -> CoreExpr val
+prettify = go where
+    extractNeg :: (Eq val, Num val) => CoreExpr val -> (Bool, CoreExpr val)
+    extractNeg (MulCE e1 e2) = case (extractNeg e1, extractNeg e2) of
+        ((hasneg1, e1'), (hasneg2, e2')) -> (not (hasneg1 == hasneg2), e1' * e2')
+    extractNeg (NegCE e1) = case extractNeg e1 of
+        (hasneg1, e1') -> (not hasneg1, e1')
+    extractNeg e = (False, e)
+    prettifyPlu :: (Eq val, Num val) => CoreExpr val -> (Bool, CoreExpr val) -> CoreExpr val
+    prettifyPlu e1 (hasneg, e2) = if hasneg then e1 - e2 else e1 + e2
+    go :: (Eq val, Num val) => CoreExpr val -> CoreExpr val
+    go (PluCE e1 e2) = prettifyPlu (go e1) (extractNeg e2)
+    go (NegCE e1) = negate (go e1)
+    go (MulCE e1 (InvCE e2)) = go e1 / go e2
+    go (MulCE e1 e2) = go e1 * go e2
+    go (InvCE e1) = recip (go e1)
+    go e = e
