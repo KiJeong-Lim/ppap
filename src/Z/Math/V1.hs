@@ -1,8 +1,11 @@
 module Z.Math.V1 where
 
 import Control.Applicative
+import Control.Monad.Trans.State.Strict
 import Data.Function
 import qualified Data.List as List
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import Data.Ratio
 import Y.Base
 import Z.Algo.Function
@@ -20,7 +23,7 @@ data ElemExpr val
     | LitEE (val)
     | VarEE (VarID)
     | AppEE (ElemExpr val) (ElemExpr val)
-    deriving ()
+    deriving (Eq)
 
 instance Show val => Show (ElemExpr val) where
     showsPrec prec = dispatch where
@@ -119,8 +122,8 @@ evalElemExpr = evalElemExprWith myWildCard where
 
 reduceElemExpr :: (Eq val, Fractional val) => ReductionOption -> ElemExpr val -> ElemExpr val
 reduceElemExpr option
-    | option == ReduceLv1 = reduce1
-    | option == ReduceLv2 = reduce2
+    | option == ReduceLv1 = reduce
+    | option == ReduceLv2 = reduceElemExprAsFraction . reduce
     where
         myPlu :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val -> ElemExpr val
         myPlu (LitEE val1) (LitEE val2) = myLit (val1 + val2)
@@ -154,18 +157,64 @@ reduceElemExpr option
         myDiv e1 e2 = AppEE (AppEE (VarEE "_DIV_") e1) e2
         myLit :: val -> ElemExpr val
         myLit val = val `seq` LitEE val
-        reduce1 :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val
-        reduce1 (PluEE e1 e2) = myPlu (reduce1 e1) (reduce1 e2)
-        reduce1 (NegEE e1) = myNeg (reduce1 e1)
-        reduce1 (MulEE e1 e2) = myMul (reduce1 e1) (reduce1 e2)
-        reduce1 (PosEE num) = myLit (fromInteger num)
-        reduce1 (LitEE val) = myLit val
-        reduce1 (VarEE "0") = myLit (fromInteger 0)
-        reduce1 (AppEE (AppEE (VarEE "_DIV_") e1) e2) = myDiv (reduce1 e1) (reduce1 e2)
-        reduce1 (AppEE e1 e2) = AppEE (reduce1 e1) (reduce1 e2)
-        reduce1 e = e
-        reduce2 :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val
-        reduce2 = reduce1
+        reduce :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val
+        reduce (PluEE e1 e2) = myPlu (reduce e1) (reduce e2)
+        reduce (NegEE e1) = myNeg (reduce e1)
+        reduce (MulEE e1 e2) = myMul (reduce e1) (reduce e2)
+        reduce (PosEE num) = myLit (fromInteger num)
+        reduce (LitEE val) = myLit val
+        reduce (VarEE "0") = myLit (fromInteger 0)
+        reduce (AppEE (AppEE (VarEE "_DIV_") e1) e2) = myDiv (reduce e1) (reduce e2)
+        reduce (AppEE e1 e2) = AppEE (reduce e1) (reduce e2)
+        reduce e = e
+
+toCore :: (Eq val, Num val) => ElemExpr val -> (Map.Map IVar (ElemExpr val), CoreExpr val)
+toCore = fromJust . go where
+    loop :: (Eq val, Num val) => ElemExpr val -> StateT [ElemExpr val] Maybe (CoreExpr val)
+    loop (PluEE e1 e2) = do
+        e1' <- loop e1
+        e2' <- loop e2
+        return (PluCE e1' e2')
+    loop (NegEE e1) = do
+        e1' <- loop e1
+        return (NegCE e1')
+    loop (MulEE e1 e2) = do
+        e1' <- loop e1
+        e2' <- loop e2
+        return (MulCE e1' e2')
+    loop (PosEE n) = return (fromPosEE n)
+    loop (LitEE v) = return (fromLitEE v)
+    loop (VarEE "0") = return (ValCE (IntV 0))
+    loop (AppEE (AppEE (VarEE "_DIV_") e1) e2) = do
+        e1' <- loop e1
+        e2' <- loop e2
+        return (DivCE e1' e2')
+    loop e = do
+        es <- get
+        case e `List.elemIndex` es of
+            Nothing -> do
+                put (es ++ [e])
+                return (VarCE (length es))
+            Just x -> return (VarCE x)
+    fromPosEE :: Integer -> CoreExpr val
+    fromPosEE = ValCE . IntV
+    fromLitEE :: (Eq val, Num val) => val -> CoreExpr val
+    fromLitEE v = if v == 0 then ValCE (IntV 0) else ValCE (LitV v)
+    go :: (Eq val, Num val) => ElemExpr val -> Maybe (Map.Map IVar (ElemExpr val), CoreExpr val)
+    go e = do
+        (e', vars) <- runStateT (loop e) []
+        return (Map.fromAscList (zip [0, 1 ..] vars), e')
+
+fromCore :: (Fractional val) => Map.Map IVar (ElemExpr val) -> CoreExpr val -> ElemExpr val
+fromCore env (VarCE x) = fromJust (Map.lookup x env)
+fromCore env (ValCE v) = either fromInteger embed (castValue v)
+fromCore env (PluCE e1 e2) = fromCore env e1 + fromCore env e2
+fromCore env (NegCE e1) = negate (fromCore env e1)
+fromCore env (MulCE e1 e2) = fromCore env e1 * fromCore env e2
+fromCore env (DivCE e1 e2) = fromCore env e1 / fromCore env e2
+
+reduceElemExprAsFraction :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val
+reduceElemExprAsFraction = uncurry fromCore . fmap reduceCoreToFraction . toCore
 
 readElemExpr :: String -> ElemExpr Double
 readElemExpr = either error id . runPC "<interactive>" (pcMain 0) where
