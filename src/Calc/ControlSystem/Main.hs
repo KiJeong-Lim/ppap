@@ -22,7 +22,7 @@ makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <-
     theClosure :: Map.Map (MyNode, MyNode) MyExpr
     theClosure = refine (recNat myInit myStep (length qs)) where
         refine :: [((MyNode, MyNode), MyExpr)] -> Map.Map (MyNode, MyNode) MyExpr
-        refine = Map.map (reduceExpr ReduceLv2) . Map.fromList
+        refine = Map.map (reduceExpr ReduceLv1) . Map.fromList
         at :: Map.Map (MyNode, MyNode) MyExpr -> (MyNode, MyNode) -> MyExpr
         at = curry (maybe nullRE id . uncurry (flip Map.lookup))
         myInit :: [((MyNode, MyNode), MyExpr)]

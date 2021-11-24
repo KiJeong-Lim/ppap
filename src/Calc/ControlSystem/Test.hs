@@ -29,6 +29,6 @@ test1OfControlSystem
         putStrLn ("actual   = " ++ shows actual "")
     where
         expected :: MyExpr
-        expected = readElemExpr "G1(s) * G2(s) * G3(s) / (1.0 - G1(s) * G2(s) * H1(s) + G2(s) * G3(s) * H2(s) + G1(s) * G2(s) * G3(s))"
+        expected = readElemExpr "G1(s) * G2(s) * G3(s) / (1 - G1(s) * G2(s) * H1(s) + G2(s) * G3(s) * H2(s) + G1(s) * G2(s) * G3(s))"
         actual :: MyExpr
-        actual = makePathTable "R" testcase1 Map.! "C"
+        actual = reduceElemExpr ReduceLv2 (makePathTable "R" testcase1 Map.! "C")

@@ -25,6 +25,9 @@ data ElemExpr val
     | AppEE (ElemExpr val) (ElemExpr val)
     deriving (Eq)
 
+instance (Show val, Fractional val) => Show (CoreExpr val) where
+    showsPrec prec = showsPrec prec . fromCore (Map.fromList [ (i, VarEE ("x" ++ show i)) | i <- [0, 1 .. 100] ])
+
 instance Show val => Show (ElemExpr val) where
     showsPrec prec = dispatch where
         myPrecIs :: Int -> ShowS -> ShowS
@@ -32,10 +35,10 @@ instance Show val => Show (ElemExpr val) where
         dispatch :: Show val => ElemExpr val -> ShowS
         dispatch (PluEE e1 (NegEE e2)) = myPrecIs 4 (showsPrec 4 e1 . strstr " - " . showsPrec 5 e2)
         dispatch (PluEE e1 e2) = myPrecIs 4 (showsPrec 4 e1 . strstr " + " . showsPrec 5 e2)
-        dispatch (NegEE e1) = myPrecIs 6 (strstr "- " . showsPrec 7 e1)
+        dispatch (NegEE e1) = myPrecIs 6 (strstr "- " . showsPrec 6 e1)
         dispatch (MulEE e1 e2) = myPrecIs 5 (showsPrec 5 e1 . strstr " * " . showsPrec 6 e2)
         dispatch (PosEE n) = myPrecIs 11 (shows n)
-        dispatch (LitEE val) = myPrecIs 11 (showsPrec 11 val)
+        dispatch (LitEE val) = myPrecIs 11 (shows val)
         dispatch (VarEE var) = myPrecIs 11 (strstr var)
         dispatch e = fromJust (tryMatchPrimitive e /> return (showsAppEE (unfoldAppEE e)))
         tryMatchPrimitive :: Show val => ElemExpr val -> Maybe ShowS
@@ -174,21 +177,21 @@ toCore = fromJust . go where
     loop (PluEE e1 e2) = do
         e1' <- loop e1
         e2' <- loop e2
-        return (PluCE e1' e2')
+        return (mkPluCE e1' e2')
     loop (NegEE e1) = do
         e1' <- loop e1
-        return (NegCE e1')
+        return (mkNegCE e1')
     loop (MulEE e1 e2) = do
         e1' <- loop e1
         e2' <- loop e2
-        return (MulCE e1' e2')
-    loop (PosEE n) = return (fromPosEE n)
-    loop (LitEE v) = return (fromLitEE v)
-    loop (VarEE "0") = return (ValCE (IntV 0))
+        return (mkMulCE e1' e2')
+    loop (PosEE n) = return (mkIntCE n)
+    loop (LitEE v) = return (mkLitCE v)
+    loop (VarEE "0") = return (mkIntCE 0)
     loop (AppEE (AppEE (VarEE "_DIV_") e1) e2) = do
         e1' <- loop e1
         e2' <- loop e2
-        return (DivCE e1' e2')
+        return (mkDivCE e1' e2')
     loop e = do
         es <- get
         case e `List.elemIndex` es of
@@ -196,10 +199,6 @@ toCore = fromJust . go where
                 put (es ++ [e])
                 return (VarCE (length es))
             Just x -> return (VarCE x)
-    fromPosEE :: Integer -> CoreExpr val
-    fromPosEE = ValCE . IntV
-    fromLitEE :: (Eq val, Num val) => val -> CoreExpr val
-    fromLitEE v = if v == 0 then ValCE (IntV 0) else ValCE (LitV v)
     go :: (Eq val, Num val) => ElemExpr val -> Maybe (Map.Map IVar (ElemExpr val), CoreExpr val)
     go e = do
         (e', vars) <- runStateT (loop e) []
@@ -207,11 +206,13 @@ toCore = fromJust . go where
 
 fromCore :: (Fractional val) => Map.Map IVar (ElemExpr val) -> CoreExpr val -> ElemExpr val
 fromCore env (VarCE x) = fromJust (Map.lookup x env)
-fromCore env (ValCE v) = either fromInteger embed (castValue v)
+fromCore env (ValCE v) = either fromInteger embed (fromValue v)
+fromCore env (PluCE e1 (NegCE e2)) = fromCore env e1 - fromCore env e2
 fromCore env (PluCE e1 e2) = fromCore env e1 + fromCore env e2
 fromCore env (NegCE e1) = negate (fromCore env e1)
+fromCore env (MulCE e1 (InvCE e2)) = fromCore env e1 / fromCore env e2
 fromCore env (MulCE e1 e2) = fromCore env e1 * fromCore env e2
-fromCore env (DivCE e1 e2) = fromCore env e1 / fromCore env e2
+fromCore env (InvCE e1) = recip (fromCore env e1)
 
 reduceElemExprAsFraction :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val
 reduceElemExprAsFraction = uncurry fromCore . fmap reduceCoreToFraction . toCore
@@ -281,3 +282,6 @@ readElemExpr = either error id . runPC "<interactive>" (pcMain 0) where
         , pcPosEE
         , consumePC "(" *> pcMain 0 <* consumePC ")"
         ]
+
+qutest :: IO ()
+qutest = print (reduceCoreToFraction testunit1)
