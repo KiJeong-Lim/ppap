@@ -135,7 +135,7 @@ reduceElemExpr option
         myPlu e1 e2 = PluEE e1 e2
         myNeg :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val
         myNeg (LitEE val1) = myLit (negate val1)
-        myNeg e1 = e1
+        myNeg e1 = NegEE e1
         myMul :: (Eq val, Fractional val) => ElemExpr val -> ElemExpr val -> ElemExpr val
         myMul (LitEE val1) (LitEE val2) = myLit (val1 * val2)
         myMul (LitEE val1) e2
