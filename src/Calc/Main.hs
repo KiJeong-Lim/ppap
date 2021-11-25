@@ -1,6 +1,6 @@
 module Calc.Main where
 
-import Calc.ControlSystem.Main
+import Calc.ControlSystem.Export
 import Control.Monad
 import Z.System.File
 import Z.System.Path

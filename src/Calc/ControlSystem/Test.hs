@@ -1,7 +1,7 @@
 module Calc.ControlSystem.Test where
 
-import Calc.ControlSystem.Main
-import Calc.ControlSystem.Read
+import Calc.ControlSystem.DiagramSolver
+import Calc.ControlSystem.Export
 import Calc.ControlSystem.Util
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
