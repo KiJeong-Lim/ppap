@@ -306,12 +306,10 @@ reduceCoreToFraction = prettify . uncurry unfractionalize . fractionalize where
     unfractionalize :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val -> CoreExpr val
     unfractionalize = curry (normalize . uncurry (mkDivCE `on` prod) . uncurry (attrition (==))) `on` unprod . normalize
 
-testunit1 :: CoreExpr Double
-testunit1 = 3 * (1 + 3 * VarCE 1 + VarCE 2) / negate (VarCE 2 * 2 + 2 * VarCE 1 * 3 + 2)
-
 prettify :: (Eq val, Num val) => CoreExpr val -> CoreExpr val
 prettify = go where
     extractNeg :: (Eq val, Num val) => CoreExpr val -> (Bool, CoreExpr val)
+    extractNeg (ValCE v) = (signum v == negate 1, mkValCE (abs v))
     extractNeg (MulCE e1 e2) = case (extractNeg e1, extractNeg e2) of
         ((hasneg1, e1'), (hasneg2, e2')) -> (not (hasneg1 == hasneg2), e1' * e2')
     extractNeg (NegCE e1) = case extractNeg e1 of
@@ -326,3 +324,6 @@ prettify = go where
     go (MulCE e1 e2) = go e1 * go e2
     go (InvCE e1) = recip (go e1)
     go e = e
+
+testunit1 :: CoreExpr Double
+testunit1 = 3 * (1 + 3 * VarCE 1 + VarCE 2) / negate (VarCE 2 * 2 + 2 * VarCE 1 * 3 + 2)

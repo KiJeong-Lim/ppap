@@ -282,6 +282,3 @@ readElemExpr = either error id . runPC "<interactive>" (pcMain 0) where
         , pcPosEE
         , consumePC "(" *> pcMain 0 <* consumePC ")"
         ]
-
-qutest :: IO ()
-qutest = print (reduceCoreToFraction testunit1)
