@@ -200,11 +200,10 @@ eq (InvCE e1) (InvCE e1') = e1' `eq` e1'
 eq (ValCE v) (ValCE v') = True
 eq _ _ = False
 
-refine :: [CoreExpr val] -> [CoreExpr val]
-refine = sortByMerging (\e1 -> \e2 -> e1 `lt` e2 || e1 `eq` e2)
-
-normalize :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val
-normalize = initphase where
+refineSimple :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val
+refineSimple = initphase where
+    relist :: [CoreExpr val] -> [CoreExpr val]
+    relist = sortByMerging (\e1 -> \e2 -> e1 `eq` e2 || e1 `lt` e2)
     initphase :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val
     initphase (PluCE e1 e2) = plusphase [] [] 0 [e1, e2] []
     initphase (NegCE e1) = plusphase [] [] 0 [] [e1]
@@ -213,14 +212,14 @@ normalize = initphase where
     initphase e = e
     multphase :: (Eq val, Fractional val) => [CoreExpr val] -> [CoreExpr val] -> Value val -> [CoreExpr val] -> [CoreExpr val] -> CoreExpr val
     multphase nums dens val [] [] = multphase1 val nums dens
-    multphase nums dens val (e : es1) es2 = multphase2 nums dens val es1 (normalize e) es2
-    multphase nums dens val es1 (e : es2) = multphase3 nums dens val es1 (normalize e) es2
+    multphase nums dens val (e : es1) es2 = multphase2 nums dens val es1 (refineSimple e) es2
+    multphase nums dens val es1 (e : es2) = multphase3 nums dens val es1 (refineSimple e) es2
     multphase1 :: (Eq val, Fractional val) => Value val -> [CoreExpr val] -> [CoreExpr val] -> CoreExpr val
     multphase1 val nums dens
         | signum val == negate 1 = mkNegCE (multphase1 (abs val) nums dens) 
         | val == 0 = 0
-        | val == 1 = multphaselast (refine nums) (refine dens)
-        | otherwise = mkValCE val * multphaselast (refine nums) (refine dens)
+        | val == 1 = multphaselast (relist nums) (relist dens)
+        | otherwise = mkValCE val * multphaselast (relist nums) (relist dens)
     multphase2 :: (Eq val, Fractional val) => [CoreExpr val] -> [CoreExpr val] -> Value val -> [CoreExpr val] -> CoreExpr val -> [CoreExpr val] -> CoreExpr val
     multphase2 nums dens val es1 (ValCE val') es2 = multphase nums dens (val * val') es1 es2
     multphase2 nums dens val es1 (MulCE e1 e2) es2 = multphase nums dens val (e1 : e2 : es1) es2
@@ -242,13 +241,13 @@ normalize = initphase where
     endmultphase (e1 : es1) (e2 : es2) = List.foldl' (*) e1 es1 / List.foldl' (*) e2 es2
     plusphase :: (Eq val, Fractional val) => [CoreExpr val] -> [CoreExpr val] -> Value val -> [CoreExpr val] -> [CoreExpr val] -> CoreExpr val
     plusphase poss negs val [] [] = plusphase1 val poss negs
-    plusphase poss negs val (e : es1) es2 = plusphase2 poss negs val es1 (normalize e) es2
-    plusphase poss negs val es1 (e : es2) = plusphase3 poss negs val es1 (normalize e) es2
+    plusphase poss negs val (e : es1) es2 = plusphase2 poss negs val es1 (refineSimple e) es2
+    plusphase poss negs val es1 (e : es2) = plusphase3 poss negs val es1 (refineSimple e) es2
     plusphase1 :: (Eq val, Fractional val) => Value val -> [CoreExpr val] -> [CoreExpr val] -> CoreExpr val
     plusphase1 val poss negs
-        | signum val == negate 1 = plusphaselast (refine poss) (refine (mkValCE (abs val) : negs))
-        | val == 0 = plusphaselast (refine poss) (refine negs)
-        | otherwise = plusphaselast (refine (mkValCE val : poss)) negs
+        | signum val == negate 1 = plusphaselast (relist poss) (relist (mkValCE (abs val) : negs))
+        | val == 0 = plusphaselast (relist poss) (relist negs)
+        | otherwise = plusphaselast (relist (mkValCE val : poss)) negs
     plusphase2 :: (Eq val, Fractional val) => [CoreExpr val] -> [CoreExpr val] -> Value val -> [CoreExpr val] -> CoreExpr val -> [CoreExpr val] -> CoreExpr val
     plusphase2 poss negs val es1 (ValCE val') es2 = plusphase poss negs (val + val') es1 es2
     plusphase2 poss negs val es1 (PluCE e1 e2) es2 = plusphase poss negs val (e1 : e2 : es1) es2
@@ -267,63 +266,64 @@ normalize = initphase where
     endplusphase (e1 : es1) [] = List.foldl' (+) e1 es1
     endplusphase (e1 : es1) (e2 : es2) = List.foldl' (+) e1 es1 - List.foldl' (+) e2 es2
 
-factoronce :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val -> CoreExpr val
-factoronce = curry (normalize . uncurry (go 1 `on` unprod . normalize)) where
-    go :: (Eq val, Fractional val) => CoreExpr val -> [CoreExpr val] -> [CoreExpr val] -> CoreExpr val
-    go e [] [] = mkPluCE e 1
-    go e [] (e2 : es2) = mkPluCE e (List.foldl' mkMulCE e2 es2)
-    go e (e1 : es1) es2 = maybe (go (e * e1) es1 es2) (uncurry $ \e1' -> \es2' -> e1' * go e es1 es2') (loop1 e1 es2)
-    loop1 :: (Eq val, Fractional val) => CoreExpr val -> [CoreExpr val] -> Maybe (CoreExpr val, [CoreExpr val])
-    loop1 e1 [] = Nothing
-    loop1 (ValCE v1) (ValCE v2 : es) = return (mkValCE v1, mkValCE (toLitV v2 / toLitV v1) : es)
-    loop1 e1 (e2 : es)
-        | e1 == e2 = return (e1, es)
-        | otherwise = do
-            (e1', es') <- loop1 e1 es
-            return (e1', e2 : es')
-
 reduceCoreToFraction :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val
 reduceCoreToFraction = prettify . uncurry unfractionalize . fractionalize where
+    factorOnce :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val -> CoreExpr val
+    factorOnce = curry (refineSimple . uncurry (go 1 `on` unprod . refineSimple)) where
+        go :: (Eq val, Fractional val) => CoreExpr val -> [CoreExpr val] -> [CoreExpr val] -> CoreExpr val
+        go e [] [] = mkPluCE e 1
+        go e [] (e2 : es2) = mkPluCE e (List.foldl' mkMulCE e2 es2)
+        go e (e1 : es1) es2 = maybe (go (e * e1) es1 es2) (uncurry $ \e1' -> \es2' -> e1' * go e es1 es2') (loop1 e1 es2)
+        loop1 :: (Eq val, Fractional val) => CoreExpr val -> [CoreExpr val] -> Maybe (CoreExpr val, [CoreExpr val])
+        loop1 e1 [] = Nothing
+        loop1 (ValCE v1) (ValCE v2 : es) = return (mkValCE v1, mkValCE (toLitV v2 / toLitV v1) : es)
+        loop1 e1 (e2 : es)
+            | e1 == e2 = return (e1, es)
+            | otherwise = do
+                (e1', es') <- loop1 e1 es
+                return (e1', e2 : es')
     fractionalize :: (Eq val, Fractional val) => CoreExpr val -> (CoreExpr val, CoreExpr val)
-    fractionalize (PluCE e1 e2) = fracplu (fractionalize e1) (fractionalize e2)
-    fractionalize (NegCE e1) = fracneg (fractionalize e1)
-    fractionalize (MulCE e1 e2) = fracmul (fractionalize e1) (fractionalize e2)
-    fractionalize (InvCE e1) = fracinv (fractionalize e1)
-    fractionalize (ValCE v) = fracval v
-    fractionalize (VarCE x) = fracvar x
-    fracplu :: (Eq val, Fractional val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
-    fracplu (num1, den1) (num2, den2) = (factoronce (mkMulCE num1 den2) (mkMulCE num2 den1), mkMulCE den1 den2)
-    fracneg :: (Eq val, Num val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
-    fracneg (num1, den1) = (mkNegCE num1, den1)
-    fracmul :: (Eq val, Num val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
-    fracmul (num1, den1) (num2, den2) = (mkMulCE num1 num2, mkMulCE den1 den2)
-    fracinv :: (Eq val, Num val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
-    fracinv (num1, den1) = (den1, num1)
-    fracval :: Value val -> (CoreExpr val, CoreExpr val)
-    fracval v = (ValCE v, 1)
-    fracvar :: IVar -> (CoreExpr val, CoreExpr val)
-    fracvar x = (VarCE x, 1)
+    fractionalize = go where
+        go :: (Eq val, Fractional val) => CoreExpr val -> (CoreExpr val, CoreExpr val)
+        go (PluCE e1 e2) = fracplu (go e1) (go e2)
+        go (NegCE e1) = fracneg (go e1)
+        go (MulCE e1 e2) = fracmul (go e1) (go e2)
+        go (InvCE e1) = fracinv (go e1)
+        go (ValCE v) = fracval v
+        go (VarCE x) = fracvar x
+        fracplu :: (Eq val, Fractional val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
+        fracplu (num1, den1) (num2, den2) = (factorOnce (mkMulCE num1 den2) (mkMulCE num2 den1), mkMulCE den1 den2)
+        fracneg :: (Eq val, Num val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
+        fracneg (num1, den1) = (mkNegCE num1, den1)
+        fracmul :: (Eq val, Num val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
+        fracmul (num1, den1) (num2, den2) = (mkMulCE num1 num2, mkMulCE den1 den2)
+        fracinv :: (Eq val, Num val) => (CoreExpr val, CoreExpr val) -> (CoreExpr val, CoreExpr val)
+        fracinv (num1, den1) = (den1, num1)
+        fracval :: Value val -> (CoreExpr val, CoreExpr val)
+        fracval v = (ValCE v, 1)
+        fracvar :: IVar -> (CoreExpr val, CoreExpr val)
+        fracvar x = (VarCE x, 1)
     unfractionalize :: (Eq val, Fractional val) => CoreExpr val -> CoreExpr val -> CoreExpr val
-    unfractionalize = curry (normalize . uncurry (mkDivCE `on` prod) . uncurry (attrition (==))) `on` unprod . normalize
-
-prettify :: (Eq val, Num val) => CoreExpr val -> CoreExpr val
-prettify = go where
-    extractNeg :: (Eq val, Num val) => CoreExpr val -> (Bool, CoreExpr val)
-    extractNeg (ValCE v) = (signum v == negate 1, mkValCE (abs v))
-    extractNeg (MulCE e1 e2) = case (extractNeg e1, extractNeg e2) of
-        ((hasneg1, e1'), (hasneg2, e2')) -> (not (hasneg1 == hasneg2), e1' * e2')
-    extractNeg (NegCE e1) = case extractNeg e1 of
-        (hasneg1, e1') -> (not hasneg1, e1')
-    extractNeg e = (False, e)
-    prettifyPlu :: (Eq val, Num val) => CoreExpr val -> (Bool, CoreExpr val) -> CoreExpr val
-    prettifyPlu e1 (hasneg, e2) = if hasneg then e1 - e2 else e1 + e2
-    go :: (Eq val, Num val) => CoreExpr val -> CoreExpr val
-    go (PluCE e1 e2) = prettifyPlu (go e1) (extractNeg e2)
-    go (NegCE e1) = negate (go e1)
-    go (MulCE e1 (InvCE e2)) = go e1 / go e2
-    go (MulCE e1 e2) = go e1 * go e2
-    go (InvCE e1) = recip (go e1)
-    go e = e
-
-testunit1 :: CoreExpr Double
-testunit1 = 3 * (1 + 3 * VarCE 1 + VarCE 2) / negate (VarCE 2 * 2 + 2 * VarCE 1 * 3 + 2)
+    unfractionalize = curry (refineSimple . uncurry (mkDivCE `on` prod) . uncurry (attrition (==))) `on` unprod . refineSimple
+    prettify :: (Eq val, Num val) => CoreExpr val -> CoreExpr val
+    prettify = go where
+        extractNeg :: (Eq val, Num val) => CoreExpr val -> (Bool, CoreExpr val)
+        extractNeg (ValCE v) = extractNeg0 v
+        extractNeg (MulCE e1 e2) = extractNeg1 (extractNeg e1) (extractNeg e2)
+        extractNeg (NegCE e1) = extractNeg2 (extractNeg e1)
+        extractNeg e = (False, e)
+        extractNeg0 :: (Eq val, Num val) => Value val -> (Bool, CoreExpr val)
+        extractNeg0 v = (signum v == negate 1, mkValCE (abs v))
+        extractNeg1 :: (Bool, CoreExpr val) -> (Bool, CoreExpr val) -> (Bool, CoreExpr val)
+        extractNeg1 (hasneg1, e1') (hasneg2, e2') = (not (hasneg1 == hasneg2), e1' * e2')
+        extractNeg2 :: (Bool, CoreExpr val) -> (Bool, CoreExpr val)
+        extractNeg2 (hasneg1, e1') = (not hasneg1, e1')
+        prettifyPlu :: (Eq val, Num val) => CoreExpr val -> (Bool, CoreExpr val) -> CoreExpr val
+        prettifyPlu e1 (hasneg, e2) = if hasneg then e1 - e2 else e1 + e2
+        go :: (Eq val, Num val) => CoreExpr val -> CoreExpr val
+        go (PluCE e1 e2) = prettifyPlu (go e1) (extractNeg e2)
+        go (NegCE e1) = negate (go e1)
+        go (MulCE e1 (InvCE e2)) = go e1 / go e2
+        go (MulCE e1 e2) = go e1 * go e2
+        go (InvCE e1) = recip (go e1)
+        go e = e

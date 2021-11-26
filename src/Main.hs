@@ -46,11 +46,6 @@ ppap = do
         Just ("Calc", []) -> do
             shelly ("ppap >>= exec (Calc.main)")
             Calc.main
-        Just ("Calc", ["quick"]) -> do
-            shelly ("ppap >>= eval (Calc.runCalc \"calc-example1.calc\")")
-            Calc.runCalc ("calc-example1.calc")
-            shelly ("ppap >>= quit")
-            return ()
         Just ("Jasmine", []) -> do
             shelly ("ppap >>= exec (Jasmine.main)")
             Jasmine.main
