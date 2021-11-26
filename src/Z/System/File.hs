@@ -46,14 +46,14 @@ readFileNow file = do
 
 writeFileNow :: OStreamCargo a => FilePath -> a -> IO Bool
 writeFileNow file my_content = do
-    file_does_exists <- doesFileExist file
-    if file_does_exists
-        then return False
-        else do
-            my_handle <- openFile file WriteMode
-            my_handle_is_open <- hIsOpen my_handle
-            tmp <- when (if my_handle_is_open then hIsWritable my_handle else return False) $ do
-                my_handle << my_content << Flush
-                return True
+    my_handle <- openFile file WriteMode
+    my_handle_is_open <- hIsOpen my_handle
+    my_handle_is_okay <- if my_handle_is_open then hIsWritable my_handle else return False
+    if my_handle_is_okay
+        then do
+            my_handle << my_content << Flush
             hClose my_handle
-            return (maybe False id tmp)
+            return True
+        else do
+            hClose my_handle
+            return False
