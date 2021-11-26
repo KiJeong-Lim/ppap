@@ -1,14 +1,16 @@
 module Calc.ControlSystem.Test where
 
-import Calc.ControlSystem.DiagramSolver
+import Calc.ControlSystem.Diagram.Solver
 import Calc.ControlSystem.Export
 import Calc.ControlSystem.Util
+import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import Y.Base
 import Z.Math.Classes
 import Z.Math.V1
 
-testcase1 :: ControlSystem
+testcase1 :: Diagram
 testcase1 = Map.fromList
     [ (("R", "__1"), readElemExpr "1")  
     , (("__1", "__2"), readElemExpr "1")

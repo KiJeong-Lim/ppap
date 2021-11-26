@@ -1,4 +1,4 @@
-module Calc.ControlSystem.DiagramSolver where
+module Calc.ControlSystem.Diagram.Solver where
 
 import Calc.ControlSystem.Util
 import qualified Data.Map.Strict as Map
@@ -6,7 +6,7 @@ import qualified Data.Set as Set
 import Z.Algo.Function
 import Z.Math.Classes
 
-makePathTable :: MyNode -> ControlSystem -> Map.Map MyNode MyExpr
+makePathTable :: MyNode -> Diagram -> Map.Map MyNode MyExpr
 makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <- qs ] where
     qs :: [MyNode]
     qs = Set.toAscList theSetOfNodes where
