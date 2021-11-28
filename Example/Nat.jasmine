@@ -1,0 +1,6 @@
+module Example.Nat where
+
+#include <Presburger>
+
+testPresburger : Nat -> Prop
+testPresburger 0 if forall x. forall y. forall z. PRESBURGER_H( x < y ) => PRESBURGER_H( y < z ) => PRESBURGER_C( x < z )

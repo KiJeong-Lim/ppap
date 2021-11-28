@@ -10,12 +10,12 @@ module Jasmine.Alpha1.Header.Export
     , JasminePragma
     , SrcLoc (_BegPos, _EndPos)
     , Unique
-    , UniqueT
+    , UniqueMakerT
     , HasSrcLoc (..)
     , HasAnnotation (..)
     , GeneratingUniqueMonad (..)
     , mkSrcLoc
-    , runUniqueT
+    , runUniqueMakerT
     ) where
 
 import Jasmine.Alpha1.Header.CoreTerm

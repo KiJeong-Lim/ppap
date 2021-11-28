@@ -1,4 +1,8 @@
-module Example.Genie1 where
+module Example.Genie where
+
+#define AUTHOR  "Ki-jeong Lim"
+
+#if VERSION == "classical-fol-1.0.0"
 
 type FuncSym = String
 
@@ -46,7 +50,7 @@ data Proof
     | EqE2 Proof Proof
     deriving ()
 
-proves : !Proof -> Form -> Prop
+proves : !Proof -> !Form -> Prop
 proves (BotI pf1 pf2) (ContradictionF) if proves pf1 a && proves pf2 (NegationF a)
 proves (BotE pf1) a if proves pf1 ContradictionF
 proves (NotI pf1) (NegationF a) if forall pf2. proves pf2 a => proves (pf1 pf2) ContradictionF
@@ -69,3 +73,5 @@ proves (ExsE pf1 pf2) b if proves pf1 (ExistentialF a) && (forall x. copy x x =>
 proves (EqI) (EquationF t1 t2) if copy t1 t2
 proves (EqE1 pf1 pf2) a2 if proves pf1 (EquationF t1 t2) && proves pf2 a1 && (exists a. subst a t1 a1 && subst a t2 a2)
 proves (EqE2 pf1 pf2) a1 if proves pf1 (EquationF t1 t2) && proves pf2 a2 && (exists a. subst a t2 a2 && subst a t1 a1)
+
+#endif

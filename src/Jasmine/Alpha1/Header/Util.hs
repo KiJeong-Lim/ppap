@@ -8,12 +8,12 @@ module Jasmine.Alpha1.Header.Util
     , ModName
     , SrcLoc (_BegPos, _EndPos)
     , Unique
-    , UniqueT
+    , UniqueMakerT
     , HasSrcLoc (..)
     , HasAnnotation (..)
     , GeneratingUniqueMonad (..)
     , mkSrcLoc
-    , runUniqueT
+    , runUniqueMakerT
     ) where
 
 import Control.Monad.IO.Class
@@ -48,8 +48,8 @@ newtype Unique
     = Unique { asInteger :: Integer }
     deriving (Eq, Ord)
 
-newtype UniqueT m a
-    = UniqueT { unUniqueT :: StateT Integer m a }
+newtype UniqueMakerT m a
+    = UniqueMakerT { unUniqueMakerT :: StateT Integer m a }
     deriving ()
 
 class HasSrcLoc a where
@@ -61,15 +61,15 @@ class HasAnnotation f where
 class Monad m => GeneratingUniqueMonad m where
     getNewUnique :: m Unique
 
-instance Functor m => Functor (UniqueT m) where
-    fmap f = UniqueT . fmap f . unUniqueT
+instance Functor m => Functor (UniqueMakerT m) where
+    fmap f = UniqueMakerT . fmap f . unUniqueMakerT
 
-instance Monad m => Applicative (UniqueT m) where
-    pure x = UniqueT (pure x)
-    mf <*> mx = UniqueT (unUniqueT mf <*> unUniqueT mx)
+instance Monad m => Applicative (UniqueMakerT m) where
+    pure x = UniqueMakerT (pure x)
+    mf <*> mx = UniqueMakerT (unUniqueMakerT mf <*> unUniqueMakerT mx)
 
-instance Monad m => Monad (UniqueT m) where
-    m >>= k = UniqueT (unUniqueT m >>= unUniqueT . k)
+instance Monad m => Monad (UniqueMakerT m) where
+    m >>= k = UniqueMakerT (unUniqueMakerT m >>= unUniqueMakerT . k)
 
 instance Show (SrcLoc) where
     showsPrec = const . curry snd
@@ -86,11 +86,11 @@ instance GeneratingUniqueMonad m => GeneratingUniqueMonad (ExceptT s m) where
 instance GeneratingUniqueMonad m => GeneratingUniqueMonad (StateT s m) where
     getNewUnique = lift getNewUnique
 
-instance MonadTrans UniqueT where
-    lift = UniqueT . lift
+instance MonadTrans UniqueMakerT where
+    lift = UniqueMakerT . lift
 
-instance MonadIO m => MonadIO (UniqueT m) where
-    liftIO = UniqueT . liftIO
+instance MonadIO m => MonadIO (UniqueMakerT m) where
+    liftIO = UniqueMakerT . liftIO
 
 instance PrettyPrintable (SrcLoc) where
     pretty prec (SrcLoc (beg_row, beg_col) (end_row, end_col))
@@ -100,8 +100,8 @@ instance PrettyPrintable (SrcLoc) where
 instance HasSrcLoc (SrcLoc) where
     getSrcLoc = id
 
-instance Monad m => GeneratingUniqueMonad (UniqueT m) where
-    getNewUnique = UniqueT $ do
+instance Monad m => GeneratingUniqueMonad (UniqueMakerT m) where
+    getNewUnique = UniqueMakerT $ do
         n <- get
         let n' = succ n
         n' `seq` put n'
@@ -110,5 +110,5 @@ instance Monad m => GeneratingUniqueMonad (UniqueT m) where
 mkSrcLoc :: SrcPos -> SrcPos -> SrcLoc
 mkSrcLoc pos1 pos2 = if pos1 < pos2 then SrcLoc { _BegPos = pos1, _EndPos = pos2 } else SrcLoc { _BegPos = pos2, _EndPos = pos1 }
 
-runUniqueT :: Functor m => UniqueT m a -> m a
-runUniqueT = fmap fst . flip runStateT 0 . unUniqueT
+runUniqueMakerT :: Functor m => UniqueMakerT m a -> m a
+runUniqueMakerT = fmap fst . flip runStateT 0 . unUniqueMakerT
