@@ -100,6 +100,7 @@ executable ppap
     PGS.Read
     PGS.Show
     PGS.Util
+    TEST.Jasmine
     TEST.Main
     TEST.Z
     Y.Text.Ppr.Viewer

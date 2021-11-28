@@ -1,6 +1,4 @@
-module Jasmine.Alpha1.API
-    ( runJasmineAlpha1
-    ) where
+module Jasmine.Alpha1.API where
 
 import Jasmine.Alpha1.Analyzer.Export
 import Jasmine.Alpha1.Compiler.Export
