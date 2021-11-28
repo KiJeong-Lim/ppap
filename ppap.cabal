@@ -69,6 +69,7 @@ executable ppap
     Calc.ControlSystem.Util
     Calc.Runtime.Executor
     Calc.Main
+    Genie.Main
     Jasmine.Alpha1.Analyzer.Export
     Jasmine.Alpha1.Analyzer.Grammar
     Jasmine.Alpha1.Compiler.Export

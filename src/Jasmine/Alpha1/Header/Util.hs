@@ -1,8 +1,11 @@
 module Jasmine.Alpha1.Header.Util
-    ( SrcPos
+    ( SrcRow
+    , SrcCol
+    , SrcPos
     , LargeId
     , SmallId
     , Keyword
+    , ModName
     , SrcLoc (_BegPos, _EndPos)
     , Unique
     , UniqueT
@@ -31,6 +34,8 @@ type LargeId = String
 type SmallId = String
 
 type Keyword = String
+
+type ModName = String
 
 data SrcLoc
     = SrcLoc

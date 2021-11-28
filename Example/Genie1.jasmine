@@ -1,0 +1,71 @@
+module Example.Genie1 where
+
+type FuncSym = String
+
+type PredSym = String
+
+data Term
+    = CallT FuncSym [Term]
+    deriving (Copy)
+
+data Form
+    = AtomF PredSym [Term]
+    | ContradictionF
+    | NegationF Form
+    | ConjuctionF Form Form
+    | DisjunctionF Form Form
+    | ImplicationF Form Form
+    | BiconditionalF Form Form
+    | UniversalF (Term -> Form)
+    | ExistentialF (Term -> Form)
+    | EquationF Term Term
+    deriving (Copy)
+
+data Proof
+    = BotI Proof Proof
+    | BotE Proof
+    | NotI (Proof -> Proof)
+    | NotE (Proof -> Proof)
+    | AndI Proof Proof
+    | AndE1 Proof
+    | AndE2 Proof
+    | OrI1 Proof
+    | OrI2 Proof
+    | OrE Proof (Proof -> Proof) (Proof -> Proof)
+    | ImpI (Proof -> Proof)
+    | ImpE Proof Proof
+    | IffI (Proof -> Proof) (Proof -> Proof)
+    | IffE1 Proof Proof
+    | IffE2 Proof Proof
+    | AllI (Term -> Proof)
+    | AllE Proof
+    | ExsI Proof
+    | ExsE (Term -> Proof -> Proof)
+    | EqI
+    | EqE1 Proof Proof
+    | EqE2 Proof Proof
+    deriving ()
+
+proves : !Proof -> Form -> Prop
+proves (BotI pf1 pf2) (ContradictionF) if proves pf1 a && proves pf2 (NegationF a)
+proves (BotE pf1) a if proves pf1 ContradictionF
+proves (NotI pf1) (NegationF a) if forall pf2. proves pf2 a => proves (pf1 pf2) ContradictionF
+proves (NotE pf1) a if forall pf2. proves pf2 (NegationF a) => proves (pf1 pf2) ContradictionF
+proves (AndI pf1 pf2) (ConjuctionF a b) if proves pf1 a && proves pf2 b
+proves (AndE1 pf1) a if proves pf1 (ConjuctionF a b)
+proves (AndE2 pf1) b if proves pf1 (ConjuctionF a b)
+proves (OrI1 pf1) (DisjunctionF a b) if proves pf1 a
+proves (OrI2 pf1) (DisjunctionF a b) if proves pf1 b
+proves (OrE pf1 pf2 pf3) c if proves pf1 (DisjunctionF a b) && (forall pf4. proves pf4 a => proves (pf2 pf4) c) && (forall pf5. proves pf5 b => proves (pf3 pf5) c)
+proves (ImpI pf1) (ImplicationF a b) if forall pf2. proves pf2 a => proves (pf1 pf2) b
+proves (ImpE pf1 pf2) b if proves pf1 (ImplicationF a b) && proves pf2 a
+proves (IffI pf1 pf2) (BiconditionalF a b) if (forall pf3. proves pf3 a => proves (pf1 pf3) b) && (forall pf4. proves pf4 b => proves (pf2 pf4) a)
+proves (IffE1 pf1 pf2) b if proves pf1 (BiconditionalF a b) && proves pf2 a
+proves (IffE2 pf1 pf2) a if proves pf1 (BiconditionalF a b) && proves pf2 b
+proves (AllI pf1) (UniversalF a) if forall x. copy x x => proves (pf1 x) (a x)
+proves (AllE pf1) a1 if proves pf1 (UniversalF a) && (exists t. subst a t a1)
+proves (ExsI pf1) (ExistentialF a) if proves pf1 a1 && (exists t. subst a t a1)
+proves (ExsE pf1 pf2) b if proves pf1 (ExistentialF a) && (forall x. copy x x => forall pf3. proves pf3 (a x) => proves (pf2 x pf3) b)
+proves (EqI) (EquationF t1 t2) if copy t1 t2
+proves (EqE1 pf1 pf2) a2 if proves pf1 (EquationF t1 t2) && proves pf2 a1 && (exists a. subst a t1 a1 && subst a t2 a2)
+proves (EqE2 pf1 pf2) a1 if proves pf1 (EquationF t1 t2) && proves pf2 a2 && (exists a. subst a t2 a2 && subst a t1 a1)

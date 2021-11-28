@@ -2,6 +2,7 @@ module Main where
 
 import qualified Aladdin.Main as Aladdin
 import qualified Calc.Main as Calc
+import qualified Genie.Main as Genie
 import qualified Jasmine.Main as Jasmine
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
@@ -46,6 +47,9 @@ ppap = do
         Just ("Calc", []) -> do
             shelly ("ppap >>= exec (Calc.main)")
             Calc.main
+        Just ("Genie", []) -> do
+            shelly ("ppap >>= exec (Genie.main)")
+            Genie.main
         Just ("Jasmine", []) -> do
             shelly ("ppap >>= exec (Jasmine.main)")
             Jasmine.main

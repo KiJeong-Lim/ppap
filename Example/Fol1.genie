@@ -1,0 +1,11 @@
+module Example.Fol1 where
+
+submodule Example1 where
+
+  let A : Set.
+
+  let P, Q : A -> Prop.
+
+  def lemma1 : forall x, P x \/ Q x; forall x, ~ P x |- forall x, Q x.
+  proof.
+  qed.

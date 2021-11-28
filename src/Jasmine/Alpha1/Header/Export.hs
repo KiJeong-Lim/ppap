@@ -1,8 +1,13 @@
 module Jasmine.Alpha1.Header.Export
-    ( SrcPos
+    ( SrcRow
+    , SrcCol
+    , SrcPos
     , LargeId
     , SmallId
     , Keyword
+    , ModName
+    , JasminePP
+    , JasminePragma
     , SrcLoc (_BegPos, _EndPos)
     , Unique
     , UniqueT
@@ -18,3 +23,7 @@ import Jasmine.Alpha1.Header.CoreTerm.Read
 import Jasmine.Alpha1.Header.CoreTerm.Show
 import Jasmine.Alpha1.Header.CoreTerm.Util
 import Jasmine.Alpha1.Header.Util
+
+type JasminePP = String
+
+type JasminePragma = String
