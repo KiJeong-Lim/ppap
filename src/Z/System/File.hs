@@ -45,8 +45,8 @@ readFileNow file = do
     callWithStrictArg return (maybe Nothing id tmp)
 
 writeFileNow :: OStreamCargo a => FilePath -> a -> IO Bool
-writeFileNow file my_content = do
-    my_handle <- openFile file WriteMode
+writeFileNow file_dir my_content = do
+    my_handle <- openFile file_dir WriteMode
     my_handle_is_open <- hIsOpen my_handle
     my_handle_is_okay <- if my_handle_is_open then hIsWritable my_handle else return False
     if my_handle_is_okay
