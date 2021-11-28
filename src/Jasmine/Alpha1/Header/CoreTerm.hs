@@ -4,53 +4,27 @@ import Jasmine.Alpha1.Header.Util (LargeId, SmallId, Unique)
 
 type DeBruijn = Int
 
-type SuspEnv z = [SuspItem z]
-
-data Tm
-    = LO_if
-    | LO_true
-    | LO_fail
-    | LO_cut
-    | LO_and
-    | LO_or
-    | LO_imply
-    | LO_forall
-    | LO_exists
-    | UGuardTm
-    | NatLitTm Integer
-    | ChrLitTm Char
-    | PRESBURGER_H
-    | PRESBURGER_C
-    | SPY
+data PrimTerm
+    = TmLoIf
+    | TmLoTrue
+    | TmLoFail
+    | TmLoCut
+    | TmLoAnd
+    | TmLoOr
+    | TmLoImply
+    | TmLoForall
+    | TmLoExists
+    | TmWcard
+    | TmGuard
+    | TmNatLit Integer
+    | TmChrLit Char
+    | TmPresburgerH
+    | TmPresburgerC
+    | TmSPY
     deriving (Eq, Ord, Show)
 
-data Ty
+data PrimType
     = TyArrow
     | TyType
-    deriving (Eq, Ord, Show)
-
-data LogicVar z
-    = NamedLV (SmallId)
-    | AnonyLV (Unique)
-    deriving (Eq, Ord, Show)
-
-data CoreData z
-    = DtConstr (SmallId)
-    | DtUnique (Unique)
-    | PrimOper (z)
-    deriving (Eq, Ord, Show)
-
-data CoreTerm z
-    = NIdxTm (DeBruijn)
-    | NIApTm (CoreTerm z) (CoreTerm Tm)
-    | NTApTm (CoreTerm z) (CoreTerm Ty)
-    | NAbsTm (CoreTerm z)
-    | NConTm (CoreData z)
-    | LVarTm (LogicVar z)
-    | SupsTm { _susp_body :: CoreTerm z, _ol :: Int, _nl :: Int, _susp_env :: SuspEnv z }
-    deriving (Eq, Ord, Show)
-
-data SuspItem z
-    = DummyIt (Int)
-    | BindsIt (CoreTerm z) (Int)
+    | TyProp
     deriving (Eq, Ord, Show)
