@@ -1,20 +1,4 @@
-module Jasmine.Alpha1.Header.Util
-    ( SrcRow
-    , SrcCol
-    , SrcPos
-    , LargeId
-    , SmallId
-    , Keyword
-    , ModName
-    , SrcLoc (_BegPos, _EndPos)
-    , Unique
-    , UniqueMakerT
-    , HasSrcLoc (..)
-    , HasAnnotation (..)
-    , GeneratingUniqueMonad (..)
-    , mkSrcLoc
-    , runUniqueMakerT
-    ) where
+module Jasmine.Alpha1.Header.Util where
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -43,6 +27,13 @@ data SrcLoc
         , _EndPos :: SrcPos
         }
     deriving (Eq, Ord)
+
+data Identifier
+    = Identifier
+        { _identifier_module_name :: [ModName]
+        , _identifier_itself_name :: String
+        }
+    deriving (Eq, Ord, Show)
 
 newtype Unique
     = Unique { asInteger :: Integer }
