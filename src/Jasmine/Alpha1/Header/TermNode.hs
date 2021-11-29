@@ -14,33 +14,16 @@ type Nat_ol = SmallNat
 
 type Nat_nl = SmallNat
 
-data Primitives
-    = TmLoIf
-    | TmLoTrue
-    | TmLoFail
-    | TmLoCut
-    | TmLoAnd
-    | TmLoOr
-    | TmLoImply
-    | TmLoForall
-    | TmLoExists
-    | TmWcard
-    | TmGuard
-    | TmSucc
-    | TmNatLit MyNat
-    | TmChrLit Char
-    | TmPresburgerH
-    | TmPresburgerC
-    | SPY
-    | TyBang
-    | TyArrow
-    | TyType
-    | TyProp
+data LogicVar
+    = LogicVar
     deriving (Eq, Ord, Show)
 
-data AtomNode
-    = Uniq Bool Unique
-    | Prim Primitives
+data Constructor
+    = Constructor
+    deriving (Eq, Ord, Show)
+
+data Primitives
+    = Primitives
     deriving (Eq, Ord, Show)
 
 data TermNode
@@ -48,7 +31,9 @@ data TermNode
     | NApp TermNode TermNode
     | NLam TermNode
     | Susp TermNode Nat_ol Nat_nl SuspEnv
-    | Atom AtomNode
+    | LVar LogicVar
+    | NCon Constructor
+    | Prim Primitives
     deriving (Eq, Ord, Show)
 
 data SuspItem
@@ -56,27 +41,20 @@ data SuspItem
     | Binds TermNode SmallNat
     deriving (Eq, Ord, Show)
 
-fromPrim :: Primitives -> TermNode
-fromPrim = callWithStrictArg (Atom . Prim)
+mkLVar :: LogicVar -> TermNode
+mkLVar = callWithStrictArg LVar
 
-mkNatL :: MyNat -> TermNode
-mkNatL = callWithStrictArg (Atom . Prim . TmNatLit)
-
-mkChrL :: Char -> TermNode
-mkChrL = callWithStrictArg (Atom . Prim . TmChrLit)
+mkNCon :: Constructor -> TermNode
+mkNCon = callWithStrictArg NCon
 
 mkNIdx :: DeBruijn -> TermNode
 mkNIdx i = NIdx $! i
 
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (Atom (Prim (TmSucc))) (Atom (Prim (TmNatLit n))) = mkNatL $! succ n
 mkNApp t1 t2 = NApp t1 $! t2
 
 mkNLam :: TermNode -> TermNode
 mkNLam t1 = NLam $! t1
-
-mkAtom :: AtomNode -> TermNode
-mkAtom = callWithStrictArg Atom
 
 mkSusp :: TermNode -> Nat_ol -> Nat_nl -> SuspEnv -> TermNode
 mkSusp t 0 0 [] = t

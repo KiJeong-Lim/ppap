@@ -46,10 +46,10 @@ lensForSuspEnv mapsto = map go where
     go (Dummy l) = mkDummy l
     go (Binds t l) = mkBinds (mapsto t) l
 
-fromLambdaTermMakeTermNode :: LambdaTerm AtomNode -> TermNode
+fromLambdaTermMakeTermNode :: LambdaTerm (Either LogicVar Constructor) -> TermNode
 fromLambdaTermMakeTermNode = go [] where
-    go :: [MyIVar] -> LambdaTerm AtomNode -> TermNode
+    go :: [MyIVar] -> LambdaTerm (Either LogicVar Constructor) -> TermNode
     go ys (Var x) = mkNIdx (fromJust (x `List.elemIndex` ys))
-    go ys (Con c) = mkAtom c
+    go ys (Con c) = either mkLVar mkNCon c
     go ys (App t1 t2) = mkNApp (go ys t1) (go ys t2)
     go ys (Lam y t1) = mkNLam (go (y : ys) t1)

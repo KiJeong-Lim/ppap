@@ -1,6 +1,7 @@
 module Jasmine.Alpha1.Analyzer.Grammar where
 
 import Jasmine.Alpha1.Header.Export
+import Jasmine.Alpha1.Header.Util
 
 data Token
     = T_SmallId SrcLoc SmallId
