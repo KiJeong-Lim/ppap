@@ -17,6 +17,7 @@ data Cause
     | GUARD
     | ByERR
     | OCCUR
+    | ByNaP
     deriving (Eq, Ord, Show)
 
 data Problem

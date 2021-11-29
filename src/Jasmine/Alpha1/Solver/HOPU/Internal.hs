@@ -13,9 +13,6 @@ import Jasmine.Alpha1.Solver.HOPU.Util
 import Z.Algo.Function
 import Z.Utils
 
-updateAtomEnv :: (AtomNode, TermNode) -> AtomEnv -> AtomEnv
-updateAtomEnv = undefined
-
 simplify :: GeneratingUniqueMonad m => [Problem] -> StateT AtomEnv m [Problem]
 simplify [] = return []
 simplify ((lhs :==: rhs) : probs) = do
@@ -58,9 +55,51 @@ simplifyUnificationProblemNApp (t1, ts1) (t2, ts2)
         else return [Delayed ByRew (unviewNApp t1 ts1) (unviewNApp t2 ts2)]
     | t1 == fromPrim TmGuard = return [Delayed GUARD (unviewNApp t1 ts1) (unviewNApp t2 ts2)]
     | t2 == fromPrim TmGuard = return [Delayed GUARD (unviewNApp t2 ts2) (unviewNApp t1 ts1)]
-    | Just x <- getLVar t1 = makeSubstitution x ts1 (unviewNApp t2 ts2)
-    | Just x <- getLVar t2 = makeSubstitution x ts2 (unviewNApp t1 ts1)
+    | Just x <- getLVar t1 = makeSubstitution (x, ts1) (unviewNApp t2 ts2)
+    | Just x <- getLVar t2 = makeSubstitution (x, ts2) (unviewNApp t1 ts1)
     | otherwise = return [Delayed ByERR (unviewNApp t1 ts1) (unviewNApp t2 ts2)]
 
-makeSubstitution :: GeneratingUniqueMonad m => Unique -> [TermNode] -> TermNode -> StateT AtomEnv m [Problem]
-makeSubstitution = undefined
+makeSubstitution :: GeneratingUniqueMonad m => (Unique, [TermNode]) -> TermNode -> StateT AtomEnv m [Problem]
+makeSubstitution (fun, args) rhs
+    | null args
+    = makeSubstitutionFirstOrder fun rhs
+    | (l, t2) <- viewNLam rhs
+    , l > 0
+    = makeSubstitution (fun, map (liftLam l) args ++ map mkNIdx [l - 1, l - 2 .. 0]) t2
+    | (fun', params) <- viewNApp rhs
+    , mkLVar fun == fun'
+    = do
+        env <- get
+        if isPattern (logicvar fun) args env
+            then do
+                uni <- getNewUnique
+                let n = length args - 1
+                    ts = [ mkNIdx (n - i) | i <- [0, 1 .. n], args !! i == params !! i ]
+                    t = mkLVar uni
+                makeSubstitutionFirstOrder fun (unviewNLam (length args) (unviewNApp t ts))
+            else return [Delayed ByNaP (unviewNApp (mkLVar fun) args) rhs]
+    | otherwise
+    = do
+        env <- get
+        if isPattern (logicvar fun) args env
+            then do
+                body <- bindsTo fun args rhs 0
+                makeSubstitutionFirstOrder fun (unviewNLam (length args) body)
+            else return [Delayed ByNaP (unviewNApp (mkLVar fun) args) rhs]
+
+makeSubstitutionFirstOrder :: GeneratingUniqueMonad m => Unique -> TermNode -> StateT AtomEnv m [Problem]
+makeSubstitutionFirstOrder var rhs
+    | mkLVar var == rhs = return []
+    | logicvar var `Set.member` collectAtoms rhs = return [Delayed OCCUR (mkLVar var) rhs]
+    | otherwise = do
+        env <- get
+        put (Map.alter (Just . maybe (AtomInfo { _scope_lv = getNewScope env maxBound, _eval_ref = Just rhs, _type_ref = Nothing }) (\info -> info { _scope_lv = getNewScope env (_scope_lv info) })) var env)
+        case Map.lookup var env of
+            Nothing -> return []
+            Just info -> simplify (maybe [] (\lhs -> [lhs :==: rhs]) (_eval_ref info))
+    where
+        getNewScope :: AtomEnv -> ScopeLevel -> ScopeLevel
+        getNewScope env old_one = List.foldl' min old_one (map (getScopeLevel env) (Set.toAscList (collectAtoms rhs)))
+
+bindsTo :: GeneratingUniqueMonad m => Unique -> [TermNode] -> TermNode -> SmallNat -> StateT AtomEnv m TermNode
+bindsTo = undefined

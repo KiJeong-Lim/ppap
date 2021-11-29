@@ -48,7 +48,9 @@ module Jasmine.Alpha1.Header.Export
     -- Jasmine.Alpha1.Header.Export
     , JasminePP
     , JasminePragma
+    , ScopeLevel
     , AtomEnv
+    , SmallNat
     , AtomInfo (..)
     , mkLVar
     , mkNCon
@@ -58,7 +60,10 @@ module Jasmine.Alpha1.Header.Export
     , viewNApp
     , liftLam
     , flatten
+    , collectAtoms
     , getScopeLevel
+    , logicvar
+    , constructor
     ) where
 
 import qualified Data.List as List
@@ -77,19 +82,21 @@ type JasminePragma = String
 
 type AtomEnv = Map.Map Unique AtomInfo
 
+type ScopeLevel = SmallNat
+
 data AtomInfo
     = AtomInfo
         { _type_ref :: Maybe TermNode
         , _eval_ref :: Maybe TermNode
-        , _scope_lv :: SmallNat
+        , _scope_lv :: ScopeLevel
         }
     deriving (Show)
 
 mkLVar :: Unique -> TermNode
-mkLVar = callWithStrictArg (Atom . Uniq False)
+mkLVar = callWithStrictArg (Atom . logicvar)
 
 mkNCon :: Unique -> TermNode
-mkNCon = callWithStrictArg (Atom . Uniq True)
+mkNCon = callWithStrictArg (Atom . constructor)
 
 unviewNLam :: SmallNat -> TermNode -> TermNode
 unviewNLam nl t = recNat t (const mkNLam) nl
@@ -134,6 +141,12 @@ collectAtoms (NApp t1 t2) = Set.union (collectAtoms t1) (collectAtoms t2)
 collectAtoms (NLam t1) = collectAtoms t1
 collectAtoms (Susp t ol nl env) = collectAtoms (rewriteWithSusp t ol nl env NF)
 
-getScopeLevel :: AtomEnv -> AtomNode -> SmallNat
+getScopeLevel :: AtomEnv -> AtomNode -> ScopeLevel
 getScopeLevel env (Prim pr) = 0
 getScopeLevel env (Uniq is_constr uni) = maybe maxBound _scope_lv (Map.lookup uni env)
+
+logicvar :: Unique -> AtomNode
+logicvar = Uniq False
+
+constructor :: Unique -> AtomNode
+constructor = Uniq True
