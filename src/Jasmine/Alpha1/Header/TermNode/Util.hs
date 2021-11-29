@@ -1,5 +1,6 @@
 module Jasmine.Alpha1.Header.TermNode.Util where
 
+import Data.List (foldl')
 import Jasmine.Alpha1.Header.TermNode
 
 data ReduceOption
@@ -19,7 +20,7 @@ rewriteWithSusp (NApp t1 t2) ol nl env option
     = case rewriteWithSusp t1 ol nl env WHNF of
         NLam t -> case t of
             Susp t' ol' nl' (Dummy l : env')
-                | nl' == l -> rewriteWithSusp t' ol' nl' (mkBinds (mkSusp t2 ol nl env) l : env') option
+                | nl' == l -> rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l) : env') option
             t -> rewriteWithSusp t 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
         t1' -> case option of
             NF -> mkNApp (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
@@ -41,3 +42,12 @@ rewriteWithSusp t ol nl env option
 
 rewrite :: ReduceOption -> TermNode -> TermNode
 rewrite option t = rewriteWithSusp t 0 0 [] option
+
+lensForSuspEnv :: (TermNode -> TermNode) -> SuspEnv -> SuspEnv
+lensForSuspEnv mapsto = map go where
+    go :: SuspItem -> SuspItem
+    go (Dummy l) = mkDummy l
+    go (Binds t l) = mkBinds (mapsto t) l
+
+foldlNApp :: TermNode -> [TermNode] -> TermNode
+foldlNApp = foldl' mkNApp

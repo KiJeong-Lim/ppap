@@ -87,8 +87,8 @@ isRigid (TempAN is_rigid _) = is_rigid
 isRigid (NameAN is_rigid _) = is_rigid
 isRigid (PrimAN _) = True
 
-unNApp :: TermNode -> (TermNode, [TermNode])
-unNApp = flip go [] where
+unfoldlNApp :: TermNode -> (TermNode, [TermNode])
+unfoldlNApp = flip go [] where
     go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
     go (Atom (PrimAN (TmNatLit n))) ts = if n == 0 then (mkNatL 0, ts) else (fromPrim TmSucc, mkNatL (pred n) : ts)
     go (NApp t1 t2) ts = go t1 (t2 : ts)

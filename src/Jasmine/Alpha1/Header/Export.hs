@@ -21,13 +21,27 @@ module Jasmine.Alpha1.Header.Export
     , AtomNode (..)
     , TermNode (..)
     , SuspItem (..)
+    , ReduceOption (..)
     , mkSrcLoc
     , runUniqueMakerT
+    , fromPrim
+    , mkNatL
+    , mkChrL
+    , mkNIdx
+    , mkNApp
+    , mkNLam
+    , mkSusp
+    , mkBinds
+    , mkDummy
     , isRigid
+    , unfoldlNApp
+    , rewriteWithSusp
+    , rewrite
+    , lensForSuspEnv
+    , foldlNApp
     ) where
 
 import Jasmine.Alpha1.Header.TermNode
-import Jasmine.Alpha1.Header.TermNode.Read
 import Jasmine.Alpha1.Header.TermNode.Show
 import Jasmine.Alpha1.Header.TermNode.Util
 import Jasmine.Alpha1.Header.Util
