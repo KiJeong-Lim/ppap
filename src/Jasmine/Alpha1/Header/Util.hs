@@ -51,7 +51,8 @@ data LambdaTerm con
     deriving (Eq, Ord)
 
 data ReduceOption
-    = WHNF
+    = ALPHA
+    | WHNF
     | HNF
     | NF
     deriving (Eq)
@@ -195,5 +196,4 @@ readLambdaTerm = either error id . runPC "<readLambdaTerm>" (pcLambdaTerm 0) whe
         , pcLambdaTerm 1
         ]
     pcLambdaTerm 1 = pure (List.foldl' App) <*> pcLambdaTerm 2 <*> many (consumePC " " *> pcLambdaTerm 2)
-    pcLambdaTerm 2 = (pure Var <*> pcVar) <|> pcLambdaTerm 3
-    pcLambdaTerm _ = (consumePC "(" *> pcLambdaTerm 0 <* consumePC ")")
+    pcLambdaTerm 2 = (pure Var <*> pcVar) <|> (consumePC "(" *> pcLambdaTerm 0 <* consumePC ")")

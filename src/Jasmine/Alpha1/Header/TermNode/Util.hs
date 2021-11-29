@@ -13,7 +13,8 @@ rewriteWithSusp (NIdx i) ol nl env option
         Binds t l -> rewriteWithSusp t 0 (nl - l) [] option
     | otherwise = error "A negative de-bruijn index."
 rewriteWithSusp (NApp t1 t2) ol nl env option
-    = case rewriteWithSusp t1 ol nl env WHNF of
+    | option == ALPHA = mkNApp (rewriteWithSusp t1 ol nl env option) (rewriteWithSusp t2 ol nl env option)
+    | otherwise = case rewriteWithSusp t1 ol nl env WHNF of
         NLam t -> case t of
             Susp t' ol' nl' (Dummy l : env')
                 | nl' == l -> rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l) : env') option
@@ -47,6 +48,18 @@ lensForSuspEnv mapsto = map go where
 
 foldlNApp :: TermNode -> [TermNode] -> TermNode
 foldlNApp = List.foldl' mkNApp
+
+isRigid :: AtomNode -> Bool
+isRigid (TempAN is_rigid _) = is_rigid
+isRigid (NameAN is_rigid _) = is_rigid
+isRigid (PrimAN _) = True
+
+unfoldlNApp :: TermNode -> (TermNode, [TermNode])
+unfoldlNApp = flip go [] where
+    go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
+    go (Atom (PrimAN (TmNatLit n))) ts = if n > 0 then (fromPrim TmSucc, mkNatL (pred n) : ts) else (mkNatL 0, ts)
+    go (NApp t1 t2) ts = go t1 (t2 : ts)
+    go t ts = (t, ts)
 
 fromLambdaTermMakeTermNode :: LambdaTerm AtomNode -> TermNode
 fromLambdaTermMakeTermNode = go [] where

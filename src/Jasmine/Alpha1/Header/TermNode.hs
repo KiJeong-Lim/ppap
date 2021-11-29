@@ -63,14 +63,14 @@ mkChrL :: Char -> TermNode
 mkChrL = callWithStrictArg (Atom . PrimAN . TmChrLit)
 
 mkNIdx :: DeBruijn -> TermNode
-mkNIdx i = callWithStrictArg NIdx i
+mkNIdx i = NIdx $! i
 
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (Atom (PrimAN (TmSucc))) (Atom (PrimAN (TmNatLit n))) = callWithStrictArg mkNatL (succ n)
-mkNApp t1 t2 = callWithStrictArg NApp t1 t2
+mkNApp (Atom (PrimAN (TmSucc))) (Atom (PrimAN (TmNatLit n))) = mkNatL $! succ n
+mkNApp t1 t2 = NApp t1 $! t2
 
 mkNLam :: TermNode -> TermNode
-mkNLam t1 = callWithStrictArg NLam t1
+mkNLam t1 = NLam $! t1
 
 mkAtom :: AtomNode -> TermNode
 mkAtom = callWithStrictArg Atom
@@ -80,19 +80,7 @@ mkSusp t 0 0 [] = t
 mkSusp t ol nl env = callWithStrictArg Susp t ol nl env
 
 mkBinds :: TermNode -> Int -> SuspItem
-mkBinds t l = Binds t l
+mkBinds t l = Binds t $! l
 
 mkDummy :: Int -> SuspItem
-mkDummy l = Dummy l
-
-isRigid :: AtomNode -> Bool
-isRigid (TempAN is_rigid _) = is_rigid
-isRigid (NameAN is_rigid _) = is_rigid
-isRigid (PrimAN _) = True
-
-unfoldlNApp :: TermNode -> (TermNode, [TermNode])
-unfoldlNApp = flip go [] where
-    go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
-    go (Atom (PrimAN (TmNatLit n))) ts = if n == 0 then (mkNatL 0, ts) else (fromPrim TmSucc, mkNatL (pred n) : ts)
-    go (NApp t1 t2) ts = go t1 (t2 : ts)
-    go t ts = (t, ts)
+mkDummy l = Dummy $! l
