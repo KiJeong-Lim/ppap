@@ -60,8 +60,7 @@ module Jasmine.Alpha1.Header.Export
     , viewNApp
     , liftLam
     , flatten
-    , collectAtoms
-    , getScopeLevel
+    , collectUniqs
     , logicvar
     , constructor
     ) where
@@ -121,12 +120,13 @@ liftLam :: SmallNat -> TermNode -> TermNode
 liftLam l t = rewriteWithSusp t 0 l [] NF
 
 flatten :: AtomEnv -> TermNode -> TermNode
-flatten env = go . rewrite NF where
+flatten env = rewrite NF . go where
     go :: TermNode -> TermNode
     go (Atom a) = flattenAtom a
     go (NIdx i) = mkNIdx i
     go (NApp t1 t2) = mkNApp (go t1) (go t2)
     go (NLam t1) = mkNLam (go t1)
+    go (Susp t ol nl env) = go (rewriteWithSusp t ol nl env NF)
     flattenAtom :: AtomNode -> TermNode
     flattenAtom a = case a of
         Uniq is_constr uni -> case Map.lookup uni env >>= _eval_ref of
@@ -134,16 +134,17 @@ flatten env = go . rewrite NF where
             Just t -> flatten (Map.delete uni env) t
         _ -> mkAtom a
 
-collectAtoms :: TermNode -> Set.Set AtomNode
-collectAtoms (Atom x) = Set.singleton x
-collectAtoms (NIdx i) = Set.empty
-collectAtoms (NApp t1 t2) = Set.union (collectAtoms t1) (collectAtoms t2)
-collectAtoms (NLam t1) = collectAtoms t1
-collectAtoms (Susp t ol nl env) = collectAtoms (rewriteWithSusp t ol nl env NF)
-
-getScopeLevel :: AtomEnv -> AtomNode -> ScopeLevel
-getScopeLevel env (Prim pr) = 0
-getScopeLevel env (Uniq is_constr uni) = maybe maxBound _scope_lv (Map.lookup uni env)
+collectUniqs :: TermNode -> Set.Set Unique
+collectUniqs = flip go Set.empty where
+    fromAtom :: AtomNode -> Set.Set Unique -> Set.Set Unique
+    fromAtom (Uniq _ uni) = Set.insert uni
+    fromAtom _ = id
+    go :: TermNode -> Set.Set Unique -> Set.Set Unique
+    go (Atom x) = fromAtom x
+    go (NIdx i) = id
+    go (NApp t1 t2) = go t1 . go t2
+    go (NLam t1) = go t1
+    go (Susp t ol nl env) = go (rewriteWithSusp t ol nl env NF)
 
 logicvar :: Unique -> AtomNode
 logicvar = Uniq False

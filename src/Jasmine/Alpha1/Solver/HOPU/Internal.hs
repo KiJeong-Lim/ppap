@@ -3,6 +3,7 @@ module Jasmine.Alpha1.Solver.HOPU.Internal where
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State.Strict
 import Data.Function
 import qualified Data.List as List
@@ -12,6 +13,8 @@ import Jasmine.Alpha1.Header.Export
 import Jasmine.Alpha1.Solver.HOPU.Util
 import Z.Algo.Function
 import Z.Utils
+
+infix 2 <==
 
 simplify :: GeneratingUniqueMonad m => [Problem] -> StateT AtomEnv m [Problem]
 simplify [] = return []
@@ -70,27 +73,33 @@ makeSubstitution (fun, args) rhs
     , mkLVar fun == fun'
     = do
         env <- get
-        if isPattern (logicvar fun) args env
+        let var = logicvar fun
+        if runReader (isPatternWRT args var) env
             then do
-                uni <- getNewUnique
+                t <- getNewAtom (getScopeLevel env var)
                 let n = length args - 1
-                    ts = [ mkNIdx (n - i) | i <- [0, 1 .. n], args !! i == params !! i ]
-                    t = mkLVar uni
-                makeSubstitutionFirstOrder fun (unviewNLam (length args) (unviewNApp t ts))
+                    body = unviewNApp t [ mkNIdx (n - i) | i <- [0, 1 .. n], args !! i == params !! i ]
+                makeSubstitutionFirstOrder fun (unviewNLam (length args) body)
             else return [Delayed ByNaP (unviewNApp (mkLVar fun) args) rhs]
     | otherwise
     = do
         env <- get
-        if isPattern (logicvar fun) args env
+        if runReader (isPatternWRT args (logicvar fun)) env
             then do
-                body <- bindsTo fun args rhs 0
-                makeSubstitutionFirstOrder fun (unviewNLam (length args) body)
+                env <- get
+                res <- lift (runExceptT (runStateT ((fun, args) <== rhs) env))
+                case res of
+                    Left err_cause -> return [Delayed err_cause (unviewNApp (mkLVar fun) args) rhs]
+                    Right ((body, new_probs), env') -> do
+                        put env'
+                        probs <- makeSubstitutionFirstOrder fun (unviewNLam (length args) body)
+                        return (new_probs ++ probs)
             else return [Delayed ByNaP (unviewNApp (mkLVar fun) args) rhs]
 
 makeSubstitutionFirstOrder :: GeneratingUniqueMonad m => Unique -> TermNode -> StateT AtomEnv m [Problem]
 makeSubstitutionFirstOrder var rhs
     | mkLVar var == rhs = return []
-    | logicvar var `Set.member` collectAtoms rhs = return [Delayed OCCUR (mkLVar var) rhs]
+    | var `Set.member` collectUniqs rhs = return [Delayed OCCUR (mkLVar var) rhs]
     | otherwise = do
         env <- get
         put (Map.alter (Just . maybe (AtomInfo { _scope_lv = getNewScope env maxBound, _eval_ref = Just rhs, _type_ref = Nothing }) (\info -> info { _scope_lv = getNewScope env (_scope_lv info) })) var env)
@@ -99,7 +108,72 @@ makeSubstitutionFirstOrder var rhs
             Just info -> simplify (maybe [] (\lhs -> [lhs :==: rhs]) (_eval_ref info))
     where
         getNewScope :: AtomEnv -> ScopeLevel -> ScopeLevel
-        getNewScope env old_one = List.foldl' min old_one (map (getScopeLevel env) (Set.toAscList (collectAtoms rhs)))
+        getNewScope env old_one = callWithStrictArg (maybe old_one id . Set.lookupMin) (Set.map (maybe maxBound _scope_lv . flip Map.lookup env) (collectUniqs rhs))
 
-bindsTo :: GeneratingUniqueMonad m => Unique -> [TermNode] -> TermNode -> SmallNat -> StateT AtomEnv m TermNode
-bindsTo = undefined
+(<==) :: GeneratingUniqueMonad m => (Unique, [TermNode]) -> TermNode -> StateT AtomEnv (ExceptT Cause m) (TermNode, [Problem])
+(<==) = uncurry (go 0) where
+    dispatch :: GeneratingUniqueMonad m => SmallNat -> Unique -> [TermNode] -> TermNode -> StateT AtomEnv (ExceptT Cause m) (TermNode, [Problem])
+    dispatch l fun args rhs
+        | (l', rhs') <- viewNLam rhs
+        , l' > 0
+        = do
+            (body, probs) <- go (l + l') fun args rhs'
+            return (unviewNLam l' body, probs)
+        | (t', ts') <- viewNApp rhs
+        , isRigid t'
+        = do
+            env <- get
+            t <- getNewHead env (logicvar fun) t' ([ rewriteWithSusp arg 0 l [] NF | arg <- args ] ++ map mkNIdx [l - 1, l - 2 .. 0])
+            (ts, probs) <- getNewTail l fun args ts'
+            return (unviewNApp t ts, probs)
+        | (t', args') <- viewNApp rhs
+        , Just fun' <- getLVar t'
+        = if fun == fun'
+            then lift (throwE OCCUR)
+            else do
+                env <- get
+                if runReader (isPatternWRT args' (logicvar fun')) env
+                    then flexflex env (fun, map (liftLam l) args ++ map mkNIdx [l - 1, l - 2 .. 0]) (fun', args')
+                    else lift (throwE ByNaP)
+        | otherwise
+        = lift (throwE ByERR)
+    getNewHead :: GeneratingUniqueMonad m => AtomEnv -> AtomNode -> TermNode -> [TermNode] -> StateT AtomEnv (ExceptT Cause m) TermNode
+    getNewHead env v t params
+        | Atom c <- t
+        , getScopeLevel env v >= getScopeLevel env c
+        = return t
+        | Just i <- t `List.elemIndex` params
+        = return (mkNIdx (length params - 1 - i))
+        | otherwise
+        = lift (throwE NotFR)
+    getNewTail :: GeneratingUniqueMonad m => SmallNat -> Unique -> [TermNode] -> [TermNode] -> StateT AtomEnv (ExceptT Cause m) ([TermNode], [Problem])
+    getNewTail l fun args [] = return ([], [])
+    getNewTail l fun args (t : ts) = do
+        (t', probs) <- go l fun args t
+        (ts', new_probs) <- getNewTail l fun args ts
+        return (t' : ts', probs ++ new_probs)
+    flexflex :: GeneratingUniqueMonad m => AtomEnv -> (Unique, [TermNode]) -> (Unique, [TermNode]) -> StateT AtomEnv (ExceptT Cause m) (TermNode, [Problem])
+    flexflex env (fun, args) (fun', args') = do
+        let var = logicvar fun
+            var' = logicvar fun'
+            scope_compare = getScopeLevel env var `compare` getScopeLevel env var'
+            common_args = Set.toList (Set.fromList args `Set.intersection` Set.fromList args')
+            selecteds = fromJust (if scope_compare == LT then runReaderT (args `up` var') env else runReaderT (args' `up` var) env)
+        (lhs_inner, rhs_inner) <- case scope_compare of
+            LT -> return (fromJust (selecteds `down` args), selecteds)
+            ge -> return (selecteds, fromJust (selecteds `down` args'))
+        let lhs_outer = fromJust (common_args `down` args)
+            rhs_outer = fromJust (common_args `down` args')
+        t <- getNewAtom (getScopeLevel env var)
+        probs <- makeSubstitutionFirstOrder fun' (unviewNLam (length args') (unviewNApp t (rhs_inner ++ rhs_outer)))
+        return (unviewNApp t (lhs_inner ++ lhs_outer), probs)
+    go :: GeneratingUniqueMonad m => SmallNat -> Unique -> [TermNode] -> TermNode -> StateT AtomEnv (ExceptT Cause m) (TermNode, [Problem])
+    go l fun args rhs = do
+        env <- get
+        dispatch l fun (map (flatten env) args) (flatten env rhs)
+
+getNewAtom :: GeneratingUniqueMonad m => ScopeLevel -> StateT AtomEnv m TermNode
+getNewAtom lv = do
+    h <- getNewUnique
+    modify (Map.insert h (AtomInfo { _scope_lv = lv, _eval_ref = Nothing, _type_ref = Nothing }))
+    return (mkLVar h)
