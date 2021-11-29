@@ -1,11 +1,17 @@
 module Jasmine.Alpha1.Header.Util where
 
+import Control.Applicative
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Data.Function
+import qualified Data.List as List
+import qualified Data.Set as Set
+import Y.Base
+import Z.Algo.Function (MyNat)
 import Z.Text.Doc
+import Z.Text.PC
 
 type SrcRow = Int
 
@@ -21,6 +27,8 @@ type Keyword = String
 
 type ModName = String
 
+type MyIVar = MyNat
+
 data SrcLoc
     = SrcLoc
         { _BegPos :: SrcPos
@@ -34,6 +42,19 @@ data Identifier
         , _identifier_itself_name :: String
         }
     deriving (Eq, Ord, Show)
+
+data LambdaTerm con
+    = Var (MyIVar)
+    | Con (con)
+    | App (LambdaTerm con) (LambdaTerm con)
+    | Lam (MyIVar) (LambdaTerm con)
+    deriving (Eq, Ord)
+
+data ReduceOption
+    = WHNF
+    | HNF
+    | NF
+    deriving (Eq)
 
 newtype Unique
     = Unique { asInteger :: Integer }
@@ -98,8 +119,81 @@ instance Monad m => GeneratingUniqueMonad (UniqueMakerT m) where
         n' `seq` put n'
         return (Unique { asInteger = n' })
 
+instance Show con => Show (LambdaTerm con) where
+    showsPrec prec = dispatch where
+        myPrecIs :: Int -> ShowS -> ShowS
+        myPrecIs prec' ss = if prec > prec' then strstr "(" . ss . strstr ")" else ss
+        showsVar :: MyIVar -> ShowS
+        showsVar x = strstr "x" . shows x
+        dispatch :: Show con => LambdaTerm con -> ShowS
+        dispatch (Var x) = showsVar x
+        dispatch (Con c) = shows c
+        dispatch (App t1 t2) = myPrecIs 10 $ showsPrec 10 t1 . strstr " " . showsPrec 11 t2
+        dispatch (Lam y t1) = myPrecIs 0 $ strstr "\\" . showsVar y . strstr " -> " . showsPrec 0 t1
+
+instance Functor (LambdaTerm) where
+    fmap modify_c (Var x) = Var x
+    fmap modify_c (Con c) = Con (modify_c c)
+    fmap modify_c (App t1 t2) = App (fmap modify_c t1) (fmap modify_c t2)
+    fmap modify_c (Lam y t1) = Lam y (fmap modify_c t1)
+
 mkSrcLoc :: SrcPos -> SrcPos -> SrcLoc
 mkSrcLoc pos1 pos2 = if pos1 < pos2 then SrcLoc { _BegPos = pos1, _EndPos = pos2 } else SrcLoc { _BegPos = pos2, _EndPos = pos1 }
 
 runUniqueMakerT :: Functor m => UniqueMakerT m a -> m a
 runUniqueMakerT = fmap fst . flip runStateT 0 . unUniqueMakerT
+
+getFVsOfLambdaTerm :: LambdaTerm con -> Set.Set MyIVar
+getFVsOfLambdaTerm = flip go Set.empty where
+    go :: LambdaTerm con -> Set.Set MyIVar -> Set.Set MyIVar
+    go (Var x) = Set.insert x
+    go (Con c) = id
+    go (App t1 t2) = go t1 . go t2
+    go (Lam y t1) = Set.union (y `Set.delete` getFVsOfLambdaTerm t1)
+
+substituteLambdaTerm :: [(MyIVar, LambdaTerm con)] -> LambdaTerm con -> LambdaTerm con
+substituteLambdaTerm = flip substitute . foldr conssubst nilsubst where
+    chi :: (MyIVar -> LambdaTerm con) -> LambdaTerm con -> MyIVar
+    chi sigma = succ . List.foldl' max 0 . Set.toAscList . Set.unions . Set.map (getFVsOfLambdaTerm . sigma) . getFVsOfLambdaTerm
+    nilsubst :: (MyIVar -> LambdaTerm con)
+    nilsubst = Var
+    conssubst :: (MyIVar, LambdaTerm con) -> (MyIVar -> LambdaTerm con) -> (MyIVar -> LambdaTerm con)
+    conssubst (z, t) sigma x = if z == x then t else sigma x
+    substitute :: LambdaTerm con -> (MyIVar -> LambdaTerm con) -> LambdaTerm con
+    substitute (Var x) = substituteVar x
+    substitute (Con c) = substituteCon c
+    substitute (App t1 t2) = substituteApp t1 t2
+    substitute t = substituteLam t <*> flip chi t
+    substituteVar :: MyIVar -> (MyIVar -> LambdaTerm con) -> LambdaTerm con
+    substituteVar = (&)
+    substituteCon :: con -> (MyIVar -> LambdaTerm con) -> LambdaTerm con
+    substituteCon = pure . Con
+    substituteApp :: LambdaTerm con -> LambdaTerm con -> (MyIVar -> LambdaTerm con) -> LambdaTerm con
+    substituteApp t1 t2 = pure App <*> substitute t1 <*> substitute t2
+    substituteLam :: LambdaTerm con -> (MyIVar -> LambdaTerm con) -> MyIVar -> LambdaTerm con
+    substituteLam (Lam y t1) sigma z = Lam z (substitute t1 (conssubst (y, Var z) sigma))
+
+evalLambdaTerm :: ReduceOption -> LambdaTerm con -> LambdaTerm con
+evalLambdaTerm option (App (Lam y t1) t2) = evalLambdaTerm option (substituteLambdaTerm [(y, t2)] t1)
+evalLambdaTerm option (Var x) = Var x
+evalLambdaTerm option (Con c) = Con c
+evalLambdaTerm option (App t1 t2) = App (evalLambdaTerm option t1) (if option == NF then evalLambdaTerm option t2 else t2)
+evalLambdaTerm option (Lam y t1) = if option == WHNF then Lam y t1 else Lam y (evalLambdaTerm option t1)
+
+readLambdaTerm :: String -> LambdaTerm con
+readLambdaTerm = either error id . runPC "<readLambdaTerm>" (pcLambdaTerm 0) where
+    pcVar :: PC MyIVar
+    pcVar = consumePC "x" *> (pure read <*> regexPC "['0'-'9'] + ['1'-'9'] ['0'-'9']+")
+    pcLambdaTerm :: Int -> PC (LambdaTerm con)
+    pcLambdaTerm 0 = mconcat
+        [ do
+            consumePC "\\"
+            y <- pcVar
+            consumePC " -> "
+            t1 <- pcLambdaTerm 0
+            return (Lam y t1)
+        , pcLambdaTerm 1
+        ]
+    pcLambdaTerm 1 = pure (List.foldl' App) <*> pcLambdaTerm 2 <*> many (consumePC " " *> pcLambdaTerm 2)
+    pcLambdaTerm 2 = (pure Var <*> pcVar) <|> pcLambdaTerm 3
+    pcLambdaTerm _ = (consumePC "(" *> pcLambdaTerm 0 <* consumePC ")")

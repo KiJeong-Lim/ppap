@@ -1,13 +1,9 @@
 module Jasmine.Alpha1.Header.TermNode.Util where
 
-import Data.List (foldl')
+import qualified Data.List as List
 import Jasmine.Alpha1.Header.TermNode
-
-data ReduceOption
-    = WHNF
-    | HNF
-    | NF
-    deriving (Eq)
+import Jasmine.Alpha1.Header.Util
+import Z.Algo.Function
 
 rewriteWithSusp :: TermNode -> Nat_ol -> Nat_nl -> SuspEnv -> ReduceOption -> TermNode
 rewriteWithSusp (NIdx i) ol nl env option
@@ -50,4 +46,12 @@ lensForSuspEnv mapsto = map go where
     go (Binds t l) = mkBinds (mapsto t) l
 
 foldlNApp :: TermNode -> [TermNode] -> TermNode
-foldlNApp = foldl' mkNApp
+foldlNApp = List.foldl' mkNApp
+
+fromLambdaTermMakeTermNode :: LambdaTerm AtomNode -> TermNode
+fromLambdaTermMakeTermNode = go [] where
+    go :: [MyIVar] -> LambdaTerm AtomNode -> TermNode
+    go ys (Var x) = mkNIdx (fromJust (x `List.elemIndex` ys))
+    go ys (Con c) = mkAtom c
+    go ys (App t1 t2) = mkNApp (go ys t1) (go ys t2)
+    go ys (Lam y t1) = mkNLam (go (y : ys) t1)

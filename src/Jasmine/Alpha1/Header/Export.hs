@@ -12,6 +12,7 @@ module Jasmine.Alpha1.Header.Export
     , JasminePragma
     , SrcLoc (_BegPos, _EndPos)
     , Identifier (..)
+    , LambdaTerm (..)
     , Unique
     , UniqueMakerT
     , HasSrcLoc (..)
@@ -39,6 +40,10 @@ module Jasmine.Alpha1.Header.Export
     , rewrite
     , lensForSuspEnv
     , foldlNApp
+    , substituteLambdaTerm
+    , getFVsOfLambdaTerm
+    , readLambdaTerm
+    , fromLambdaTermMakeTermNode
     ) where
 
 import Jasmine.Alpha1.Header.TermNode

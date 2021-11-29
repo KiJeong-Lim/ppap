@@ -2,12 +2,23 @@ module Jasmine.Alpha1.Header.TermNode.Test where
 
 import Jasmine.Alpha1.Header.TermNode
 import Jasmine.Alpha1.Header.TermNode.Util
+import Jasmine.Alpha1.Header.Util
 
-getTermNodeUnit :: Int -> TermNode
-getTermNodeUnit 0 = mkNLam (mkNApp (mkNLam (mkNIdx 0)) (mkNIdx 0))
-getTermNodeUnit 1 = mkNLam (mkNApp (mkNLam (mkNApp (mkNIdx 0) (mkNIdx 0))) (mkNIdx 0))
-getTermNodeUnit 2 = mkNLam (mkNLam (mkNApp (mkNLam (mkNApp (mkNIdx 0) (mkNIdx 2))) (mkNIdx 1)))
+getTermNodeUnit :: Int -> String
+getTermNodeUnit 0 = "\\x1 -> x1 x1"
+getTermNodeUnit 1 = "\\x1 -> (\\x2 -> x2 x2) x1"
+getTermNodeUnit 2 = "\\x1 -> \\x2 -> (\\x3 -> x3 x1) x2"
 getTermNodeUnit _ = undefined
 
 rewriteTest :: Int -> IO ()
-rewriteTest = print . rewrite NF . getTermNodeUnit
+rewriteTest object_no = do
+    let object_rep = getTermNodeUnit object_no
+        object = readLambdaTerm object_rep
+        eval1 = fromLambdaTermMakeTermNode . evalLambdaTerm NF
+        eval2 = rewrite NF . fromLambdaTermMakeTermNode
+        object1 = eval1 object
+        object2 = eval2 object
+    putStrLn (if object1 == object2 then ">>> Test passed:" else ">>> Test failed:")
+    putStrLn ("    EVAL1[ " ++ object_rep ++ " ] = " ++ shows object1 "")
+    putStrLn ("    EVAL2[ " ++ object_rep ++ " ] = " ++ shows object2 "")
+    return ()

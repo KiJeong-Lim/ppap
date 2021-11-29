@@ -72,6 +72,9 @@ mkNApp t1 t2 = callWithStrictArg NApp t1 t2
 mkNLam :: TermNode -> TermNode
 mkNLam t1 = callWithStrictArg NLam t1
 
+mkAtom :: AtomNode -> TermNode
+mkAtom = callWithStrictArg Atom
+
 mkSusp :: TermNode -> Nat_ol -> Nat_nl -> SuspEnv -> TermNode
 mkSusp t 0 0 [] = t
 mkSusp t ol nl env = callWithStrictArg Susp t ol nl env
