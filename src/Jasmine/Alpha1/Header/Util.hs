@@ -39,7 +39,7 @@ data SrcLoc
 data Identifier
     = Identifier
         { _identifier_module_name :: [ModName]
-        , _identifier_itself_name :: String
+        , _identifier_itself_name :: Unique
         }
     deriving (Eq, Ord, Show)
 

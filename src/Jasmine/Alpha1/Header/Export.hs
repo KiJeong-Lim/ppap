@@ -1,4 +1,5 @@
 module Jasmine.Alpha1.Header.Export
+    -- Jasmine.Alpha1.Header.Util
     ( SrcRow
     , SrcCol
     , SrcPos
@@ -6,44 +7,51 @@ module Jasmine.Alpha1.Header.Export
     , SmallId
     , Keyword
     , ModName
-    , DeBruijn
-    , SuspEnv
-    , JasminePP
-    , JasminePragma
     , SrcLoc (_BegPos, _EndPos)
     , Identifier (..)
     , LambdaTerm (..)
-    , Unique
+    , ReduceOption (..)
+    , Unique (asInteger)
     , UniqueMakerT
     , HasSrcLoc (..)
     , HasAnnotation (..)
     , GeneratingUniqueMonad (..)
+    , mkSrcLoc
+    , runUniqueMakerT
+    , getFVsOfLambdaTerm
+    , substituteLambdaTerm
+    , evalLambdaTerm
+    , readLambdaTerm
+    -- Jasmine.Alpha1.Header.TermNode
+    , DeBruijn
+    , SuspEnv
+    , Nat_ol
+    , Nat_nl
     , Primitives (..)
     , AtomNode (..)
     , TermNode (..)
     , SuspItem (..)
-    , ReduceOption (..)
-    , mkSrcLoc
-    , runUniqueMakerT
     , fromPrim
     , mkNatL
     , mkChrL
     , mkNIdx
     , mkNApp
     , mkNLam
+    , mkAtom
     , mkSusp
     , mkBinds
     , mkDummy
-    , isRigid
-    , unfoldlNApp
+    -- Jasmine.Alpha1.Header.TermNode.Util
     , rewriteWithSusp
     , rewrite
     , lensForSuspEnv
     , foldlNApp
-    , substituteLambdaTerm
-    , getFVsOfLambdaTerm
-    , readLambdaTerm
+    , isRigid
+    , unfoldlNApp
     , fromLambdaTermMakeTermNode
+    -- Jasmine.Alpha1.Header.Export
+    , JasminePP
+    , JasminePragma
     ) where
 
 import Jasmine.Alpha1.Header.TermNode
