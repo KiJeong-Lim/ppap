@@ -46,21 +46,6 @@ lensForSuspEnv mapsto = map go where
     go (Dummy l) = mkDummy l
     go (Binds t l) = mkBinds (mapsto t) l
 
-foldlNApp :: TermNode -> [TermNode] -> TermNode
-foldlNApp = List.foldl' mkNApp
-
-isRigid :: AtomNode -> Bool
-isRigid (TempAN is_rigid _) = is_rigid
-isRigid (NameAN is_rigid _) = is_rigid
-isRigid (PrimAN _) = True
-
-unfoldlNApp :: TermNode -> (TermNode, [TermNode])
-unfoldlNApp = flip go [] where
-    go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
-    go (Atom (PrimAN (TmNatLit n))) ts = if n > 0 then (fromPrim TmSucc, mkNatL (pred n) : ts) else (mkNatL 0, ts)
-    go (NApp t1 t2) ts = go t1 (t2 : ts)
-    go t ts = (t, ts)
-
 fromLambdaTermMakeTermNode :: LambdaTerm AtomNode -> TermNode
 fromLambdaTermMakeTermNode = go [] where
     go :: [MyIVar] -> LambdaTerm AtomNode -> TermNode

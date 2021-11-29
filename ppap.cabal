@@ -84,6 +84,7 @@ executable ppap
     Jasmine.Alpha1.Header.Util
     Jasmine.Alpha1.Solver.HOPU.Internal
     Jasmine.Alpha1.Solver.HOPU.Test
+    Jasmine.Alpha1.Solver.HOPU.Util
     Jasmine.Alpha1.Solver.Presburger.Internal
     Jasmine.Alpha1.Solver.Presburger.Test
     Jasmine.Alpha1.Solver.HOPU

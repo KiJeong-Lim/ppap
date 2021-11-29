@@ -1,15 +1,18 @@
 module Jasmine.Alpha1.Header.TermNode where
 
-import Jasmine.Alpha1.Header.Util (LargeId, SmallId, Identifier, Unique)
+import Jasmine.Alpha1.Header.Util (LargeId, SmallId, Unique)
+import Z.Algo.Function
 import Z.Utils
 
-type DeBruijn = Int
+type SmallNat = Int
+
+type DeBruijn = SmallNat
 
 type SuspEnv = [SuspItem]
 
-type Nat_ol = Int
+type Nat_ol = SmallNat
 
-type Nat_nl = Int
+type Nat_nl = SmallNat
 
 data Primitives
     = TmLoIf
@@ -24,20 +27,20 @@ data Primitives
     | TmWcard
     | TmGuard
     | TmSucc
-    | TmNatLit Integer
+    | TmNatLit MyNat
     | TmChrLit Char
     | TmPresburgerH
     | TmPresburgerC
     | SPY
+    | TyBang
     | TyArrow
     | TyType
     | TyProp
     deriving (Eq, Ord, Show)
 
 data AtomNode
-    = TempAN Bool Unique
-    | NameAN Bool Identifier
-    | PrimAN Primitives
+    = Uniq Bool Unique
+    | Prim Primitives
     deriving (Eq, Ord, Show)
 
 data TermNode
@@ -49,24 +52,24 @@ data TermNode
     deriving (Eq, Ord, Show)
 
 data SuspItem
-    = Dummy Int
-    | Binds TermNode Int
+    = Dummy SmallNat
+    | Binds TermNode SmallNat
     deriving (Eq, Ord, Show)
 
 fromPrim :: Primitives -> TermNode
-fromPrim = callWithStrictArg (Atom . PrimAN)
+fromPrim = callWithStrictArg (Atom . Prim)
 
-mkNatL :: Integer -> TermNode
-mkNatL = callWithStrictArg (Atom . PrimAN . TmNatLit)
+mkNatL :: MyNat -> TermNode
+mkNatL = callWithStrictArg (Atom . Prim . TmNatLit)
 
 mkChrL :: Char -> TermNode
-mkChrL = callWithStrictArg (Atom . PrimAN . TmChrLit)
+mkChrL = callWithStrictArg (Atom . Prim . TmChrLit)
 
 mkNIdx :: DeBruijn -> TermNode
 mkNIdx i = NIdx $! i
 
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (Atom (PrimAN (TmSucc))) (Atom (PrimAN (TmNatLit n))) = mkNatL $! succ n
+mkNApp (Atom (Prim (TmSucc))) (Atom (Prim (TmNatLit n))) = mkNatL $! succ n
 mkNApp t1 t2 = NApp t1 $! t2
 
 mkNLam :: TermNode -> TermNode
@@ -79,8 +82,8 @@ mkSusp :: TermNode -> Nat_ol -> Nat_nl -> SuspEnv -> TermNode
 mkSusp t 0 0 [] = t
 mkSusp t ol nl env = callWithStrictArg Susp t ol nl env
 
-mkBinds :: TermNode -> Int -> SuspItem
+mkBinds :: TermNode -> SmallNat -> SuspItem
 mkBinds t l = Binds t $! l
 
-mkDummy :: Int -> SuspItem
+mkDummy :: SmallNat -> SuspItem
 mkDummy l = Dummy $! l

@@ -36,13 +36,6 @@ data SrcLoc
         }
     deriving (Eq, Ord)
 
-data Identifier
-    = Identifier
-        { _identifier_module_name :: [ModName]
-        , _identifier_itself_name :: Unique
-        }
-    deriving (Eq, Ord, Show)
-
 data LambdaTerm con
     = Var (MyIVar)
     | Con (con)
