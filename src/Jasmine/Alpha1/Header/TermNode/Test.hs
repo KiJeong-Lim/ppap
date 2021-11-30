@@ -14,8 +14,8 @@ rewriteTest :: Int -> IO ()
 rewriteTest object_no = do
     let object_rep = getTermNodeUnit object_no
         object = readLambdaTerm object_rep
-        eval1 = fromLambdaTermMakeTermNode . evalLambdaTerm NF
-        eval2 = rewrite NF . fromLambdaTermMakeTermNode
+        eval1 = toDeBruijn . evalLambdaTerm NF
+        eval2 = rewrite NF . toDeBruijn
         object1 = eval1 object
         object2 = eval2 object
     putStrLn (if object1 == object2 then ">>> Test passed:" else ">>> Test failed:")

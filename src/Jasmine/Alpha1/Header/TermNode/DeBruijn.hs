@@ -40,8 +40,8 @@ rewriteWithSusp t ol nl env option
 rewrite :: ReduceOption -> TermNode -> TermNode
 rewrite option t = rewriteWithSusp t 0 0 [] option
 
-fromLambdaTermMakeTermNode :: LambdaTerm (Either LogicVar Constructor) -> TermNode
-fromLambdaTermMakeTermNode = go [] where
+toDeBruijn :: LambdaTerm (Either LogicVar Constructor) -> TermNode
+toDeBruijn = go [] where
     go :: [MyIVar] -> LambdaTerm (Either LogicVar Constructor) -> TermNode
     go ys (Var x) = mkNIdx (fromJust (x `elemIndex` ys))
     go ys (Con c) = either mkLVar mkNCon c
