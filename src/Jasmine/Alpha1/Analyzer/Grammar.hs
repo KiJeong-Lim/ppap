@@ -4,7 +4,8 @@ import Jasmine.Alpha1.Header.Export
 import Jasmine.Alpha1.Header.Util
 
 data Token
-    = T_SmallId SrcLoc SmallId
+    = T_Keyword SrcLoc Keyword
+    | T_SmallId SrcLoc SmallId
     | T_LargeId SrcLoc LargeId
     | T_Symbol1 SrcLoc SmallId
     | T_Symbol2 SrcLoc LargeId
@@ -31,6 +32,7 @@ data Token
 
 instance HasSrcLoc (Token) where
     getSrcLoc tok = case tok of
+        T_Keyword loc _ -> loc
         T_SmallId loc _ -> loc
         T_LargeId loc _ -> loc
         T_Symbol1 loc _ -> loc

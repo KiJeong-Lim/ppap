@@ -319,9 +319,3 @@ destiny = maybe False id . tryEvalFormula where
     tryEvalFormula _ = Nothing
 
 ```
-
-### How it works?
-
-### References
-
-1. `Fundamentals of Mathematical Logic` by `Peter G. Hinman`

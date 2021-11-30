@@ -1,6 +1,6 @@
-module Jasmine.Alpha1.Header.TermNode.Util where
+module Jasmine.Alpha1.Header.TermNode.DeBruijn where
 
-import qualified Data.List as List
+import Data.List (elemIndex)
 import Jasmine.Alpha1.Header.TermNode
 import Jasmine.Alpha1.Header.Util
 import Z.Algo.Function
@@ -40,16 +40,10 @@ rewriteWithSusp t ol nl env option
 rewrite :: ReduceOption -> TermNode -> TermNode
 rewrite option t = rewriteWithSusp t 0 0 [] option
 
-lensForSuspEnv :: (TermNode -> TermNode) -> SuspEnv -> SuspEnv
-lensForSuspEnv mapsto = map go where
-    go :: SuspItem -> SuspItem
-    go (Dummy l) = mkDummy l
-    go (Binds t l) = mkBinds (mapsto t) l
-
 fromLambdaTermMakeTermNode :: LambdaTerm (Either LogicVar Constructor) -> TermNode
 fromLambdaTermMakeTermNode = go [] where
     go :: [MyIVar] -> LambdaTerm (Either LogicVar Constructor) -> TermNode
-    go ys (Var x) = mkNIdx (fromJust (x `List.elemIndex` ys))
+    go ys (Var x) = mkNIdx (fromJust (x `elemIndex` ys))
     go ys (Con c) = either mkLVar mkNCon c
     go ys (App t1 t2) = mkNApp (go ys t1) (go ys t2)
     go ys (Lam y t1) = mkNLam (go (y : ys) t1)

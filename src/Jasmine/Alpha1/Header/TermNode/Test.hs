@@ -1,7 +1,7 @@
 module Jasmine.Alpha1.Header.TermNode.Test where
 
 import Jasmine.Alpha1.Header.TermNode
-import Jasmine.Alpha1.Header.TermNode.Util
+import Jasmine.Alpha1.Header.TermNode.DeBruijn
 import Jasmine.Alpha1.Header.Util
 
 getTermNodeUnit :: Int -> String

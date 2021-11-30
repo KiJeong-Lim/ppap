@@ -1,7 +1,6 @@
-module Jasmine.Alpha1.Header.TermNode.Show where
+module Jasmine.Alpha1.Header.TermNode.Render where
 
 import Jasmine.Alpha1.Header.TermNode
-import Jasmine.Alpha1.Header.TermNode.Util
 import Jasmine.Alpha1.Header.Util
 import Z.Utils
 

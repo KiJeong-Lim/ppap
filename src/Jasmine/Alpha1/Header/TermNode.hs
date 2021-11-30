@@ -1,6 +1,9 @@
 module Jasmine.Alpha1.Header.TermNode where
 
-import Jasmine.Alpha1.Header.Util (LargeId, SmallId, Unique)
+import qualified Data.List as List
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
+import Jasmine.Alpha1.Header.Util
 import Z.Algo.Function
 import Z.Utils
 
@@ -14,16 +17,33 @@ type Nat_ol = SmallNat
 
 type Nat_nl = SmallNat
 
+type ScopeLevel = SmallNat
+
+type DoesRepresentType = Bool
+
 data LogicVar
-    = LogicVar
+    = TyLVar Unique
+    | TmLVar Unique
     deriving (Eq, Ord, Show)
 
 data Constructor
-    = Constructor
+    = DataConstr DataConstructor
+    | TypeConstr TypeConstructor
     deriving (Eq, Ord, Show)
 
 data Primitives
-    = Primitives
+    = LogicOper_if
+    | LogicOper_all
+    | LogicOper_some
+    | LogicOper_and
+    | LogicOper_or
+    | LogicOper_imply
+    | LogicOper_cut
+    | LogicOper_fail
+    | LogicOper_true
+    | LogicOper_type_abs
+    | INTERRUPT
+    | WILD_CARD
     deriving (Eq, Ord, Show)
 
 data TermNode
@@ -41,16 +61,66 @@ data SuspItem
     | Binds TermNode SmallNat
     deriving (Eq, Ord, Show)
 
+data SymbolReference
+    = SymRef
+        { myScopeLv :: ScopeLevel
+        , myEvalRef :: Maybe TermNode
+        }
+    deriving (Show)
+
+data ThreadState
+    = ThreadState
+        { myProcessId :: Unique
+        , mySymbolEnv :: Map.Map Unique SymbolReference
+        }
+    deriving (Show)
+
+class Constructible c where
+    mkNCon :: c -> TermNode
+
+instance Constructible (DataConstructor) where
+    mkNCon = callWithStrictArg (NCon . DataConstr)
+
+instance Constructible (TypeConstructor) where
+    mkNCon = callWithStrictArg (NCon . TypeConstr)
+
+instance Constructible (Constructor) where
+    mkNCon c = NCon $! c
+
+flexTVar :: Unique -> TermNode
+flexTVar = callWithStrictArg (LVar . TyLVar)
+
+flexIVar :: Unique -> TermNode
+flexIVar = callWithStrictArg (LVar . TmLVar)
+
+viewFlex :: TermNode -> Maybe (Unique, DoesRepresentType)
+viewFlex (LVar (TyLVar v)) = Just (v, True)
+viewFlex (LVar (TmLVar v)) = Just (v, False)
+viewFlex _ = Nothing
+
+viewDCon :: TermNode -> Maybe DataConstructor
+viewDCon (NCon (DataConstr c)) = Just c
+viewDCon _ = Nothing
+
+viewTCon :: TermNode -> Maybe TypeConstructor
+viewTCon (NCon (TypeConstr c)) = Just c
+viewTCon _ = Nothing
+
+fromPrim :: Primitives -> TermNode
+fromPrim = callWithStrictArg Prim
+
+viewPrim :: TermNode -> Maybe Primitives
+viewPrim (Prim prim_op) = Just prim_op
+viewPrim _ = Nothing
+
 mkLVar :: LogicVar -> TermNode
 mkLVar = callWithStrictArg LVar
-
-mkNCon :: Constructor -> TermNode
-mkNCon = callWithStrictArg NCon
 
 mkNIdx :: DeBruijn -> TermNode
 mkNIdx i = NIdx $! i
 
 mkNApp :: TermNode -> TermNode -> TermNode
+mkNApp (NCon (DataConstr (DC_SuccOf))) (NCon (DataConstr (DC_NatLit n))) = callWithStrictArg (mkNCon . DC_NatLit) (succ n)
 mkNApp t1 t2 = NApp t1 $! t2
 
 mkNLam :: TermNode -> TermNode

@@ -76,9 +76,9 @@ executable ppap
     Jasmine.Alpha1.Desugarer.Export
     Jasmine.Alpha1.Interpreter.Export
     Jasmine.Alpha1.Interpreter.Runtime
-    Jasmine.Alpha1.Header.TermNode.Show
+    Jasmine.Alpha1.Header.TermNode.DeBruijn
+    Jasmine.Alpha1.Header.TermNode.Render
     Jasmine.Alpha1.Header.TermNode.Test
-    Jasmine.Alpha1.Header.TermNode.Util
     Jasmine.Alpha1.Header.Export
     Jasmine.Alpha1.Header.TermNode
     Jasmine.Alpha1.Header.Util

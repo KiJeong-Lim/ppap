@@ -7,6 +7,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Data.Function
 import qualified Data.List as List
+import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Y.Base
 import Z.Algo.Function (MyNat)
@@ -35,6 +36,22 @@ data SrcLoc
         , _EndPos :: SrcPos
         }
     deriving (Eq, Ord)
+
+data DataConstructor
+    = DC_Unique Unique
+    | DC_NatLit MyNat
+    | DC_ChrLit Char
+    | DC_SuccOf
+    deriving (Eq, Ord, Show)
+
+data TypeConstructor
+    = TC_Atom Unique
+    | TC_Type
+    | TC_Prop
+    | TC_Bang
+    | TC_List
+    | TCarrow
+    deriving (Eq, Ord, Show)
 
 data LambdaTerm con
     = Var (MyIVar)
