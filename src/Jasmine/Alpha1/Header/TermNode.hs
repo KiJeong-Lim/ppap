@@ -50,7 +50,13 @@ data TermNode
     = NIdx DeBruijn
     | NApp TermNode TermNode
     | NLam TermNode
+    | NFix TermNode
     | Susp TermNode Nat_ol Nat_nl SuspEnv
+-- $Susp t ol nl env$ is a suspension of evaluation, where
+-- $t$ is the evaluatee;
+-- $ol$ is the length of $env$;
+-- $nl$ counts how many binders we have encountered;
+-- $env$ is the context of the variables we have encountered.
     | LVar LogicVar
     | NCon Constructor
     | Prim Primitives
@@ -58,7 +64,9 @@ data TermNode
 
 data SuspItem
     = Dummy SmallNat
+-- $Dummy l$ refers the variable bound by the $l$-th binder, which has no evaluation reference.
     | Binds TermNode SmallNat
+-- $Binds t l$ refers the variable bound by the $l$-th binder, whose evaluation reference is $t$.
     deriving (Eq, Ord, Show)
 
 data SymbolReference

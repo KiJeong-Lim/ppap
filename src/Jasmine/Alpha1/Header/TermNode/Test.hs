@@ -8,6 +8,8 @@ getTermNodeUnit :: Int -> String
 getTermNodeUnit 0 = "\\x1 -> x1 x1"
 getTermNodeUnit 1 = "\\x1 -> (\\x2 -> x2 x2) x1"
 getTermNodeUnit 2 = "\\x1 -> \\x2 -> (\\x3 -> x3 x1) x2"
+getTermNodeUnit 3 = "\\x1 -> \\x2 -> fix x3 := (\\x4 -> x2) x3"
+getTermNodeUnit 4 = "fix x1 := \\x2 -> x2"
 getTermNodeUnit _ = undefined
 
 rewriteTest :: Int -> IO ()

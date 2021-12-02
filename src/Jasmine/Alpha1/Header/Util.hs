@@ -58,6 +58,7 @@ data LambdaTerm con
     | Con (con)
     | App (LambdaTerm con) (LambdaTerm con)
     | Lam (MyIVar) (LambdaTerm con)
+    | Fix (MyIVar) (LambdaTerm con)
     deriving (Eq, Ord)
 
 data ReduceOption
@@ -161,6 +162,7 @@ getFVsOfLambdaTerm = flip go Set.empty where
     go (Con c) = id
     go (App t1 t2) = go t1 . go t2
     go (Lam y t1) = Set.union (y `Set.delete` getFVsOfLambdaTerm t1)
+    go (Fix f e) = Set.union (f `Set.delete` getFVsOfLambdaTerm e)
 
 substituteLambdaTerm :: [(MyIVar, LambdaTerm con)] -> LambdaTerm con -> LambdaTerm con
 substituteLambdaTerm = flip substitute . foldr conssubst nilsubst where
@@ -174,15 +176,16 @@ substituteLambdaTerm = flip substitute . foldr conssubst nilsubst where
     substitute (Var x) = substituteVar x
     substitute (Con c) = substituteCon c
     substitute (App t1 t2) = substituteApp t1 t2
-    substitute t = substituteLam t <*> flip chi t
+    substitute t = substituteFun t <*> flip chi t
     substituteVar :: MyIVar -> (MyIVar -> LambdaTerm con) -> LambdaTerm con
     substituteVar = (&)
     substituteCon :: con -> (MyIVar -> LambdaTerm con) -> LambdaTerm con
     substituteCon = pure . Con
     substituteApp :: LambdaTerm con -> LambdaTerm con -> (MyIVar -> LambdaTerm con) -> LambdaTerm con
     substituteApp t1 t2 = pure App <*> substitute t1 <*> substitute t2
-    substituteLam :: LambdaTerm con -> (MyIVar -> LambdaTerm con) -> MyIVar -> LambdaTerm con
-    substituteLam (Lam y t1) sigma z = Lam z (substitute t1 (conssubst (y, Var z) sigma))
+    substituteFun :: LambdaTerm con -> (MyIVar -> LambdaTerm con) -> MyIVar -> LambdaTerm con
+    substituteFun (Lam y t1) sigma z = Lam z (substitute t1 (conssubst (y, Var z) sigma))
+    substituteFun (Fix f e) sigma z = Fix z (substitute e (conssubst (f, Var z) sigma))
 
 evalLambdaTerm :: ReduceOption -> LambdaTerm con -> LambdaTerm con
 evalLambdaTerm option (App (Lam y t1) t2) = evalLambdaTerm option (substituteLambdaTerm [(y, t2)] t1)
@@ -190,12 +193,15 @@ evalLambdaTerm option (Var x) = Var x
 evalLambdaTerm option (Con c) = Con c
 evalLambdaTerm option (App t1 t2) = App (evalLambdaTerm option t1) (if option == NF then evalLambdaTerm option t2 else t2)
 evalLambdaTerm option (Lam y t1) = if option == WHNF then Lam y t1 else Lam y (evalLambdaTerm option t1)
+evalLambdaTerm option (Fix f e) = evalLambdaTerm option (substituteLambdaTerm [(f, Fix f e)] e)
 
-readLambdaTerm :: String -> LambdaTerm con
+readLambdaTerm :: String -> LambdaTerm Unique
 readLambdaTerm = either error id . runPC "<readLambdaTerm>" (pcLambdaTerm 0) where
     pcVar :: PC MyIVar
     pcVar = consumePC "x" *> (pure read <*> regexPC "['0'-'9'] + ['1'-'9'] ['0'-'9']+")
-    pcLambdaTerm :: Int -> PC (LambdaTerm con)
+    pcCon :: PC Unique
+    pcCon = consumePC "c" *> (pure (Unique . read) <*> regexPC "['0'-'9'] + ['1'-'9'] ['0'-'9']+")
+    pcLambdaTerm :: Int -> PC (LambdaTerm Unique)
     pcLambdaTerm 0 = mconcat
         [ do
             consumePC "\\"
@@ -203,7 +209,17 @@ readLambdaTerm = either error id . runPC "<readLambdaTerm>" (pcLambdaTerm 0) whe
             consumePC " -> "
             t1 <- pcLambdaTerm 0
             return (Lam y t1)
+        , do
+            consumePC "fix "
+            f <- pcVar
+            consumePC " := "
+            e <- pcLambdaTerm 0
+            return (Fix f e)
         , pcLambdaTerm 1
         ]
     pcLambdaTerm 1 = pure (List.foldl' App) <*> pcLambdaTerm 2 <*> many (consumePC " " *> pcLambdaTerm 2)
-    pcLambdaTerm 2 = (pure Var <*> pcVar) <|> (consumePC "(" *> pcLambdaTerm 0 <* consumePC ")")
+    pcLambdaTerm 2 = mconcat
+        [ pure Var <*> pcVar
+        , pure Con <*> pcCon
+        , consumePC "(" *> pcLambdaTerm 0 <* consumePC ")"
+        ]
