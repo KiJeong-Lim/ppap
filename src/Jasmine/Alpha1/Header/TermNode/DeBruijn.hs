@@ -20,9 +20,9 @@ rewriteWithSusp (NApp t1 t2) ol nl env option
                 | nl' == l -> rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l) : env') option
             t -> rewriteWithSusp t 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
         t1' -> case option of
-            NF -> mkNApp (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
             HNF -> mkNApp (rewriteWithSusp t1' 0 0 [] option) (mkSusp t2 ol nl env)
             WHNF -> mkNApp t1' (mkSusp t2 ol nl env)
+            _ -> mkNApp (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
 rewriteWithSusp (NLam t1) ol nl env option
     | option == WHNF = mkNLam (mkSusp t1 (succ ol) (succ nl) (mkDummy (succ nl) : env))
     | otherwise = mkNLam (rewriteWithSusp t1 (succ ol) (succ nl) (mkDummy (succ nl) : env) option)
