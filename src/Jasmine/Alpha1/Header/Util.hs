@@ -167,7 +167,7 @@ getFVsOfLambdaTerm = flip go Set.empty where
 substituteLambdaTerm :: [(MyIVar, LambdaTerm con)] -> LambdaTerm con -> LambdaTerm con
 substituteLambdaTerm = flip substitute . foldr conssubst nilsubst where
     chi :: (MyIVar -> LambdaTerm con) -> LambdaTerm con -> MyIVar
-    chi sigma = succ . List.foldl' max 0 . Set.toAscList . Set.unions . Set.map (getFVsOfLambdaTerm . sigma) . getFVsOfLambdaTerm
+    chi sigma = succ . maybe 0 id . Set.lookupMax . Set.unions . Set.map (getFVsOfLambdaTerm . sigma) . getFVsOfLambdaTerm
     nilsubst :: (MyIVar -> LambdaTerm con)
     nilsubst = Var
     conssubst :: (MyIVar, LambdaTerm con) -> (MyIVar -> LambdaTerm con) -> (MyIVar -> LambdaTerm con)
@@ -195,13 +195,13 @@ evalLambdaTerm option (App t1 t2) = App (evalLambdaTerm option t1) (if option ==
 evalLambdaTerm option (Lam y t1) = if option == WHNF then Lam y t1 else Lam y (evalLambdaTerm option t1)
 evalLambdaTerm option (Fix f e) = evalLambdaTerm option (substituteLambdaTerm [(f, Fix f e)] e)
 
-readLambdaTerm :: String -> LambdaTerm Unique
+readLambdaTerm :: String -> LambdaTerm DataConstructor
 readLambdaTerm = either error id . runPC "<readLambdaTerm>" (pcLambdaTerm 0) where
     pcVar :: PC MyIVar
     pcVar = consumePC "x" *> (pure read <*> regexPC "['0'-'9'] + ['1'-'9'] ['0'-'9']+")
-    pcCon :: PC Unique
-    pcCon = consumePC "c" *> (pure (Unique . read) <*> regexPC "['0'-'9'] + ['1'-'9'] ['0'-'9']+")
-    pcLambdaTerm :: Int -> PC (LambdaTerm Unique)
+    pcCon :: PC DataConstructor
+    pcCon = consumePC "c" *> (pure (DC_Unique . Unique . read) <*> regexPC "['0'-'9'] + ['1'-'9'] ['0'-'9']+")
+    pcLambdaTerm :: Int -> PC (LambdaTerm DataConstructor)
     pcLambdaTerm 0 = mconcat
         [ do
             consumePC "\\"

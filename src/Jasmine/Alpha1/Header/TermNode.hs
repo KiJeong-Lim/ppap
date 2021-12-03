@@ -56,7 +56,7 @@ data TermNode
 -- $t$ is the evaluatee;
 -- $ol$ is the length of $env$;
 -- $nl$ counts how many binders we have encountered;
--- $env$ is the context of the variables we have encountered.
+-- $env$ is the context of variables, which are bound by binders we have encountered.
     | LVar LogicVar
     | NCon Constructor
     | Prim Primitives

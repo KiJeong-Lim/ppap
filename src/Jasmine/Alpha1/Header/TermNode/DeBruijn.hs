@@ -9,7 +9,7 @@ import Z.Algo.Function
 -- $t$ is the evaluatee.
 -- $ol$ is the length of $env$.
 -- $nl$ counts how many binders we have encountered.
--- $env$ is the context of variables we have encountered.
+-- $env$ is the context of variables, which are bound by binders we have encountered.
 -- Ctx ::= [] | Dummy l :: Ctx | Binds t l :: Ctx
 -- $Dummy l$ refers the variable bound by the $l$-th binder, which has no evaluation reference.
 -- $Binds t l$ refers the variable bound by the $l$-th binder, whose evaluation reference is $t$.
@@ -51,11 +51,11 @@ rewriteWithSusp t ol nl env option
 rewrite :: ReduceOption -> TermNode -> TermNode
 rewrite option t = rewriteWithSusp t 0 0 [] option
 
-toDeBruijn :: LambdaTerm Unique -> TermNode
+toDeBruijn :: LambdaTerm DataConstructor -> TermNode
 toDeBruijn = go [] where
-    go :: [MyIVar] -> LambdaTerm Unique -> TermNode
+    go :: [MyIVar] -> LambdaTerm DataConstructor -> TermNode
     go ys (Var x) = mkNIdx (fromJust (x `elemIndex` ys))
-    go ys (Con c) = NCon . DataConstr . DC_Unique $! c
+    go ys (Con c) = mkNCon c
     go ys (App t1 t2) = mkNApp (go ys t1) (go ys t2)
     go ys (Lam y t1) = mkNLam (go (y : ys) t1)
     go ys (Fix f e) = NFix $! go (f : ys) e
