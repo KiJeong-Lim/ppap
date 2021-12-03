@@ -69,20 +69,6 @@ data SuspItem
 -- $Binds t l$ refers the variable bound by the $l$-th binder, whose evaluation reference is $t$.
     deriving (Eq, Ord, Show)
 
-data SymbolReference
-    = SymRef
-        { myScopeLv :: ScopeLevel
-        , myEvalRef :: Maybe TermNode
-        }
-    deriving (Show)
-
-data ThreadState
-    = ThreadState
-        { myProcessId :: Unique
-        , mySymbolEnv :: Map.Map Unique SymbolReference
-        }
-    deriving (Show)
-
 class Constructible c where
     mkNCon :: c -> TermNode
 
@@ -101,17 +87,16 @@ flexTVar = callWithStrictArg (LVar . TyLVar)
 flexIVar :: Unique -> TermNode
 flexIVar = callWithStrictArg (LVar . TmLVar)
 
-viewFlex :: TermNode -> Maybe (Unique, DoesRepresentType)
-viewFlex (LVar (TyLVar v)) = Just (v, True)
-viewFlex (LVar (TmLVar v)) = Just (v, False)
-viewFlex _ = Nothing
+viewFlex :: LogicVar -> (Unique, DoesRepresentType)
+viewFlex (TyLVar v) = (v, True)
+viewFlex (TmLVar v) = (v, False)
 
-viewDCon :: TermNode -> Maybe DataConstructor
-viewDCon (NCon (DataConstr c)) = Just c
+viewDCon :: Constructor -> Maybe DataConstructor
+viewDCon (DataConstr c) = Just c
 viewDCon _ = Nothing
 
-viewTCon :: TermNode -> Maybe TypeConstructor
-viewTCon (NCon (TypeConstr c)) = Just c
+viewTCon :: Constructor -> Maybe TypeConstructor
+viewTCon (TypeConstr c) = Just c
 viewTCon _ = Nothing
 
 fromPrim :: Primitives -> TermNode
