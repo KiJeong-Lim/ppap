@@ -10,6 +10,7 @@ import Z.Algo.Function
 -- $ol$ is the length of $env$.
 -- $nl$ counts how many binders we have encountered.
 -- $env$ is the context of variables we have encountered.
+-- Ctx ::= [] | Dummy l :: Ctx | Binds t l :: Ctx
 -- $Dummy l$ refers the variable bound by the $l$-th binder, which has no evaluation reference.
 -- $Binds t l$ refers the variable bound by the $l$-th binder, whose evaluation reference is $t$.
 rewriteWithSusp :: TermNode -> Nat_ol -> Nat_nl -> SuspEnv -> ReduceOption -> TermNode
