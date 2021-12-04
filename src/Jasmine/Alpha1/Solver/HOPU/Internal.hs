@@ -60,13 +60,14 @@ import Z.Utils
 {- ${Env} = ${Env} |> ${Var} :==> ${Term}.
 (1) RULE[ reflect non-trivial subst ]
 > X is a flex var.
-> env.evalref X == none.
+> env.evalref X == None.
 > X is not a member of FreeLVs(t).
-> For any flex var Y: env'.evalref Y = t,             if X ==_{alpha} Y;
->                                    = env.evalref Y, otherwise.
-> For any flex var Y: env'.scopelv Y = min (env.scopelv X) (env.scopelv Y), if Y is a member of FreeLVs(t);
->                                    = env.scopelv Y,                       otherwise.
-===========================================================================================================
+> For any flex var Y: env'.evalref Y = Some t,         if X ==_{alpha} Y;
+>                                    = Some s[X := t], else if Some s = env.evalref Y;
+>                                    = None,           else.
+> For any flex var Y: env'.scopelv Y = min {env.scopelv X, env.scopelv Y}, if Y is a member of FreeLVs(t);
+>                                    = env.scopelv Y,                      else.
+==========================================================================================================
 > env' = env |> X :==> t.
 (2) RULE[ reflect trivial subst ]
 > X is a flex var.
@@ -82,17 +83,17 @@ import Z.Utils
 (1) RULE[ FlexFlex(same heads) ]
 > app(X, [a_1 .. a_n]) is a L_lambda-pattern in env.
 > app(X, [b_1 .. b_(n + l)]) is a L_lambda-pattern in env.
-> env.evalref X == none.
+> env.evalref X == None.
 > as = [{| a_1, 0, l, [] |} .. {| a_n, 0, l, [] |}] ++ [#(l - 1) .. #0].
 > zs = [ #(n + l - i) | i <- [1 .. n + l], as !! (i - 1) == b_i ].
-> env' = env |> new flex var H = { evalref = none, scopelv = env.scopelv X }.
+> env' = env |> new flex var H = { evalref = None, scopelv = env.scopelv X }.
 > env'' = env' |> X :==> lam(n + l). app(H, zs).
 ============================================================================================================
 > env ~~> MkRef[ app(X, [a_1 .. a_n]) := lam(l). app(X, [b_1 .. b_(n + l)]) ] ~~> env'' with { newQs = [] }.
 (2) RULE[ binding ]
 > app(X, [a_1 .. a_n]) is a L_lambda-pattern in env.
 > The head of t is not X.
-> env.evalref X == none.
+> env.evalref X == None.
 > env ~~> Bind_{0}[ app(X, [a_1 .. a_n]) +-> t ] = s ~~> env', if probs hold.
 > env'' = env' |> X :==> lam(n). s.
 ==============================================================================
@@ -127,7 +128,7 @@ import Z.Utils
 > zs is a permutation of { as !! (i - 1) | i <- {1 .. n + l} } `intersection` {b_1 .. b_m}.
 > us is a position of zs in [b_1 .. b_m].
 > vs is a position of zs in as.
-> env' = env |> new flex var H = { evalref = none, scopelv = env.scopelv X }.
+> env' = env |> new flex var H = { evalref = None, scopelv = env.scopelv X }.
 > env'' = env' |> Y :==> app(H, cs ++ us).
 =============================================================================================================
 > env ~~> Bind_{l}[ app(X, [a_1 .. a_n]) +-> app(Y, [b_1 .. b_m]) ] = app(H, ws ++ vs) ~~> env'', if [] hold.
@@ -141,7 +142,7 @@ import Z.Utils
 > zs is a permutation of { as !! (i - 1) | i <- {1 .. n + l} } `intersection` {b_1 .. b_m}.
 > us is a position of zs in as.
 > vs is a position of zs in [b_1 .. b_m].
-> env' = env |> new flex var H = { evalref = none, scopelv = env.scopelv Y }.
+> env' = env |> new flex var H = { evalref = None, scopelv = env.scopelv Y }.
 #                                                            ^^^^^^^^^^^^^ In [1], it is written to be env.scopelv X.
 > env'' = env' |> Y :==> app(H, ws ++ vs).
 =====================================================================================================================
