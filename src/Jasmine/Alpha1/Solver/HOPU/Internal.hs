@@ -141,23 +141,23 @@ import Z.Utils
 > vs is a position of zs in [b_1 .. b_m].
 > env' = env |> new flex var H = { evalref = none, scope = env.scope Y }.
 #                                                          ^^^^^^^^^^^ In [1], it is `env.scope X`.
-> env'' := env' |> Y :==> app(H, ws ++ vs).
+> env'' = env' |> Y :==> app(H, ws ++ vs).
 =============================================================================================================
 > env ~~> Bind_{l}[ app(X, [a_1 .. a_n]) +-> app(Y, [b_1 .. b_m]) ] = app(H, cs ++ us) ~~> env'', if [] hold.
 -}
 
 {- References
-[1] @article{DBLP:journals/corr/abs-0911-5203,
-  author    = {Xiaochu Qi},
-  title     = {An Implementation of the Language Lambda Prolog Organized around Higher-Order Pattern Unification},
-  journal   = {CoRR},
-  volume    = {abs/0911.5203},
-  year      = {2009},
-  url       = {http://arxiv.org/abs/0911.5203},
-  eprinttype = {arXiv},
-  eprint    = {0911.5203},
-  timestamp = {Mon, 13 Aug 2018 16:48:41 +0200},
-  biburl    = {https://dblp.org/rec/journals/corr/abs-0911-5203.bib},
-  bibsource = {dblp computer science bibliography, https://dblp.org}
-}
+[1] @article{DBLP:journals/corr/abs-0911-5203
+    , author     = {Xiaochu Qi}
+    , title      = {An Implementation of the Language Lambda Prolog Organized around Higher-Order Pattern Unification}
+    , journal    = {CoRR}
+    , volume     = {abs/0911.5203}
+    , year       = {2009}
+    , url        = {http://arxiv.org/abs/0911.5203}
+    , eprinttype = {arXiv}
+    , eprint     = {0911.5203},
+    , timestamp  = {Mon, 13 Aug 2018 16:48:41 +0200}
+    , biburl     = {https://dblp.org/rec/journals/corr/abs-0911-5203.bib}
+    , bibsource  = {dblp computer science bibliography, https://dblp.org}
+    }
 -}
