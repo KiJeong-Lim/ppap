@@ -16,6 +16,13 @@ import Z.Utils
 
 {- Notations
 (1) {| t, ol, nl, env |} stands for rewriteWithSusp t ol nl env NF.
+    t is the evaluatee.
+    ol is the length of $env$.
+    nl counts how many binders we have encountered.
+    env is the de-bruijn indices context of variables, which are bound by binders we have encountered.
+    DbIdxCtx ::= [] | Dummy l :: DbIdxCtx | Binds t l :: DbIdxCtx
+    Dummy l refers the variable bound by the l-th binder, which has no evaluation reference.
+    Binds t l refers the variable bound by the l-th binder, whose evaluation reference is t.
 (2) app(t, ts) stands for foldNApps t ts.
 (3) lam(l). t stands for foldNLams l t.
 (4) eta(l, app(t, [z_1 .. z_n]))
