@@ -70,7 +70,6 @@ import Z.Utils
 > env' = env |> X :==> t.
 (2) RULE[ reflect trivial subst ]
 > X is a flex var.
-> env.evalref X == none.
 ========================
 > env = env |> X :==> X.
 -}
