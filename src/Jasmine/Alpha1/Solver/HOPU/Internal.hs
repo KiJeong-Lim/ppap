@@ -87,7 +87,7 @@ import Z.Utils
     > env |= Bind_{l}[ app(X, [a_1 .. a_n]) +-> lam(m). t ] = lam(m). s if probs satisfied.
 (2) RULE[ FlexRigid ]
     > as = [{| a_1, 0, l, [] |} .. {| a_n, 0, l, [] |}] ++ [#(l - 1) .. #0].
-    > r' = r,  if r is a rigid var such that env.scope r < env.scope X;
+    > r' = r,  if r is a rigid var such that env.scope X >= env.scope r;
     >    = #i, if r is a de-bruijn index with r ==_{alpha} as !! i.
     > For k in [1 .. m],
     > env |= Bind_{l}[ app(X, [a_1 .. a_n]) +-> t_k ] = s_k if probs_k satisfied.
