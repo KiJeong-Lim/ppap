@@ -59,7 +59,7 @@ import Z.Utils
 {- Section 2 -}
 
 {- ${Env} = ${Env}.zonk(${Var} +-> ${Term}).
-(1) RULE[ zonk env by non-trivial, proper subst ]
+(1) RULE[ reflect subst ]
     > X is a flex var.
     > env.evalref X == none.
     > X is not a member of FreeLVs(t).
