@@ -17,9 +17,9 @@ import Z.Utils
 {- Comments on Basic Idea -}
 
 {- Contents 
-1. Term simplication in                                [no impl]
-2. Top-level control for calculating variable bindings [impl in \S3]
-3. Calculating variable bindings                       [impl in \S4]
+1. Term simplication in higher-order pattern unification [no impl]
+2. Top-level control for calculating variable bindings   [impl in \S3]
+3. Calculating variable bindings                         [impl in \S4]
 -}
 
 {- Section 0 -}
