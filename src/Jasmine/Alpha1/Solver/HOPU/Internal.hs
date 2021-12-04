@@ -27,7 +27,8 @@ import Z.Utils
 (3) lam(l). t stands for foldNLams l t.
 (4) eta(l, app(t, [z_1 .. z_n]))
     = lam(l). app({| t, 0, l, [] |}, [{| z_1, 0, l, [] |} .. {| z_n, 0, l, [] |}] ++ [#(l - 1) .. #0]).
-(5) For t = lam(l). app(x, zs), the head of t is x if x is a var.
+(5) For t = lam(l). app(x, zs),
+    the head of t is x if x is a var.
 -}
 
 {- ${Term} is a L_lambda-pattern in ${Env}
