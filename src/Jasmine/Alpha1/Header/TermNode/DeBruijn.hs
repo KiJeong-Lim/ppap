@@ -5,7 +5,7 @@ import Jasmine.Alpha1.Header.TermNode
 import Jasmine.Alpha1.Header.Util
 import Z.Algo.Function
 
--- [| t, ol, nl, env |]
+-- RewritingScheme ::= {| t, ol, nl, env |}
 -- $t$ is the evaluatee.
 -- $ol$ is the length of $env$.
 -- $nl$ counts how many binders we have encountered.
