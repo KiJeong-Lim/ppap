@@ -70,15 +70,15 @@ import Z.Utils
     =========================================================================================================
     env ~~> MkRef[ app(X, [a_1 .. a_n]) := lam(l). app(X, [b_1 .. b_(n + l)]) ] ~~> env' with { newQs = [] }.
 (2) RULE[ binding ]
-    app(X, [a_1 .. a_n]) is a L_lambda-pattern in env
+    app(X, [a_1 .. a_l]) is a L_lambda-pattern in env
     The head of rhs is not X.
     env.evalref X == none.
-    env |= Bind[ app(X, [a_1 .. a_n]) +-> rhs ] = t if probs satisfied.
-    X +-> t yields env ~~> env'
+    env |= Bind_{0}[ app(X, [a_1 .. a_l]) +-> rhs ] = t if probs satisfied.
+    X +-> lam(l). t yields env ~~> env'.
     =============================================================================
-    env ~~> MkRef[ app(X, [a_1 .. a_n]) := rhs ] ~~> env' with { newQs = probs }.
+    env ~~> MkRef[ app(X, [a_1 .. a_l]) := rhs ] ~~> env' with { newQs = probs }.
 -}
 
-{- ${Env} |= Bind[ ${Term} +-> ${Term} ] = {$Term} if ${Constraints} satisfied.
+{- ${Env} |= Bind_{${Nat}}[ ${Term} +-> ${Term} ] = {$Term} if ${Constraints} satisfied.
 
 -}
