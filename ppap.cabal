@@ -63,7 +63,7 @@ executable ppap
     Aladdin.Front.TypeChecker.Util
     Aladdin.Front.Header
     Aladdin.Main
-    Calc.ControlSystem.DiagramSolver
+    Calc.ControlSystem.Diagram.Solver
     Calc.ControlSystem.Export
     Calc.ControlSystem.Test
     Calc.ControlSystem.Util
