@@ -28,10 +28,7 @@ simplify = flip loop mempty . zip (repeat 0) where
             | (lambda1, lhs') <- viewNestedNAbs lhs
             , (lambda2, rhs') <- viewNestedNAbs rhs
             , lambda1 > 0 && lambda2 > 0
-            = case lambda1 `compare` lambda2 of
-                LT -> dispatch (l + min lambda1 lambda2) lhs' (makeNestedNAbs (lambda2 - lambda1) rhs')
-                EQ -> dispatch (l + min lambda1 lambda2) lhs' rhs'
-                GT -> dispatch (l + min lambda1 lambda2) (makeNestedNAbs (lambda1 - lambda2) lhs') rhs'
+            = (\lambda -> dispatch (l + lambda) (makeNestedNAbs (lambda1 - lambda) lhs') (makeNestedNAbs (lambda2 - lambda) rhs')) $! min lambda1 lambda2
             | (lambda1, lhs') <- viewNestedNAbs lhs
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , lambda1 > 0 && isRigid rhs_head
