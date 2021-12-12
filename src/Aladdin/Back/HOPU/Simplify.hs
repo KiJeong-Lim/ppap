@@ -19,32 +19,32 @@ import qualified Data.Set as Set
 type HasChanged = Bool
 
 simplify :: GenUniqueM m => [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
-simplify = flip loop mempty where
-    loop :: GenUniqueM m => [Disagreement] -> LVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
+simplify = flip loop mempty . zip (repeat 0) where
+    loop :: GenUniqueM m => [(Int, Disagreement)] -> LVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
-    loop (lhs :=?=: rhs : disagreements) subst labeling = go (rewrite HNF lhs) (rewrite HNF rhs) where
-        go :: GenUniqueM m => TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
-        go lhs rhs
+    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite HNF lhs) (rewrite HNF rhs) where
+        dispatch :: GenUniqueM m => Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
+        dispatch l lhs rhs
             | (lambda1, lhs') <- viewNestedNAbs lhs
             , (lambda2, rhs') <- viewNestedNAbs rhs
             , lambda1 > 0 && lambda2 > 0
             = case lambda1 `compare` lambda2 of
-                LT -> go lhs' (makeNestedNAbs (lambda2 - lambda1) rhs')
-                EQ -> go lhs' rhs'
-                GT -> go (makeNestedNAbs (lambda1 - lambda2) lhs') rhs'
+                LT -> dispatch (l + min lambda1 lambda2) lhs' (makeNestedNAbs (lambda2 - lambda1) rhs')
+                EQ -> dispatch (l + min lambda1 lambda2) lhs' rhs'
+                GT -> dispatch (l + min lambda1 lambda2) (makeNestedNAbs (lambda1 - lambda2) lhs') rhs'
             | (lambda1, lhs') <- viewNestedNAbs lhs
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , lambda1 > 0 && isRigid rhs_head
-            = go lhs' (foldlNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1, lambda1 - 1 .. 1]))
+            = dispatch (l + lambda1) lhs' (foldlNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1, lambda1 - 1 .. 1]))
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
             , (lambda2, rhs') <- viewNestedNAbs rhs
             , isRigid lhs_head && lambda2 > 0
-            = go (foldlNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2, lambda2 - 1 .. 1])) rhs'
+            = dispatch (l + lambda2) (foldlNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2, lambda2 - 1 .. 1])) rhs'
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , isRigid lhs_head && isRigid rhs_head
             = if lhs_head == rhs_head && length lhs_tail == length rhs_tail
-                then loop ([ lhs' :=?=: rhs' | (lhs', rhs') <- zip lhs_tail rhs_tail ] ++ disagreements) subst labeling
+                then loop ([ (l, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tail rhs_tail ] ++ disagreements) subst labeling
                 else lift (throwE RigidRigidFail)
             | (LVar var, parameters) <- unfoldlNApp lhs
             = do
@@ -67,4 +67,4 @@ simplify = flip loop mempty where
         solveNext :: GenUniqueM m => StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
         solveNext = do
             (disagreements', HopuSol labeling' subst') <- loop disagreements mempty labeling
-            return (applyBinding subst' (lhs :=?=: rhs) : disagreements', HopuSol labeling' (subst' <> subst))
+            return (applyBinding subst' (makeNestedNAbs l lhs :=?=: makeNestedNAbs l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
