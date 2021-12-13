@@ -47,8 +47,8 @@ areAllDistinct :: Eq a => [a] -> Bool
 areAllDistinct [] = True
 areAllDistinct (x : xs) = not (x `elem` xs) && areAllDistinct xs
 
-makeMulitMap :: Ord k => [(k, a)] -> Map.Map k [a]
-makeMulitMap = foldr (uncurry $ \k -> \x -> Map.alter (Just . maybe [x] (\xs -> x : xs)) k) Map.empty
+makeMultiMap :: Ord k => [(k, a)] -> Map.Map k [a]
+makeMultiMap = foldr (uncurry $ \k -> \x -> Map.alter (Just . maybe [x] (\xs -> x : xs)) k) Map.empty
 
 bridge :: (a -> a -> b) -> [a] -> [b]
 bridge bin_op (x1 : x2 : xs) = bin_op x1 x2 : bridge bin_op (x2 : xs)

@@ -29,7 +29,7 @@ callCoreHopuSolver = entryOfCoreHopuSolver where
             let scope_env = fst env
                 lvar_subst = snd env
             ((delayed_probs, (fresh_scope_env, fresh_lvar_bindings)), has_changed) <- runStateT (entryOfSimpleHopu probs scope_env) False
-            let multimap = Map.unionWith (++) (Map.map pure lvar_subst) (makeMulitMap fresh_lvar_bindings)
+            let multimap = Map.unionWith (++) (Map.map pure lvar_subst) (makeMultiMap fresh_lvar_bindings)
                 conflicts = Map.elems multimap >>= bridge (:=?=:)
                 fresh_lvar_subst = Map.fromAscList [ (x, head (multimap Map.! x)) | (x, t) <- Map.toAscList multimap, not (x `Set.member` Map.keysSet lvar_subst) ]
                 new_probs = substLVar fresh_lvar_subst (conflicts ++ delayed_probs)
