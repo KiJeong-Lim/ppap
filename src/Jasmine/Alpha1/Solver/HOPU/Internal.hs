@@ -45,34 +45,34 @@ callCoreHopuSolver = entryOfCoreHopuSolver where
     sigma_new `compose` sigma_old = Map.map (substLVar sigma_new) sigma_old `Map.union` sigma_new
 
 entryOfSimpleHopu :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-entryOfSimpleHopu = flip simplify [] . zip (repeat 0) where
-    simplify :: GeneratingUniqueMonad m => [(SmallNat, Disagreement)] -> [(LogicVar, TermNode)] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-    simplify [] lvar_bindings_acc scope_env = return ([], (scope_env, lvar_bindings_acc))
-    simplify ((l, lhs :=?=: rhs) : probs) lvar_bindings_acc_0 scope_env_0 = do
-        (delayed_probs_1, (scope_env_1, lvar_bindings_acc_1)) <- simplifyOnce l (rewrite NF lhs) (rewrite NF rhs) scope_env_0 lvar_bindings_acc_0
-        (delayed_probs_2, (scope_env_2, lvar_bindings_acc_2)) <- simplify probs lvar_bindings_acc_1 scope_env_1
-        return (delayed_probs_1 ++ delayed_probs_2, (scope_env_2, lvar_bindings_acc_2))
-    simplifyOnce :: GeneratingUniqueMonad m => SmallNat -> TermNode -> TermNode -> Labeling -> [(LogicVar, TermNode)] -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-    simplifyOnce lambda lhs rhs scope_env lvar_bindings
+entryOfSimpleHopu = simplify . zip (repeat 0) where
+    simplify :: GeneratingUniqueMonad m => [(SmallNat, Disagreement)] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+    simplify [] scope_env = return ([], (scope_env, []))
+    simplify ((l, lhs :=?=: rhs) : probs) scope_env_0 = do
+        (delayed_probs_1, (scope_env_1, lvar_bindings_1)) <- simplify1 l (rewrite NF lhs) (rewrite NF rhs) scope_env_0
+        (delayed_probs_2, (scope_env_2, lvar_bindings_2)) <- simplify probs scope_env_1
+        return (delayed_probs_1 ++ delayed_probs_2, (scope_env_2, lvar_bindings_1 ++ lvar_bindings_2))
+    simplify1 :: GeneratingUniqueMonad m => SmallNat -> TermNode -> TermNode -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+    simplify1 lambda lhs rhs scope_env
         | (l1, lhs') <- viewNLams lhs
         , (l2, rhs') <- viewNLams rhs
         , l1 > 0 && l2 > 0
-        = callWithStrictArg (\l -> simplifyOnce (lambda + l) (foldNLams (l1 - l, lhs')) (foldNLams (l2 - l, rhs')) scope_env lvar_bindings) (min l1 l2)
+        = min l1 l2 & (\l -> simplify1 (lambda + l) (foldNLams (l1 - l, lhs')) (foldNLams (l2 - l, rhs')) scope_env) 
         | (l1, lhs') <- viewNLams lhs
         , (rhs_hd, rhs_tl) <- viewNApps rhs
         , l1 > 0 && isRigid rhs_hd
-        = simplifyOnce (lambda + l1) lhs' (foldNApps (liftLams l1 rhs_hd, map (liftLams l1) rhs_tl)) scope_env lvar_bindings
+        = simplify1 (lambda + l1) lhs' (foldNApps (liftLams l1 rhs_hd, map (liftLams l1) rhs_tl)) scope_env
         | (lhs_hd, lhs_tl) <- viewNApps lhs
         , (l2, rhs') <- viewNLams rhs
         , l2 > 0 && isRigid lhs_hd
-        = simplifyOnce (lambda + l2) (foldNApps (liftLams l2 lhs_hd, map (liftLams l2) lhs_tl)) rhs' scope_env lvar_bindings
+        = simplify1 (lambda + l2) (foldNApps (liftLams l2 lhs_hd, map (liftLams l2) lhs_tl)) rhs' scope_env
         | lhs == rhs
-        = return ([], (scope_env, lvar_bindings))
+        = return ([], (scope_env, []))
         | (lhs_hd, lhs_tl) <- viewNApps lhs
         , (rhs_hd, rhs_tl) <- viewNApps rhs
         , isRigid lhs_hd && isRigid rhs_hd
         = if lhs_hd == rhs_hd && length lhs_tl == length rhs_tl
-            then simplify [ (lambda, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tl rhs_tl ] lvar_bindings scope_env
+            then simplify [ (lambda, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tl rhs_tl ] scope_env
             else fail "hopu-failed: case=RigidRigid, cause=head-not-matched-or-args-length-not-matched"
         | (LVar x, params) <- viewNApps lhs
         , isPatternWRT x params scope_env
@@ -82,7 +82,7 @@ entryOfSimpleHopu = flip simplify [] . zip (repeat 0) where
                 NotAPattern -> giveup
                 MkRefResult fresh_scope_env fresh_lvar_bindings -> do
                     put True
-                    return ([], (fresh_scope_env, fresh_lvar_bindings ++ lvar_bindings))
+                    return ([], (fresh_scope_env, fresh_lvar_bindings))
                 SpecialPrim -> giveup
         | (LVar x, params) <- viewNApps rhs
         , isPatternWRT x params scope_env
@@ -92,13 +92,13 @@ entryOfSimpleHopu = flip simplify [] . zip (repeat 0) where
                 NotAPattern -> giveup
                 MkRefResult fresh_scope_env fresh_lvar_bindings -> do
                     put True
-                    return ([], (fresh_scope_env, fresh_lvar_bindings ++ lvar_bindings))
+                    return ([], (fresh_scope_env, fresh_lvar_bindings))
                 SpecialPrim -> giveup
         | otherwise
         = giveup
         where
             giveup :: Monad m => m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-            giveup = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, lvar_bindings))
+            giveup = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
 
 callSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
 callSimpleMkRef = entryOfSimpleMkRef where
