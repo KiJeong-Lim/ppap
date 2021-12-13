@@ -15,28 +15,37 @@ import Jasmine.Alpha1.Solver.HOPU.Util
 import Z.Algo.Function
 import Z.Utils
 
-callCoreHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> MaybeT m ([Disagreement], (Labeling, LVarSubst))
-callCoreHopuSolver = startMainRoutineWithEmptySubst where
-    startMainRoutineWithEmptySubst :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> MaybeT m ([Disagreement], (Labeling, LVarSubst))
-    startMainRoutineWithEmptySubst probs scope_env = execMainRoutine probs (scope_env, Map.empty)
+updateAtomEnvNaive :: (Labeling, LVarSubst) -> AtomEnv -> AtomEnv
+updateAtomEnvNaive (scope_env, sigma) ctx = Map.fromAscList
+    [ (v, SymRef { myScopeLv = v_scope, myEvalRef = msum [Map.lookup v sigma, substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx)] })
+    | (v, v_scope) <- Map.toAscList scope_env
+    ]
+
+callSimpleHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> m (Maybe ([Disagreement], (Labeling, LVarSubst)))
+callSimpleHopuSolver = entryOfSimpleHopuSolver where
+    entryOfSimpleHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> m (Maybe ([Disagreement], (Labeling, LVarSubst)))
+    entryOfSimpleHopuSolver probs scope_env = runMaybeT (execMainRoutine probs (scope_env, Map.empty))
     execMainRoutine :: GeneratingUniqueMonad m => [Disagreement] -> (Labeling, LVarSubst) -> MaybeT m ([Disagreement], (Labeling, LVarSubst))
     execMainRoutine probs env
         | null probs = return (probs, env)
         | otherwise = do
             let scope_env = fst env
                 lvar_subst = snd env
-            ((delayed_probs, (fresh_scope_env, fresh_lvar_bindings)), has_changed) <- runStateT (entryOfCoreHopuSolver probs scope_env) False
+            ((delayed_probs, (fresh_scope_env, fresh_lvar_bindings)), has_changed) <- runStateT (entryOfSimpleHopuAlgorithmCore probs scope_env) False
             let multimap = Map.unionWith (++) (Map.map pure lvar_subst) (makeMulitMap fresh_lvar_bindings)
                 conflicts = Map.elems multimap >>= bridge (:=?=:)
                 fresh_lvar_subst = Map.fromAscList [ (x, head (multimap Map.! x)) | (x, t) <- Map.toAscList multimap, not (x `Set.member` Map.keysSet lvar_subst) ]
-                new_probs = substLVar fresh_lvar_subst (delayed_probs ++ conflicts)
-                new_env = (makeNewScopeEnv fresh_lvar_subst fresh_scope_env, fresh_lvar_subst <+> lvar_subst)
+                new_probs = substLVar fresh_lvar_subst (conflicts ++ delayed_probs)
+                new_env = (makeNewScopeEnv fresh_lvar_subst fresh_scope_env, fresh_lvar_subst `composeLVarSubst` lvar_subst)
             if has_changed
                 then execMainRoutine new_probs new_env
                 else return (new_probs, new_env)
+    -- spec of composeLVarSubst: sigma = sigma2 `composeLVarSubst` sigma1 -> substLVar sigma t = substLVar sigma2 (substLVar sigma1 t)
+    composeLVarSubst :: LVarSubst -> LVarSubst -> LVarSubst
+    composeLVarSubst sigma2 sigma1 = Map.map (substLVar sigma2) sigma1 `Map.union` sigma2
 
-entryOfCoreHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-entryOfCoreHopuSolver = flip simplify [] . zip (repeat 0) where
+entryOfSimpleHopuAlgorithmCore :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+entryOfSimpleHopuAlgorithmCore = flip simplify [] . zip (repeat 0) where
     simplify :: GeneratingUniqueMonad m => [(SmallNat, Disagreement)] -> [(LogicVar, TermNode)] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
     simplify [] lvar_bindings_acc scope_env = return ([], (scope_env, lvar_bindings_acc))
     simplify ((l, lhs :=?=: rhs) : probs) lvar_bindings_acc_0 scope_env_0 = do

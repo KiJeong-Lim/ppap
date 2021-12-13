@@ -14,7 +14,6 @@ import Z.Algo.Function
 import Z.Utils
 
 infix 9 :=?=:
-infixr 8 <+>
 
 type HasSolvedAtLeastOneProblem = Bool
 
@@ -54,10 +53,6 @@ makeMulitMap = foldr (uncurry $ \k -> \x -> Map.alter (Just . maybe [x] (\xs -> 
 bridge :: (a -> a -> b) -> [a] -> [b]
 bridge op (x1 : x2 : xs) = op x1 x2 : bridge op (x2 : xs)
 bridge _ _ = []
-
--- spec of (<+>): sigma = sigma2 <+> sigma1 -> substLVar sigma t = substLVar sigma2 (substLVar sigma1 t)
-(<+>) :: LVarSubst -> LVarSubst -> LVarSubst
-sigma2 <+> sigma1 = Map.map (substLVar sigma2) sigma1 `Map.union` sigma2
 
 makeNewScopeEnv :: LVarSubst -> Labeling -> Labeling 
 makeNewScopeEnv sigma labelings_old = Map.fromAscList labelings where
