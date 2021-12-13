@@ -17,7 +17,7 @@ import Z.Utils
 
 updateAtomEnvNaive :: (Labeling, LVarSubst) -> AtomEnv -> AtomEnv
 updateAtomEnvNaive (scope_env, sigma) ctx = Map.fromAscList
-    [ (v, SymRef { myScopeLv = v_scope, myEvalRef = msum [Map.lookup v sigma, substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx)] })
+    [ (v, SymRef { myScopeLv = v_scope, myEvalRef = takeFirstOf id [substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx), Map.lookup v sigma] })
     | (v, v_scope) <- Map.toAscList scope_env
     ]
 
