@@ -75,7 +75,7 @@ entryOfSimpleHopu = simplify . zip (repeat 0) where
             then simplify [ (lambda, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tl rhs_tl ] scope_env
             else fail "unifying-failed: case=RigidRigid, cause=head-not-matched-or-args-length-not-matched"
         | (LVar x, params) <- viewNApps lhs
-        , isPatternWRT x params scope_env
+        , (x, params) `isPatternWrt` scope_env
         = do
             res <- lift $ callSimpleMkRef x params rhs scope_env
             case res of
@@ -85,7 +85,7 @@ entryOfSimpleHopu = simplify . zip (repeat 0) where
                     return ([], (fresh_scope_env, fresh_lvar_bindings))
                 SpecialPrim -> giveup
         | (LVar x, params) <- viewNApps rhs
-        , isPatternWRT x params scope_env
+        , (x, params) `isPatternWrt` scope_env
         = do
             res <- lift $ callSimpleMkRef x params lhs scope_env
             case res of
@@ -111,7 +111,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
             let n = length rhs_args
                 lhs_args = map (liftLams l) params ++ map mkNIdx [l - 1, l - 2 .. 0]
             if l + length params == n
-                then if isPatternWRT x' rhs_args scope_env
+                then if (x', rhs_args) `isPatternWrt` scope_env
                     then do
                         h <- getNewUnique
                         let refined_rhs = foldNLams (n, foldNApps (mkLVar h, [ mkNIdx (n - 1 - i) | i <- [0, 1 .. n - 1], lhs_args !! i == rhs_args !! i ]))
@@ -141,7 +141,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
         , isRigid rhs_hd
         = do
             (refined_rhs_hd, res) <- case rhs_hd of
-                NIdx i -> case rhs_hd `down1` (map (liftLams l) params ++ map mkNIdx [l - 1, l - 2 .. 0]) of
+                NIdx i -> case down1 rhs_hd (map (liftLams l) params ++ map mkNIdx [l - 1, l - 2 .. 0]) of
                     Nothing -> fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
                     Just r -> do
                         res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env (lvar_bindings_acc, rhs_tl))
@@ -166,7 +166,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
                     y_scope = viewScope y scope_env
                     x_outer = com_args `down` lhs_args
                     y_outer = com_args `down` rhs_args
-                if isPatternWRT y rhs_args scope_env
+                if (y, rhs_args) `isPatternWrt` scope_env
                     then do
                         h <- getNewUnique
                         if x_scope < y_scope
@@ -205,12 +205,9 @@ callSimpleMkRef = entryOfSimpleMkRef where
     down1 :: TermNode -> [TermNode] -> Maybe TermNode
     down1 param args = fmap (\i -> mkNIdx (length args - 1 - i)) (param `List.elemIndex` args)
     down :: [TermNode] -> [TermNode] -> [TermNode]
-    down params args = map (\param -> fromJust $ down1 param args) params
+    params `down` args = map (fromJust . flip down1 args) params
     up :: Monad m => [TermNode] -> LogicVar -> ReaderT Labeling m [TermNode]
-    up args x = ask >>= \scope_env -> return (filter (isVisible scope_env) args) where
-        isVisible :: Labeling -> TermNode -> Bool
-        isVisible scope_env (NIdx i) = False
-        isVisible scope_env arg = if isRigid arg then viewScope x scope_env >= viewScope arg scope_env else False
+    args `up` x = ask >>= \scope_env -> return (filter (dukeOfCon scope_env (\c_scope -> viewScope x scope_env >= c_scope)) args)
 
 {- Comments on Basic Idea -}
 
