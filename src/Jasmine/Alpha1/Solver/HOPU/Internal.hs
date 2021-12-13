@@ -16,10 +16,7 @@ import Z.Algo.Function
 import Z.Utils
 
 updateAtomEnvNaively :: (Labeling, LVarSubst) -> AtomEnv -> AtomEnv
-updateAtomEnvNaively (scope_env, sigma) ctx = Map.fromAscList
-    [ (v, SymRef { myScopeLv = v_scope, myEvalRef = takeFirstOf id [substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx), Map.lookup v sigma] })
-    | (v, v_scope) <- Map.toAscList scope_env
-    ]
+updateAtomEnvNaively (scope_env, sigma) ctx = Map.mapWithKey (\v -> \v_scope -> SymRef { myScopeLv = v_scope, myEvalRef = takeFirstOf id [substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx), Map.lookup v sigma] }) scope_env
 
 callCoreHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> m (Maybe ([Disagreement], (Labeling, LVarSubst)))
 callCoreHopuSolver = entryOfCoreHopuSolver where
