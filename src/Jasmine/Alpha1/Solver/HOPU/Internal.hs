@@ -66,6 +66,8 @@ entryOfSimpleHopuAlgorithmCore = flip simplify [] . zip (repeat 0) where
         , (l2, rhs') <- viewNLams rhs
         , l2 > 0 && isRigid lhs_hd
         = simplifyOnce (lambda + l2) (foldNApps (liftLams l2 lhs_hd, map (liftLams l2) lhs_tl)) rhs' scope_env lvar_bindings
+        | lhs == rhs
+        = return ([], (scope_env, lvar_bindings))
         | (lhs_hd, lhs_tl) <- viewNApps lhs
         , (rhs_hd, rhs_tl) <- viewNApps rhs
         , isRigid lhs_hd && isRigid rhs_hd
@@ -113,7 +115,8 @@ callMkRef = entryOfMkRef where
                         return (MkRefResult (Map.insert h (viewScope x scope_env) scope_env) [(x, refined_rhs)])
                     else return NotAPattern
                 else fail "hopu-failed: case=ReflexiveFlex, cause=length-not-matched"
-        | otherwise = do
+        | otherwise
+        = do
             res <- bindsLVarToRefinedEvalRef x params 0 (MkRefResult scope_env ([], rhs))
             case res of
                 NotAPattern -> return NotAPattern
