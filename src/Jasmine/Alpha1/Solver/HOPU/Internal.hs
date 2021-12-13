@@ -15,8 +15,8 @@ import Jasmine.Alpha1.Solver.HOPU.Util
 import Z.Algo.Function
 import Z.Utils
 
-updateAtomEnvNaive :: (Labeling, LVarSubst) -> AtomEnv -> AtomEnv
-updateAtomEnvNaive (scope_env, sigma) ctx = Map.fromAscList
+updateAtomEnvNaively :: (Labeling, LVarSubst) -> AtomEnv -> AtomEnv
+updateAtomEnvNaively (scope_env, sigma) ctx = Map.fromAscList
     [ (v, SymRef { myScopeLv = v_scope, myEvalRef = takeFirstOf id [substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx), Map.lookup v sigma] })
     | (v, v_scope) <- Map.toAscList scope_env
     ]
@@ -73,7 +73,7 @@ entryOfSimpleHopu = simplify . zip (repeat 0) where
         , isRigid lhs_hd && isRigid rhs_hd
         = if lhs_hd == rhs_hd && length lhs_tl == length rhs_tl
             then simplify [ (lambda, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tl rhs_tl ] scope_env
-            else fail "hopu-failed: case=RigidRigid, cause=head-not-matched-or-args-length-not-matched"
+            else fail "unifying-failed: case=RigidRigid, cause=head-not-matched-or-args-length-not-matched"
         | (LVar x, params) <- viewNApps lhs
         , isPatternWRT x params scope_env
         = do
@@ -117,7 +117,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
                         let refined_rhs = foldNLams (n, foldNApps (mkLVar h, [ mkNIdx (n - 1 - i) | i <- [0, 1 .. n - 1], lhs_args !! i == rhs_args !! i ]))
                         return (MkRefResult (Map.insert h (viewScope x scope_env) scope_env) [(x, refined_rhs)])
                     else return NotAPattern
-                else fail "hopu-failed: case=ReflexiveFlex, cause=length-not-matched"
+                else fail "unifying-failed: case=ReflexiveFlex, cause=length-not-matched"
         | otherwise
         = do
             res <- bindsLVarToRefinedEvalRef x params 0 (MkRefResult scope_env ([], rhs))
@@ -142,7 +142,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
         = do
             (refined_rhs_hd, res) <- case rhs_hd of
                 NIdx i -> case rhs_hd `down1` (map (liftLams l) params ++ map mkNIdx [l - 1, l - 2 .. 0]) of
-                    Nothing -> fail "hopu-failed: case=FlexRigid, cause=imitation-failed"
+                    Nothing -> fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
                     Just r -> do
                         res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env (lvar_bindings_acc, rhs_tl))
                         return (r, res)
@@ -151,14 +151,14 @@ callSimpleMkRef = entryOfSimpleMkRef where
                         then do
                             res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env (lvar_bindings_acc, rhs_tl))
                             return (r, res)
-                        else fail "hopu-failed: case=FlexRigid, cause=imitation-failed"
+                        else fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
             case res of
                 NotAPattern -> return NotAPattern
                 MkRefResult scope_env' (lvar_bindings_acc', refined_rhs_tl) -> return (MkRefResult scope_env' (lvar_bindings_acc', foldNApps (refined_rhs_hd, refined_rhs_tl)))
                 SpecialPrim -> return SpecialPrim
         | (LVar y, rhs_args) <- viewNApps rhs
         = if x == y
-            then fail "hopu-failed: case=FlexFlex, cause=occurs-check-failed"
+            then fail "unifying-failed: case=FlexFlex, cause=occurs-check-failed"
             else do
                 let lhs_args = map (liftLams l) params ++ map mkNIdx [l - 1, l - 2 .. 0]
                     com_args = Set.toList (Set.fromList lhs_args `Set.intersection` Set.fromList rhs_args)
@@ -216,11 +216,11 @@ callSimpleMkRef = entryOfSimpleMkRef where
 
 {- Contents 
 1. Term simplication in higher-order pattern unification [no impl]
-2. Top-level control for calculating variable bindings   [impl in \S3]
-3. Calculating variable bindings                         [impl in \S4]
+2. Top-level control for calculating variable bindings   [impl in \S4]
+3. Calculating variable bindings                         [impl in \S5]
 -}
 
-{- Section 0 -}
+{- Section 1 -}
 
 {- Notations
 01. {| t, ol, nl, env |} stands for (rewriteWithSusp t ol nl env NF).
@@ -241,7 +241,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
 #                                                                     ^^^^^^^^ In [1], it is written to be #(n + i).
 -}
 
-{- Section 1 -}
+{- Section 2 -}
 
 {- ${Term} is a L_lambda-pattern in ${Env}.
 (1) RULE[ higher-order pattern ]
@@ -253,7 +253,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
 > app(X, zs) is a L_lambda-pattern in env.
 -}
 
-{- Section 2 -}
+{- Section 3 -}
 
 {- ${Env} = ${Env} |> ${Var} :==> ${Term}.
 (1) RULE[ reflect non-trivial subst ]
@@ -273,7 +273,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
 > env = env |> X :==> X.
 -}
 
-{- Section 3 -}
+{- Section 4 -}
 
 -- Top-level control for calculating variable bindings
 
@@ -298,7 +298,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
 > env ~~> MkRef[ app(X, [a_1 .. a_n]) := t ] ~~> env'' with { newQs = probs }.
 -}
 
-{- Section 4 -}
+{- Section 5 -}
 
 -- Calculating variable bindings
 
