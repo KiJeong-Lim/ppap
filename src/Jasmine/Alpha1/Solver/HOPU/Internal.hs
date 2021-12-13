@@ -101,13 +101,13 @@ callSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode
 callSimpleMkRef = entryOfSimpleMkRef where
     entryOfSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
     entryOfSimpleMkRef x params rhs scope_env
-        | (l, rhs') <- viewNLams rhs
+        | (l', rhs') <- viewNLams rhs
         , (LVar x', rhs_args) <- viewNApps rhs'
         , x == x'
         = do
             let n = length rhs_args
-                lhs_args = map (liftLams l) params ++ map mkNIdx [l - 1, l - 2 .. 0]
-            if l + length params == n
+                lhs_args = map (liftLams l') params ++ map mkNIdx [l' - 1, l' - 2 .. 0]
+            if length params + l' == n
                 then if (x', rhs_args) `isPatternWrt` scope_env
                     then do
                         h <- getNewUnique
