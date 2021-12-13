@@ -5,6 +5,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State.Strict
+import Data.Function
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -54,20 +55,7 @@ bridge bin_op (x1 : x2 : xs) = bin_op x1 x2 : bridge bin_op (x2 : xs)
 bridge bin_op _ = []
 
 makeNewScopeEnv :: LVarSubst -> Labeling -> Labeling 
-makeNewScopeEnv sigma labelings_old = Map.fromAscList labelings where
-    labelings :: [(Unique, ScopeLevel)]
-    labelings = do
-        v <- Set.toAscList (Map.keysSet sigma `Set.union` Map.keysSet labelings_old)
-        let v_scope = viewScope v labelings_old
-        return
-            ( v
-            , List.foldl' min v_scope
-                [ u_scope
-                | (u, t) <- Map.toList sigma
-                , v `Set.member` getLVars t
-                , u_scope <- maybe [] pure (Map.lookup u labelings_old)
-                ]
-            )
+makeNewScopeEnv sigma scope_env = Map.fromSet (\v -> viewScope v scope_env & (\v_scope -> List.foldl' min v_scope [ x_scope | (x, t) <- Map.toList sigma, v `Set.member` getLVars t, x_scope <- maybe [] pure (Map.lookup x scope_env) ])) (Map.keysSet sigma `Set.union` Map.keysSet scope_env)
 
 liftLams :: SmallNat -> TermNode -> TermNode
 liftLams l t = rewriteWithSusp t 0 l [] NF
