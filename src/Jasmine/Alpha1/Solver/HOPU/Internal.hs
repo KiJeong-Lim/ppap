@@ -73,11 +73,11 @@ entryOfSimpleHopu = flip simplify [] . zip (repeat 0) where
         , isRigid lhs_hd && isRigid rhs_hd
         = if lhs_hd == rhs_hd && length lhs_tl == length rhs_tl
             then simplify [ (lambda, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tl rhs_tl ] lvar_bindings scope_env
-            else fail "hopu-failed: case=RigidRigid, cause=length-not-matched"
+            else fail "hopu-failed: case=RigidRigid, cause=head-not-matched-or-args-length-not-matched"
         | (LVar x, params) <- viewNApps lhs
         , isPatternWRT x params scope_env
         = do
-            res <- lift $ callSimpleMkRef x params lhs scope_env
+            res <- lift $ callSimpleMkRef x params rhs scope_env
             case res of
                 NotAPattern -> giveup
                 MkRefResult fresh_scope_env fresh_lvar_bindings -> do
@@ -87,7 +87,7 @@ entryOfSimpleHopu = flip simplify [] . zip (repeat 0) where
         | (LVar x, params) <- viewNApps rhs
         , isPatternWRT x params scope_env
         = do
-            res <- lift $ callSimpleMkRef x params rhs scope_env
+            res <- lift $ callSimpleMkRef x params lhs scope_env
             case res of
                 NotAPattern -> giveup
                 MkRefResult fresh_scope_env fresh_lvar_bindings -> do
