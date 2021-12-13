@@ -89,6 +89,7 @@ instance HasScope (DataConstructor) where
     viewScope dc = const 0
 
 instance HasScope (TypeConstructor) where
+    viewScope (TC_Atom c) = maybe 0 id . Map.lookup c
     viewScope tc = const 0
 
 instance HasScope (Constructor) where
@@ -96,7 +97,9 @@ instance HasScope (Constructor) where
     viewScope (TypeConstr tc) = viewScope tc
 
 instance HasScope (Primitives) where
-    viewScope prim_op = if prim_op == WILD_CARD || prim_op == INTERRUPT then const maxBound else const 0
+    viewScope (WILD_CARD) = const maxBound
+    viewScope (INTERRUPT) = const maxBound
+    viewScope prim_op = const 0
 
 instance HasScope (TermNode) where
     viewScope (LVar x) = viewScope x

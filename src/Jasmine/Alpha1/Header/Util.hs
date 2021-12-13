@@ -51,6 +51,7 @@ data TypeConstructor
     | TC_Prop
     | TC_Bang
     | TC_List
+    | TC_Pair Int
     | TCarrow
     deriving (Eq, Ord, Show)
 
