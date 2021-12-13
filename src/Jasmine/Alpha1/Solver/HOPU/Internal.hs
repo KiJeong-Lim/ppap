@@ -140,18 +140,14 @@ callSimpleMkRef = entryOfSimpleMkRef where
         | (rhs_hd, rhs_tl) <- viewNApps rhs
         , isRigid rhs_hd
         = do
-            (refined_rhs_hd, res) <- case rhs_hd of
+            refined_rhs_hd <- case rhs_hd of
                 NIdx i -> case down1 rhs_hd (map (liftLams l) params ++ map mkNIdx [l - 1, l - 2 .. 0]) of
-                    Nothing -> fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
-                    Just r -> do
-                        res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env (lvar_bindings_acc, rhs_tl))
-                        return (r, res)
-                r -> do
-                    if viewScope x scope_env >= viewScope r scope_env
-                        then do
-                            res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env (lvar_bindings_acc, rhs_tl))
-                            return (r, res)
-                        else fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
+                    Just r -> return r
+                    _ -> fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
+                r -> if dukeOfCon scope_env (\r_scope -> viewScope x scope_env >= r_scope) r
+                    then return r
+                    else fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
+            res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env (lvar_bindings_acc, rhs_tl))
             case res of
                 NotAPattern -> return NotAPattern
                 MkRefResult scope_env' (lvar_bindings_acc', refined_rhs_tl) -> return (MkRefResult scope_env' (lvar_bindings_acc', foldNApps (refined_rhs_hd, refined_rhs_tl)))
@@ -207,7 +203,7 @@ callSimpleMkRef = entryOfSimpleMkRef where
     down :: [TermNode] -> [TermNode] -> [TermNode]
     params `down` args = map (fromJust . flip down1 args) params
     up :: Monad m => [TermNode] -> LogicVar -> ReaderT Labeling m [TermNode]
-    args `up` x = ask >>= \scope_env -> return (filter (dukeOfCon scope_env (\c_scope -> viewScope x scope_env >= c_scope)) args)
+    cs `up` x = ask >>= \scope_env -> return (filter (dukeOfCon scope_env (\c_scope -> viewScope x scope_env >= c_scope)) cs)
 
 {- Comments on Basic Idea -}
 
