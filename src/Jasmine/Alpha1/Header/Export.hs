@@ -42,8 +42,8 @@ type Labeling = Map.Map Unique ScopeLevel
 
 data SymbolReference
     = SymRef
-        { myScopeLv :: ScopeLevel
-        , myEvalRef :: Maybe TermNode
+        { myScopeLv :: !(ScopeLevel)
+        , myEvalRef :: !(Maybe TermNode)
         }
     deriving (Show)
 
@@ -62,10 +62,8 @@ class HasScope a where
     viewScope :: a -> Labeling -> ScopeLevel
 
 instance HasLVar (TermNode) where
+    getLVars = flip accLVars Set.empty
     substLVar ctx = rewrite NF . go where
-        z :: SuspItem -> SuspItem
-        z (Dummy l) = mkDummy l
-        z (Binds t l) = mkBinds (go t) l
         go :: TermNode -> TermNode
         go t = case t of
             LVar x -> maybe t id (Map.lookup x ctx)
@@ -74,14 +72,6 @@ instance HasLVar (TermNode) where
             NFix t1 -> NFix $! go t1
             Susp t ol nl env -> mkSusp (go t) ol nl (map (lensForSusp go) env)
             t -> t
-    getLVars = flip go Set.empty where
-        go :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
-        go (LVar x) = Set.insert x
-        go (NApp t1 t2) = go t1 . go t2
-        go (NLam t1) = go t1
-        go (NFix t1) = go t1
-        go (Susp t ol nl env) = go (rewriteWithSusp t ol nl env NF)
-        go _ = id
 
 instance HasLVar a => HasLVar [a] where
     getLVars = Set.unions . map getLVars
@@ -131,3 +121,11 @@ viewNLams = go 0 where
 
 foldNLams :: (SmallNat, TermNode) -> TermNode
 foldNLams (l, t) = recNat t (const mkNLam) l
+
+accLVars :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
+accLVars (LVar x) = Set.insert x
+accLVars (NApp t1 t2) = accLVars t1 . accLVars t2
+accLVars (NLam t1) = accLVars t1
+accLVars (NFix t1) = accLVars t1
+accLVars (Susp t ol nl env) = accLVars (rewriteWithSusp t ol nl env NF)
+accLVars _ = id

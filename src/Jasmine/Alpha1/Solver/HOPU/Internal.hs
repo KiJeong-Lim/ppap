@@ -36,13 +36,13 @@ callCoreHopuSolver = entryOfCoreHopuSolver where
                 conflicts = Map.elems multimap >>= bridge (:=?=:)
                 fresh_lvar_subst = Map.fromAscList [ (x, head (multimap Map.! x)) | (x, t) <- Map.toAscList multimap, not (x `Set.member` Map.keysSet lvar_subst) ]
                 new_probs = substLVar fresh_lvar_subst (conflicts ++ delayed_probs)
-                new_env = (makeNewScopeEnv fresh_lvar_subst fresh_scope_env, fresh_lvar_subst `composeLVarSubst` lvar_subst)
+                new_env = (makeNewScopeEnv fresh_lvar_subst fresh_scope_env, fresh_lvar_subst `compose` lvar_subst)
             if has_changed
                 then execMainRoutine new_probs new_env
                 else return (new_probs, new_env)
-    -- spec of composeLVarSubst: sigma = sigma2 `composeLVarSubst` sigma1 -> substLVar sigma t = substLVar sigma2 (substLVar sigma1 t)
-    composeLVarSubst :: LVarSubst -> LVarSubst -> LVarSubst
-    composeLVarSubst sigma2 sigma1 = Map.map (substLVar sigma2) sigma1 `Map.union` sigma2
+    -- spec of compose: sigma = sigma2 `compose` sigma1 -> substLVar sigma t = substLVar sigma2 (substLVar sigma1 t)
+    compose :: LVarSubst -> LVarSubst -> LVarSubst
+    sigma_new `compose` sigma_old = Map.map (substLVar sigma_new) sigma_old `Map.union` sigma_new
 
 entryOfSimpleHopu :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
 entryOfSimpleHopu = flip simplify [] . zip (repeat 0) where
