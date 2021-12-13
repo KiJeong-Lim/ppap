@@ -21,10 +21,7 @@ type ScopeLevel = SmallNat
 
 type DoesRepresentType = Bool
 
-data LogicVar
-    = TyLVar Unique
-    | TmLVar Unique
-    deriving (Eq, Ord, Show)
+type LogicVar = Unique
 
 data Constructor
     = DataConstr DataConstructor
@@ -81,16 +78,6 @@ instance Constructible (TypeConstructor) where
 instance Constructible (Constructor) where
     mkNCon c = NCon $! c
 
-flexTVar :: Unique -> TermNode
-flexTVar = callWithStrictArg (LVar . TyLVar)
-
-flexIVar :: Unique -> TermNode
-flexIVar = callWithStrictArg (LVar . TmLVar)
-
-viewFlex :: LogicVar -> (Unique, DoesRepresentType)
-viewFlex (TyLVar v) = (v, True)
-viewFlex (TmLVar v) = (v, False)
-
 viewDCon :: Constructor -> Maybe DataConstructor
 viewDCon (DataConstr c) = Just c
 viewDCon _ = Nothing
@@ -128,3 +115,7 @@ mkBinds t l = Binds t $! l
 
 mkDummy :: SmallNat -> SuspItem
 mkDummy l = Dummy $! l
+
+lensForSusp :: (TermNode -> TermNode) -> (SuspItem -> SuspItem)
+lensForSusp go (Binds t l) = mkBinds (go t) l
+lensForSusp go item = item

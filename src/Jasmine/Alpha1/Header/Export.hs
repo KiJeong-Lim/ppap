@@ -1,20 +1,21 @@
 module Jasmine.Alpha1.Header.Export
     -- Jasmine.Alpha1.Header.Util
     ( SrcRow, SrcCol, SrcPos, LargeId, SmallId, Keyword, ModName
-    , SrcLoc (_BegPos, _EndPos), DataConstructor, TypeConstructor, ReduceOption (..), Unique, UniqueMakerT
+    , SrcLoc (_BegPos, _EndPos), DataConstructor (..), TypeConstructor (..), ReduceOption (..), Unique, UniqueMakerT
     , HasSrcLoc (..), HasAnnotation (..), GeneratingUniqueMonad (..)
     , mkSrcLoc, runUniqueMakerT
     -- Jasmine.Alpha1.Header.TermNode
-    , DeBruijn, SuspEnv, Nat_ol, Nat_nl, ScopeLevel, DoesRepresentType
-    , LogicVar (..), Constructor (..), Primitives (..), TermNode (..)
+    , DeBruijn, SuspEnv, SmallNat, Nat_ol, Nat_nl, ScopeLevel, DoesRepresentType, LogicVar
+    , Constructor (..), Primitives (..), TermNode (..)
     , Constructible (..)
-    , flexTVar, flexIVar, viewFlex, viewDCon, viewTCon, fromPrim, viewPrim, mkLVar, mkNIdx, mkNApp, mkNLam
+    , viewDCon, viewTCon, fromPrim, viewPrim, mkLVar, mkNIdx, mkNApp, mkNLam
     -- Jasmine.Alpha1.Header.TermNode.DeBruijn
     , rewriteWithSusp, rewrite
     -- Jasmine.Alpha1.Header.TermNode.Render
     -- Jasmine.Alpha1.Header.Export
-    , JasminePP, JasminePragma, AtomEnv
+    , JasminePP, JasminePragma, AtomEnv, LVarSubst, Labeling
     , SymbolReference (..), ThreadState (..)
+    , HasLVar (..), HasScope (..)
     , viewNApps, foldNApps, viewNLams, foldNLams
     ) where
 
@@ -34,6 +35,11 @@ type JasminePragma = String
 
 type AtomEnv = Map.Map Unique SymbolReference
 
+type LVarSubst = Map.Map LogicVar TermNode
+-- spec of LVarSubst: Map.lookup x sigma /= Just x for any x :: LogicVar, sigma :: LVarSubst.
+
+type Labeling = Map.Map Unique ScopeLevel
+
 data SymbolReference
     = SymRef
         { myScopeLv :: ScopeLevel
@@ -47,6 +53,65 @@ data ThreadState
         , mySymbolEnv :: AtomEnv
         }
     deriving (Show)
+
+class HasLVar expr where
+    getLVars :: expr -> Set.Set LogicVar
+    substLVar :: LVarSubst -> expr -> expr
+
+class HasScope a where
+    viewScope :: a -> Labeling -> ScopeLevel
+
+instance HasLVar (TermNode) where
+    substLVar ctx = rewrite NF . go where
+        z :: SuspItem -> SuspItem
+        z (Dummy l) = mkDummy l
+        z (Binds t l) = mkBinds (go t) l
+        go :: TermNode -> TermNode
+        go t = case t of
+            LVar x -> maybe t id (Map.lookup x ctx)
+            NApp t1 t2 -> mkNApp (go t1) (go t2)
+            NLam t1 -> mkNLam (go t1)
+            NFix t1 -> NFix $! go t1
+            Susp t ol nl env -> mkSusp (go t) ol nl (map (lensForSusp go) env)
+            t -> t
+    getLVars = flip go Set.empty where
+        go :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
+        go (LVar x) = Set.insert x
+        go (NApp t1 t2) = go t1 . go t2
+        go (NLam t1) = go t1
+        go (NFix t1) = go t1
+        go (Susp t ol nl env) = go (rewriteWithSusp t ol nl env NF)
+        go _ = id
+
+instance HasLVar a => HasLVar [a] where
+    getLVars = Set.unions . map getLVars
+    substLVar = map . substLVar
+
+instance HasLVar b => HasLVar (a, b) where
+    getLVars = getLVars . snd
+    substLVar = fmap . substLVar
+
+instance HasScope (Unique) where
+    viewScope v = maybe maxBound id . Map.lookup v
+
+instance HasScope (DataConstructor) where
+    viewScope dc = const 0
+
+instance HasScope (TypeConstructor) where
+    viewScope tc = const 0
+
+instance HasScope (Constructor) where
+    viewScope (DataConstr dc) = viewScope dc
+    viewScope (TypeConstr tc) = viewScope tc
+
+instance HasScope (Primitives) where
+    viewScope prim_op = if prim_op == WILD_CARD || prim_op == INTERRUPT then const maxBound else const 0
+
+instance HasScope (TermNode) where
+    viewScope (LVar x) = viewScope x
+    viewScope (NCon c) = viewScope c
+    viewScope (Prim prim_op) = viewScope prim_op
+    viewScope _ = const (negate 1)
 
 viewNApps :: TermNode -> (TermNode, [TermNode])
 viewNApps = flip go [] where
@@ -63,5 +128,5 @@ viewNLams = go 0 where
     go l (NLam t1) = go (succ l) t1
     go l t = l `seq` (l, t)
 
-foldNLams :: SmallNat -> TermNode -> TermNode
-foldNLams l t = recNat t (const mkNLam) l
+foldNLams :: (SmallNat, TermNode) -> TermNode
+foldNLams (l, t) = recNat t (const mkNLam) l

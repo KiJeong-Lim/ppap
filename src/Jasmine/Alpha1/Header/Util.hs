@@ -4,6 +4,7 @@ import Control.Applicative
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Maybe
 import Control.Monad.Trans.State.Strict
 import Data.Function
 import qualified Data.List as List
@@ -104,7 +105,10 @@ instance Show (Unique) where
 instance Semigroup (SrcLoc) where
     SrcLoc { _BegPos = beg1, _EndPos = end1 } <> SrcLoc { _BegPos = beg2, _EndPos = end2 } = mkSrcLoc (beg1 `min` beg2) (end1 `max` end2)
 
-instance GeneratingUniqueMonad m => GeneratingUniqueMonad (ExceptT s m) where
+instance GeneratingUniqueMonad m => GeneratingUniqueMonad (ExceptT e m) where
+    getNewUnique = lift getNewUnique
+
+instance GeneratingUniqueMonad m => GeneratingUniqueMonad (MaybeT m) where
     getNewUnique = lift getNewUnique
 
 instance GeneratingUniqueMonad m => GeneratingUniqueMonad (StateT s m) where

@@ -57,7 +57,7 @@ bind var = go . rewrite HNF where
                         (lhs_inner, rhs_inner) <- case lookupLabel var labeling `compare` lookupLabel var' labeling of
                             LT -> do
                                 selected_rhs_parameters <- lhs_arguments `up` var'
-                                selected_lhs_parameters <- selected_rhs_parameters`down` lhs_arguments
+                                selected_lhs_parameters <- selected_rhs_parameters `down` lhs_arguments
                                 return (selected_lhs_parameters, selected_rhs_parameters)
                             geq -> do
                                 selected_lhs_parameters <- rhs_arguments `up` var
