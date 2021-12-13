@@ -21,17 +21,17 @@ updateAtomEnvNaive (scope_env, sigma) ctx = Map.fromAscList
     | (v, v_scope) <- Map.toAscList scope_env
     ]
 
-callSimpleHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> m (Maybe ([Disagreement], (Labeling, LVarSubst)))
-callSimpleHopuSolver = entryOfSimpleHopuSolver where
-    entryOfSimpleHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> m (Maybe ([Disagreement], (Labeling, LVarSubst)))
-    entryOfSimpleHopuSolver probs scope_env = runMaybeT (execMainRoutine probs (scope_env, Map.empty))
+callCoreHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> m (Maybe ([Disagreement], (Labeling, LVarSubst)))
+callCoreHopuSolver = entryOfCoreHopuSolver where
+    entryOfCoreHopuSolver :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> m (Maybe ([Disagreement], (Labeling, LVarSubst)))
+    entryOfCoreHopuSolver probs scope_env = runMaybeT (execMainRoutine probs (scope_env, Map.empty))
     execMainRoutine :: GeneratingUniqueMonad m => [Disagreement] -> (Labeling, LVarSubst) -> MaybeT m ([Disagreement], (Labeling, LVarSubst))
     execMainRoutine probs env
         | null probs = return (probs, env)
         | otherwise = do
             let scope_env = fst env
                 lvar_subst = snd env
-            ((delayed_probs, (fresh_scope_env, fresh_lvar_bindings)), has_changed) <- runStateT (entryOfSimpleHopuAlgorithmCore probs scope_env) False
+            ((delayed_probs, (fresh_scope_env, fresh_lvar_bindings)), has_changed) <- runStateT (entryOfSimpleHopu probs scope_env) False
             let multimap = Map.unionWith (++) (Map.map pure lvar_subst) (makeMulitMap fresh_lvar_bindings)
                 conflicts = Map.elems multimap >>= bridge (:=?=:)
                 fresh_lvar_subst = Map.fromAscList [ (x, head (multimap Map.! x)) | (x, t) <- Map.toAscList multimap, not (x `Set.member` Map.keysSet lvar_subst) ]
@@ -44,8 +44,8 @@ callSimpleHopuSolver = entryOfSimpleHopuSolver where
     composeLVarSubst :: LVarSubst -> LVarSubst -> LVarSubst
     composeLVarSubst sigma2 sigma1 = Map.map (substLVar sigma2) sigma1 `Map.union` sigma2
 
-entryOfSimpleHopuAlgorithmCore :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-entryOfSimpleHopuAlgorithmCore = flip simplify [] . zip (repeat 0) where
+entryOfSimpleHopu :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+entryOfSimpleHopu = flip simplify [] . zip (repeat 0) where
     simplify :: GeneratingUniqueMonad m => [(SmallNat, Disagreement)] -> [(LogicVar, TermNode)] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
     simplify [] lvar_bindings_acc scope_env = return ([], (scope_env, lvar_bindings_acc))
     simplify ((l, lhs :=?=: rhs) : probs) lvar_bindings_acc_0 scope_env_0 = do
@@ -77,30 +77,33 @@ entryOfSimpleHopuAlgorithmCore = flip simplify [] . zip (repeat 0) where
         | (LVar x, params) <- viewNApps lhs
         , isPatternWRT x params scope_env
         = do
-            res <- lift $ callMkRef x params lhs scope_env
+            res <- lift $ callSimpleMkRef x params lhs scope_env
             case res of
-                NotAPattern -> return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, lvar_bindings))
+                NotAPattern -> giveup
                 MkRefResult fresh_scope_env fresh_lvar_bindings -> do
                     put True
                     return ([], (fresh_scope_env, fresh_lvar_bindings ++ lvar_bindings))
-                SpecialPrim -> return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, lvar_bindings))
+                SpecialPrim -> giveup
         | (LVar x, params) <- viewNApps rhs
         , isPatternWRT x params scope_env
         = do
-            res <- lift $ callMkRef x params rhs scope_env
+            res <- lift $ callSimpleMkRef x params rhs scope_env
             case res of
-                NotAPattern -> return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, lvar_bindings))
+                NotAPattern -> giveup
                 MkRefResult fresh_scope_env fresh_lvar_bindings -> do
                     put True
                     return ([], (fresh_scope_env, fresh_lvar_bindings ++ lvar_bindings))
-                SpecialPrim -> return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, lvar_bindings))
+                SpecialPrim -> giveup
         | otherwise
-        = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, lvar_bindings))
+        = giveup
+        where
+            giveup :: Monad m => m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+            giveup = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, lvar_bindings))
 
-callMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
-callMkRef = entryOfMkRef where
-    entryOfMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
-    entryOfMkRef x params rhs scope_env
+callSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
+callSimpleMkRef = entryOfSimpleMkRef where
+    entryOfSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
+    entryOfSimpleMkRef x params rhs scope_env
         | (l, rhs') <- viewNLams rhs
         , (LVar x', rhs_args) <- viewNApps rhs'
         , x == x'
@@ -161,21 +164,20 @@ callMkRef = entryOfMkRef where
                     com_args = Set.toList (Set.fromList lhs_args `Set.intersection` Set.fromList rhs_args)
                     x_scope = viewScope x scope_env
                     y_scope = viewScope y scope_env
-                    y_invisible = x_scope < y_scope
-                    lhs_outer = com_args `down` lhs_args
-                    rhs_outer = com_args `down` rhs_args
+                    x_outer = com_args `down` lhs_args
+                    y_outer = com_args `down` rhs_args
                 if isPatternWRT y rhs_args scope_env
                     then do
                         h <- getNewUnique
-                        if y_invisible
+                        if x_scope < y_scope
                             then do
-                                rhs_inner <- runReaderT (lhs_args `up` y) scope_env
-                                let lhs_inner = rhs_inner `down` lhs_args
-                                return (MkRefResult (Map.insert h (min x_scope y_scope) scope_env) ((y, foldNLams (length rhs_args, foldNApps (mkLVar h, rhs_inner ++ rhs_outer))) : lvar_bindings_acc, foldNApps (mkLVar h, lhs_inner ++ lhs_outer)))
+                                y_inner <- runReaderT (lhs_args `up` y) scope_env
+                                let x_inner = y_inner `down` lhs_args
+                                return (MkRefResult (Map.insert h x_scope scope_env) ((y, foldNLams (length rhs_args, foldNApps (mkLVar h, y_inner ++ y_outer))) : lvar_bindings_acc, foldNApps (mkLVar h, x_inner ++ x_outer)))
                             else do
-                                lhs_inner <- runReaderT (rhs_args `up` x) scope_env
-                                let rhs_inner = lhs_inner `down` rhs_args
-                                return (MkRefResult (Map.insert h (min x_scope y_scope) scope_env) ((y, foldNLams (length rhs_args, foldNApps (mkLVar h, rhs_inner ++ rhs_outer))) : lvar_bindings_acc, foldNApps (mkLVar h, lhs_inner ++ lhs_outer)))
+                                x_inner <- runReaderT (rhs_args `up` x) scope_env
+                                let y_inner = x_inner `down` rhs_args
+                                return (MkRefResult (Map.insert h y_scope scope_env) ((y, foldNLams (length rhs_args, foldNApps (mkLVar h, y_inner ++ y_outer))) : lvar_bindings_acc, foldNApps (mkLVar h, x_inner ++ x_outer)))
                     else return NotAPattern
         | otherwise
         = return SpecialPrim

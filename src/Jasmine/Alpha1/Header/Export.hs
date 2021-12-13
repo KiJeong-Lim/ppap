@@ -95,6 +95,7 @@ instance HasScope (Unique) where
     viewScope v = maybe maxBound id . Map.lookup v
 
 instance HasScope (DataConstructor) where
+    viewScope (DC_Unique c) = maybe 0 id . Map.lookup c
     viewScope dc = const 0
 
 instance HasScope (TypeConstructor) where
