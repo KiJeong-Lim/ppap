@@ -27,16 +27,16 @@ data MkRefResult item
     deriving (Show)
 
 class Flattable a where
-    isFlatWRT :: a -> LVarSubst -> Bool
+    isFlatWrt :: a -> LVarSubst -> Bool
 
 instance Flattable (TermNode) where
-    isFlatWRT t sigma = getLVars t `Set.disjoint` Map.keysSet sigma
+    isFlatWrt t sigma = getLVars t `Set.disjoint` Map.keysSet sigma
 
 instance Flattable (Disagreement) where
-    isFlatWRT (lhs :=?=: rhs) sigma = isFlatWRT lhs sigma && isFlatWRT rhs sigma
+    isFlatWrt (lhs :=?=: rhs) sigma = isFlatWrt lhs sigma && isFlatWrt rhs sigma
 
 instance Flattable a => Flattable [a] where
-    isFlatWRT xs sigma = all (\x -> isFlatWRT x sigma) xs
+    isFlatWrt xs sigma = all (\x -> isFlatWrt x sigma) xs
 
 instance HasLVar (Disagreement) where
     getLVars (lhs :=?=: rhs) = Set.union (getLVars lhs) (getLVars rhs)
@@ -50,8 +50,8 @@ makeMulitMap :: Ord k => [(k, a)] -> Map.Map k [a]
 makeMulitMap = foldr (uncurry $ \k -> \x -> Map.alter (Just . maybe [x] (\xs -> x : xs)) k) Map.empty
 
 bridge :: (a -> a -> b) -> [a] -> [b]
-bridge op (x1 : x2 : xs) = op x1 x2 : bridge op (x2 : xs)
-bridge _ _ = []
+bridge bin_op (x1 : x2 : xs) = bin_op x1 x2 : bridge bin_op (x2 : xs)
+bridge bin_op _ = []
 
 makeNewScopeEnv :: LVarSubst -> Labeling -> Labeling 
 makeNewScopeEnv sigma labelings_old = Map.fromAscList labelings where
@@ -72,18 +72,25 @@ makeNewScopeEnv sigma labelings_old = Map.fromAscList labelings where
 liftLams :: SmallNat -> TermNode -> TermNode
 liftLams l t = rewriteWithSusp t 0 l [] NF
 
+isPrimCon :: Primitives -> Bool
+isPrimCon (INTERRUPT) = False
+isPrimCon (WILD_CARD) = False
+isPrimCon _ = True
+
 isRigid :: TermNode -> Bool
 isRigid (NIdx i) = True
 isRigid (NCon c) = True
-isRigid (Prim prim_op) = not (prim_op == INTERRUPT || prim_op == WILD_CARD)
+isRigid (Prim prim_op) = isPrimCon prim_op
 isRigid _ = False
 
-isPatternWRT :: LogicVar -> [TermNode] -> Labeling -> Bool
-isPatternWRT x params labeling = and
+dukeOfCon :: Labeling -> (ScopeLevel -> Bool) -> TermNode -> Bool
+dukeOfCon scope_env cond (NCon c) = cond (viewScope c scope_env)
+dukeOfCon scope_env cond (Prim prim_op) = cond (viewScope prim_op scope_env)
+dukeOfCon scope_env cond _ = False
+
+isPatternWrt :: (LogicVar, [TermNode]) -> Labeling -> Bool
+(x, params) `isPatternWrt` scope_env = and
     [ all isRigid params
     , areAllDistinct params
-    , and
-        [ viewScope x labeling < viewScope c labeling
-        | NCon c <- params
-        ]
+    , all (not . dukeOfCon scope_env (\c_scope -> viewScope x scope_env >= c_scope)) params
     ]
