@@ -46,7 +46,8 @@ entryOfSimpleHopu = simplify . zip (repeat 0) where
     simplify :: GeneratingUniqueMonad m => [(SmallNat, Disagreement)] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
     simplify [] scope_env = return ([], (scope_env, []))
     simplify ((l, lhs :=?=: rhs) : probs) scope_env_0 = do
-        (delayed_probs_1, (scope_env_1, lvar_bindings_1)) <- simplify1 l (rewrite NF lhs) (rewrite NF rhs) scope_env_0 -- Is it equiv to (simplify1 0 (rewrite NF (foldNLams (l, lhs))) (rewrite NF (foldNLams (l, rhs))) scope_env_0)?
+        (delayed_probs_1, (scope_env_1, lvar_bindings_1)) <- simplify1 l (rewrite NF lhs) (rewrite NF rhs) scope_env_0
+        -- Is it equiv to (simplify1 0 (rewrite NF (foldNLams (l, lhs))) (rewrite NF (foldNLams (l, rhs))) scope_env_0)?
         (delayed_probs_2, (scope_env_2, lvar_bindings_2)) <- simplify probs scope_env_1
         return (delayed_probs_1 ++ delayed_probs_2, (scope_env_2, lvar_bindings_1 ++ lvar_bindings_2))
     simplify1 :: GeneratingUniqueMonad m => SmallNat -> TermNode -> TermNode -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
@@ -72,34 +73,30 @@ entryOfSimpleHopu = simplify . zip (repeat 0) where
             then simplify [ (lambda, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tl rhs_tl ] scope_env
             else fail "unifying-failed: case=RigidRigid, cause=head-not-matched-or-args-length-not-matched"
         | (LVar x, params) <- viewNApps lhs
-        , (x, params) `isPatternWrt` scope_env
-        = do
-            res <- lift $ callSimpleMkRef x params rhs scope_env
-            case res of
-                NotAPattern -> giveup
-                MkRefResult fresh_scope_env fresh_lvar_bindings -> do
-                    put True
-                    return ([], (fresh_scope_env, fresh_lvar_bindings))
-                SpecialPrim -> giveup
+        = if (x, params) `isPatternWrt` scope_env
+            then mksubst x params rhs
+            else giveup NotAPattern
         | (LVar x, params) <- viewNApps rhs
-        , (x, params) `isPatternWrt` scope_env
-        = do
-            res <- lift $ callSimpleMkRef x params lhs scope_env
-            case res of
-                NotAPattern -> giveup
-                MkRefResult fresh_scope_env fresh_lvar_bindings -> do
-                    put True
-                    return ([], (fresh_scope_env, fresh_lvar_bindings))
-                SpecialPrim -> giveup
+        = if (x, params) `isPatternWrt` scope_env
+            then mksubst x params lhs
+            else giveup NotAPattern
         | otherwise
-        = giveup
+        = giveup SpecialPrim
         where
-            giveup :: Monad m => m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-            giveup = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
+            mksubst :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+            mksubst x params rhs = do
+                res <- lift $ runExceptT (callSimpleMkRef x params rhs scope_env)
+                case res of
+                    Left bad_res -> giveup bad_res
+                    Right good_res -> do
+                        put True
+                        return ([], good_res)
+            giveup :: Monad m => MkRefFailed -> m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+            giveup _ = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
 
-callSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
+callSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed (MaybeT m) (Labeling, [(LogicVar, TermNode)])
 callSimpleMkRef = entryOfSimpleMkRef where
-    entryOfSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> MaybeT m (MkRefResult [(LogicVar, TermNode)])
+    entryOfSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed (MaybeT m) (Labeling, [(LogicVar, TermNode)])
     entryOfSimpleMkRef x params rhs scope_env
         | (l', rhs') <- viewNLams rhs
         , (LVar x', rhs_args) <- viewNApps rhs'
@@ -107,33 +104,28 @@ callSimpleMkRef = entryOfSimpleMkRef where
         = do
             let n = length rhs_args
                 lhs_args = map (liftLams l') params ++ map mkNIdx [l' - 1, l' - 2 .. 0]
-            if length params + l' == n
+            if l + l' == n
                 then if (x', rhs_args) `isPatternWrt` scope_env
                     then do
                         h <- getNewUnique
                         let refined_rhs = foldNLams (n, foldNApps (mkLVar h, [ mkNIdx (n - 1 - i) | i <- [0, 1 .. n - 1], lhs_args !! i == rhs_args !! i ]))
-                        return (MkRefResult (Map.insert h (viewScope x scope_env) scope_env) [(x, refined_rhs)])
-                    else return NotAPattern
+                        return (Map.insert h (viewScope x scope_env) scope_env, [(x, refined_rhs)])
+                    else throwE NotAPattern
                 else fail "unifying-failed: case=ReflexiveFlex, cause=length-not-matched"
         | otherwise
         = do
-            res <- bindsLVarToRefinedEvalRef x params 0 (MkRefResult scope_env ([], rhs))
-            case res of
-                NotAPattern -> return NotAPattern
-                MkRefResult new_scope_env (lvar_bindings, refined_rhs) -> return (MkRefResult new_scope_env ((x, refined_rhs) : lvar_bindings))
-                SpecialPrim -> return SpecialPrim
-    bindsLVarToRefinedEvalRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> SmallNat -> (MkRefResult ([(LogicVar, TermNode)], TermNode)) -> MaybeT m (MkRefResult ([(LogicVar, TermNode)], TermNode))
-    bindsLVarToRefinedEvalRef x params l (NotAPattern)
-        = return NotAPattern
-    bindsLVarToRefinedEvalRef x params l (MkRefResult scope_env (lvar_bindings_acc, rhs))
+            (refined_rhs, (new_scope_env, lvar_bindings)) <- bindsLVarToRefinedEvalRef x params 0 rhs (scope_env, [])
+            return (new_scope_env, (x, foldNLams (l, refined_rhs)) : lvar_bindings) -- FIXED: refined_rhs --> foldNLams (l, refined_rhs)
+        where
+            l :: SmallNat
+            l = length params
+    bindsLVarToRefinedEvalRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> SmallNat -> TermNode -> (Labeling, [(LogicVar, TermNode)]) -> ExceptT MkRefFailed (MaybeT m) (TermNode, (Labeling, [(LogicVar, TermNode)]))
+    bindsLVarToRefinedEvalRef x params l rhs (scope_env, lvar_bindings_acc)
         | (l', rhs') <- viewNLams rhs
         , l' > 0
         = do
-            res <- bindsLVarToRefinedEvalRef x params (l + l') (MkRefResult scope_env (lvar_bindings_acc, rhs'))
-            case res of
-                NotAPattern -> return NotAPattern
-                MkRefResult scope_env' (lvar_bindings_acc', refined_rhs') -> return (MkRefResult scope_env' (lvar_bindings_acc', foldNLams (l', refined_rhs')))
-                SpecialPrim -> return SpecialPrim
+            (refined_rhs', (scope_env', (lvar_bindings_acc'))) <- bindsLVarToRefinedEvalRef x params (l + l') rhs' (scope_env, lvar_bindings_acc)
+            return (foldNLams (l', refined_rhs'), (scope_env', lvar_bindings_acc'))
         | (rhs_hd, rhs_tl) <- viewNApps rhs
         , isRigid rhs_hd
         = do
@@ -144,11 +136,8 @@ callSimpleMkRef = entryOfSimpleMkRef where
                 r -> if dukeOfCon scope_env (\r_scope -> viewScope x scope_env >= r_scope) r
                     then return r
                     else fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
-            res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env (lvar_bindings_acc, rhs_tl))
-            case res of
-                NotAPattern -> return NotAPattern
-                MkRefResult scope_env' (lvar_bindings_acc', refined_rhs_tl) -> return (MkRefResult scope_env' (lvar_bindings_acc', foldNApps (refined_rhs_hd, refined_rhs_tl)))
-                SpecialPrim -> return SpecialPrim
+            (refined_rhs_tl, (scope_env', lvar_bindings_acc')) <- runStateT (mapM (StateT . bindsLVarToRefinedEvalRef x params l) rhs_tl) (scope_env, lvar_bindings_acc)
+            return (foldNApps (refined_rhs_hd, refined_rhs_tl), (scope_env', lvar_bindings_acc'))
         | (LVar y, rhs_args) <- viewNApps rhs
         = if x == y
             then fail "unifying-failed: case=FlexFlex, cause=occurs-check-failed"
@@ -162,39 +151,19 @@ callSimpleMkRef = entryOfSimpleMkRef where
                 if (y, rhs_args) `isPatternWrt` scope_env
                     then do
                         h <- getNewUnique
+                        let myResult x_inner y_inner = (foldNApps (mkLVar h, x_inner ++ x_outer), (Map.insert h (min x_scope y_scope) scope_env, (y, foldNLams (length rhs_args, foldNApps (mkLVar h, y_inner ++ y_outer))) : lvar_bindings_acc))
                         if x_scope < y_scope
                             then do
                                 y_inner <- runReaderT (lhs_args `up` y) scope_env
                                 let x_inner = y_inner `down` lhs_args
-                                return (MkRefResult (Map.insert h x_scope scope_env) ((y, foldNLams (length rhs_args, foldNApps (mkLVar h, y_inner ++ y_outer))) : lvar_bindings_acc, foldNApps (mkLVar h, x_inner ++ x_outer)))
+                                return (myResult x_inner y_inner)
                             else do
                                 x_inner <- runReaderT (rhs_args `up` x) scope_env
                                 let y_inner = x_inner `down` rhs_args
-                                return (MkRefResult (Map.insert h y_scope scope_env) ((y, foldNLams (length rhs_args, foldNApps (mkLVar h, y_inner ++ y_outer))) : lvar_bindings_acc, foldNApps (mkLVar h, x_inner ++ x_outer)))
-                    else return NotAPattern
+                                return (myResult x_inner y_inner)
+                    else throwE NotAPattern
         | otherwise
-        = return SpecialPrim
-    bindsLVarToRefinedEvalRef x params l (SpecialPrim)
-        = return SpecialPrim
-    bindsLVarToRefinedEvalRefIter :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> SmallNat -> (MkRefResult ([(LogicVar, TermNode)], [TermNode])) -> MaybeT m (MkRefResult ([(LogicVar, TermNode)], [TermNode]))
-    bindsLVarToRefinedEvalRefIter x params l (NotAPattern)
-        = return NotAPattern
-    bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env_0 (lvar_bindings_acc_0, rhss))
-        = case rhss of
-            [] -> return (MkRefResult scope_env_0 (lvar_bindings_acc_0, []))
-            rhs' : rhss' -> do
-                res <- bindsLVarToRefinedEvalRef x params l (MkRefResult scope_env_0 (lvar_bindings_acc_0, rhs'))
-                case res of
-                    NotAPattern -> return NotAPattern
-                    MkRefResult scope_env_1 (lvar_bindings_acc_1, refined_rhs') -> do
-                        res <- bindsLVarToRefinedEvalRefIter x params l (MkRefResult scope_env_1 (lvar_bindings_acc_1, rhss'))
-                        case res of
-                            NotAPattern -> return NotAPattern
-                            MkRefResult scope_env_2 (lvar_bindings_acc_2, refined_rhss') -> return (MkRefResult scope_env_2 (lvar_bindings_acc_2, refined_rhs' : refined_rhss'))
-                            SpecialPrim -> return SpecialPrim
-                    SpecialPrim -> return SpecialPrim
-    bindsLVarToRefinedEvalRefIter x params l (SpecialPrim)
-        = return SpecialPrim
+        = throwE SpecialPrim
     down1 :: TermNode -> [TermNode] -> Maybe TermNode
     down1 param args = fmap (\i -> mkNIdx (length args - 1 - i)) (param `List.elemIndex` args)
     down :: [TermNode] -> [TermNode] -> [TermNode]

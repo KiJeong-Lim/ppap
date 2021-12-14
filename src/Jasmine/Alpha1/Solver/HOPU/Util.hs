@@ -21,9 +21,8 @@ data Disagreement
     = TermNode :=?=: TermNode
     deriving (Show)
 
-data MkRefResult item
-    = MkRefResult Labeling item
-    | NotAPattern
+data MkRefFailed
+    = NotAPattern
     | SpecialPrim
     deriving (Show)
 
