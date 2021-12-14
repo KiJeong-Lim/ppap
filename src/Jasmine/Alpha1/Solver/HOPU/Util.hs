@@ -27,21 +27,21 @@ data MkRefResult item
     | SpecialPrim
     deriving (Show)
 
-class Flattable a where
+class Flat a where
     isFlatWrt :: a -> LVarSubst -> Bool
 
-instance Flattable (TermNode) where
+instance HasLVar (Disagreement) where
+    getLVars (lhs :=?=: rhs) = getLVars lhs `Set.union` getLVars rhs
+    substLVar sigma (lhs :=?=: rhs) = substLVar sigma lhs :=?=: substLVar sigma rhs
+
+instance Flat (TermNode) where
     isFlatWrt t sigma = getLVars t `Set.disjoint` Map.keysSet sigma
 
-instance Flattable (Disagreement) where
+instance Flat (Disagreement) where
     isFlatWrt (lhs :=?=: rhs) sigma = isFlatWrt lhs sigma && isFlatWrt rhs sigma
 
-instance Flattable a => Flattable [a] where
-    isFlatWrt xs sigma = all (\x -> isFlatWrt x sigma) xs
-
-instance HasLVar (Disagreement) where
-    getLVars (lhs :=?=: rhs) = Set.union (getLVars lhs) (getLVars rhs)
-    substLVar sigma (lhs :=?=: rhs) = substLVar sigma lhs :=?=: substLVar sigma rhs
+instance Flat a => Flat [a] where
+    isFlatWrt = flip (all . flip isFlatWrt)
 
 areAllDistinct :: Eq a => [a] -> Bool
 areAllDistinct [] = True
@@ -50,9 +50,9 @@ areAllDistinct (x : xs) = not (x `elem` xs) && areAllDistinct xs
 makeMultiMap :: Ord k => [(k, a)] -> Map.Map k [a]
 makeMultiMap = foldr (uncurry $ \k -> \x -> Map.alter (Just . maybe [x] (\xs -> x : xs)) k) Map.empty
 
-bridge :: (a -> a -> b) -> [a] -> [b]
-bridge bin_op (x1 : x2 : xs) = bin_op x1 x2 : bridge bin_op (x2 : xs)
-bridge bin_op _ = []
+mkBridges :: (a -> a -> b) -> [a] -> [b]
+mkBridges bin_op (x1 : x2 : xs) = bin_op x1 x2 : mkBridges bin_op (x2 : xs)
+mkBridges bin_op _ = []
 
 makeNewScopeEnv :: LVarSubst -> Labeling -> Labeling 
 makeNewScopeEnv sigma scope_env = Map.fromSet (\v -> viewScope v scope_env & (\v_scope -> List.foldl' min v_scope [ x_scope | (x, t) <- Map.toList sigma, v `Set.member` getLVars t, x_scope <- maybe [] pure (Map.lookup x scope_env) ])) (Map.keysSet sigma `Set.union` Map.keysSet scope_env)
