@@ -130,5 +130,5 @@ accLVars (LVar x) = Set.insert x
 accLVars (NApp t1 t2) = accLVars t1 . accLVars t2
 accLVars (NLam t1) = accLVars t1
 accLVars (NFix t1) = accLVars t1
-accLVars (Susp t ol nl env) = accLVars (rewriteWithSusp t ol nl env NF)
+accLVars (Susp t ol nl env) = accLVars (rewriteWithSusp t ol nl env ALPHA)
 accLVars _ = id
