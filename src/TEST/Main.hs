@@ -14,7 +14,7 @@ main = do
             return ()
         "Jasmine" -> do
             shelly ("TEST >>= exec (TEST.testJasmine)")
-            testPresburger
+            testJasmine
             shelly ("TEST >>= quit")
             return ()
         "Z" -> do
