@@ -63,7 +63,7 @@ class HasScope a where
 
 instance HasLVar (TermNode) where
     getLVars = flip accLVars Set.empty
-    substLVar ctx = rewrite NF . go where
+    substLVar ctx = go where
         go :: TermNode -> TermNode
         go t = case t of
             LVar x -> maybe t id (Map.lookup x ctx)

@@ -46,7 +46,7 @@ entryOfSimpleHopu = simplify . zip (repeat 0) where
     simplify :: GeneratingUniqueMonad m => [(SmallNat, Disagreement)] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
     simplify [] scope_env = return ([], (scope_env, []))
     simplify ((l, lhs :=?=: rhs) : probs) scope_env_0 = do
-        (delayed_probs_1, (scope_env_1, lvar_bindings_1)) <- simplify1 l (rewrite NF lhs) (rewrite NF rhs) scope_env_0
+        (delayed_probs_1, (scope_env_1, lvar_bindings_1)) <- simplify1 l (rewrite NF lhs) (rewrite NF rhs) scope_env_0 -- Is it equiv to (simplify1 0 (rewrite NF (foldNLams (l, lhs))) (rewrite NF (foldNLams (l, rhs))) scope_env_0)?
         (delayed_probs_2, (scope_env_2, lvar_bindings_2)) <- simplify probs scope_env_1
         return (delayed_probs_1 ++ delayed_probs_2, (scope_env_2, lvar_bindings_1 ++ lvar_bindings_2))
     simplify1 :: GeneratingUniqueMonad m => SmallNat -> TermNode -> TermNode -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
