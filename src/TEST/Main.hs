@@ -1,6 +1,6 @@
 module TEST.Main where
 
-import Jasmine.Alpha1.Solver.Presburger.Test
+import TEST.Jasmine
 import TEST.Z
 import Z.System.Shelly
 import Z.Utils
