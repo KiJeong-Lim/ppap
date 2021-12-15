@@ -34,7 +34,9 @@ callSimpleHopuSolver = entryOfSimpleHopuSolver where
                 fresh_lvar_subst = Map.withoutKeys multi_map (Map.keysSet lvar_subst) & Map.map head
                 new_probs = substLVar fresh_lvar_subst (conflicts ++ delayed_probs)
                 new_env = (makeNewScopeEnv fresh_lvar_subst fresh_scope_env, fresh_lvar_subst `compose` lvar_subst)
-            if has_changed then execMainRoutine new_probs new_env else return (new_probs, new_env)
+            if has_changed
+                then execMainRoutine new_probs new_env
+                else return (new_probs, new_env)
     compose :: LVarSubst -> LVarSubst -> LVarSubst
     sigma_new `compose` sigma_old = Map.map (substLVar sigma_new) sigma_old `Map.union` sigma_new
 
@@ -69,26 +71,24 @@ entryOfSimpleHopu = simplify where
             then simplify [ foldNLams (lambda, t1) :=?=: foldNLams (lambda, t2) | (t1, t2) <- zip lhs_tl rhs_tl ] scope_env
             else fail "unifying-failed: case=RigidRigid, cause=head-not-matched-or-args-length-not-matched"
         | (LVar x, x_args) <- viewNApps lhs
-        = if (x, x_args) `isPatternWrt` scope_env
-            then calcLVarBinding x x_args rhs
-            else delayBy NotAPattern
+        , (x, x_args) `isPatternWrt` scope_env
+        = calcLVarBinding x x_args rhs
         | (LVar x, x_args) <- viewNApps rhs
-        = if (x, x_args) `isPatternWrt` scope_env
-            then calcLVarBinding x x_args lhs
-            else delayBy NotAPattern
+        , (x, x_args) `isPatternWrt` scope_env
+        = calcLVarBinding x x_args lhs
         | otherwise
-        = delayBy SpecialPrim
+        = delay
         where
             calcLVarBinding :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
             calcLVarBinding x x_args x_eval_ref = do
                 res <- lift $ runExceptT (entryOfSimpleMkRef x x_args x_eval_ref scope_env)
                 case res of
-                    Left cause_to_defer -> delayBy cause_to_defer
+                    Left cause_to_defer -> delay
                     Right good_res -> do
                         put True
                         return ([], good_res)
-            delayBy :: Monad m => MkRefFailed -> m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-            delayBy cause_to_defer = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
+            delay :: Monad m => m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+            delay = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
 
 entryOfSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed (MaybeT m) (Labeling, [(LogicVar, TermNode)])
 entryOfSimpleMkRef = toplevelctrl where
