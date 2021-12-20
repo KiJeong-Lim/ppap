@@ -50,8 +50,14 @@ makeMultiMap :: Ord k => [(k, a)] -> Map.Map k [a]
 makeMultiMap = foldr (uncurry $ \k -> \x -> Map.alter (Just . maybe [x] (\xs -> x : xs)) k) Map.empty
 
 mkBridges :: (a -> a -> b) -> [a] -> [b]
-mkBridges bin_op (x1 : x2 : xs) = bin_op x1 x2 : mkBridges bin_op (x2 : xs)
-mkBridges bin_op _ = []
+mkBridges bin_op = recList [] (\x -> \xs -> \prev -> if null xs then [] else (x `bin_op` head xs) : prev)
+
+choose2 :: (a -> a -> b) -> [a] -> [b]
+choose2 bin_op xs = do
+    let n = length xs - 1
+    i <- [0 .. n]
+    j <- [i + 1 .. n]
+    return ((xs !! i) `bin_op` (xs !! j))
 
 makeNewScopeEnv :: LVarSubst -> Labeling -> Labeling 
 makeNewScopeEnv sigma scope_env = Map.fromSet (\v -> viewScope v scope_env & (\v_scope -> List.foldl' min v_scope [ x_scope | (x, t) <- Map.toList sigma, v `Set.member` getLVars t, x_scope <- maybe [] pure (Map.lookup x scope_env) ])) (Map.keysSet sigma `Set.union` Map.keysSet scope_env)

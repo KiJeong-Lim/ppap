@@ -30,7 +30,7 @@ callSimpleHopuSolver = entryOfSimpleHopuSolver where
                 lvar_subst = snd env
             ((delayed_probs, (fresh_scope_env, fresh_lvar_binding)), has_changed) <- runStateT (entryOfSimpleHopu probs scope_env) False
             let multi_map = Map.unionWith (++) (Map.map pure lvar_subst) (makeMultiMap fresh_lvar_binding)
-                conflicts = Map.elems multi_map >>= mkBridges (:=?=:)
+                conflicts = Map.elems multi_map >>= choose2 (:=?=:)
                 fresh_lvar_subst = Map.withoutKeys multi_map (Map.keysSet lvar_subst) & Map.map head
                 new_probs = substLVar fresh_lvar_subst (conflicts ++ delayed_probs)
                 new_env = (makeNewScopeEnv fresh_lvar_subst fresh_scope_env, fresh_lvar_subst `compose` lvar_subst)
@@ -38,7 +38,7 @@ callSimpleHopuSolver = entryOfSimpleHopuSolver where
                 then execMainRoutine new_probs new_env
                 else return (new_probs, new_env)
     compose :: LVarSubst -> LVarSubst -> LVarSubst
-    sigma_new `compose` sigma_old = Map.map (substLVar sigma_new) sigma_old `Map.union` sigma_new
+    sigma_new `compose` sigma_old = Map.unionWith const (Map.map (substLVar sigma_new) sigma_old) sigma_new
 
 entryOfSimpleHopu :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
 entryOfSimpleHopu = simplify where
