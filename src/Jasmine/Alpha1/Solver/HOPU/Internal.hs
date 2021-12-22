@@ -18,11 +18,11 @@ import Z.Utils
 updateAtomEnvNaively :: (Labeling, LVarSubst) -> AtomEnv -> AtomEnv
 updateAtomEnvNaively (scope_env, sigma) ctx = Map.mapWithKey (\v -> \v_scope -> SymRef { myScopeLv = v_scope, myEvalRef = takeFirstOf id [substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx), Map.lookup v sigma] }) scope_env
 
-callSimpleHopuSolver :: GeneratingUniqueMonad m => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
+callSimpleHopuSolver :: (GeneratingUniqueMonad m) => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
 callSimpleHopuSolver = entryOfSimpleHopuSolver where
-    entryOfSimpleHopuSolver :: GeneratingUniqueMonad m => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
+    entryOfSimpleHopuSolver :: (GeneratingUniqueMonad m) => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
     entryOfSimpleHopuSolver probs scope_env = runMaybeT (execMainRoutine (map (uncurry (:=?=:)) probs) (scope_env, Map.empty) >>= uncurry (\new_probs -> \hopu_sol -> return ([ (lhs, rhs) | lhs :=?=: rhs <- new_probs ], hopu_sol)))
-    execMainRoutine :: GeneratingUniqueMonad m => [Disagreement] -> (Labeling, LVarSubst) -> MaybeT m ([Disagreement], (Labeling, LVarSubst))
+    execMainRoutine :: (MonadFail m, GeneratingUniqueMonad m) => [Disagreement] -> (Labeling, LVarSubst) -> m ([Disagreement], (Labeling, LVarSubst))
     execMainRoutine probs env
         | null probs = return (probs, env)
         | otherwise = do
@@ -40,15 +40,15 @@ callSimpleHopuSolver = entryOfSimpleHopuSolver where
     compose :: LVarSubst -> LVarSubst -> LVarSubst
     sigma_new `compose` sigma_old = Map.unionWith const (Map.map (substLVar sigma_new) sigma_old) sigma_new
 
-entryOfSimpleHopu :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+entryOfSimpleHopu :: (MonadFail m, GeneratingUniqueMonad m) => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
 entryOfSimpleHopu = simplify where
-    simplify :: GeneratingUniqueMonad m => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+    simplify :: (MonadFail m, GeneratingUniqueMonad m) => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
     simplify [] scope_env = return ([], (scope_env, []))
     simplify (lhs :=?=: rhs : probs) scope_env_0 = do
         (delayed_probs_1, (scope_env_1, lvar_binding_1)) <- simplify1 0 (rewrite NF lhs) (rewrite NF rhs) scope_env_0
         (delayed_probs_2, (scope_env_2, lvar_binding_2)) <- simplify probs scope_env_1
         return (delayed_probs_1 ++ delayed_probs_2, (scope_env_2, lvar_binding_1 ++ lvar_binding_2))
-    simplify1 :: GeneratingUniqueMonad m => SmallNat -> TermNode -> TermNode -> Labeling -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+    simplify1 :: (MonadFail m, GeneratingUniqueMonad m) => SmallNat -> TermNode -> TermNode -> Labeling -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
     simplify1 lambda lhs rhs scope_env
         | (l1, lhs') <- viewNLams lhs
         , (l2, rhs') <- viewNLams rhs
@@ -79,7 +79,7 @@ entryOfSimpleHopu = simplify where
         | otherwise
         = delay
         where
-            calcLVarBinding :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> StateT HasSolvedAtLeastOneProblem (MaybeT m) ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+            calcLVarBinding :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
             calcLVarBinding x x_args x_eval_ref = do
                 res <- lift $ runExceptT (entryOfSimpleMkRef x x_args x_eval_ref scope_env)
                 case res of
@@ -87,35 +87,35 @@ entryOfSimpleHopu = simplify where
                     Right good_res -> do
                         put True
                         return ([], good_res)
-            delay :: Monad m => m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+            delay :: (Monad m) => m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
             delay = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
 
-entryOfSimpleMkRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed (MaybeT m) (Labeling, [(LogicVar, TermNode)])
+entryOfSimpleMkRef :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
 entryOfSimpleMkRef = toplevelctrl where
-    toplevelctrl :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed (MaybeT m) (Labeling, [(LogicVar, TermNode)])
+    toplevelctrl :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
     toplevelctrl x x_args rhs scope_env
         | (l', rhs') <- viewNLams rhs
         , (LVar x', rhs_args) <- viewNApps rhs'
         , x == x'
         = do
-            let n = length rhs_args
+            let l = length x_args
+                n = length rhs_args
                 lhs_args = map (liftLams l') x_args ++ map mkNIdx [l' - 1, l' - 2 .. 0]
             if l + l' == n
                 then if (x', rhs_args) `isPatternWrt` scope_env
                     then do
                         h <- getNewUnique
-                        let refined_rhs = foldNLams (n, foldNApps (mkLVar h, [ mkNIdx (n - 1 - i) | i <- [0, 1 .. n - 1], lhs_args !! i == rhs_args !! i ]))
-                        return (Map.insert h (viewScope x scope_env) scope_env, [(x, refined_rhs)])
+                        let h_scope = viewScope x scope_env
+                            refined_rhs = foldNApps (mkLVar h, [ mkNIdx (n - 1 - i) | i <- [0, 1 .. n - 1], lhs_args !! i == rhs_args !! i ])
+                        return (Map.insert h h_scope scope_env, one (x, foldNLams (n, refined_rhs)))
                     else throwE NotAPattern
                 else fail "unifying-failed: case=ReflexiveFlex, cause=length-not-matched"
         | otherwise
         = do
+            let l = length x_args
             (refined_rhs, (new_scope_env, lvar_binding)) <- bindsLVarToRefinedEvalRef x x_args 0 rhs (scope_env, [])
             return (new_scope_env, (x, foldNLams (l, refined_rhs)) : lvar_binding) -- FIXED: refined_rhs --> foldNLams (l, refined_rhs)
-        where
-            l :: SmallNat
-            l = length x_args
-    bindsLVarToRefinedEvalRef :: GeneratingUniqueMonad m => LogicVar -> [TermNode] -> SmallNat -> TermNode -> (Labeling, [(LogicVar, TermNode)]) -> ExceptT MkRefFailed (MaybeT m) (TermNode, (Labeling, [(LogicVar, TermNode)]))
+    bindsLVarToRefinedEvalRef :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> SmallNat -> TermNode -> (Labeling, [(LogicVar, TermNode)]) -> ExceptT MkRefFailed m (TermNode, (Labeling, [(LogicVar, TermNode)]))
     bindsLVarToRefinedEvalRef x x_args l rhs (scope_env, lvar_binding_acc)
         | (l', rhs') <- viewNLams rhs
         , l' > 0
@@ -147,8 +147,8 @@ entryOfSimpleMkRef = toplevelctrl where
                 if (y, rhs_args) `isPatternWrt` scope_env
                     then do
                         h <- getNewUnique
-                        -- FIXED: (Map.insert h (min x_scope y_scope) scope_env) --> (Map.insert h x_scope scope_env)
-                        let makeFlexFlexSolution x_inner y_inner = (foldNApps (mkLVar h, x_inner ++ x_outer), (Map.insert h x_scope scope_env, (y, foldNLams (length rhs_args, foldNApps (mkLVar h, y_inner ++ y_outer))) : lvar_binding_acc))
+                        let h_scope = x_scope -- FIXED: min x_scope y_scope --> x_scope
+                            makeFlexFlexSolution x_inner y_inner = (foldNApps (mkLVar h, x_inner ++ x_outer), (Map.insert h h_scope scope_env, (y, foldNLams (length rhs_args, foldNApps (mkLVar h, y_inner ++ y_outer))) : lvar_binding_acc))
                         if x_scope < y_scope
                             then do
                                 y_inner <- runReaderT (lhs_args `up` y) scope_env
@@ -165,5 +165,5 @@ entryOfSimpleMkRef = toplevelctrl where
     down1 arg args = fmap (\i -> mkNIdx (length args - 1 - i)) (arg `List.elemIndex` args)
     down :: [TermNode] -> [TermNode] -> [TermNode]
     subset_of_args `down` args = map (fromJust . flip down1 args) subset_of_args
-    up :: Monad m => [TermNode] -> LogicVar -> ReaderT Labeling m [TermNode]
+    up :: (Monad m) => [TermNode] -> LogicVar -> ReaderT Labeling m [TermNode]
     cs `up` x = ask >>= \scope_env -> return (filter (dukeOfCon scope_env (\c_scope -> viewScope x scope_env >= c_scope)) cs)
