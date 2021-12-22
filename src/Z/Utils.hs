@@ -93,7 +93,7 @@ findAllPermutationsOf = swag (\at -> uncurry $ \i -> \j -> maybe . at <*> curry 
 recList :: (r) -> (a -> [a] -> r -> r) -> ([a] -> r)
 recList for_nil for_cons = snd . foldr (\my_hd -> uncurry $ \my_tl -> \my_result -> (my_hd : my_tl, for_cons my_hd my_tl my_result)) ([], for_nil)
 
-findLast :: Integral int => (int, int) -> (int -> Bool) -> Maybe int
-findLast = uncurry $ \left_bound -> \right_bound -> swag (if left_bound < right_bound then succ else pred) (\n -> right_bound == n) left_bound where
-    swag :: (a -> a) -> (a -> Bool) -> a -> (a -> Bool) -> Maybe a
-    swag get_the_next_of is_the_last the_first has_wanted_property = fix (\bounded_search -> \n -> (if is_the_last n then id else bounded_search (get_the_next_of n)) . (if has_wanted_property n then const (pure n) else id)) the_first (fail "")
+primes :: [Integer]
+primes = go [2 .. ] where
+    go :: [Integer] -> [Integer]
+    go (p : ns) = p : go (filter (\n -> n `mod` p > 0) ns)
