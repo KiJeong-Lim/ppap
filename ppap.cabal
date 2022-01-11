@@ -7,7 +7,7 @@ license: BSD3
 license-file: LICENSE
 author: 林起靖
 maintainer: gijungdduk@naver.com
-copyright: 2021, Kijeong Lim
+copyright: 2021-2022, Kijeong Lim
 build-type: Simple
 cabal-version: >= 1.10
 
