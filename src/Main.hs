@@ -6,7 +6,6 @@ import qualified Genie.Main as Genie
 import qualified Jasmine.Main as Jasmine
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
-import qualified TEST.Main as TEST
 import Z.Algo.Function
 import Z.System.Shelly
 
@@ -79,9 +78,6 @@ ppap = do
             PGS.runPGS ("src/Jasmine/Alpha1/Analyzer/Parser")
             shelly ("ppap >>= quit")
             return ()
-        Just ("TEST", []) -> do
-            shelly ("ppap >>= exec (TEST.main)")
-            TEST.main
         Just (cmd, args) -> do
             shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
