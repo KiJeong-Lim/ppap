@@ -25,5 +25,20 @@ check (tapp M Tau) Sigma_Tau_Alpha :- pi (Alpha\ copy Alpha Tau => copy (Sigma A
 check (iabs Tau M) (ty_arr Tau Sigma) :- pi (X\ check X Tau => check (M X) Sigma).
 check (iapp M N) Sigma :- check M (ty_arr Tau Sigma), check N Tau.
 
-type example1 (o).
-example1 :- check (tabs (Alpha\ iabs Alpha (X\ iabs Alpha (Y\ Y)))) (ty_all (Alpha\ ty_arr Alpha (ty_arr Alpha Alpha))).
+% TEST #1
+% ?- check (tabs (Alpha\ iabs Alpha (X\ iabs Alpha (Y\ Y)))) (ty_all (Alpha\ ty_arr Alpha (ty_arr Alpha Alpha))).
+% yes.
+% %%%% COMMENT %%%%
+% The query was "|- (/\ 'a. \x : 'a. \y : 'a. y) : forall 'a. 'a -> 'a -> 'a".
+% The response was "yes".
+
+% TEST #2
+% ?- check (tabs (Alpha\ iabs (ty_arr Alpha Alpha) (F\ iabs (TY_X Alpha) (X\ iapp F X)))) TY.
+% The answer substitution is:
+% TY := ty_all (W_1\ ty_arr (ty_arr W_1 W_1) (ty_arr W_1 W_1)).
+% TY_X := W_1\ W_1.
+% Find more solutions? [Y/n] Y
+% no.
+% %%%% COMMENT %%%%
+% The query was "|- (/\ 'a. \f : 'a -> 'a. \x : ?ty_x. f x) : ?ty".
+% The response was "{ ?ty := forall 'a. ('a -> 'a) -> ('a -> 'a), ?ty_x := 'a }; no".
