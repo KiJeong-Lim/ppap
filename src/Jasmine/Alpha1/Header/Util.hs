@@ -91,7 +91,7 @@ instance Functor m => Functor (UniqueMakerT m) where
     fmap f = UniqueMakerT . fmap f . unUniqueMakerT
 
 instance Monad m => Applicative (UniqueMakerT m) where
-    pure x = UniqueMakerT (pure x)
+    pure = UniqueMakerT . pure
     mf <*> mx = UniqueMakerT (unUniqueMakerT mf <*> unUniqueMakerT mx)
 
 instance Monad m => Monad (UniqueMakerT m) where
