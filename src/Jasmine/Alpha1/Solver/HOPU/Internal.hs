@@ -91,9 +91,9 @@ entryOfSimpleHopu = simplify where
             delay = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
 
 entryOfSimpleMkRef :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
-entryOfSimpleMkRef = toplevelctrl where
-    toplevelctrl :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
-    toplevelctrl x x_args rhs scope_env
+entryOfSimpleMkRef = topLevelCtrl where
+    topLevelCtrl :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
+    topLevelCtrl x x_args rhs scope_env
         | (l', rhs') <- viewNLams rhs
         , (LVar x', rhs_args) <- viewNApps rhs'
         , x == x'
