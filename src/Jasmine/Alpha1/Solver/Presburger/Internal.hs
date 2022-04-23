@@ -117,14 +117,14 @@ instance Show (PresburgerTermRep) where
         dispatch (Plus t1 t2) = myPrecIs 0 $ showsPrec 0 t1 . strstr " + " . showsPrec 1 t2
 
 instance Functor (PresburgerFormula) where
-    fmap = callWithStrictArg (flip go) where
+    fmap = flip go where
         go :: PresburgerFormula old_term -> (old_term -> term) -> PresburgerFormula term
         go (ValF b) = pure ValF <*> pure b
-        go (EqnF t1 t2) = pure EqnF <*> flip callWithStrictArg t1 <*> flip callWithStrictArg t2
-        go (LtnF t1 t2) = pure LtnF <*> flip callWithStrictArg t1 <*> flip callWithStrictArg t2
-        go (LeqF t1 t2) = pure LeqF <*> flip callWithStrictArg t1 <*> flip callWithStrictArg t2
-        go (GtnF t1 t2) = pure GtnF <*> flip callWithStrictArg t1 <*> flip callWithStrictArg t2
-        go (ModF t1 r t2) = pure ModF <*> flip callWithStrictArg t1 <*> pure r <*> flip callWithStrictArg t2
+        go (EqnF t1 t2) = pure EqnF <*> flip ($) t1 <*> flip ($) t2
+        go (LtnF t1 t2) = pure LtnF <*> flip ($) t1 <*> flip ($) t2
+        go (LeqF t1 t2) = pure LeqF <*> flip ($) t1 <*> flip ($) t2
+        go (GtnF t1 t2) = pure GtnF <*> flip ($) t1 <*> flip ($) t2
+        go (ModF t1 r t2) = pure ModF <*> flip ($) t1 <*> pure r <*> flip ($) t2
         go (NegF f1) = pure NegF <*> flip fmap f1
         go (DisF f1 f2) = pure DisF <*> flip fmap f1 <*> flip fmap f2
         go (ConF f1 f2) = pure ConF <*> flip fmap f1 <*> flip fmap f2

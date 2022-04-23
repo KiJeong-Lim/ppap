@@ -164,7 +164,7 @@ addLoc = foldr (\ch -> \kont -> uncurry $ \r -> \c -> r `seq` c `seq` (((r, c), 
     getNextCol c _ = succ c
 
 makeMessageForParsingError :: FilePath -> Src -> LocStr -> ErrMsg
-makeMessageForParsingError path src lstr = show theMsgDoc where
+makeMessageForParsingError path src lstr = shows theMsgDoc "" where
     stuckRow :: Row
     stuckRow = case lstr of
         [] -> length (filter (\lch -> snd lch == '\n') lstr) + initRow
