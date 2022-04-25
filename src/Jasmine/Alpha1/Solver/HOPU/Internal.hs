@@ -18,30 +18,28 @@ import Z.Utils
 updateAtomEnvNaively :: (Labeling, LVarSubst) -> AtomEnv -> AtomEnv
 updateAtomEnvNaively (scope_env, sigma) ctx = Map.mapWithKey (\v -> \v_scope -> SymRef { myScopeLv = v_scope, myEvalRef = takeFirstOf id [substLVar sigma <$> Map.lookup v (Map.mapMaybe myEvalRef ctx), Map.lookup v sigma] }) scope_env
 
-callSimpleHopuSolver :: (GeneratingUniqueMonad m) => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
-callSimpleHopuSolver = entryOfSimpleHopuSolver where
-    entryOfSimpleHopuSolver :: (GeneratingUniqueMonad m) => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
-    entryOfSimpleHopuSolver probs scope_env = runMaybeT (execMainRoutine (map (uncurry (:=?=:)) probs) (scope_env, Map.empty) >>= uncurry (\new_probs -> \hopu_sol -> return ([ (lhs, rhs) | lhs :=?=: rhs <- new_probs ], hopu_sol)))
+callHopuSolver :: (GeneratingUniqueMonad m) => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
+callHopuSolver = entryOfHopuSolver where
+    entryOfHopuSolver :: (GeneratingUniqueMonad m) => [(TermNode, TermNode)] -> Labeling -> m (Maybe ([(TermNode, TermNode)], (Labeling, LVarSubst)))
+    entryOfHopuSolver probs scope_env = runMaybeT (execMainRoutine (map (uncurry (:=?=:)) probs) (scope_env, Map.empty) >>= uncurry (\new_probs -> \hopu_sol -> return ([ (lhs, rhs) | lhs :=?=: rhs <- new_probs ], hopu_sol)))
     execMainRoutine :: (MonadFail m, GeneratingUniqueMonad m) => [Disagreement] -> (Labeling, LVarSubst) -> m ([Disagreement], (Labeling, LVarSubst))
     execMainRoutine probs env
         | null probs = return (probs, env)
         | otherwise = do
             let scope_env = fst env
                 lvar_subst = snd env
-            ((delayed_probs, (fresh_scope_env, fresh_lvar_binding)), has_changed) <- runStateT (entryOfSimpleHopu probs scope_env) False
+            ((delayed_probs, (fresh_scope_env, fresh_lvar_binding)), has_changed) <- runStateT (entryOfHopuSolver1 probs scope_env) False
             let multi_map = Map.unionWith (++) (Map.map pure lvar_subst) (makeMultiMap fresh_lvar_binding)
                 conflicts = Map.elems multi_map >>= choose2 (:=?=:)
                 fresh_lvar_subst = Map.withoutKeys multi_map (Map.keysSet lvar_subst) & Map.map head
                 new_probs = substLVar fresh_lvar_subst (conflicts ++ delayed_probs)
                 new_env = (makeNewScopeEnv fresh_lvar_subst fresh_scope_env, fresh_lvar_subst `compose` lvar_subst)
-            if has_changed
-                then execMainRoutine new_probs new_env
-                else return (new_probs, new_env)
+            if has_changed then execMainRoutine new_probs new_env else return (new_probs, new_env)
     compose :: LVarSubst -> LVarSubst -> LVarSubst
-    sigma_new `compose` sigma_old = Map.unionWith const (Map.map (substLVar sigma_new) sigma_old) sigma_new
+    sigma_new `compose` sigma_old = Map.unionWith (curry fst) (Map.map (substLVar sigma_new) sigma_old) sigma_new
 
-entryOfSimpleHopu :: (MonadFail m, GeneratingUniqueMonad m) => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
-entryOfSimpleHopu = simplify where
+entryOfHopuSolver1 :: (MonadFail m, GeneratingUniqueMonad m) => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
+entryOfHopuSolver1 = simplify where
     simplify :: (MonadFail m, GeneratingUniqueMonad m) => [Disagreement] -> Labeling -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
     simplify [] scope_env = return ([], (scope_env, []))
     simplify (lhs :=?=: rhs : probs) scope_env_0 = do
@@ -81,7 +79,7 @@ entryOfSimpleHopu = simplify where
         where
             calcLVarBinding :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> StateT HasSolvedAtLeastOneProblem m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
             calcLVarBinding x x_args x_eval_ref = do
-                res <- lift $ runExceptT (entryOfSimpleMkRef x x_args x_eval_ref scope_env)
+                res <- lift $ runExceptT (toplevelctrl x x_args x_eval_ref scope_env)
                 case res of
                     Left cause_to_defer -> delay
                     Right good_res -> do
@@ -89,11 +87,8 @@ entryOfSimpleHopu = simplify where
                         return ([], good_res)
             delay :: (Monad m) => m ([Disagreement], (Labeling, [(LogicVar, TermNode)]))
             delay = return ([foldNLams (lambda, lhs) :=?=: foldNLams (lambda, rhs)], (scope_env, []))
-
-entryOfSimpleMkRef :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
-entryOfSimpleMkRef = topLevelCtrl where
-    topLevelCtrl :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
-    topLevelCtrl x x_args rhs scope_env
+    toplevelctrl :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> TermNode -> Labeling -> ExceptT MkRefFailed m (Labeling, [(LogicVar, TermNode)])
+    toplevelctrl x x_args rhs scope_env
         | (l', rhs') <- viewNLams rhs
         , (LVar x', rhs_args) <- viewNApps rhs'
         , x == x'
@@ -113,14 +108,14 @@ entryOfSimpleMkRef = topLevelCtrl where
         | otherwise
         = do
             let l = length x_args
-            (refined_rhs, (new_scope_env, lvar_binding)) <- bindsLVarToRefinedEvalRef x x_args 0 rhs (scope_env, [])
+            (refined_rhs, (new_scope_env, lvar_binding)) <- mkRef x x_args 0 rhs (scope_env, [])
             return (new_scope_env, (x, foldNLams (l, refined_rhs)) : lvar_binding) -- FIXED: refined_rhs --> foldNLams (l, refined_rhs)
-    bindsLVarToRefinedEvalRef :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> SmallNat -> TermNode -> (Labeling, [(LogicVar, TermNode)]) -> ExceptT MkRefFailed m (TermNode, (Labeling, [(LogicVar, TermNode)]))
-    bindsLVarToRefinedEvalRef x x_args l rhs (scope_env, lvar_binding_acc)
+    mkRef :: (MonadFail m, GeneratingUniqueMonad m) => LogicVar -> [TermNode] -> SmallNat -> TermNode -> (Labeling, [(LogicVar, TermNode)]) -> ExceptT MkRefFailed m (TermNode, (Labeling, [(LogicVar, TermNode)]))
+    mkRef x x_args l rhs (scope_env, lvar_binding_acc)
         | (l', rhs') <- viewNLams rhs
         , l' > 0
         = do
-            (refined_rhs', (scope_env', lvar_binding_acc')) <- bindsLVarToRefinedEvalRef x x_args (l + l') rhs' (scope_env, lvar_binding_acc)
+            (refined_rhs', (scope_env', lvar_binding_acc')) <- mkRef x x_args (l + l') rhs' (scope_env, lvar_binding_acc)
             return (foldNLams (l', refined_rhs'), (scope_env', lvar_binding_acc'))
         | (rhs_hd, rhs_tl) <- viewNApps rhs
         , isRigid rhs_hd
@@ -129,10 +124,10 @@ entryOfSimpleMkRef = topLevelCtrl where
                 NIdx i -> case down1 rhs_hd (map (liftLams l) x_args ++ map mkNIdx [l - 1, l - 2 .. 0]) of
                     Just r -> return r
                     _ -> fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
-                r -> if dukeOfCon scope_env (\r_scope -> viewScope x scope_env >= r_scope) r
+                r -> if scopeConsole scope_env (\r_scope -> viewScope x scope_env >= r_scope) r
                     then return r
                     else fail "unifying-failed: case=FlexRigid, cause=imitation-failed"
-            (refined_rhs_tl, (scope_env', lvar_binding_acc')) <- runStateT (mapM (StateT . bindsLVarToRefinedEvalRef x x_args l) rhs_tl) (scope_env, lvar_binding_acc)
+            (refined_rhs_tl, (scope_env', lvar_binding_acc')) <- runStateT (mapM (StateT . mkRef x x_args l) rhs_tl) (scope_env, lvar_binding_acc)
             return (foldNApps (refined_rhs_hd, refined_rhs_tl), (scope_env', lvar_binding_acc'))
         | (LVar y, rhs_args) <- viewNApps rhs
         = if x == y
@@ -166,4 +161,4 @@ entryOfSimpleMkRef = topLevelCtrl where
     down :: [TermNode] -> [TermNode] -> [TermNode]
     subset_of_args `down` args = map (fromJust . flip down1 args) subset_of_args
     up :: (Monad m) => [TermNode] -> LogicVar -> ReaderT Labeling m [TermNode]
-    cs `up` x = ask >>= \scope_env -> return (filter (dukeOfCon scope_env (\c_scope -> viewScope x scope_env >= c_scope)) cs)
+    cs `up` x = ask >>= \scope_env -> return (filter (scopeConsole scope_env (\c_scope -> viewScope x scope_env >= c_scope)) cs)

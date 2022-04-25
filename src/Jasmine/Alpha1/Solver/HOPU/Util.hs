@@ -76,14 +76,14 @@ isRigid (NCon c) = True
 isRigid (Prim prim_op) = isPrimCon prim_op
 isRigid _ = False
 
-dukeOfCon :: Labeling -> (ScopeLevel -> Bool) -> TermNode -> Bool
-dukeOfCon scope_env cond (NCon c) = cond (viewScope c scope_env)
-dukeOfCon scope_env cond (Prim prim_op) = cond (viewScope prim_op scope_env)
-dukeOfCon scope_env cond _ = False
+scopeConsole :: Labeling -> (ScopeLevel -> Bool) -> TermNode -> Bool
+scopeConsole scope_env cond (NCon c) = cond (viewScope c scope_env)
+scopeConsole scope_env cond (Prim prim_op) = cond (viewScope prim_op scope_env)
+scopeConsole scope_env cond _ = False
 
 isPatternWrt :: (LogicVar, [TermNode]) -> Labeling -> Bool
 (x, params) `isPatternWrt` scope_env = and
     [ all isRigid params
     , areAllDistinct params
-    , all (not . dukeOfCon scope_env (\c_scope -> viewScope x scope_env >= c_scope)) params
+    , all (not . scopeConsole scope_env (\c_scope -> viewScope x scope_env >= c_scope)) params
     ]
