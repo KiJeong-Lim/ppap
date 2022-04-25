@@ -34,9 +34,9 @@ rewriteWithSusp (NApp t1 t2) ol nl env option
 rewriteWithSusp (NLam t1) ol nl env option
     | option == WHNF = mkNLam (mkSusp t1 (succ ol) (succ nl) (mkDummy (succ nl) : env))
     | otherwise = mkNLam (rewriteWithSusp t1 (succ ol) (succ nl) (mkDummy (succ nl) : env) option)
-rewriteWithSusp (NFix t1) ol nl env option
+{- rewriteWithSusp (NFix t1) ol nl env option
     | option == ALPHA = NFix $! rewriteWithSusp t1 (succ ol) (succ nl) (mkDummy (succ nl) : env) option
-    | otherwise = rewriteWithSusp t1 (succ ol) nl (mkBinds (mkSusp (NFix t1) ol nl env) nl : env) option
+    | otherwise = rewriteWithSusp t1 (succ ol) nl (mkBinds (mkSusp (NFix t1) ol nl env) nl : env) option -}
 rewriteWithSusp (Susp t ol nl env) ol' nl' env' option
     | ol == 0 && nl == 0 = rewriteWithSusp t ol' nl' env' option
     | ol' == 0 = rewriteWithSusp t ol (nl + nl') env option
@@ -58,4 +58,4 @@ toDeBruijn = go [] where
     go ys (Con c) = mkNCon c
     go ys (App t1 t2) = mkNApp (go ys t1) (go ys t2)
     go ys (Lam y t1) = mkNLam (go (y : ys) t1)
-    go ys (Fix f e) = NFix $! go (f : ys) e
+    {- go ys (Fix f e) = NFix $! go (f : ys) e -}

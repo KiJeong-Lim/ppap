@@ -147,12 +147,14 @@ instance Show con => Show (LambdaTerm con) where
         dispatch (Con c) = shows c
         dispatch (App t1 t2) = myPrecIs 10 $ showsPrec 10 t1 . strstr " " . showsPrec 11 t2
         dispatch (Lam y t1) = myPrecIs 0 $ strstr "\\" . showsVar y . strstr " -> " . showsPrec 0 t1
+        dispatch (Fix f e) = myPrecIs 0 $ strstr "fix " . showsVar f . strstr " := " . showsPrec 0 e
 
 instance Functor (LambdaTerm) where
     fmap modify_c (Var x) = Var x
     fmap modify_c (Con c) = Con (modify_c c)
     fmap modify_c (App t1 t2) = App (fmap modify_c t1) (fmap modify_c t2)
     fmap modify_c (Lam y t1) = Lam y (fmap modify_c t1)
+    {- fmap modify_c (Fix f e) = Fix f (fmap modify_c e) -}
 
 mkSrcLoc :: SrcPos -> SrcPos -> SrcLoc
 mkSrcLoc pos1 pos2 = if pos1 < pos2 then SrcLoc { _BegPos = pos1, _EndPos = pos2 } else SrcLoc { _BegPos = pos2, _EndPos = pos1 }
@@ -167,7 +169,7 @@ getFVsOfLambdaTerm = flip go Set.empty where
     go (Con c) = id
     go (App t1 t2) = go t1 . go t2
     go (Lam y t1) = Set.union (y `Set.delete` getFVsOfLambdaTerm t1)
-    go (Fix f e) = Set.union (f `Set.delete` getFVsOfLambdaTerm e)
+    {- go (Fix f e) = Set.union (f `Set.delete` getFVsOfLambdaTerm e) -}
 
 substituteLambdaTerm :: [(MyIVar, LambdaTerm con)] -> LambdaTerm con -> LambdaTerm con
 substituteLambdaTerm = flip substitute . foldr conssubst nilsubst where
@@ -190,7 +192,7 @@ substituteLambdaTerm = flip substitute . foldr conssubst nilsubst where
     substituteApp t1 t2 = pure App <*> substitute t1 <*> substitute t2
     substituteFun :: LambdaTerm con -> (MyIVar -> LambdaTerm con) -> MyIVar -> LambdaTerm con
     substituteFun (Lam y t1) sigma z = Lam z (substitute t1 (conssubst (y, Var z) sigma))
-    substituteFun (Fix f e) sigma z = Fix z (substitute e (conssubst (f, Var z) sigma))
+    {- substituteFun (Fix f e) sigma z = Fix z (substitute e (conssubst (f, Var z) sigma)) -}
 
 evalLambdaTerm :: ReduceOption -> LambdaTerm con -> LambdaTerm con
 evalLambdaTerm option (App (Lam y t1) t2) = evalLambdaTerm option (substituteLambdaTerm [(y, t2)] t1)
@@ -214,12 +216,12 @@ readLambdaTerm = either error id . runPC "<readLambdaTerm>" (pcLambdaTerm 0) whe
             consumePC " -> "
             t1 <- pcLambdaTerm 0
             return (Lam y t1)
-        , do
+        {- , do
             consumePC "fix "
             f <- pcVar
             consumePC " := "
             e <- pcLambdaTerm 0
-            return (Fix f e)
+            return (Fix f e) -}
         , pcLambdaTerm 1
         ]
     pcLambdaTerm 1 = pure (List.foldl' App) <*> pcLambdaTerm 2 <*> many (consumePC " " *> pcLambdaTerm 2)

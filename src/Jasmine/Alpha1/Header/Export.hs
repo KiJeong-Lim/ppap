@@ -69,7 +69,7 @@ instance HasLVar (TermNode) where
             LVar x -> maybe t id (Map.lookup x ctx)
             NApp t1 t2 -> mkNApp (go t1) (go t2)
             NLam t1 -> mkNLam (go t1)
-            NFix t1 -> NFix $! go t1
+            {- NFix t1 -> NFix $! go t1 -}
             Susp t ol nl env -> mkSusp (go t) ol nl (map (lensForSusp go) env)
             t -> t
 
@@ -129,6 +129,6 @@ accLVars :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
 accLVars (LVar x) = Set.insert x
 accLVars (NApp t1 t2) = accLVars t1 . accLVars t2
 accLVars (NLam t1) = accLVars t1
-accLVars (NFix t1) = accLVars t1
+{- accLVars (NFix t1) = accLVars t1 -}
 accLVars (Susp t ol nl env) = accLVars (rewriteWithSusp t ol nl env ALPHA)
 accLVars _ = id

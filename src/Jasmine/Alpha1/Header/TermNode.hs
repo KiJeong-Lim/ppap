@@ -47,7 +47,7 @@ data TermNode
     = NIdx DeBruijn
     | NApp TermNode TermNode
     | NLam TermNode
-    | NFix TermNode
+    {- | NFix TermNode -}
     | Susp TermNode Nat_ol Nat_nl SuspEnv
 -- $Susp t ol nl env$ is a suspension of evaluation, where
 -- $t$ is the evaluatee;
