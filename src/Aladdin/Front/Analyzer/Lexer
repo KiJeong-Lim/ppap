@@ -7,7 +7,7 @@
 
 \target {
     token-type: "Token"
-    lexer-name: "runAladdinLexer"    
+    lexer-name: "runAladdinLexer"
 }
 
 \define $small_letter = 'a'-'z'

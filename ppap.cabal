@@ -91,127 +91,16 @@ executable ppap
     Jasmine.Alpha1.Solver.Presburger
     Jasmine.Alpha1.TypeChecker.Export
     Jasmine.Alpha1.API
+    Jasmine.Alpha2.Header.Export
+    Jasmine.Alpha2.Header.TermNode
+    Jasmine.Alpha2.Solver.Hopu
+    Jasmine.Alpha2.API
     Jasmine.Main
-    LGS.Main
-    LGS.Make
-    LGS.Read
-    LGS.Show
-    LGS.Util
-    PGS.Main
-    PGS.Make
-    PGS.Read
-    PGS.Show
-    PGS.Util
-    TEST.Main
-    Y.Text.Ppr.Viewer
-    Y.Text.Ppr
-    Y.Base
-    Z.Algo.Function
-    Z.Algo.Sorting
-    Z.Math.V1.Internal
-    Z.Math.Classes
-    Z.Math.V1
-    Z.Math.Z2
-    Z.System.File
-    Z.System.Machine
-    Z.System.Path
-    Z.System.Shelly
-    Z.System.Util
-    Z.Text.Doc.Internal
-    Z.Text.Doc.Test
-    Z.Text.PC.Base
-    Z.Text.PC.Internal
-    Z.Text.PC.Test
-    Z.Text.Doc
-    Z.Text.PC
-    Z.Text.PM
-    Z.Utils
-  c-sources:
-    src/X/machine.c
-    src/X/machine.h
-
-test-suite test
-  type: exitcode-stdio-1.0
-  hs-source-dirs: src
-  default-language: Haskell2010
-  main-is: TEST.hs
-  ghc-options:
-    -Wall
-  build-depends:
-      base >= 4.7 && < 5
-    , containers >= 0.6
-    , transformers >= 0.5
-    , pretty-terminal >= 0.1
-    , QuickCheck >= 2.13
-    , checkers >= 0.5
-    , directory >= 1.3
-    , vector >= 0.12
-    , math-functions >= 0.3
-    , extra >= 1.7
-  other-modules:
-    Aladdin.Back.Base.TermNode.Read
-    Aladdin.Back.Base.TermNode.Show
-    Aladdin.Back.Base.TermNode.Util
-    Aladdin.Back.Base.Constant
-    Aladdin.Back.Base.Labeling
-    Aladdin.Back.Base.TermNode
-    Aladdin.Back.Base.VarBinding
-    Aladdin.Back.Converter.Main
-    Aladdin.Back.Converter.Scheme
-    Aladdin.Back.Converter.Util
-    Aladdin.Back.HOPU.Bind
-    Aladdin.Back.HOPU.Main
-    Aladdin.Back.HOPU.MkSubst
-    Aladdin.Back.HOPU.Select
-    Aladdin.Back.HOPU.Simplify
-    Aladdin.Back.HOPU.Util
-    Aladdin.Back.Runtime.Instantiation
-    Aladdin.Back.Runtime.LogicalOperator
-    Aladdin.Back.Runtime.Main
-    Aladdin.Back.Runtime.Transition
-    Aladdin.Back.Runtime.Util
-    Aladdin.Back.BackEnd
-    Aladdin.Front.Analyzer.Grammar
-    Aladdin.Front.Analyzer.Lexer
-    Aladdin.Front.Analyzer.Main
-    Aladdin.Front.Analyzer.Parser
-    Aladdin.Front.Desugarer.ForKind
-    Aladdin.Front.Desugarer.ForTerm
-    Aladdin.Front.Desugarer.ForType
-    Aladdin.Front.Desugarer.Main
-    Aladdin.Front.TypeChecker.Main
-    Aladdin.Front.TypeChecker.Util
-    Aladdin.Front.Header
-    Aladdin.Main
-    Calc.ControlSystem.Diagram.Solver
-    Calc.ControlSystem.Export
-    Calc.ControlSystem.Test
-    Calc.ControlSystem.Util
-    Calc.Runtime.Executor
-    Calc.Main
-    Genie.Main
-    Jasmine.Alpha1.Analyzer.Export
-    Jasmine.Alpha1.Analyzer.Grammar
-    Jasmine.Alpha1.Compiler.Export
-    Jasmine.Alpha1.Desugarer.Export
-    Jasmine.Alpha1.Interpreter.Export
-    Jasmine.Alpha1.Interpreter.Runtime
-    Jasmine.Alpha1.Header.TermNode.DeBruijn
-    Jasmine.Alpha1.Header.TermNode.Render
-    Jasmine.Alpha1.Header.TermNode.Test
-    Jasmine.Alpha1.Header.Export
-    Jasmine.Alpha1.Header.TermNode
-    Jasmine.Alpha1.Header.Util
-    Jasmine.Alpha1.Solver.HOPU.Internal
-    Jasmine.Alpha1.Solver.HOPU.Test
-    Jasmine.Alpha1.Solver.HOPU.Util
-    Jasmine.Alpha1.Solver.Presburger.Internal
-    Jasmine.Alpha1.Solver.Presburger.Test
-    Jasmine.Alpha1.Solver.HOPU
-    Jasmine.Alpha1.Solver.Presburger
-    Jasmine.Alpha1.TypeChecker.Export
-    Jasmine.Alpha1.API
-    Jasmine.Main
+    Json.JsonAst
+    Json.JsonLexer
+    Json.JsonParser
+    Json.JsonTest
+    Json.JsonViewer
     LGS.Main
     LGS.Make
     LGS.Read

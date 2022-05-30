@@ -23,7 +23,7 @@ runCharSet = go where
     go (CsEnum ch1 ch2) = Set.fromAscList [ch1 .. ch2]
     go (chs1 `CsUnion` chs2) = go chs1 `Set.union` go chs2
     go (chs1 `CsDiff` chs2) = go chs1 `Set.difference` go chs2
-    go CsUniv = theCsUniv
+    go (CsUniv) = theCsUniv
 
 mkstrict :: (a, b) -> (a, b)
 mkstrict pair = fst pair `seq` snd pair `seq` pair
@@ -66,7 +66,7 @@ getUnitedNFAfromREs = runIdentity . go where
         drawTransition ((qf1, Nothing), qf)
         drawTransition ((qi, Nothing), qf)
         return (qi, qf)
-    loop ReZero = do
+    loop (ReZero) = do
         qi <- getNewQ
         qf <- getNewQ
         return (qi, qf)

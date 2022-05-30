@@ -120,7 +120,7 @@ genParser blocks = myMain where
     checkTerminalOccurence :: Set.Set TSym -> Set.Set TSym -> ExceptT ErrMsg Identity ()
     checkTerminalOccurence subs supers
         | subs `Set.isSubsetOf` supers = return ()
-        | otherwise = throwE ("definitions of the following terminal symbols required: " ++ concat [ "  " ++ show ts ++ "\n" | ts <- Set.toList (subs `Set.difference` supers) ])
+        | otherwise = throwE ("definitions of the following terminal symbols required: " ++ concat [ "  " ++ pprint 0 ts "\n" | ts <- Set.toList (subs `Set.difference` supers) ])
     getGetRep :: NSym -> String -> String
     getGetRep = go 0 where
         go :: Int -> NSym -> String -> String

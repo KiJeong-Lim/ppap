@@ -1,0 +1,99 @@
+\hshead {
+    module Json.JsonParser where
+
+    import Json.JsonLexer
+}
+
+\target {
+    token-type: "JsonToken"
+    parser-name: "jsonparser"
+    result-type: "Value"
+    start: $Value
+    terminals:
+        "T_lbrace": $lbrace 0 none
+        "T_rbrace": $rbrace 0 none
+        "T_lbracket": $lbracket 0 none
+        "T_rbracket": $rbracket 0 none
+        "T_comma": $comma 0 none
+        "T_semicolon": $semicolon 0 none
+        "T_true": $true 0 none
+        "T_false": $false 0 none
+        "T_null": $null 0 none
+        "T_string str": $strlit 0 none
+        "T_integer num": $intlit 0 none
+        "T_fraction num": $fralit 0 none
+        "T_exponent num": $explit 0 none
+}
+
+\define $Value : "Value" {
+    10 [$Object]:
+        Value_object $1
+    10 [$Array]:
+        Value_array $1
+    10 [$strlit]:
+        Value_string $1.str
+    10 [$Number]:
+        Value_number $1
+    10 [$true]:
+        Value_true
+    10 [$false]:
+        Value_false
+    10 [$null]:
+        Value_null
+}
+
+\define $Object : "Object" {
+    10 [$lbrace, $rbrace]:
+        []
+    10 [$lbrace, $Elements, $rbrace]:
+        $2 
+}
+
+\define $Elements : "[(String, Value)]" {
+    10 [$strlit, $semicolon, $Value]:
+        [($1.str, $3)]
+    10 [$strlit, $semicolon, $Value, $comma, $Elements]:
+        ($1.str, $3) : $5
+}
+
+\define $Array : "Array" {
+    10 [$lbracket, $rbracket]:
+        []
+    10 [$lbracket, $Members, $rbracket]:
+        $2
+}
+
+\define $Members : "[Value]" {
+    10 [$Value]:
+        $1 : []
+    10 [$Value, $comma, $Members]:
+        $1 : $3
+}
+
+\define $Number : "Number" {
+    10 [$intlit]:
+        Number_integer $1.num
+    10 [$fralit]:
+        Number_fraction $1.num
+    10 [$explit]:
+        Number_exponent $1.num
+}
+
+\hstail{
+    data Value
+        = Value_object Object
+        | Value_array Array
+        | Value_string String
+        | Value_number Number
+        | Value_true
+        | Value_false
+        | Value_null
+        deriving (Eq, Show)
+    type Object = [(String, Value)]
+    type Array = [Value]
+    data Number
+        = Number_integer Integer
+        | Number_fraction Rational
+        | Number_exponent Double
+        deriving (Eq, Show)
+}

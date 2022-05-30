@@ -1,0 +1,64 @@
+\hshead {
+    module Json.JsonLexer where
+    import Data.Ratio
+}
+
+\target {
+    token-type: "JsonToken"
+    lexer-name: "jsonlexer"
+}
+
+\define $Hex = ['0'-'9'] + ['A'-'F'] + ['a'-'f']
+\define $Escape = ['\"' '\\' '/' 'b' 'f' 'n' 'r' 't'] + "u" $Hex $Hex $Hex $Hex
+
+\define $Character = [. \ '\"' \ '\\'] + "\\" $Escape
+\define $Characters = $Character*
+\define $Integer = "-"? ("0" + ['1'-'9'] ['0'-'9']*)
+\define $Fraction = $Integer "." ['0'-'9']+
+\define $Exponent = $Fraction ['E' 'e'] ("+" + "-")? ['0'-'9']+
+
+\xmatch "{":
+    T_lbrace
+\xmatch "}":
+    T_rbrace
+\xmatch "[":
+    T_lbracket
+\xmatch "]":
+    T_rbracket
+\xmatch ",":
+    T_comma
+\xmatch ":":
+    T_semicolon
+\xmatch "true":
+    T_true
+\xmatch "false":
+    T_false
+\xmatch "null":
+    T_null
+\xmatch "\"" $Characters "\"":
+    T_string (read this)
+\xmatch $Integer:
+    T_integer (read this)
+\xmatch $Fraction:
+    T_fraction (read this)
+\xmatch $Exponent:
+    T_exponent (read this)
+\xmatch [' ' '\n']+: skip
+
+\hstail {
+    data JsonToken
+        = T_lbrace
+        | T_rbrace
+        | T_lbracket
+        | T_rbracket
+        | T_comma
+        | T_semicolon
+        | T_true
+        | T_false
+        | T_null
+        | T_string String
+        | T_integer Integer
+        | T_fraction Rational
+        | T_exponent Double
+        deriving (Eq, Show)
+}
