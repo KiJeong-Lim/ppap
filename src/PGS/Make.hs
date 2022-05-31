@@ -113,8 +113,8 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 | ((lhs, rhs), prec) <- Map.toList productions'
                 , any (\item -> getMarkSym item == Just (NS lhs)) (Set.toList items)
                 ]
-        getGOTO :: (Set.Set LR0Item, Sym) -> Identity (Set.Set LR0Item)
-        getGOTO (items, sym)
+        calcGOTO :: (Set.Set LR0Item, Sym) -> Identity (Set.Set LR0Item)
+        calcGOTO (items, sym)
             | sym == TS TSEOF = return Set.empty
             | otherwise = getClosure $ Set.fromList
                 [ LR0Item lhs (left ++ [sym']) right
@@ -128,15 +128,16 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     cl <- lift (getClosure items)
                     sequence
                         [ do 
-                            items' <- lift (getGOTO (items, sym))
-                            Cannonical0 vertices root edges <- get
+                            items' <- lift (calcGOTO (items, sym))
                             if Set.null items'
                                 then return () 
-                                else case Map.lookup items' vertices of
-                                    Nothing -> do
-                                        let p = Map.size vertices
-                                        put (Cannonical0 (Map.insert items' p vertices) root (Map.insert (q, sym) p edges))
-                                    Just p -> put (Cannonical0 vertices root (Map.insert (q, sym) p edges))
+                                else do
+                                    Cannonical0 vertices root edges <- get
+                                    case Map.lookup items' vertices of
+                                        Nothing -> do
+                                            let p = Map.size vertices
+                                            put (Cannonical0 (Map.insert items' p vertices) root (Map.insert (q, sym) p edges))
+                                        Just p -> put (Cannonical0 vertices root (Map.insert (q, sym) p edges))
                         | Just sym <- Set.toList (Set.map getMarkSym cl)
                         ]
                 | (items, q) <- Map.toList (getVertices collection)
@@ -166,11 +167,9 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             mapping' = foldr (Map.update <$> go <*> fst) mapping (map fst (Map.toList productions'))
     getLATable :: [((ParserS, TSym), ProductionRule)]
     getLATable = runIdentity makeLATable where
-        getGOTO' :: ParserS -> [Sym] -> Maybe ParserS
-        getGOTO' q [] = Just q
-        getGOTO' q (sym : syms) = case Map.lookup (q, sym) (getEdges getCannonical0) of
-            Nothing -> Nothing
-            Just p -> getGOTO' p syms
+        calcGOTO' :: ParserS -> [Sym] -> Maybe ParserS
+        calcGOTO' q [] = Just q
+        calcGOTO' q (sym : syms) = maybe Nothing (\p -> calcGOTO' p syms) $ Map.lookup (q, sym) (getEdges getCannonical0)
         getFirstOf :: [Sym] -> TerminalSet
         getFirstOf [] = mempty
         getFirstOf (NS ns : syms) = case Map.lookup ns getFIRST of
@@ -199,7 +198,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                 , sym' == NS lhs
                                 ]
                             | (items', p) <- Map.toList (getVertices getCannonical0)
-                            , getGOTO' p left == Just q
+                            , calcGOTO' p left == Just q
                             ]
                         mapping' <- get
                         put (Map.update (const (Just (final, result'))) (LR0Item lhs left right, q) mapping')

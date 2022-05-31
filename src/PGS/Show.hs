@@ -6,6 +6,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Writer.Strict
+import Data.Foldable (foldrM)
 import Data.Functor.Identity
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
@@ -198,11 +199,24 @@ genParser blocks = myMain where
         loop [] = []
         loop (((x, y), z) : triples) = case List.partition (\triple -> fst (fst triple) == x) triples of
             (triples1, triples2) -> (x, (y, z) : [ (y, z) | ((_, y), z) <- triples1 ]) : loop triples2
+    getRuleEnv :: [Scheme] -> ExceptT ErrMsg Identity (Map.Map String ([String], [YMatch]))
+    getRuleEnv schema = foldrM go Map.empty rules where
+        rules :: [(String, ([String], [YMatch]))]
+        rules = do
+            Scheme type_constraint body params match_decls <- schema
+            case (fst body, fst (unzip params)) of
+                (body_name, params_name) -> return (body_name, (params_name, match_decls))
+        go :: (String, ([String], [YMatch])) -> Map.Map String ([String], [YMatch]) -> ExceptT ErrMsg Identity (Map.Map String ([String], [YMatch]))
+        go (body_name, (param_name, match_decls)) rule_env
+            = case Map.lookup body_name rule_env of
+                Nothing -> return (Map.insert body_name (param_name, match_decls) rule_env)
+                _ -> throwE (body_name ++ " has duplicate definition.")
     myMain :: ExceptT ErrMsg Identity [String]
     myMain = do
         hs_head <- getHsHead
         hs_tail <- getHsTail
         y_target <- getYTarget
+        rule_env <- getRuleEnv [ scheme | Define scheme <- blocks ]
         let token_type = getTokenType y_target
             parser_name = getParserName y_target
             result_type = getResultType y_target
