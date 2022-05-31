@@ -5,24 +5,24 @@
 }
 
 \target {
-    token-type: "JsonToken"
+    token-type: "JsonToken (Int, Int)"
     parser-name: "jsonparser"
     result-type: "Value"
     start: $Value
     terminals:
-        "T_lbrace": $lbrace 0 none
-        "T_rbrace": $rbrace 0 none
-        "T_lbracket": $lbracket 0 none
-        "T_rbracket": $rbracket 0 none
-        "T_comma": $comma 0 none
-        "T_semicolon": $semicolon 0 none
-        "T_true": $true 0 none
-        "T_false": $false 0 none
-        "T_null": $null 0 none
-        "T_string str": $strlit 0 none
-        "T_integer num": $intlit 0 none
-        "T_fraction num": $fralit 0 none
-        "T_exponent num": $explit 0 none
+        "T_lbrace loc": $lbrace 0 none
+        "T_rbrace loc": $rbrace 0 none
+        "T_lbracket loc": $lbracket 0 none
+        "T_rbracket loc": $rbracket 0 none
+        "T_comma loc": $comma 0 none
+        "T_semicolon loc": $semicolon 0 none
+        "T_true loc": $true 0 none
+        "T_false loc": $false 0 none
+        "T_null loc": $null 0 none
+        "T_string loc str": $strlit 0 none
+        "T_integer loc num": $intlit 0 none
+        "T_fraction loc num": $fralit 0 none
+        "T_exponent loc num": $explit 0 none
 }
 
 \define $Value : "Value" {

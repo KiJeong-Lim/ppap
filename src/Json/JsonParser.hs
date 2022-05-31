@@ -52,69 +52,69 @@ data LR1Parser
     deriving ()
 
 data ParsingTree
-    = PTLeaf (JsonToken)
+    = PTLeaf (JsonToken (Int, Int))
     | PTBranch NSym [ParsingTree]
     deriving ()
 
-jsonparser :: [JsonToken] -> Either (Maybe (JsonToken)) (Value)
+jsonparser :: [JsonToken (Int, Int)] -> Either (Maybe (JsonToken (Int, Int))) (Value)
 jsonparser = fmap (getValue) . runLALR1 theLALR1Parser where
     getValue :: ParsingTree -> (Value)
     getValue (PTBranch _ [_1@(PTBranch guard1 _)])
         | [guard1] `elem` [[2]] = Value_object (getObject _1)
     getValue (PTBranch _ [_1@(PTBranch guard1 _)])
         | [guard1] `elem` [[4]] = Value_array (getArray _1)
-    getValue (PTBranch _ [PTLeaf (T_string str_1)])
+    getValue (PTBranch _ [PTLeaf (T_string loc_1 str_1)])
         | otherwise = Value_string (str_1)
     getValue (PTBranch _ [_1@(PTBranch guard1 _)])
         | [guard1] `elem` [[6]] = Value_number (getNumber _1)
-    getValue (PTBranch _ [PTLeaf (T_true)])
+    getValue (PTBranch _ [PTLeaf (T_true loc_1)])
         | otherwise = Value_true
-    getValue (PTBranch _ [PTLeaf (T_false)])
+    getValue (PTBranch _ [PTLeaf (T_false loc_1)])
         | otherwise = Value_false
-    getValue (PTBranch _ [PTLeaf (T_null)])
+    getValue (PTBranch _ [PTLeaf (T_null loc_1)])
         | otherwise = Value_null
     getObject :: ParsingTree -> (Object)
-    getObject (PTBranch _ [PTLeaf (T_lbrace), PTLeaf (T_rbrace)])
+    getObject (PTBranch _ [PTLeaf (T_lbrace loc_1), PTLeaf (T_rbrace loc_2)])
         | otherwise = []
-    getObject (PTBranch _ [PTLeaf (T_lbrace), _2@(PTBranch guard2 _), PTLeaf (T_rbrace)])
+    getObject (PTBranch _ [PTLeaf (T_lbrace loc_1), _2@(PTBranch guard2 _), PTLeaf (T_rbrace loc_3)])
         | [guard2] `elem` [[3]] = (getElements _2) 
     getElements :: ParsingTree -> ([(String, Value)])
-    getElements (PTBranch _ [PTLeaf (T_string str_1), PTLeaf (T_semicolon), _3@(PTBranch guard3 _)])
+    getElements (PTBranch _ [PTLeaf (T_string loc_1 str_1), PTLeaf (T_semicolon loc_2), _3@(PTBranch guard3 _)])
         | [guard3] `elem` [[1]] = [((str_1), (getValue _3))]
-    getElements (PTBranch _ [PTLeaf (T_string str_1), PTLeaf (T_semicolon), _3@(PTBranch guard3 _), PTLeaf (T_comma), _5@(PTBranch guard5 _)])
+    getElements (PTBranch _ [PTLeaf (T_string loc_1 str_1), PTLeaf (T_semicolon loc_2), _3@(PTBranch guard3 _), PTLeaf (T_comma loc_4), _5@(PTBranch guard5 _)])
         | [guard3, guard5] `elem` [[1, 3]] = ((str_1), (getValue _3)) : (getElements _5)
     getArray :: ParsingTree -> (Array)
-    getArray (PTBranch _ [PTLeaf (T_lbracket), PTLeaf (T_rbracket)])
+    getArray (PTBranch _ [PTLeaf (T_lbracket loc_1), PTLeaf (T_rbracket loc_2)])
         | otherwise = []
-    getArray (PTBranch _ [PTLeaf (T_lbracket), _2@(PTBranch guard2 _), PTLeaf (T_rbracket)])
+    getArray (PTBranch _ [PTLeaf (T_lbracket loc_1), _2@(PTBranch guard2 _), PTLeaf (T_rbracket loc_3)])
         | [guard2] `elem` [[5]] = (getMembers _2)
     getMembers :: ParsingTree -> ([Value])
     getMembers (PTBranch _ [_1@(PTBranch guard1 _)])
         | [guard1] `elem` [[1]] = (getValue _1) : []
-    getMembers (PTBranch _ [_1@(PTBranch guard1 _), PTLeaf (T_comma), _3@(PTBranch guard3 _)])
+    getMembers (PTBranch _ [_1@(PTBranch guard1 _), PTLeaf (T_comma loc_2), _3@(PTBranch guard3 _)])
         | [guard1, guard3] `elem` [[1, 5]] = (getValue _1) : (getMembers _3)
     getNumber :: ParsingTree -> (Number)
-    getNumber (PTBranch _ [PTLeaf (T_integer num_1)])
+    getNumber (PTBranch _ [PTLeaf (T_integer loc_1 num_1)])
         | otherwise = Number_integer (num_1)
-    getNumber (PTBranch _ [PTLeaf (T_fraction num_1)])
+    getNumber (PTBranch _ [PTLeaf (T_fraction loc_1 num_1)])
         | otherwise = Number_fraction (num_1)
-    getNumber (PTBranch _ [PTLeaf (T_exponent num_1)])
+    getNumber (PTBranch _ [PTLeaf (T_exponent loc_1 num_1)])
         | otherwise = Number_exponent (num_1)
-    toTerminal :: (JsonToken) -> TSym
-    toTerminal (T_lbrace) = 1
-    toTerminal (T_rbrace) = 2
-    toTerminal (T_lbracket) = 3
-    toTerminal (T_rbracket) = 4
-    toTerminal (T_comma) = 5
-    toTerminal (T_semicolon) = 6
-    toTerminal (T_true) = 7
-    toTerminal (T_false) = 8
-    toTerminal (T_null) = 9
-    toTerminal (T_string str) = 10
-    toTerminal (T_integer num) = 11
-    toTerminal (T_fraction num) = 12
-    toTerminal (T_exponent num) = 13
-    runLALR1 :: LR1Parser -> [JsonToken] -> Either (Maybe (JsonToken)) ParsingTree
+    toTerminal :: (JsonToken (Int, Int)) -> TSym
+    toTerminal (T_lbrace loc) = 1
+    toTerminal (T_rbrace loc) = 2
+    toTerminal (T_lbracket loc) = 3
+    toTerminal (T_rbracket loc) = 4
+    toTerminal (T_comma loc) = 5
+    toTerminal (T_semicolon loc) = 6
+    toTerminal (T_true loc) = 7
+    toTerminal (T_false loc) = 8
+    toTerminal (T_null loc) = 9
+    toTerminal (T_string loc str) = 10
+    toTerminal (T_integer loc num) = 11
+    toTerminal (T_fraction loc num) = 12
+    toTerminal (T_exponent loc num) = 13
+    runLALR1 :: LR1Parser -> [JsonToken (Int, Int)] -> Either (Maybe (JsonToken (Int, Int))) ParsingTree
     runLALR1 (LR1Parser getInitS getActionT getReduceT) = go where
         loop inputs = do
             let cur = if null inputs then 0 else toTerminal (head inputs)

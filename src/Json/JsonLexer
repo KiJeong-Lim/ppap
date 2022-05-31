@@ -4,13 +4,12 @@
 }
 
 \target {
-    token-type: "JsonToken"
+    token-type: "JsonToken (Int, Int)"
     lexer-name: "jsonlexer"
 }
 
 \define $Hex = ['0'-'9'] + ['A'-'F'] + ['a'-'f']
 \define $Escape = ['\"' '\\' '/' 'b' 'f' 'n' 'r' 't'] + "u" $Hex $Hex $Hex $Hex
-
 \define $Character = [. \ '\"' \ '\\'] + "\\" $Escape
 \define $Characters = $Character*
 \define $Integer = "-"? ("0" + ['1'-'9'] ['0'-'9']*)
@@ -18,47 +17,75 @@
 \define $Exponent = $Fraction ['E' 'e'] ("+" + "-")? ['0'-'9']+
 
 \xmatch "{":
-    T_lbrace
+    T_lbrace (row1, col1)
 \xmatch "}":
-    T_rbrace
+    T_rbrace (row1, col1)
 \xmatch "[":
-    T_lbracket
+    T_lbracket (row1, col1)
 \xmatch "]":
-    T_rbracket
+    T_rbracket (row1, col1)
 \xmatch ",":
-    T_comma
+    T_comma (row1, col1)
 \xmatch ":":
-    T_semicolon
+    T_semicolon (row1, col1)
 \xmatch "true":
-    T_true
+    T_true (row1, col1)
 \xmatch "false":
-    T_false
+    T_false (row1, col1)
 \xmatch "null":
-    T_null
+    T_null (row1, col1)
 \xmatch "\"" $Characters "\"":
-    T_string (read this)
+    T_string (row1, col1) (read this)
 \xmatch $Integer:
-    T_integer (read this)
+    T_integer (row1, col1) (read this)
 \xmatch $Fraction:
-    T_fraction (read this)
+    T_fraction (row1, col1) (read this)
 \xmatch $Exponent:
-    T_exponent (read this)
+    T_exponent (row1, col1) (read this)
 \xmatch [' ' '\n']+: skip
 
 \hstail {
-    data JsonToken
-        = T_lbrace
-        | T_rbrace
-        | T_lbracket
-        | T_rbracket
-        | T_comma
-        | T_semicolon
-        | T_true
-        | T_false
-        | T_null
-        | T_string String
-        | T_integer Integer
-        | T_fraction Rational
-        | T_exponent Double
+    data JsonToken loc
+        = T_lbrace loc
+        | T_rbrace loc
+        | T_lbracket loc
+        | T_rbracket loc
+        | T_comma loc
+        | T_semicolon loc
+        | T_true loc
+        | T_false loc
+        | T_null loc
+        | T_string loc String
+        | T_integer loc Integer
+        | T_fraction loc Rational
+        | T_exponent loc Double
         deriving (Eq, Show)
+    instance Functor (JsonToken) where
+        fmap f (T_lbrace loc) = T_lbrace (f loc)
+        fmap f (T_rbrace loc) = T_rbrace (f loc)
+        fmap f (T_lbracket loc) = T_lbracket (f loc)
+        fmap f (T_rbracket loc) = T_rbracket (f loc)
+        fmap f (T_comma loc) = T_comma (f loc)
+        fmap f (T_semicolon loc) = T_semicolon (f loc)
+        fmap f (T_true loc) = T_true (f loc)
+        fmap f (T_false loc) = T_false (f loc)
+        fmap f (T_null loc) = T_null (f loc)
+        fmap f (T_string loc str) = T_string (f loc) str
+        fmap f (T_integer loc n) = T_integer (f loc) n
+        fmap f (T_fraction loc q) = T_fraction (f loc) q
+        fmap f (T_exponent loc x) = T_exponent (f loc) x
+    getLoc :: JsonToken a -> a
+    getLoc (T_lbrace loc) = loc
+    getLoc (T_rbrace loc) = loc
+    getLoc (T_lbracket loc) = loc
+    getLoc (T_rbracket loc) = loc
+    getLoc (T_comma loc) = loc
+    getLoc (T_semicolon loc) = loc
+    getLoc (T_true loc) = loc
+    getLoc (T_false loc) = loc
+    getLoc (T_null loc) = loc
+    getLoc (T_string loc str) = loc
+    getLoc (T_integer loc n) = loc
+    getLoc (T_fraction loc q) = loc
+    getLoc (T_exponent loc x) = loc
 }
