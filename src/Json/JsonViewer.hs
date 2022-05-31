@@ -20,8 +20,8 @@ prettyjson js_input
         showsobject :: Indentation -> ObjectRep -> ShowS
         showsobject space [] = strstr "{}"
         showsobject space ((field1, val1) : elements) = strcat
-            [ nl . pindent space . strstr "{ " . shows field1 . strstr " : " . showsjson (tabjson space) val1
-            , strcat $ map (uncurry $ \field -> \val -> nl . pindent space . strstr ", " . shows field . strstr " : " . showsjson (tabjson space) val) elements
+            [ nl . pindent space . strstr "{ " . strstr field1 . strstr " : " . showsjson (tabjson space) val1
+            , strcat $ map (uncurry $ \field -> \val -> nl . pindent space . strstr ", " . strstr field . strstr " : " . showsjson (tabjson space) val) elements
             , nl . pindent space . strstr "}"
             ]
         showsjson :: Indentation -> ValueRep -> ShowS
