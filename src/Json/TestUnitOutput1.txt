@@ -1,7 +1,7 @@
 { "datetime" : "2022-06-01T13:40:00"
 , "code" : 
     { "python" : "print(\"good\")"
-    , "rust" : "print!(\"good\n\");"
+    , "rust" : "print!(\"good\\n\");"
     }
 , "data" : 
     [ false

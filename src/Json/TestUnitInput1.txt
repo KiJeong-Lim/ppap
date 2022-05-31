@@ -3,6 +3,6 @@
 ,"rust"
 :
 
-"print!(\"good\n\");"}
+"print!(\"good\\n\");"}
 , "data": [false, 1     , "    2", 
 3, 4]}
