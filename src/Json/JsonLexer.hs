@@ -16,9 +16,9 @@ data JsonToken loc
     | T_false loc
     | T_null loc
     | T_string loc String
-    | T_integer loc Integer
-    | T_fraction loc Rational
-    | T_exponent loc Double
+    | T_integer loc String
+    | T_fraction loc String
+    | T_exponent loc String
     deriving (Eq, Show)
 instance Functor (JsonToken) where
     fmap f (T_lbrace loc) = T_lbrace (f loc)
@@ -204,10 +204,10 @@ jsonlexer = jsonlexer_this . addLoc 1 1 where
             ((7, this), ((row1, col1), (row2, col2))) -> return_one (T_true (row1, col1))
             ((8, this), ((row1, col1), (row2, col2))) -> return_one (T_false (row1, col1))
             ((9, this), ((row1, col1), (row2, col2))) -> return_one (T_null (row1, col1))
-            ((10, this), ((row1, col1), (row2, col2))) -> return_one (T_string (row1, col1) (read this))
-            ((11, this), ((row1, col1), (row2, col2))) -> return_one (T_integer (row1, col1) (read this))
-            ((12, this), ((row1, col1), (row2, col2))) -> return_one (T_fraction (row1, col1) (read this))
-            ((13, this), ((row1, col1), (row2, col2))) -> return_one (T_exponent (row1, col1) (read this))
+            ((10, this), ((row1, col1), (row2, col2))) -> return_one (T_string (row1, col1) (this))
+            ((11, this), ((row1, col1), (row2, col2))) -> return_one (T_integer (row1, col1) (this))
+            ((12, this), ((row1, col1), (row2, col2))) -> return_one (T_fraction (row1, col1) (this))
+            ((13, this), ((row1, col1), (row2, col2))) -> return_one (T_exponent (row1, col1) (this))
             ((14, this), ((row1, col1), (row2, col2))) -> return []
         tokens2 <- jsonlexer_this str1
         return (tokens1 ++ tokens2)

@@ -12,6 +12,9 @@ jsontest = do
     case maybe_input of
         Nothing -> putStrLn "cannot open the test file"
         Just input -> do
-            let output = either id prettyjson $ readjson input
-            writeFileNow "src/Json/TestUnitOutput1.txt" (output ++ "\n")
-            return ()
+            case readjson input of
+                Left err_msg -> putStrLn ("ERROR: " ++ err_msg)
+                Right input_read -> do
+                    let output = prettyjson input_read
+                    writeFileNow "src/Json/TestUnitOutput1.txt" (output ++ "\n")
+                    return ()

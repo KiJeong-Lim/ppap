@@ -35,13 +35,13 @@
 \xmatch "null":
     T_null (row1, col1)
 \xmatch "\"" $Characters "\"":
-    T_string (row1, col1) (read this)
+    T_string (row1, col1) (this)
 \xmatch $Integer:
-    T_integer (row1, col1) (read this)
+    T_integer (row1, col1) (this)
 \xmatch $Fraction:
-    T_fraction (row1, col1) (read this)
+    T_fraction (row1, col1) (this)
 \xmatch $Exponent:
-    T_exponent (row1, col1) (read this)
+    T_exponent (row1, col1) (this)
 \xmatch [' ' '\n']+: skip
 
 \hstail {
@@ -56,9 +56,9 @@
         | T_false loc
         | T_null loc
         | T_string loc String
-        | T_integer loc Integer
-        | T_fraction loc Rational
-        | T_exponent loc Double
+        | T_integer loc String
+        | T_fraction loc String
+        | T_exponent loc String
         deriving (Eq, Show)
     instance Functor (JsonToken) where
         fmap f (T_lbrace loc) = T_lbrace (f loc)
