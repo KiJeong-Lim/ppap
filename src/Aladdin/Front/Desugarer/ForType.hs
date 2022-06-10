@@ -39,9 +39,7 @@ makeTypeEnv kind_env = go where
         tvars :: [LargeId]
         tvars = Set.toAscList (getFreeTVs typ)
         indexify :: MonoType LargeId -> MonoType Int
-        indexify (TyVar tvar) = case tvar `List.elemIndex` tvars of
-            Nothing -> error "unreachable!"
-            Just idx -> TyVar idx
+        indexify (TyVar tvar) = maybe (error "unreachable!") TyVar $ tvar `List.elemIndex` tvars
         indexify (TyCon tcon) = TyCon tcon
         indexify (TyApp typ1 typ2) = TyApp (indexify typ1) (indexify typ2)
         indexify (TyMTV mtv) = TyMTV mtv
