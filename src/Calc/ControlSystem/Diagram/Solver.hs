@@ -6,6 +6,9 @@ import qualified Data.Set as Set
 import Z.Algo.Function
 import Z.Math.Classes
 
+calcDiagram :: Diagram -> MyNode -> MyNode -> MyExpr
+calcDiagram diag from to = reduceExpr ReduceLv2 $ makePathTable from diag Map.! to
+
 makePathTable :: MyNode -> Diagram -> Map.Map MyNode MyExpr
 makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <- qs ] where
     qs :: [MyNode]
