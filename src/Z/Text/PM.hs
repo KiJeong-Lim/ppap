@@ -5,9 +5,7 @@ import Control.Monad
 import Z.Utils
 
 newtype PM a
-    = PM
-        { unPM :: ReadS a
-        }
+    = PM { unPM :: ReadS a }
     deriving ()
 
 instance Functor PM where
@@ -18,7 +16,7 @@ instance Applicative PM where
     p1 <*> p2 = PM $ \str0 -> [ (a2b a, str2) | (a2b, str1) <- unPM p1 str0, (a, str2) <- unPM p2 str1 ]
 
 instance Monad PM where
-    return = PM . curry return
+    -- return = PM . curry return
     p1 >>= p2 = PM (unPM p1 >=> uncurry (unPM . p2))
 
 instance Alternative PM where

@@ -1,9 +1,10 @@
+{-# LANGUAGE CApiFFI #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Z.System.Machine where
 
 import qualified Foreign.C as C
 
-foreign import ccall "runMachine" c_runMachine :: C.CString -> IO C.CInt
+foreign import ccall "myread" c_myread :: IO C.CString
 
-runMachine :: String -> IO Integer
-runMachine str = fmap toInteger (C.withCString str c_runMachine)
+gets :: IO String
+gets = c_myread >>= C.peekCString

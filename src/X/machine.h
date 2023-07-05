@@ -2,7 +2,8 @@
 #define MACHINE_H
 
 #include <stdio.h>
+#include <stdlib.h>
 
-int runMachine(char *cmd);
+char *myread(void);
 
 #endif
