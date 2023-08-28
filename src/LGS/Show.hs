@@ -132,10 +132,10 @@ genLexer xblocks = do
         tellLine (strstr "")
         tellLine (strstr lexer_name . strstr " :: String -> Either (Int, Int) [" . strstr token_type . strstr "]")
         tellLine (strstr lexer_name . strstr " = " . strstr _this . strstr " . addLoc 1 1 where")
-        sequence
+        {- sequence
             [ tellLine (strstr "    -- " . strstr (overlap (replicate theMaxLen ' ') (show q)) . strstr ": " . pprint 0 re)
             | (q, re) <- Map.toAscList theRegexTable
-            ]
+            ] -}
         tellLine (strstr "    theDFA :: DFA")
         tellLine (strstr "    theDFA = DFA")
         tellLine (strstr "        { getInitialQOfDFA = " . shows (getInitialQOfDFA theDFA))

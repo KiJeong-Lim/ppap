@@ -4,9 +4,11 @@ import Control.Applicative
 import Control.Monad
 import System.Console.Pretty
 import System.IO
-import Z.Text.PM
+import Z.System.Machine
 import Z.System.Util
+import Z.Text.PM
 import Z.Utils
+import Text.Read (Lexeme(String))
 
 shelly :: String -> IO String
 shelly = shellymain where

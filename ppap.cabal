@@ -9,14 +9,13 @@ author: 林起靖
 maintainer: gijungdduk@naver.com
 copyright: 2021-2022, Kijeong Lim
 build-type: Simple
-cabal-version: >= 1.10
+cabal-version: 2.0
 
 executable ppap
   hs-source-dirs: src
   default-language: Haskell2010
   main-is: Main.hs
-  ghc-options:
-    -O3
+  ghc-options: -O3
   build-depends:
       base >= 4.7 && < 5
     , containers >= 0.6
