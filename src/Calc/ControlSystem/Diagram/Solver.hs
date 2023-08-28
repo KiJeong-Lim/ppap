@@ -6,6 +6,9 @@ import qualified Data.Set as Set
 import Z.Algo.Function
 import Z.Math.Classes
 
+calcDiagram :: Diagram -> (MyNode, MyNode) -> Maybe MyExpr
+calcDiagram diag (from, to) = reduceExpr ReduceLv2 <$> to `Map.lookup` makePathTable from diag
+
 makePathTable :: MyNode -> Diagram -> Map.Map MyNode MyExpr
 makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <- qs ] where
     qs :: [MyNode]
@@ -42,13 +45,13 @@ makePathTable q0 table0 = Map.fromAscList [ (q, theClosure Map.! (q0, q)) | q <-
                 ( (q_i, q_j)
                 , unionRE (table `at` (q_i, q_j)) (concatRE (table `at` (q_i, q_k)) (concatRE (starRE (table `at` (q_k, q_k))) (table `at` (q_k, q_j))))
                 )
-        unionRE :: MyExpr -> MyExpr -> MyExpr
-        unionRE e1 e2 = e1 + e2
-        nullRE :: MyExpr
-        nullRE = 0
-        concatRE :: MyExpr -> MyExpr -> MyExpr
-        concatRE e1 e2 = e1 * e2
-        epsilonRE :: MyExpr
-        epsilonRE = 1
-        starRE :: MyExpr -> MyExpr
-        starRE e1 = 1 / (1 - e1)
+    unionRE :: MyExpr -> MyExpr -> MyExpr
+    unionRE e1 e2 = e1 + e2
+    nullRE :: MyExpr
+    nullRE = 0
+    concatRE :: MyExpr -> MyExpr -> MyExpr
+    concatRE e1 e2 = e1 * e2
+    epsilonRE :: MyExpr
+    epsilonRE = 1
+    starRE :: MyExpr -> MyExpr
+    starRE e1 = 1 / (1 - e1)

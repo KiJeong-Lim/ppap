@@ -21,6 +21,7 @@ import Control.Monad.Trans.State.Strict
 import Data.IORef
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
+import Data.Maybe
 import qualified Data.Set as Set
 import System.Exit
 import System.IO
@@ -84,7 +85,7 @@ runAladdin = do
                 let my_file_dir = file_name ++ ".aladdin"
                     myModuleName = modifySep '/' (const ".") id file_name
                 src <- lift $ readFile my_file_dir
-                file_abs_dir <- fmap (maybe my_file_dir id) (lift $ makePathAbsolutely my_file_dir)
+                file_abs_dir <- fmap (fromMaybe my_file_dir) (lift $ makePathAbsolutely my_file_dir)
                 lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
                 case runAnalyzer src of
                     Left err_msg -> do

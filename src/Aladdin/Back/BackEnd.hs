@@ -63,29 +63,27 @@ runREPL program = lift (newIORef False) >>= go where
         runInteraction :: String -> IO ()
         runInteraction str = do
             debugging <- readIORef isDebugging
-            if debugging
-                then do
-                    putStrLn str
-                    response <- promptify "Press the enter key to go to next state: "
-                    case response of
-                        ":q" -> do
-                            shelly "Aladdin >>= quit"
-                            exitSuccess
-                        ":d" -> do
-                            modifyIORef isDebugging not
-                            debugging <- readIORef isDebugging
-                            promptify "Debugging mode off."
-                            return ()
-                        _ -> return ()
-                else return ()
+            when debugging $ do
+                putStrLn str
+                response <- promptify "Press the enter key to go to next state: "
+                case response of
+                    ":q" -> do
+                        shelly "Aladdin >>= quit"
+                        exitSuccess
+                    ":d" -> do
+                        modifyIORef isDebugging not
+                        debugging <- readIORef isDebugging
+                        promptify "Debugging mode off."
+                        return ()
+                    _ -> return ()
         printAnswer :: Context -> IO RunMore
         printAnswer final_ctx
             | isShort && isClear = return False
             | isClear && List.null theAnswerSubst = return False
             | isClear = do
                 promptify "The answer substitution is:"
-                sequence
-                    [ promptify (myTabs ++ v ++ " := " ++ showsPrec 0 t ".")
+                sequence_
+                    [ promptify (myTabs ++ v ++ " := " ++ shows t ".")
                     | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
@@ -94,7 +92,7 @@ runREPL program = lift (newIORef False) >>= go where
                 askToRunMore
             where
                 theAnswerSubst :: [(LargeId, TermNode)]
-                theAnswerSubst = [ (v, t) | (LV_Named v, t) <- Map.toList (unVarBinding ((eraseTrivialBinding (_TotalVarBinding final_ctx)))) ]
+                theAnswerSubst = [ (v, t) | (LV_Named v, t) <- Map.toList (unVarBinding (eraseTrivialBinding (_TotalVarBinding final_ctx))) ]
                 isShort :: Bool
                 isShort = Set.null (getFreeLVs query)
                 isClear :: Bool
@@ -108,16 +106,15 @@ runREPL program = lift (newIORef False) >>= go where
                 printDisagreements :: IO ()
                 printDisagreements = do
                     promptify "The remaining disagreements are:"
-                    sequence
-                        [ promptify (myTabs ++ showsPrec 0 lhs (" =?= " ++ showsPrec 0 rhs "."))
+                    sequence_
+                        [ promptify (myTabs ++ shows lhs (" =?= " ++ shows rhs "."))
                         | lhs :=?=: rhs <- _LeftConstraints final_ctx
                         ]
                     promptify "The binding is:"
-                    sequence
-                        [ promptify (myTabs ++ showsPrec 0 (mkLVar v) (" := " ++ showsPrec 0 t "."))
+                    sequence_
+                        [ promptify (myTabs ++ shows (mkLVar v) (" := " ++ shows t "."))
                         | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
                         ]
-                    return ()
     go :: IORef Debugging -> UniqueGenT IO ()
     go isDebugging = do
         query <- lift $ promptify ""
