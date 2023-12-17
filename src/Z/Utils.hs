@@ -97,3 +97,9 @@ primes :: [Integer]
 primes = go [2 .. ] where
     go :: [Integer] -> [Integer]
     go (p : ns) = p : go (filter (\n -> n `mod` p > 0) ns)
+
+clockwise :: [[a]] -> [[a]]
+clockwise = transpose . reverse where
+    transpose :: [[a]] -> [[a]]
+    transpose [] = repeat []
+    transpose (xs : xss) = zipWith (:) xs (transpose xss)

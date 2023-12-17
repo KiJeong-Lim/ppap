@@ -3,9 +3,7 @@ module Z.Math.Z2 where
 import Data.Function
 
 data Z2
-    = Z2
-        { asBool :: !(Bool)
-        }
+    = Z2 { asBool :: !(Bool) }
     deriving ()
 
 instance Num (Z2) where
