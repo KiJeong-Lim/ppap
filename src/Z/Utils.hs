@@ -20,10 +20,10 @@ class OStreamCargo a where
     hput :: Handle -> a -> IO ()
 
 instance OStreamTrain (Handle) where
-    getHandleFrom = return
+    getHandleFrom h = pure h
 
 instance OStreamTrain a => OStreamTrain (IO a) where
-    getHandleFrom = id >=> getHandleFrom
+    getHandleFrom h = h >>= getHandleFrom
 
 instance OStreamCargo (Char) where
     hput = hPutChar
@@ -38,6 +38,9 @@ instance OStreamCargo (Flush) where
     hput = const . hFlush
 
 instance OStreamCargo (Int) where
+    hput h = hput h . shows
+
+instance OStreamCargo (Integer) where
     hput h = hput h . shows
 
 instance OStreamCargo (Double) where
@@ -96,7 +99,7 @@ recList for_nil for_cons = snd . foldr (\my_hd -> uncurry $ \my_tl -> \my_result
 primes :: [Integer]
 primes = go [2 .. ] where
     go :: [Integer] -> [Integer]
-    go (p : ns) = p : go (filter (\n -> n `mod` p > 0) ns)
+    go (p : ns) = p : go (filter (\n -> n `mod` p /= 0) ns)
 
 clockwise :: [[a]] -> [[a]]
 clockwise = Z.Utils.transpose . reverse
