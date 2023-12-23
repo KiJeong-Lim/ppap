@@ -1,9 +1,3 @@
-# ppap
-
-- Project Putting All Power!
-
-- In `Windows 10`, everything works fine.
-
 # Quick Start
 
 ```
@@ -32,25 +26,30 @@ Example.Ndc> Find more solutions? [Y/n] Y
 Example.Ndc> no.
 Example.Ndc> :q
 Aladdin >>= quit
-Aladdin >>= quit
 ```
 
-# Aladdin
+# ppap
+
+- Project Putting All Power!
+
+- In `Windows 10`, everything works fine.
+
+## Aladdin
 
 - My subset of λProlog, which uses higher-order pattern unification.
 
-# Calc
+## Calc
 
 - My calculator, which is aimed at replacing Matlab.
 
-# Jasmine
+## Jasmine
 
 - My dialect λProlog, which has Haskell-like syntax.
 
-# LGS
+## LGS
 
 - My lexer generator, which supports the positive lookahead operator `/`.
 
-# PGS
+## PGS
 
 - My parser generator, which generates LALR(1) parsers.
