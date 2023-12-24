@@ -40,11 +40,11 @@ Aladdin >>= quit
 
 ## Calc
 
-- My calculator, which is aimed at replacing Matlab.
+- ~~My calculator, which is aimed at replacing Matlab.~~
 
 ## Jasmine
 
-- My dialect λProlog, which has Haskell-like syntax.
+- ~~My dialect λProlog, which has Haskell-like syntax.~~
 
 ## LGS
 
