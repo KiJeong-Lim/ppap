@@ -91,50 +91,6 @@ getKind = maybe (error "`getKind\'") id . go where
         return kin2
     go (TyMTV _) = return Star
 
-getMGU :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
-getMGU lhs rhs
-    = case go Set.empty lhs rhs of
-        (Nothing, theta) -> return theta
-        (Just typ_error, theta) -> throwE ((substMTVars theta lhs, substMTVars theta rhs), typ_error)
-    where
-        go :: Set.Set MetaTVar -> MonoType Int -> MonoType Int -> (Maybe TypeError, TypeSubst)
-        go lockeds (TyVar _) _ = error "`getMGU\'"
-        go lockeds _ (TyVar _) = error "`getMGU\'"
-        go lockeds (TyCon tcon1) (TyCon tcon2)
-            | tcon1 == tcon2 = (Nothing, mempty)
-        go lockeds (TyMTV mtv) typ 
-            | mtv `Set.member` lockeds
-            = (Nothing, mempty)
-            | otherwise
-            = case mtv +-> typ of
-                Left typ_error -> (Just typ_error, mempty)
-                Right theta -> (Nothing, theta)
-        go lockeds typ (TyMTV mtv)
-            | mtv `Set.member` lockeds
-            = (Nothing, mempty)
-            | otherwise
-            = case mtv +-> typ of
-                Left typ_error -> (Just typ_error, mempty)
-                Right theta -> (Nothing, theta)
-        go lockeds (TyApp typ1 typ2) (TyApp typ1' typ2') = case go lockeds typ1 typ1' of
-            (Nothing, theta1) -> case go lockeds (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
-                (Nothing, theta2) -> (Nothing, theta2 <> theta1)
-                (Just typ_error, theta2) -> (Just typ_error, theta2 <> theta1)
-            (Just (OccursCheckFailed mtv typ), theta1) -> case go (Set.insert mtv lockeds) (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
-                (Nothing, theta2) -> (Just (OccursCheckFailed mtv typ), theta2 <> theta1)
-                (Just typ_error', theta2) -> (Just typ_error', theta2 <> theta1)
-            (Just typ_error, theta1) -> case go lockeds (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
-                (Nothing, theta2) -> (Just typ_error, theta2 <> theta1)
-                (Just typ_error', theta2) -> (Just typ_error, theta2 <> theta1)
-        go lockeds typ1 typ2 = (Just (TypesAreMismatched typ1 typ2), mempty)
-
-unify :: Monad mnd => [(MonoType Int, MonoType Int)] -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
-unify [] = return mempty
-unify ((lhs, rhs) : disgrees) = do
-    theta1 <- getMGU lhs rhs
-    theta2 <- unify [ (substMTVars theta1 lhs0, substMTVars theta1 rhs0) | (lhs0, rhs0) <- disgrees ]
-    return (theta2 <> theta1)
-
 showMonoType :: Map.Map MetaTVar LargeId -> MonoType Int -> String -> String
 showMonoType name_env = go 0 where
     go :: Precedence -> MonoType Int -> String -> String

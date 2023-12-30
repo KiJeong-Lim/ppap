@@ -33,13 +33,12 @@ inferType type_env = flip runStateT Map.empty . infer where
         (term2', assumptions2) <- infer term2
         mtv <- getNewMTV "A"
         used_mtvs <- get
-        let disagrees = [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
-        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr used_mtvs loc
-        theta' <- lift $ catchE (substMTVars theta (snd (getAnnot term2') `mkTyArrow` substMTVars theta (TyMTV mtv)) ->> substMTVars theta (snd (getAnnot term1'))) $ throwE . mkTyErr used_mtvs loc
-        let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst (theta' <> theta))
-            assumptions' = substMTVars (theta' <> theta) assumptions1 `Map.union` substMTVars (theta' <> theta) assumptions2
+        let disagrees = (snd (getAnnot term2') `mkTyArrow` TyMTV mtv, snd (getAnnot term1')) : [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
+        theta <- lift $ catchE (match mempty disagrees) $ throwE . mkTyErr used_mtvs loc
+        let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
+            assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
         put used_mtvs'
-        return (zonkMTV (theta' <> theta) (IApp (loc, TyMTV mtv) term1' term2'), assumptions')
+        return (zonkMTV theta (IApp (loc, TyMTV mtv) term1' term2'), assumptions')
     infer (IAbs loc var term) = do
         (term', assumptions) <- infer term
         case Map.lookup var assumptions of
@@ -47,6 +46,11 @@ inferType type_env = flip runStateT Map.empty . infer where
                 mtv <- getNewMTV "A"
                 return (IAbs (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var term', assumptions)
             Just typ -> return (IAbs (loc, typ `mkTyArrow` snd (getAnnot term')) var term', Map.delete var assumptions)
+    match :: Monad mnd => TypeSubst -> [(MonoType Int, MonoType Int)] -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
+    match theta [] = return theta
+    match theta ((actual_typ, expected_typ) : disagrees) = do
+        theta' <- substMTVars theta actual_typ ->> substMTVars theta expected_typ
+        return (theta' <> theta)
 
 (->>) :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
 actual_typ ->> expected_typ = catchE (go actual_typ expected_typ) $ throwE . (\err -> ((expected_typ, actual_typ), err)) where
