@@ -49,11 +49,11 @@ data TermNode
     | NLam TermNode
     {- | NFix TermNode -}
     | Susp TermNode Nat_ol Nat_nl SuspEnv
-    -- $Susp t ol nl env$ is a suspension of evaluation, where
-    -- $t$ is the evaluatee;
+    -- $Susp t ol nl env$ is a suspension of evaluation, where:
+    -- $t$ is an evaluatee;
     -- $ol$ is the length of $env$;
     -- $nl$ counts how many binders we have encountered;
-    -- $env$ is the context of variables, which are bound by binders we have encountered.
+    -- $env$ is a context of variables, which are bound by binders we have encountered.
     | LVar LogicVar
     | NCon Constructor
     | Prim Primitives

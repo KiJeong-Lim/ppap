@@ -12,7 +12,6 @@ import Y.Base
 import Z.Utils
 
 infix 4 +->
-infix 4 ->>
 
 data TypeError
     = KindsAreMismatched (MonoType Int, KindExpr) (MonoType Int, KindExpr)
@@ -136,43 +135,6 @@ unify ((lhs, rhs) : disgrees) = do
     theta2 <- unify [ (substMTVars theta1 lhs0, substMTVars theta1 rhs0) | (lhs0, rhs0) <- disgrees ]
     return (theta2 <> theta1)
 
-(->>) :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
-lhs ->> rhs
-    = case go lhs rhs of
-        Right theta -> return theta
-        Left typ_error -> throwE ((lhs, rhs), typ_error)
-    where
-        merge :: TypeSubst -> TypeSubst -> Either (MonoType Int, MonoType Int) TypeSubst
-        merge (TypeSubst mapsto1) (TypeSubst mapsto2)
-            = case disgrees of
-                [] -> Right (TypeSubst (mapsto1 `Map.union` mapsto2))
-                (typ1, typ2) : _ -> Left (typ1, typ2)
-            where
-                disgrees :: [(MonoType Int, MonoType Int)]
-                disgrees = do
-                    mtv <- Set.toList (Map.keysSet mapsto1 `Set.intersection` Map.keysSet mapsto2)
-                    let typ1 = mapsto1 Map.! mtv
-                        typ2 = mapsto2 Map.! mtv
-                    if typ1 == typ2
-                        then []
-                        else return (typ1, typ2)
-        go :: MonoType Int -> MonoType Int -> Either TypeError TypeSubst
-        go (TyVar _) _ = error "`(->>)\'"
-        go _ (TyVar _) = error "`(->>)\'"
-        go (TyCon tcon1) (TyCon tcon2)
-            | tcon1 == tcon2 = return mempty
-        go (TyMTV mtv) typ 
-            | TyMTV mtv == typ = return mempty
-            | getKind (TyMTV mtv) == getKind typ = return (TypeSubst (Map.singleton mtv typ))
-            | otherwise = Left (KindsAreMismatched (TyMTV mtv, getKind (TyMTV mtv)) (typ, getKind typ))
-        go (TyApp typ1 typ2) (TyApp typ1' typ2') = do
-            theta1 <- go typ1 typ1'
-            theta2 <- go typ2 typ2'
-            case merge theta1 theta2 of
-                Left (typ, typ') -> Left (TypesAreMismatched typ typ')
-                Right theta -> return theta
-        go typ1 typ2 = Left (TypesAreMismatched typ1 typ2)
-
 showMonoType :: Map.Map MetaTVar LargeId -> MonoType Int -> String -> String
 showMonoType name_env = go 0 where
     go :: Precedence -> MonoType Int -> String -> String
@@ -188,8 +150,8 @@ showMonoType name_env = go 0 where
         = strstr "#" . showsPrec 0 var
     go prec (TyMTV mtv)
         = case Map.lookup mtv name_env of
-            Nothing -> strstr "mtv_" . showsPrec 0 mtv
-            Just name -> strstr name
+            Nothing -> strstr "?_" . showsPrec 0 mtv
+            Just name -> strstr "?" . strstr name
 
 instantiateScheme :: GenUniqueM m => PolyType -> StateT (Map.Map MetaTVar LargeId) (ExceptT ErrMsg m) ([MetaTVar], MonoType Int)
 instantiateScheme = go where
