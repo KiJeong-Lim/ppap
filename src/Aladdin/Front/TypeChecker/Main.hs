@@ -11,8 +11,6 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Y.Base
 
-infix 4 ->>
-
 inferType :: GenUniqueM m => TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
 inferType type_env = flip runStateT Map.empty . infer where
     infer :: GenUniqueM m => TermExpr DataConstructor SLoc -> StateT (Map.Map MetaTVar SmallId) (ExceptT ErrMsg m) (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int))
@@ -33,8 +31,8 @@ inferType type_env = flip runStateT Map.empty . infer where
         (term2', assumptions2) <- infer term2
         mtv <- getNewMTV "A"
         used_mtvs <- get
-        let disagrees = (snd (getAnnot term2') `mkTyArrow` TyMTV mtv, snd (getAnnot term1')) : [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
-        theta <- lift $ catchE (match mempty disagrees) $ throwE . mkTyErr used_mtvs loc
+        let disagrees = (snd (getAnnot term1'), snd (getAnnot term2') `mkTyArrow` TyMTV mtv) : [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
+        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr used_mtvs loc
         let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
             assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
         put used_mtvs'
@@ -46,35 +44,6 @@ inferType type_env = flip runStateT Map.empty . infer where
                 mtv <- getNewMTV "A"
                 return (IAbs (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var term', assumptions)
             Just typ -> return (IAbs (loc, typ `mkTyArrow` snd (getAnnot term')) var term', Map.delete var assumptions)
-    match :: Monad mnd => TypeSubst -> [(MonoType Int, MonoType Int)] -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
-    match theta [] = return theta
-    match theta ((actual_typ, expected_typ) : disagrees) = do
-        theta' <- substMTVars theta actual_typ ->> substMTVars theta expected_typ
-        return (theta' <> theta)
-
-(->>) :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
-actual_typ ->> expected_typ = catchE (go actual_typ expected_typ) $ throwE . (\err -> ((expected_typ, actual_typ), err)) where
-    go :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT TypeError mnd TypeSubst
-    go lhs rhs = case lhs of
-        TyVar _ -> error "`(->>)\'"
-        TyCon c -> case rhs of
-            TyMTV mtv -> case mtv +-> lhs of
-                Left err -> throwE err
-                Right theta -> return theta
-            TyCon c' -> if c == c' then return mempty else throwE (TypesAreMismatched lhs rhs) 
-            _ -> throwE (TypesAreMismatched lhs rhs)
-        TyApp typ1 typ2 -> case rhs of
-            TyMTV mtv -> case mtv +-> lhs of
-                Left err -> throwE err
-                Right theta -> return theta
-            TyApp typ1' typ2' -> do
-                theta1 <- go typ1 typ1'
-                theta2 <- go (substMTVars theta1 typ2) (substMTVars theta1 typ2')
-                return (theta2 <> theta1)
-            _ -> throwE (TypesAreMismatched lhs rhs)
-        TyMTV mtv -> case mtv +-> rhs of
-            Left err -> throwE err
-            Right theta -> return theta
 
 checkType :: GenUniqueM m => TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
 checkType type_env term expected_typ = do
