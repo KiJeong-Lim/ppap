@@ -14,10 +14,7 @@ shelly = shellymain where
     identifierPM :: PM String
     identifierPM = pure (:) <*> acceptCharIf (\ch -> ch `elem` ['$'] ++ ['a' .. 'z'] ++ ['A' .. 'Z']) <*> many (acceptCharIf (\ch -> ch `elem` ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ ['.', '_', '-']))
     numberPM :: PM String
-    numberPM = mconcat
-        [ pure (:) <*> acceptCharIf (\ch -> ch `elem` ['1' .. '9']) <*> many (acceptCharIf (\ch -> ch `elem` ['0' .. '9']))
-        , consumeStr "0" *> pure "0"
-        ]
+    numberPM = (pure (:) <*> acceptCharIf (\ch -> ch `elem` ['1' .. '9']) <*> many (acceptCharIf (\ch -> ch `elem` ['0' .. '9']))) <|> (consumeStr "0" *> pure "0")
     readDirectedBind :: PM String
     readDirectedBind = consumeStr ">>=" *> pure ">>="
     readReversedBind :: PM String
