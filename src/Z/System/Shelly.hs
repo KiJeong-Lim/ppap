@@ -8,7 +8,6 @@ import Z.System.Machine
 import Z.System.Util
 import Z.Text.PM
 import Z.Utils
-import Text.Read (Lexeme(String))
 
 shelly :: String -> IO String
 shelly = shellymain where

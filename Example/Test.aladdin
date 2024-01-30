@@ -1,0 +1,2 @@
+type tyeq (A -> B -> o).
+tyeq A B :- !; A = B.
