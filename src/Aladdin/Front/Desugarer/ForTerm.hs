@@ -12,7 +12,7 @@ desugarTerm :: GenUniqueM m => TermRep -> StateT (Map.Map LargeId IVar) m (TermE
 desugarTerm (RVar loc1 "_") = do
     var <- getNewUnique
     u <- getNewUnique
-    let var_rep = "WILD_CARD__" ++ shows u ""
+    let var_rep = "__WILD_CARD_" ++ shows u ""
     modify (Map.insert var_rep var)
     return (IVar loc1 var)
 desugarTerm (RVar loc1 var_rep) = do
