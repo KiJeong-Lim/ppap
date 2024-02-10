@@ -11,6 +11,9 @@ import Y.Base
 desugarTerm :: GenUniqueM m => TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
 desugarTerm (RVar loc1 "_") = do
     var <- getNewUnique
+    u <- getNewUnique
+    let var_rep = "WILD_CARD__" ++ shows u ""
+    modify (Map.insert var_rep var)
     return (IVar loc1 var)
 desugarTerm (RVar loc1 var_rep) = do
     env <- get

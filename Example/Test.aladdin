@@ -1,2 +1,16 @@
 type tyeq (A -> B -> o).
 tyeq A B :- !; A = B.
+
+type rule1 (nat -> nat -> nat -> nat -> nat -> o).
+rule1 1 1 _ _ 1.
+
+type rule2 (nat -> nat -> nat -> nat -> nat -> o).
+rule2 0 _ 1 _ 1.
+
+type rule3 (nat -> nat -> nat -> nat -> nat -> o).
+rule3 _ 0 _ 1 1.
+
+type que (nat -> nat -> nat -> nat -> nat -> o).
+que A B C D E :- rule1 A B C D E, rule2 A B C D E, rule3 A B C D E.
+
+% ?- que _ _ 1 1 1.
