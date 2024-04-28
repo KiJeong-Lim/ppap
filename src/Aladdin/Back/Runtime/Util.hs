@@ -57,9 +57,9 @@ showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> String 
 showStackItem fvs space (ctx, cells) = strcat
     [ pindent space . strstr "- progressings = " . plist (space + 4) [ strstr "?- " . shows goal | Cell facts level goal <- cells ] . nl
     , pindent space . strstr "- context = Context" . nl
-    , pindent (space + 4) . strstr "{ " . strstr "_CurrentLabeling = " . plist (space + 8) ([ strstr "`" . shows (mkNCon c) . strstr "\' ==> " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ strstr "`" . shows (mkLVar v) . strstr "\' ==> " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
-    , pindent (space + 4) . strstr ", " . strstr "_TotalVarBinding = " . plist (space + 8) [ strstr "`" . shows (LVar v) . strstr "\' +-> " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
-    , pindent (space + 4) . strstr ", " . strstr "_LeftConstraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
+    , pindent (space + 4) . strstr "{ " . strstr "_scope_env = " . plist (space + 8) ([ strstr "`" . shows (mkNCon c) . strstr "\' *--- " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ strstr "`" . shows (mkLVar v) . strstr "\' *--- " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
+    , pindent (space + 4) . strstr ", " . strstr "_substitution = " . plist (space + 8) [ strstr "`" . shows (LVar v) . strstr "\' |--> " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
+    , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
     , pindent (space + 4) . strstr "} " . nl
     ]
 
