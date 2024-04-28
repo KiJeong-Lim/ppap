@@ -53,12 +53,12 @@ runTransition env free_lvars = go where
     dispatch ctx facts level (NCon pred, args) cells stack stacks
         | DC (DC_LO logical_operator) <- pred
         = do
-            stack' <- runLogicalOperator logical_operator args ctx facts level cells stack
-            go stack' stacks
+            (stack', stacks') <- runLogicalOperator logical_operator args ctx facts level cells stack stacks
+            go stack' stacks'
         | otherwise
         = do
             stack' <- search facts level pred args ctx cells
-            go stack' (stack : stacks)
+            go (stack' ++ stack) stacks
     dispatch ctx facts level (t, ts) cells stack stacks = throwE (BadGoalGiven (foldlNApp t ts))
     go :: Stack -> [Stack] -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     go [] [] = return False

@@ -1,3 +1,5 @@
+% test
+
 type tyeq (A -> B -> o).
 tyeq A B :- !; A = B.
 
@@ -14,3 +16,7 @@ type que (nat -> nat -> nat -> nat -> nat -> o).
 que A B C D E :- rule1 A B C D E, rule2 A B C D E, rule3 A B C D E.
 
 % ?- que _ _ 1 1 1.
+
+type not (o -> o).
+not A :- (A, !, fail).
+not A.
