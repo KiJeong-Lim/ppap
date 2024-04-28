@@ -53,8 +53,8 @@ runTransition env free_lvars = go where
     dispatch ctx facts level (NCon pred, args) cells stack stacks
         | DC (DC_LO logical_operator) <- pred
         = do
-            (stack', stacks') <- runLogicalOperator logical_operator args ctx facts level cells stack stacks
-            go stack' stacks'
+            stack' <- runLogicalOperator logical_operator args ctx facts level cells stack
+            go stack' stacks
         | otherwise
         = do
             stack' <- search facts level pred args ctx cells
