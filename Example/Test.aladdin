@@ -20,3 +20,7 @@ que A B C D E :- rule1 A B C D E, rule2 A B C D E, rule3 A B C D E.
 type not (o -> o).
 not A :- (A, !, fail).
 not A.
+
+type cuttest1 (nat -> nat -> o).
+cuttest1 3 4 :- !.
+cuttest1 3 5.
