@@ -68,4 +68,4 @@ runTransition env free_lvars = go where
             [] -> do
                 want_more <- liftIO (_Answer env ctx)
                 if want_more then go stack else return True
-            Cell facts level goal depth : cells' -> dispatch ctx facts level (unfoldlNApp (rewrite HNF goal)) cells' depth stack
+            Cell facts' level' goal' depth' : cells' -> dispatch ctx facts' level' (unfoldlNApp (rewrite HNF goal')) cells' depth' stack
