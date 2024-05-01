@@ -22,6 +22,8 @@ type Satisfied = Bool
 
 type RunMore = Bool
 
+type CallDepth = Int
+
 data KernelErr
     = BadGoalGiven TermNode
     | BadFactGiven TermNode
@@ -32,6 +34,7 @@ data Cell
         { _GivenFacts :: [Fact]
         , _ScopeLevel :: ScopeLevel
         , _WantedGoal :: Goal
+        , _call_depth :: CallDepth
         }
     deriving ()
 
@@ -51,11 +54,11 @@ data RuntimeEnv
     deriving ()
 
 instance ZonkLVar Cell where
-    zonkLVar theta (Cell facts level goal) = Cell (applyBinding theta facts) level (applyBinding theta goal)
+    zonkLVar theta (Cell facts level goal depth) = Cell (applyBinding theta facts) level (applyBinding theta goal) depth
 
-showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> String -> String
+showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> ShowS
 showStackItem fvs space (ctx, cells) = strcat
-    [ pindent space . strstr "- progressings = " . plist (space + 4) [ strstr "?- " . shows goal | Cell facts level goal <- cells ] . nl
+    [ pindent space . strstr "- progressings = " . plist (space + 4) [ strstr "?- " . shows goal . strstr " <--------- _call_depth = " . shows depth | Cell facts level goal depth <- cells ] . nl
     , pindent space . strstr "- context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_scope_env = " . plist (space + 8) ([ strstr "`" . shows (mkNCon c) . strstr "\' *--- " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ strstr "`" . shows (mkLVar v) . strstr "\' *--- " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
     , pindent (space + 4) . strstr ", " . strstr "_substitution = " . plist (space + 8) [ strstr "`" . shows (LVar v) . strstr "\' |--> " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
@@ -63,9 +66,10 @@ showStackItem fvs space (ctx, cells) = strcat
     , pindent (space + 4) . strstr "} " . nl
     ]
 
-showsCurrentState :: Set.Set LogicVar -> Context -> [Cell] -> Stack -> String -> String
+showsCurrentState :: Set.Set LogicVar -> Context -> [Cell] -> Stack -> ShowS
 showsCurrentState fvs ctx cells stack = strcat
-    [ strstr "* The top of the current stack is:" . nl
+    [ strstr "-------------------------"
+    , strstr "* The top of the current stack is:" . nl
     , showStackItem fvs 4 (ctx, cells) . nl
     , strstr "* The rest of the current stack is:" . nl
     , strcat
@@ -78,5 +82,5 @@ showsCurrentState fvs ctx cells stack = strcat
     , strstr "--------------------------------" . nl
     ]
 
-mkCell :: [Fact] -> ScopeLevel -> Goal -> Cell
-mkCell facts level goal = goal `seq` Cell { _GivenFacts = facts, _ScopeLevel = level, _WantedGoal = goal }
+mkCell :: [Fact] -> ScopeLevel -> Goal -> CallDepth -> Cell
+mkCell facts level goal depth = goal `seq` Cell { _GivenFacts = facts, _ScopeLevel = level, _WantedGoal = goal, _call_depth = depth }
