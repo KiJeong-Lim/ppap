@@ -31,7 +31,7 @@ bind var = go . rewrite HNF where
                 loop (rhs_tail_elements : rhs_tail) = do
                     (subst, lhs_tail_elements) <- go (rewrite HNF rhs_tail_elements) parameters lambda
                     (theta, lhs_tail) <- loop (applyBinding subst rhs_tail)
-                    return (theta <> subst, lhs_tail_elements : lhs_tail)
+                    return (theta <> subst, applyBinding theta lhs_tail_elements : lhs_tail)
                 get_lhs_head lhs_arguments
                     | NCon con <- rhs_head
                     , lookupLabel var labeling >= lookupLabel con labeling
