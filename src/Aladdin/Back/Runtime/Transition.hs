@@ -26,7 +26,7 @@ runTransition env free_lvars = go where
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueGenT IO) Stack
     success with = return [with]
-    search :: [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> CallDepth -> ExceptT KernelErr (UniqueGenT IO) Stack
+    search :: [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> [CallId] -> ExceptT KernelErr (UniqueGenT IO) Stack
     search facts level predicate args ctx cells depth
         = fmap concat $ forM facts $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
@@ -40,16 +40,18 @@ runTransition env free_lvars = go where
                             new_facts = facts
                         case hopu_output of
                             Nothing -> failure
-                            Just (new_disagreements, HopuSol new_labeling subst) -> success
-                                ( Context
-                                    { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
-                                    , _CurrentLabeling = new_labeling
-                                    , _LeftConstraints = new_disagreements
-                                    }
-                                , zonkLVar subst (mkCell new_facts new_level new_goal (depth + 1) : cells)
-                                )
+                            Just (new_disagreements, HopuSol new_labeling subst) -> do
+                                call_id <- getNewUnique
+                                success
+                                    ( Context
+                                        { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
+                                        , _CurrentLabeling = new_labeling
+                                        , _LeftConstraints = new_disagreements
+                                        }
+                                    , zonkLVar subst (mkCell new_facts new_level new_goal (call_id : depth) : cells)
+                                    )
                 _ -> failure
-    dispatch :: Context -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallDepth -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
+    dispatch :: Context -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> [CallId] -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     dispatch ctx facts level (NCon predicate, args) depth cells stack
         | DC (DC_LO logical_operator) <- predicate
         = do

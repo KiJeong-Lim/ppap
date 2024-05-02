@@ -11,10 +11,10 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 
-runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> [Fact] -> ScopeLevel -> [Cell] -> CallDepth -> Stack -> ExceptT KernelErr (UniqueGenT IO) Stack
+runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> [Fact] -> ScopeLevel -> [Cell] -> [CallId] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Stack
 runLogicalOperator LO_true [] ctx facts level cells depth stack = return ((ctx, cells) : stack)
 runLogicalOperator LO_fail [] ctx facts level cells depth stack = return stack
-runLogicalOperator LO_cut [] ctx facts level cells depth stack = return ((ctx, cells) : [ (ctx, cells) | (ctx, cells) <- stack, maximum (map _call_depth cells) < depth ])
+runLogicalOperator LO_cut [] ctx facts level cells depth stack = return ((ctx, cells) : [ (ctx, cells) | (ctx, cells) <- stack, maximum (map (length . _CallTracer) cells) < length depth ])
 runLogicalOperator LO_and [goal1, goal2] ctx facts level cells depth stack = return ((ctx, mkCell facts level goal1 depth : mkCell facts level goal2 depth : cells) : stack)
 runLogicalOperator LO_or [goal1, goal2] ctx facts level cells depth stack = return ((ctx, mkCell facts level goal1 depth : cells) : (ctx, mkCell facts level goal2 depth : cells) : stack)
 runLogicalOperator LO_imply [fact1, goal2] ctx facts level cells depth stack = return ((ctx, mkCell (fact1 : facts) level goal2 depth : cells) : stack)
