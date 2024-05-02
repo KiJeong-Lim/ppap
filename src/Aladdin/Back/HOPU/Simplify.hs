@@ -22,7 +22,7 @@ simplify :: GenUniqueM m => [Disagreement] -> Labeling -> StateT HasChanged (Exc
 simplify = flip loop mempty . zip (repeat 0) where
     loop :: GenUniqueM m => [(Int, Disagreement)] -> LVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
-    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (applyBinding subst (rewrite NF lhs)) (applyBinding subst (rewrite NF rhs)) where
+    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
         dispatch :: GenUniqueM m => Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
         dispatch l lhs rhs
             | (lambda1, lhs') <- viewNestedNAbs lhs
