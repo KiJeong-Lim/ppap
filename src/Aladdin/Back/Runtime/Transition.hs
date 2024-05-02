@@ -27,12 +27,12 @@ runTransition env free_lvars = go where
     success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueGenT IO) Stack
     success with = return [with]
     search :: [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> CallDepth -> ExceptT KernelErr (UniqueGenT IO) Stack
-    search facts level pred args ctx cells depth
+    search facts level predicate args ctx cells depth
         = fmap concat $ forM facts $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
-                (NCon pred', args')
-                    | pred == pred' -> do
+                (NCon predicate', args')
+                    | predicate == predicate' -> do
                         hopu_output <- if length args == length args'
                             then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ _LeftConstraints ctx))
                             else throwE (BadFactGiven goal')
@@ -49,23 +49,23 @@ runTransition env free_lvars = go where
                                 , zonkLVar subst (mkCell new_facts new_level new_goal (depth + 1) : cells)
                                 )
                 _ -> failure
-    dispatch :: Context -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> [Cell] -> CallDepth -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
-    dispatch ctx facts level (NCon pred, args) cells depth stack
-        | DC (DC_LO logical_operator) <- pred
+    dispatch :: Context -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallDepth -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
+    dispatch ctx facts level (NCon predicate, args) depth cells stack
+        | DC (DC_LO logical_operator) <- predicate
         = do
             stack' <- runLogicalOperator logical_operator args ctx facts level cells depth stack
             go stack'
         | otherwise
         = do
-            stack' <- search facts level pred args ctx cells depth
+            stack' <- search facts level predicate args ctx cells depth
             go (stack' ++ stack)
-    dispatch ctx facts level (t, ts) cells depth stack = throwE (BadGoalGiven (foldlNApp t ts))
+    dispatch ctx facts level (t, ts) depth cells stack = throwE (BadGoalGiven (foldlNApp t ts))
     go :: Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     go [] = return False
-    go ((ctx, cells) : stack)  = do
+    go ((ctx, cells) : stack) = do
         liftIO (_PutStr env (showsCurrentState free_lvars ctx cells stack ""))
         case cells of
             [] -> do
                 want_more <- liftIO (_Answer env ctx)
                 if want_more then go stack else return True
-            Cell facts' level' goal' depth' : cells' -> dispatch ctx facts' level' (unfoldlNApp (rewrite HNF goal')) cells' depth' stack
+            Cell facts level goal depth : cells -> dispatch ctx facts level (unfoldlNApp (rewrite HNF goal)) depth cells stack
