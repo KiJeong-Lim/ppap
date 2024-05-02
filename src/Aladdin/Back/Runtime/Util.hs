@@ -24,6 +24,8 @@ type RunMore = Bool
 
 type CallDepth = Int
 
+type CallId = Unique
+
 data KernelErr
     = BadGoalGiven TermNode
     | BadFactGiven TermNode
@@ -68,7 +70,7 @@ showStackItem fvs space (ctx, cells) = strcat
 
 showsCurrentState :: Set.Set LogicVar -> Context -> [Cell] -> Stack -> ShowS
 showsCurrentState fvs ctx cells stack = strcat
-    [ strstr "-------------------------"
+    [ strstr "--------------------------------" . nl 
     , strstr "* The top of the current stack is:" . nl
     , showStackItem fvs 4 (ctx, cells) . nl
     , strstr "* The rest of the current stack is:" . nl

@@ -33,12 +33,12 @@ runTransition env free_lvars = go where
             case unfoldlNApp (rewrite HNF goal') of
                 (NCon pred', args')
                     | pred == pred' -> do
-                        hopu_ouput <- if length args == length args'
+                        hopu_output <- if length args == length args'
                             then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ _LeftConstraints ctx))
                             else throwE (BadFactGiven goal')
                         let new_level = level
                             new_facts = facts
-                        case hopu_ouput of
+                        case hopu_output of
                             Nothing -> failure
                             Just (new_disagreements, HopuSol new_labeling subst) -> success
                                 ( Context

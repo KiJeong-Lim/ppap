@@ -1,3 +1,5 @@
+/*
+
 #include "machine.h"
 
 #define BUF_SZ 256
@@ -22,3 +24,7 @@ char *myread(void)
     buffer[i] = '\0';
     return ret;
 }
+
+#endif
+
+*/

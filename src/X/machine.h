@@ -4,6 +4,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+/*
+
 char *myread(void);
 
+*/
 #endif
