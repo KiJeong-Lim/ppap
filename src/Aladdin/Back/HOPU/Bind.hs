@@ -48,7 +48,7 @@ bind var = go . rewrite HNF where
             then lift (throwE OccursCheckFail)
             else do
                 labeling <- get
-                let isty = isTypeLVar var
+                let isty = isTypeLVar var || isTypeLVar var'
                     lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda, lambda - 1 .. 1]
                     rhs_arguments = map (rewrite NF) rhs_tail
                     common_arguments = Set.toList (Set.fromList lhs_arguments `Set.intersection` Set.fromList rhs_arguments)

@@ -21,7 +21,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
         , var == var'
         = do
             labeling <- get
-            let isty = isTypeLVar var
+            let isty = isTypeLVar var || isTypeLVar var'
                 n = length parameters + lambda
                 lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda, lambda - 1 .. 1] 
                 rhs_arguments = map (rewrite NF) rhs_tail
