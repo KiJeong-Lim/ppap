@@ -16,24 +16,20 @@ import Z.System.Shelly
 import Z.Text.PC
 import Z.Utils
 
-runLGS :: FilePath -> IO ()
-runLGS dir = do
+main :: IO ()
+main = do
+    dir <- shelly ("LGS =<< ")
+    let dir_rev = reverse dir
+    let dir' = if take 4 dir_rev == "txt." then reverse (drop 4 dir_rev) else dir
     x_src <- readFileNow dir
     case maybe (Left ("cannot open file: " ++ dir)) (runPC dir (many (readBlock <* many lend) <* eofPC)) x_src of
         Left err -> putStrLn err
         Right xblocks -> case runIdentity (runExceptT (genLexer xblocks)) of
             Left err -> do
-                writeFileNow (dir ++ ".failed") err
+                writeFileNow (dir' ++ ".failed") err
                 shelly ("LGS >>= tell (generating-failed)")
                 return ()
             Right delta -> do
-                writeFileNow (dir ++ ".hs") delta
+                writeFileNow (dir' ++ ".hs") delta
                 shelly ("LGS >>= tell (the-lexer-has-been-generated)")
                 return ()
-
-main :: IO ()
-main = do
-    dir <- shelly ("LGS =<< ")
-    runLGS dir
-    shelly ("LGS >>= quit")
-    return ()

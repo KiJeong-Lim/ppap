@@ -55,29 +55,11 @@ ppap = do
         Just ("LGS", []) -> do
             shelly ("ppap >>= exec (LGS.main)")
             LGS.main
-        Just ("LGS", ["quick"]) -> do
-            shelly ("ppap >>= eval (LGS.runLGS \"src/Aladdin/Front/Analyzer/Lexer\")")
-            LGS.runLGS ("src/Aladdin/Front/Analyzer/Lexer")
-            shelly ("ppap >>= quit")
-            return ()
-        Just ("LGS", ["Jasmine"]) -> do
-            shelly ("ppap >>= eval (LGS.runLGS \"src/Jasmine/Alpha1/Analyzer/Lexer\")")
-            LGS.runLGS ("src/Jasmine/Alpha1/Analyzer/Lexer")
-            shelly ("ppap >>= quit")
-            return ()
+            -- src/Aladdin/Front/Analyzer/Lexer.txt
         Just ("PGS", []) -> do
             shelly ("ppap >>= exec (PGS.main)")
             PGS.main
-        Just ("PGS", ["quick"]) -> do
-            shelly ("ppap >>= eval (PGS.runPGS \"src/Aladdin/Front/Analyzer/Parser\")")
-            PGS.runPGS ("src/Aladdin/Front/Analyzer/Parser")
-            shelly ("ppap >>= quit")
-            return ()
-        Just ("PGS", ["Jasmine"]) -> do
-            shelly ("ppap >>= eval (PGS.runPGS \"src/Jasmine/Alpha1/Analyzer/Parser\")")
-            PGS.runPGS ("src/Jasmine/Alpha1/Analyzer/Parser")
-            shelly ("ppap >>= quit")
-            return ()
+            -- src/Aladdin/Front/Analyzer/Parser.txt
         Just (cmd, args) -> do
             shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()

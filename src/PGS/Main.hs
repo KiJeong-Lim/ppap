@@ -16,24 +16,20 @@ import Z.System.Shelly
 import Z.Text.PC
 import Z.Utils
 
-runPGS :: FilePath -> IO ()
-runPGS dir = do
+main :: IO ()
+main = do
+    dir <- shelly ("PGS =<< ")
+    let dir_rev = reverse dir
+    let dir' = if take 4 dir_rev == "txt." then reverse (drop 4 dir_rev) else dir
     y_src <- readFileNow dir
     case maybe (Left ("cannot open file: " ++ dir)) (runPC dir (many (readBlock <* many lend) <* eofPC)) y_src of
         Left err -> putStrLn err
         Right yblocks -> case runIdentity (runExceptT (genParser yblocks)) of
             Left err -> do
-                writeFileNow (dir ++ ".failed") err
+                writeFileNow (dir' ++ ".failed") err
                 shelly ("PGS >>= tell (generating-failed)")
                 return ()
             Right delta -> do
-                writeFileNow (dir ++ ".hs") delta
+                writeFileNow (dir' ++ ".hs") delta
                 shelly ("PGS >>= tell (the-parser-has-been-generated)")
                 return ()
-
-main :: IO ()
-main = do
-    dir <- shelly ("PGS =<< ")
-    runPGS dir
-    shelly ("PGS >>= quit")
-    return ()
