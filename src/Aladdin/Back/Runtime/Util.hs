@@ -63,8 +63,8 @@ mkCell facts level goal depth = goal `seq` Cell { _GivenFacts = facts, _ScopeLev
 
 showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> ShowS
 showStackItem fvs space (ctx, cells) = strcat
-    [ pindent space . strstr "- progressings = " . plist (space + 4) [ strstr "?- " . shows goal . strstr " <--------- _call_stack = #" . shows depth | Cell facts level goal depth <- cells ] . nl
-    , pindent space . strstr "- context = Context" . nl
+    [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- " . shows goal . strstr " <--------- _call_stack = #" . shows depth | Cell facts level goal depth <- cells ] . nl
+    , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_scope_env = " . plist (space + 8) ([ strstr "`" . shows (mkNCon c) . strstr "\' *--- " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ strstr "`" . shows (mkLVar v) . strstr "\' *--- " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
     , pindent (space + 4) . strstr ", " . strstr "_substitution = " . plist (space + 8) [ strstr "`" . shows (LVar v) . strstr "\' |--> " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
@@ -79,7 +79,7 @@ showsCurrentState fvs ctx cells stack = strcat
     , strstr "* The rest of the current stack is:" . nl
     , strcat
         [ strcat
-            [ pindent 2 . strstr "+ #[" . shows i . strstr "]:" . nl
+            [ pindent 0 . strstr "- (#" . shows i . strstr ")" . nl
             , showStackItem fvs 4 item . nl
             ]
         | (i, item) <- zip [1, 2 .. length stack] stack
