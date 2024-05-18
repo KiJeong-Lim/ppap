@@ -241,7 +241,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 (Just prec1, Just prec2)
                     | prec1 > prec2 -> Right getActionT
                     | prec1 < prec2 -> Right (Map.update (const (Just ra)) (q, t) getActionT)
-                _ -> Left (Conflict { because = (Reduce production, ra), whereIs = (q, t), withEnv = getCannonical0 })
+                _ -> Left (Conflict { because = (Reduce production', ra), whereIs = (q, t), withEnv = getCannonical0 })
     theResult :: ExceptT Conflict Identity (Cannonical0, LR1Parser)
     theResult = case resolveConflicts of
         Left conflict -> throwE conflict
