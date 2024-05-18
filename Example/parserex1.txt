@@ -1,0 +1,102 @@
+\hshead {
+    module Main where
+    type TypeConstructorName = String
+    type TypeClassName = String
+    type TypeVariableName = String
+    data PiType
+        = WithConstraints [Contraint] TauType
+        | WithoutConstraints TauType
+        deriving (Eq, Show)
+    data Contraint
+        = Contraint TypeClassName [TauType]
+        deriving (Eq, Show)
+    data TauType
+        = TCon TypeConstructorName
+        | TVar TypeVariableName
+        | TApp TauType TauType
+        deriving (Eq, Show)
+}
+
+\target {
+    token-type: "Token"
+    parser-name: "fooparser"
+    result-type: "PiType"
+    start: $PiType
+    terminals:
+        "T_arrow": $arrow 0 none
+        "T_lparen": $lparen 0 none
+        "T_rparen": $rparen 0 none
+        "T_fatarrow": $fatarrow 0 none
+        "T_comma": $comma 0 none
+        "T_largeid contents": $largeid 0 none
+        "T_smallid contents": $smallid 0 none
+}
+
+\define $TypeConstructorName : "TypeConstructorName" {
+    0 [$largeid]:
+        $1.contents
+}
+
+\define $TypeClassName : "TypeClassName" {
+    0 [$largeid]:
+        $1.contents
+}
+
+\define $TypeVariableName : "TypeVariableName" {
+    0 [$smallid]:
+        $1.contents
+}
+
+\define $PiType : "PiType" {
+    0 [$lparen, $Sequence $Contraint, $rparen, $fatarrow, $TauType]:
+        WithConstraints $2 $5
+    0 [$TauType]:
+        WithoutConstraints $1
+}
+
+\define $Contraint : "Contraint" {
+    0 [$TypeClassName, $List $TauType2]:
+        Contraint $1 $2
+}
+
+\define $TauType : "TauType" {
+    0 [$TauType1, $arrow, $TauType]:
+        TApp (TApp (TCon "Primitive.arrow") $1) $2
+    0 [$TauType1]:
+        $1
+}
+
+\define $TauType1 : "TauType" {
+    0 [$TauType1, $TauType2]:
+        TApp $1 $2
+    0 [$TauType2]:
+        $2
+}
+
+\define $TauType2 : "TauType" {
+    0 [$TypeConstructorName]:
+        TCon $1
+    0 [$TypeVariableName]:
+        TVar $1
+    0 [$lparen, $TauType, $rparen]:
+        $2
+}
+
+\define $Sequence ($Elem : "a") : "[a]" {
+    50 []:
+        []
+    50 [$Elem, $comma, $Sequence $Elem]:
+        $1 : $2
+}
+
+\define $List ($Elem : "a") : "[a]" {
+    50 []:
+        []
+    50 [$Elem, $List $Elem]:
+        $1 : $2
+}
+
+\hstail {
+    main :: IO ()
+    main = undefined
+}

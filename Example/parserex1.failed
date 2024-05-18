@@ -1,0 +1,343 @@
+couldn't resolve conflict:
+  ? REDUCE: <TypeConstructorName> ::= `largeid'; v.s. REDUCE: <TypeClassName> ::= `largeid'; at { state = 14, terminal = `smallid' }
+  ? collection = {
+    getParserSInfo :: ParserS -> ParserSInfo
+    getParserSInfo 0 = ParserSInfo
+        { myItems = 
+            [ "<PiType> ::= . <TauType>"
+            , "<PiType> ::= . `lparen' <Sequence Contraint> `rparen' `fatarrow' <TauType>"
+            , "<TauType> ::= . <TauType1>"
+            , "<TauType> ::= . <TauType1> `arrow' <TauType>"
+            , "<TauType1> ::= . <TauType1> <TauType2>"
+            , "<TauType1> ::= . <TauType2>"
+            , "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            , "<\\ACCEPT> ::= . <PiType> `\\$'"
+            ]
+        , myNexts = 
+            [ "<PiType> +-> 1"
+            , "<TauType> +-> 2"
+            , "<TauType1> +-> 3"
+            , "<TauType2> +-> 4"
+            , "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`largeid' +-> 7"
+            , "`lparen' +-> 8"
+            , "`smallid' +-> 9"
+            ]
+        }
+    getParserSInfo 1 = ParserSInfo
+        { myItems = 
+            [ "<\\ACCEPT> ::= <PiType> . `\\$'"
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 2 = ParserSInfo
+        { myItems = 
+            [ "<PiType> ::= <TauType> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 3 = ParserSInfo
+        { myItems = 
+            [ "<TauType> ::= <TauType1> ."
+            , "<TauType> ::= <TauType1> . `arrow' <TauType>"
+            , "<TauType1> ::= <TauType1> . <TauType2>"
+            , "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            ]
+        , myNexts = 
+            [ "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`largeid' +-> 7"
+            , "`smallid' +-> 9"
+            , "`lparen' +-> 15"
+            , "<TauType2> +-> 16"
+            , "`arrow' +-> 17"
+            ]
+        }
+    getParserSInfo 4 = ParserSInfo
+        { myItems = 
+            [ "<TauType1> ::= <TauType2> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 5 = ParserSInfo
+        { myItems = 
+            [ "<TauType2> ::= <TypeConstructorName> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 6 = ParserSInfo
+        { myItems = 
+            [ "<TauType2> ::= <TypeVariableName> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 7 = ParserSInfo
+        { myItems = 
+            [ "<TypeConstructorName> ::= `largeid' ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 8 = ParserSInfo
+        { myItems = 
+            [ "<Contraint> ::= . <TypeClassName> <List TauType2>"
+            , "<PiType> ::= `lparen' . <Sequence Contraint> `rparen' `fatarrow' <TauType>"
+            , "<TauType> ::= . <TauType1>"
+            , "<TauType> ::= . <TauType1> `arrow' <TauType>"
+            , "<TauType1> ::= . <TauType1> <TauType2>"
+            , "<TauType1> ::= . <TauType2>"
+            , "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TauType2> ::= `lparen' . <TauType> `rparen'"
+            , "<TypeClassName> ::= . `largeid'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            , "<Sequence Contraint> ::= ."
+            , "<Sequence Contraint> ::= . <Contraint> `comma' <Sequence Contraint>"
+            ]
+        , myNexts = 
+            [ "<TauType1> +-> 3"
+            , "<TauType2> +-> 4"
+            , "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`smallid' +-> 9"
+            , "<Contraint> +-> 10"
+            , "<TauType> +-> 11"
+            , "<TypeClassName> +-> 12"
+            , "<Sequence Contraint> +-> 13"
+            , "`largeid' +-> 14"
+            , "`lparen' +-> 15"
+            ]
+        }
+    getParserSInfo 9 = ParserSInfo
+        { myItems = 
+            [ "<TypeVariableName> ::= `smallid' ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 10 = ParserSInfo
+        { myItems = 
+            [ "<Sequence Contraint> ::= <Contraint> . `comma' <Sequence Contraint>"
+            ]
+        , myNexts = 
+            [ "`comma' +-> 23"
+            ]
+        }
+    getParserSInfo 11 = ParserSInfo
+        { myItems = 
+            [ "<TauType2> ::= `lparen' <TauType> . `rparen'"
+            ]
+        , myNexts = 
+            [ "`rparen' +-> 22"
+            ]
+        }
+    getParserSInfo 12 = ParserSInfo
+        { myItems = 
+            [ "<Contraint> ::= <TypeClassName> . <List TauType2>"
+            , "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            , "<List TauType2> ::= ."
+            , "<List TauType2> ::= . <TauType2> <List TauType2>"
+            ]
+        , myNexts = 
+            [ "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`largeid' +-> 7"
+            , "`smallid' +-> 9"
+            , "`lparen' +-> 15"
+            , "<TauType2> +-> 18"
+            , "<List TauType2> +-> 19"
+            ]
+        }
+    getParserSInfo 13 = ParserSInfo
+        { myItems = 
+            [ "<PiType> ::= `lparen' <Sequence Contraint> . `rparen' `fatarrow' <TauType>"
+            ]
+        , myNexts = 
+            [ "`rparen' +-> 20"
+            ]
+        }
+    getParserSInfo 14 = ParserSInfo
+        { myItems = 
+            [ "<TypeClassName> ::= `largeid' ."
+            , "<TypeConstructorName> ::= `largeid' ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 15 = ParserSInfo
+        { myItems = 
+            [ "<TauType> ::= . <TauType1>"
+            , "<TauType> ::= . <TauType1> `arrow' <TauType>"
+            , "<TauType1> ::= . <TauType1> <TauType2>"
+            , "<TauType1> ::= . <TauType2>"
+            , "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TauType2> ::= `lparen' . <TauType> `rparen'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            ]
+        , myNexts = 
+            [ "<TauType1> +-> 3"
+            , "<TauType2> +-> 4"
+            , "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`largeid' +-> 7"
+            , "`smallid' +-> 9"
+            , "<TauType> +-> 11"
+            , "`lparen' +-> 15"
+            ]
+        }
+    getParserSInfo 16 = ParserSInfo
+        { myItems = 
+            [ "<TauType1> ::= <TauType1> <TauType2> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 17 = ParserSInfo
+        { myItems = 
+            [ "<TauType> ::= . <TauType1>"
+            , "<TauType> ::= . <TauType1> `arrow' <TauType>"
+            , "<TauType> ::= <TauType1> `arrow' . <TauType>"
+            , "<TauType1> ::= . <TauType1> <TauType2>"
+            , "<TauType1> ::= . <TauType2>"
+            , "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            ]
+        , myNexts = 
+            [ "<TauType1> +-> 3"
+            , "<TauType2> +-> 4"
+            , "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`largeid' +-> 7"
+            , "`smallid' +-> 9"
+            , "`lparen' +-> 15"
+            , "<TauType> +-> 21"
+            ]
+        }
+    getParserSInfo 18 = ParserSInfo
+        { myItems = 
+            [ "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            , "<List TauType2> ::= ."
+            , "<List TauType2> ::= . <TauType2> <List TauType2>"
+            , "<List TauType2> ::= <TauType2> . <List TauType2>"
+            ]
+        , myNexts = 
+            [ "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`largeid' +-> 7"
+            , "`smallid' +-> 9"
+            , "`lparen' +-> 15"
+            , "<TauType2> +-> 18"
+            , "<List TauType2> +-> 27"
+            ]
+        }
+    getParserSInfo 19 = ParserSInfo
+        { myItems = 
+            [ "<Contraint> ::= <TypeClassName> <List TauType2> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 20 = ParserSInfo
+        { myItems = 
+            [ "<PiType> ::= `lparen' <Sequence Contraint> `rparen' . `fatarrow' <TauType>"
+            ]
+        , myNexts = 
+            [ "`fatarrow' +-> 26"
+            ]
+        }
+    getParserSInfo 21 = ParserSInfo
+        { myItems = 
+            [ "<TauType> ::= <TauType1> `arrow' <TauType> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 22 = ParserSInfo
+        { myItems = 
+            [ "<TauType2> ::= `lparen' <TauType> `rparen' ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 23 = ParserSInfo
+        { myItems = 
+            [ "<Contraint> ::= . <TypeClassName> <List TauType2>"
+            , "<TypeClassName> ::= . `largeid'"
+            , "<Sequence Contraint> ::= ."
+            , "<Sequence Contraint> ::= . <Contraint> `comma' <Sequence Contraint>"
+            , "<Sequence Contraint> ::= <Contraint> `comma' . <Sequence Contraint>"
+            ]
+        , myNexts = 
+            [ "<Contraint> +-> 10"
+            , "<TypeClassName> +-> 12"
+            , "<Sequence Contraint> +-> 24"
+            , "`largeid' +-> 25"
+            ]
+        }
+    getParserSInfo 24 = ParserSInfo
+        { myItems = 
+            [ "<Sequence Contraint> ::= <Contraint> `comma' <Sequence Contraint> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 25 = ParserSInfo
+        { myItems = 
+            [ "<TypeClassName> ::= `largeid' ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 26 = ParserSInfo
+        { myItems = 
+            [ "<PiType> ::= `lparen' <Sequence Contraint> `rparen' `fatarrow' . <TauType>"
+            , "<TauType> ::= . <TauType1>"
+            , "<TauType> ::= . <TauType1> `arrow' <TauType>"
+            , "<TauType1> ::= . <TauType1> <TauType2>"
+            , "<TauType1> ::= . <TauType2>"
+            , "<TauType2> ::= . <TypeConstructorName>"
+            , "<TauType2> ::= . <TypeVariableName>"
+            , "<TauType2> ::= . `lparen' <TauType> `rparen'"
+            , "<TypeConstructorName> ::= . `largeid'"
+            , "<TypeVariableName> ::= . `smallid'"
+            ]
+        , myNexts = 
+            [ "<TauType1> +-> 3"
+            , "<TauType2> +-> 4"
+            , "<TypeConstructorName> +-> 5"
+            , "<TypeVariableName> +-> 6"
+            , "`largeid' +-> 7"
+            , "`smallid' +-> 9"
+            , "`lparen' +-> 15"
+            , "<TauType> +-> 28"
+            ]
+        }
+    getParserSInfo 27 = ParserSInfo
+        { myItems = 
+            [ "<List TauType2> ::= <TauType2> <List TauType2> ."
+            ]
+        , myNexts = []
+        }
+    getParserSInfo 28 = ParserSInfo
+        { myItems = 
+            [ "<PiType> ::= `lparen' <Sequence Contraint> `rparen' `fatarrow' <TauType> ."
+            ]
+        , myNexts = []
+        }
+  }
