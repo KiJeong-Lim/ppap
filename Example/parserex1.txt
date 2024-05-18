@@ -1,20 +1,5 @@
 \hshead {
     module Main where
-    type TypeConstructorName = String
-    type TypeClassName = String
-    type TypeVariableName = String
-    data PiType
-        = WithConstraints [Contraint] TauType
-        | WithoutConstraints TauType
-        deriving (Eq, Show)
-    data Contraint
-        = Contraint TypeClassName [TauType]
-        deriving (Eq, Show)
-    data TauType
-        = TCon TypeConstructorName
-        | TVar TypeVariableName
-        | TApp TauType TauType
-        deriving (Eq, Show)
 }
 
 \target {
@@ -97,6 +82,21 @@
 }
 
 \hstail {
+    type TypeConstructorName = String
+    type TypeClassName = String
+    type TypeVariableName = String
+    data PiType
+        = WithConstraints [Contraint] TauType
+        | WithoutConstraints TauType
+        deriving (Eq, Show)
+    data Contraint
+        = Contraint TypeClassName [TauType]
+        deriving (Eq, Show)
+    data TauType
+        = TCon TypeConstructorName
+        | TVar TypeVariableName
+        | TApp TauType TauType
+        deriving (Eq, Show)
     main :: IO ()
     main = undefined
 }
