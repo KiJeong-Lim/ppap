@@ -50,10 +50,10 @@ theInitialTypeDecls = Map.fromList
     , (DC_LO LO_cut, Forall [] (mkTyO))
     , (DC_LO LO_true, Forall [] (mkTyO))
     , (DC_LO LO_fail, Forall [] (mkTyO))
-    , (DC_Nil, Forall ["a"] (mkTyList (TyVar 0)))
-    , (DC_Cons, Forall ["a"] (TyVar 0 `mkTyArrow` (mkTyList (TyVar 0) `mkTyArrow` mkTyList (TyVar 0))))
+    , (DC_Nil, Forall ["A"] (mkTyList (TyVar 0)))
+    , (DC_Cons, Forall ["A"] (TyVar 0 `mkTyArrow` (mkTyList (TyVar 0) `mkTyArrow` mkTyList (TyVar 0))))
     , (DC_Succ, Forall [] (mkTyNat `mkTyArrow` mkTyNat))
-    , (DC_Eq, Forall ["a"] (TyVar 0 `mkTyArrow` (TyVar 0 `mkTyArrow` mkTyO)))
+    , (DC_Eq, Forall ["A"] (TyVar 0 `mkTyArrow` (TyVar 0 `mkTyArrow` mkTyO)))
     ]
 
 theInitialFactDecls :: [TermNode]
@@ -80,7 +80,7 @@ runAladdin = do
         "" -> case maybe_file_name of
             Nothing -> do
                 lift $ shelly (theDefaultModuleName ++ "> Ok, no module loaded.")
-                runREPL (Program{ _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
+                runREPL (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
             Just file_name -> do
                 let my_file_dir = file_name ++ ".aladdin"
                     myModuleName = modifySep '/' (const ".") id file_name
