@@ -22,8 +22,6 @@ type Satisfied = Bool
 
 type RunMore = Bool
 
-type CallDepth = Int
-
 type CallId = Unique
 
 data KernelErr
@@ -36,7 +34,7 @@ data Cell
         { _GivenFacts :: [Fact]
         , _ScopeLevel :: ScopeLevel
         , _WantedGoal :: Goal
-        , _CallTracer :: [CallId]
+        , _CellCallId :: CallId
         }
     deriving ()
 
@@ -45,6 +43,7 @@ data Context
         { _TotalVarBinding :: VarBinding
         , _CurrentLabeling :: Labeling
         , _LeftConstraints :: [Disagreement]
+        , _ContextThreadId :: CallId
         }
     deriving ()
 
@@ -56,19 +55,20 @@ data RuntimeEnv
     deriving ()
 
 instance ZonkLVar Cell where
-    zonkLVar theta (Cell facts level goal depth) = Cell (applyBinding theta facts) level (applyBinding theta goal) depth
+    zonkLVar theta (Cell facts level goal call_id) = Cell (applyBinding theta facts) level (applyBinding theta goal) call_id
 
-mkCell :: [Fact] -> ScopeLevel -> Goal -> [CallId] -> Cell
-mkCell facts level goal depth = goal `seq` Cell { _GivenFacts = facts, _ScopeLevel = level, _WantedGoal = goal, _CallTracer = depth }
+mkCell :: [Fact] -> ScopeLevel -> Goal -> CallId -> Cell
+mkCell facts level goal call_id = goal `seq` Cell { _GivenFacts = facts, _ScopeLevel = level, _WantedGoal = goal, _CellCallId = call_id }
 
 showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> ShowS
 showStackItem fvs space (ctx, cells) = strcat
-    [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- " . shows goal . strstr " <--------- _call_stack = #" . shows depth | Cell facts level goal depth <- cells ] . nl
+    [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- " . shows goal . strstr " # call_id = " . shows call_id | Cell facts level goal call_id <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
-    , pindent (space + 4) . strstr "{ " . strstr "_scope_env = " . plist (space + 8) ([ strstr "`" . shows (mkNCon c) . strstr "\' *--- " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ strstr "`" . shows (mkLVar v) . strstr "\' *--- " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
+    , pindent (space + 4) . strstr "{ " . strstr "_scope_env    = " . plist (space + 8) ([ strstr "`" . shows (mkNCon c) . strstr "\' *--- " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ strstr "`" . shows (mkLVar v) . strstr "\' *--- " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
     , pindent (space + 4) . strstr ", " . strstr "_substitution = " . plist (space + 8) [ strstr "`" . shows (LVar v) . strstr "\' |--> " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
-    , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
-    , pindent (space + 4) . strstr "} " . nl
+    , pindent (space + 4) . strstr ", " . strstr "_constraints  = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
+    , pindent (space + 4) . strstr ", " . strstr "_thread_id    = " . shows (_ContextThreadId ctx) . nl
+    , pindent (space + 4) . strstr "}" . nl
     ]
 
 showsCurrentState :: Set.Set LogicVar -> Context -> [Cell] -> Stack -> ShowS

@@ -15,10 +15,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
 execRuntime :: RuntimeEnv -> [Fact] -> Goal -> ExceptT KernelErr (UniqueGenT IO) Satisfied
-execRuntime env program query = runTransition env (getFreeLVs query) [(initialContext, [Cell { _GivenFacts = program, _ScopeLevel = 0, _WantedGoal = query, _CallTracer = [] }])] where
-    initialContext :: Context
-    initialContext = Context
-        { _TotalVarBinding = mempty
-        , _CurrentLabeling = Labeling { _ConLabel = Map.empty, _VarLabel = Map.fromSet (const 0) (getFreeLVs query) }
-        , _LeftConstraints = []
-        }
+execRuntime env program query = do
+    call_id <- getNewUnique
+    let initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = Labeling { _ConLabel = Map.empty, _VarLabel = Map.fromSet (const 0) (getFreeLVs query) }, _LeftConstraints = [], _ContextThreadId = call_id }
+    runTransition env (getFreeLVs query) [(initialContext, [Cell { _GivenFacts = program, _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
