@@ -27,30 +27,27 @@ runTransition env free_lvars = go where
     success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueGenT IO) Stack
     success with = return [with]
     search :: [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueGenT IO) Stack
-    search facts level predicate args ctx cells
-        = fmap concat $ forM facts $ \fact -> do
+    search facts level predicate args ctx cells = do
+        call_id <- getNewUnique
+        fmap concat $ forM facts $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
                 (NCon predicate', args')
                     | predicate == predicate' -> do
-                        hopu_output <- if length args == length args'
-                            then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ _LeftConstraints ctx))
-                            else throwE (BadFactGiven goal')
+                        hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ _LeftConstraints ctx)) else throwE (BadFactGiven goal')
                         let new_level = level
                             new_facts = facts
                         case hopu_output of
                             Nothing -> failure
-                            Just (new_disagreements, HopuSol new_labeling subst) -> do
-                                call_id <- getNewUnique
-                                success
-                                    ( Context
-                                        { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
-                                        , _CurrentLabeling = new_labeling
-                                        , _LeftConstraints = new_disagreements
-                                        , _ContextThreadId = call_id
-                                        }
-                                    , zonkLVar subst (mkCell new_facts new_level new_goal call_id : cells)
-                                    )
+                            Just (new_disagreements, HopuSol new_labeling subst) -> success
+                                ( Context
+                                    { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
+                                    , _CurrentLabeling = new_labeling
+                                    , _LeftConstraints = new_disagreements
+                                    , _ContextThreadId = call_id
+                                    }
+                                , zonkLVar subst (mkCell new_facts new_level new_goal call_id : cells)
+                                )
                 _ -> failure
     dispatch :: Context -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     dispatch ctx facts level (NCon predicate, args) call_id cells stack

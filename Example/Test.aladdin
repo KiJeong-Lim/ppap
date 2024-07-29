@@ -18,13 +18,16 @@ que A B C D E :- rule1 A B C D E, rule2 A B C D E, rule3 A B C D E.
 % ?- que _ _ 1 1 1.
 
 type not (o -> o).
-not A :- (A, !, fail).
+not A :- (call A, !, fail).
 not A.
+
+type call (o -> o).
+call A :- A.
 
 type cuttest1 (nat -> nat -> o).
 cuttest1 3 4 :- !.
 cuttest1 3 5.
 
 type myor (o -> o -> o).
-myor A B :- A.
-myor A B :- B.
+myor A B :- call A.
+myor A B :- call B.
