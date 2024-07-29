@@ -24,3 +24,7 @@ not A.
 type cuttest1 (nat -> nat -> o).
 cuttest1 3 4 :- !.
 cuttest1 3 5.
+
+type myor (o -> o -> o).
+myor A B :- A.
+myor A B :- B.
