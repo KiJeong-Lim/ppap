@@ -49,7 +49,7 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
     tryMatchLVar t
         = case viewNestedNAbs (rewrite NF t) of
             (n, t') -> case unfoldlNApp t' of
-                (LVar v, ts) -> if ts == map mkNIdx [1 .. n] then Just v else Nothing
+                (LVar v, ts) -> if ts == map mkNIdx [n .. 1] then Just v else Nothing
                 _ -> Nothing
 
 runREPL :: Program TermNode -> UniqueGenT IO ()
