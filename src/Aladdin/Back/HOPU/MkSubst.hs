@@ -25,7 +25,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
                 n = length parameters + lambda
                 lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda, lambda - 1 .. 1] 
                 rhs_arguments = map (rewrite NF) rhs_tail
-                common_arguments = [ mkNIdx i | i <- [0, 1 .. n - 1], lhs_arguments !! i == rhs_arguments !! i ]
+                common_arguments = [ mkNIdx (n - i) | i <- [0, 1 .. n - 1], lhs_arguments !! i == rhs_arguments !! i ]
             if isPatternRespectTo var' rhs_arguments labeling
                 then do
                     common_head <- getNewLVar isty (lookupLabel var labeling)

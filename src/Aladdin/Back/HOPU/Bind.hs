@@ -32,15 +32,15 @@ bind var = go . rewrite HNF where
                     (subst, lhs_tail_elements) <- go (rewrite HNF rhs_tail_elements) parameters lambda
                     (theta, lhs_tail) <- loop (applyBinding subst rhs_tail)
                     return (theta <> subst, applyBinding theta lhs_tail_elements : lhs_tail)
-                get_lhs_head lhs_arguments
+                getLhsHead lhs_arguments
                     | NCon con <- rhs_head
                     , lookupLabel var labeling >= lookupLabel con labeling
                     = return rhs_head
                     | Just idx <- rhs_head `List.elemIndex` lhs_arguments
-                    = return (mkNIdx idx)
+                    = return (mkNIdx (length lhs_arguments - idx))
                     | otherwise
                     = lift (throwE FlexRigidFail)
-            lhs_head <- get_lhs_head ([ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda, lambda - 1 .. 1])
+            lhs_head <- getLhsHead ([ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda, lambda - 1 .. 1])
             (subst, lhs_tail) <- loop rhs_tail
             return (subst, foldlNApp lhs_head lhs_tail)
         | (LVar var', rhs_tail) <- unfoldlNApp rhs
