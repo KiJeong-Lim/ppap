@@ -68,9 +68,7 @@ getFreeLVs = flip getFreeLVars Set.empty
 flatten :: VarBinding -> TermNode -> TermNode
 flatten (VarBinding mapsto) = go where
     go :: TermNode -> TermNode
-    go (LVar v) = case Map.lookup v mapsto of
-        Nothing -> mkLVar v
-        Just t -> t
+    go (LVar v) = maybe (mkLVar v) id (Map.lookup v mapsto)
     go (NCon c) = mkNCon c
     go (NIdx i) = mkNIdx i
     go (NApp t1 t2) = mkNApp (go t1) (go t2)
@@ -79,7 +77,7 @@ flatten (VarBinding mapsto) = go where
 
 (+->) :: LogicVar -> TermNode -> Maybe VarBinding
 v +-> t
-    | LVar v == t = return (VarBinding Map.empty)
+    | LVar v == t' = return (VarBinding Map.empty)
     | v `Set.member` getFreeLVs t' = Nothing
     | otherwise = return (VarBinding (Map.singleton v t'))
     where
