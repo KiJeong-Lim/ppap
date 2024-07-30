@@ -37,7 +37,7 @@ bind var = go . rewrite HNF where
                     , lookupLabel var labeling >= lookupLabel con labeling
                     = return rhs_head
                     | Just idx <- rhs_head `List.elemIndex` lhs_arguments
-                    = return (mkNIdx (length lhs_arguments - idx))
+                    = return (mkNIdx idx)
                     | otherwise
                     = lift (throwE FlexRigidFail)
             lhs_head <- get_lhs_head ([ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda, lambda - 1 .. 1])
