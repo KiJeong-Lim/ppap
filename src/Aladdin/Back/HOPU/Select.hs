@@ -44,7 +44,7 @@ zs `down` ts = if downable then return indices else lift (throwE DownFail) where
         ]
     indices :: [TermNode]
     indices = map mkNIdx
-        [ i
+        [ length ts - i
         | z <- zs
         , i <- toList (z `List.elemIndex` ts)
         ]
