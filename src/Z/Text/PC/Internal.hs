@@ -7,6 +7,7 @@ import qualified Data.List as List
 import Z.Algo.Function
 import Z.Algo.Sorting
 import Z.Text.Doc
+import Z.Text.Doc.Internal
 import Z.Text.PC.Base
 import Z.Text.PM
 import Z.Utils
@@ -178,7 +179,7 @@ makeMessageForParsingError path src lstr = shows theMsgDoc "" where
     theMsgDoc :: Doc
     theMsgDoc = vcat
         [ pstr path +> pstr ":" +> pp stuckRow +> pstr ":" +> pp stuckCol +> pstr ": error:"
-        , pstr "parse error " +> (if null lstr then pstr "at EOF" else pstr "on input `" +> pstr (one (snd (head lstr))) +> pstr "'")
+        , pstr "parse error " +> (if null lstr then pstr "at EOF" else pstr "on input `" +> pstr (dispatchChar (snd (head lstr))) +> pstr "'")
         , pcat
             [ vcat
                 [ pstr ""
