@@ -150,9 +150,9 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start, TS TSEOF]))
             loop (Cannonical0 (Map.singleton items0 0) 0 Map.empty)
     getFIRST :: Map.Map NSym TerminalSet
-    getFIRST = loop init where
-        init :: Map.Map NSym TerminalSet
-        init = Map.fromAscList
+    getFIRST = loop base where
+        base :: Map.Map NSym TerminalSet
+        base = Map.fromAscList
             [ (lhs, TerminalSet Set.empty)
             | ((lhs, _), _) <- Map.toAscList productions'
             ]
@@ -219,9 +219,9 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 , Just t <- Set.toList (unTerminalSet ts)
                 ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
-    resolveConflicts = foldr loop (Right init) getLATable where
-        init :: Map.Map (ParserS, TSym) Action
-        init = Map.fromList
+    resolveConflicts = foldr loop (Right base) getLATable where
+        base :: Map.Map (ParserS, TSym) Action
+        base = Map.fromList
             [ ((q, t), Shift p)
             | ((q, TS t), p) <- Map.toList (getEdges getCannonical0)
             ]
