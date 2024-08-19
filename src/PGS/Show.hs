@@ -71,9 +71,9 @@ substituteNS mapsto = loop where
     loop (NSApp ns1 ns2) = NSApp (loop ns1) (loop ns2)
 
 makeProductionRuleInstances :: Map.Map String ([String], [YMatch]) -> NSym -> StateT ((Int, Map.Map NSym Int), Map.Map NSym (Maybe [([Sym], Precedence)])) (ExceptT ErrMsg Identity) ()
-makeProductionRuleInstances rule_env = fmap (const ()) . bangbang where
-    bangbang :: NSym -> StateT ((Int, Map.Map NSym Int), Map.Map NSym (Maybe [([Sym], Precedence)])) (ExceptT ErrMsg Identity) NSym
-    bangbang ns = do
+makeProductionRuleInstances rule_env = fmap (const ()) . loop where
+    loop :: NSym -> StateT ((Int, Map.Map NSym Int), Map.Map NSym (Maybe [([Sym], Precedence)])) (ExceptT ErrMsg Identity) NSym
+    loop ns = do
         ((max_id_num, id_env), cache) <- get
         case unFoldNSApp ns of
             (nsv, nss) -> case Map.lookup nsv rule_env of
@@ -85,11 +85,11 @@ makeProductionRuleInstances rule_env = fmap (const ()) . bangbang where
                         case Map.lookup ns id_env of
                             Nothing -> do
                                 put ((max_id_num + 1, Map.insert ns max_id_num id_env), Map.insert ns Nothing cache)
-                                mapM bangbang nss
+                                mapM_ loop nss
                                 pairs <- sequence
                                     [ do
                                         pats' <- forM pats $ \pat -> case pat of
-                                            NS ns' -> NS <$> bangbang (substituteNS mapsto ns')
+                                            NS ns' -> NS <$> loop (substituteNS mapsto ns')
                                             _ -> return pat
                                         return (pats', prec)
                                     | YMatch prec pats destructors <- match_decls
