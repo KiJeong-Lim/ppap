@@ -11,6 +11,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Data.IORef
+import Z.System.Shelly
 
 runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Stack
 runLogicalOperator LO_true [] ctx facts level call_id cells stack = return ((ctx, cells) : stack)
@@ -33,5 +34,5 @@ runLogicalOperator logical_operator args ctx facts level call_id cells stack = t
 runDebugger :: TermNode -> Context -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Stack
 runDebugger loc_str ctx facts level call_id cells stack = do
     liftIO $ writeIORef (_debuggindModeOn ctx) True
-    liftIO $ putStrLn ("debugger called at" ++ shows loc_str "")
+    liftIO $ putStrLn ("*** debugger called with " ++ shows loc_str "")
     return ((ctx, cells) : stack)

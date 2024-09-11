@@ -23,11 +23,7 @@ desugarTerm (RVar loc1 var_rep) = do
             put (Map.insert var_rep var env)
             return (IVar loc1 var)
         Just var -> return (IVar loc1 var)
-desugarTerm (RCon loc1 con)
-    | DC_LO LO_debug <- con = do
-        loc_str <- desugarTerm (mkStrLit loc1 (show loc1))
-        return (IApp loc1 (DCon loc1 con) loc_str)
-    | otherwise = return (DCon loc1 con)
+desugarTerm (RCon loc1 con) = return (DCon loc1 con)
 desugarTerm (RApp loc1 term_rep_1 term_rep_2) = do
     term_1 <- desugarTerm term_rep_1
     term_2 <- desugarTerm term_rep_2
