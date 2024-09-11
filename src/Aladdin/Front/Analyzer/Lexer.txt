@@ -55,6 +55,8 @@
     T_true (SLoc (row1, col1) (row2, col2))
 \xmatch "fail":
     T_fail (SLoc (row1, col1) (row2, col2))
+\xmatch "debug":
+    T_debug (SLoc (row1, col1) (row2, col2))
 \xmatch "\\":
     T_bslash (SLoc (row1, col1) (row2, col2))
 \xmatch "::":

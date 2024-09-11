@@ -25,8 +25,6 @@ import System.Exit
 import Z.System.Shelly
 import Z.Utils
 
-type Debugging = Bool
-
 isYES :: String -> Bool
 isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
 
@@ -60,10 +58,10 @@ runREPL program = lift (newIORef False) >>= go where
     promptify str = shelly (moduleName program ++ "> " ++ str)
     mkRuntimeEnv :: IORef Debugging -> TermNode -> IO RuntimeEnv
     mkRuntimeEnv isDebugging query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer }) where
-        runInteraction :: String -> IO ()
-        runInteraction str = do
-            debugging <- readIORef isDebugging
-            when debugging $ do
+        runInteraction :: Context -> String -> IO ()
+        runInteraction ctx str = do
+            isDebugging <- readIORef (_debuggindModeOn ctx)
+            when isDebugging $ do
                 putStrLn str
                 response <- promptify "Press the enter key to go to next state: "
                 case response of
@@ -71,8 +69,8 @@ runREPL program = lift (newIORef False) >>= go where
                         shelly "Aladdin >>= quit"
                         return ()
                     ":d" -> do
-                        modifyIORef isDebugging not
-                        debugging <- readIORef isDebugging
+                        modifyIORef (_debuggindModeOn ctx) not
+                        debugging <- readIORef (_debuggindModeOn ctx)
                         promptify "Debugging mode off."
                         return ()
                     _ -> return ()

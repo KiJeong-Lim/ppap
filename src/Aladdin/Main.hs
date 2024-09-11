@@ -50,6 +50,7 @@ theInitialTypeDecls = Map.fromList
     , (DC_LO LO_cut, Forall [] (mkTyO))
     , (DC_LO LO_true, Forall [] (mkTyO))
     , (DC_LO LO_fail, Forall [] (mkTyO))
+    , (DC_LO LO_debug, Forall [] (mkTyList mkTyChr `mkTyArrow` mkTyO))
     , (DC_Nil, Forall ["A"] (mkTyList (TyVar 0)))
     , (DC_Cons, Forall ["A"] (TyVar 0 `mkTyArrow` (mkTyList (TyVar 0) `mkTyArrow` mkTyList (TyVar 0))))
     , (DC_Succ, Forall [] (mkTyNat `mkTyArrow` mkTyNat))

@@ -16,6 +16,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
+import Data.IORef
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -45,6 +46,7 @@ runTransition env free_lvars = go where
                                     , _CurrentLabeling = new_labeling
                                     , _LeftConstraints = new_disagreements
                                     , _ContextThreadId = call_id
+                                    , _debuggindModeOn = _debuggindModeOn ctx
                                     }
                                 , zonkLVar subst (mkCell new_facts new_level new_goal call_id : cells)
                                 )
@@ -63,7 +65,7 @@ runTransition env free_lvars = go where
     go :: Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     go [] = return False
     go ((ctx, cells) : stack) = do
-        liftIO (_PutStr env (showsCurrentState free_lvars ctx cells stack ""))
+        liftIO (_PutStr env ctx (showsCurrentState free_lvars ctx cells stack ""))
         case cells of
             [] -> do
                 want_more <- liftIO (_Answer env ctx)

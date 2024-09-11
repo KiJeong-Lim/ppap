@@ -29,6 +29,7 @@
         "T_cut loc": $cut 0 none
         "T_true loc": $true 0 none
         "T_fail loc": $fail 0 none
+        "T_debug loc": $debug 0 none
         "T_bslash loc": $bslash 0 none
         "T_cons loc": $cons 0 none
         "T_kind loc": $kind 0 none
@@ -157,6 +158,8 @@
         RCon $1.loc (DC_LO LO_true)
     45 [$fail]:
         RCon $1.loc (DC_LO LO_fail)
+    45 [$debug]:
+        RCon $1.loc (DC_LO LO_debug)
     45 [$smallid]:
         RCon $1.loc (DC_Named $1.contents)
     45 [$largeid]:

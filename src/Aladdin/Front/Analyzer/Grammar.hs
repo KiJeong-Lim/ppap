@@ -21,6 +21,7 @@ data Token
     | T_cut SLoc
     | T_true SLoc
     | T_fail SLoc
+    | T_debug SLoc
     | T_bslash SLoc
     | T_cons SLoc
     | T_kind SLoc
@@ -78,6 +79,7 @@ instance HasSLoc Token where
         T_cut loc -> loc
         T_true loc -> loc
         T_fail loc -> loc
+        T_debug loc -> loc
         T_bslash loc -> loc
         T_cons loc -> loc
         T_kind loc -> loc

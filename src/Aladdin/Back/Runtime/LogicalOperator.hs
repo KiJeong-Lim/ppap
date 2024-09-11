@@ -10,10 +10,12 @@ import Aladdin.Front.Header
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
+import Data.IORef
 
 runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Stack
 runLogicalOperator LO_true [] ctx facts level call_id cells stack = return ((ctx, cells) : stack)
 runLogicalOperator LO_fail [] ctx facts level call_id cells stack = return stack
+runLogicalOperator LO_debug [loc_str] ctx facts level call_id cells stack = runDebugger loc_str ctx facts level call_id cells stack
 runLogicalOperator LO_cut [] ctx facts level call_id cells stack = return ((ctx, cells) : [ (ctx', cells') | (ctx', cells') <- stack, _ContextThreadId ctx' < call_id ])
 runLogicalOperator LO_and [goal1, goal2] ctx facts level call_id cells stack = return ((ctx, mkCell facts level goal1 call_id : mkCell facts level goal2 call_id : cells) : stack)
 runLogicalOperator LO_or [goal1, goal2] ctx facts level call_id cells stack = return ((ctx, mkCell facts level goal1 call_id : cells) : (ctx, mkCell facts level goal2 call_id : cells) : stack)
@@ -27,3 +29,9 @@ runLogicalOperator LO_pi [goal1] ctx facts level call_id cells stack = do
     let con = DC (DC_Unique uni)
     return ((ctx { _CurrentLabeling = enrollLabel con (level + 1) (_CurrentLabeling ctx) }, mkCell facts (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
 runLogicalOperator logical_operator args ctx facts level call_id cells stack = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
+
+runDebugger :: TermNode -> Context -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Stack
+runDebugger loc_str ctx facts level call_id cells stack = do
+    liftIO $ writeIORef (_debuggindModeOn ctx) True
+    liftIO $ putStrLn ("debugger called at" ++ shows loc_str "")
+    return ((ctx, cells) : stack)

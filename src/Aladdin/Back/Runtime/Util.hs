@@ -7,6 +7,7 @@ import Aladdin.Back.HOPU.Util
 import Aladdin.Front.Header
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
+import Data.IORef
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -23,6 +24,8 @@ type Satisfied = Bool
 type RunMore = Bool
 
 type CallId = Unique
+
+type Debugging = Bool
 
 data KernelErr
     = BadGoalGiven TermNode
@@ -44,12 +47,13 @@ data Context
         , _CurrentLabeling :: Labeling
         , _LeftConstraints :: [Disagreement]
         , _ContextThreadId :: CallId
+        , _debuggindModeOn :: IORef Debugging
         }
     deriving ()
 
 data RuntimeEnv
     = RuntimeEnv
-        { _PutStr :: String -> IO ()
+        { _PutStr :: Context -> String -> IO ()
         , _Answer :: Context -> IO RunMore
         }
     deriving ()

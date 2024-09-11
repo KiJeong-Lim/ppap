@@ -60,6 +60,7 @@ data LogicalOperator
     | LO_imply
     | LO_pi
     | LO_sigma
+    | LO_debug
     deriving (Eq, Ord)
 
 data DataConstructor
@@ -188,6 +189,7 @@ instance Show LogicalOperator where
         LO_imply -> strstr "=>"
         LO_pi -> strstr "pi"
         LO_sigma -> strstr "sigma"
+        LO_debug -> strstr "__debug"
 
 instance Show DataConstructor where
     showsPrec _ data_constructor = case data_constructor of
