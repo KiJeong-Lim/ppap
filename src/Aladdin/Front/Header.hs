@@ -189,7 +189,7 @@ instance Show LogicalOperator where
         LO_imply -> strstr "=>"
         LO_pi -> strstr "pi"
         LO_sigma -> strstr "sigma"
-        LO_debug -> strstr "__debug"
+        LO_debug -> strstr "debug"
 
 instance Show DataConstructor where
     showsPrec _ data_constructor = case data_constructor of
