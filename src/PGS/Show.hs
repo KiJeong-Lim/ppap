@@ -210,7 +210,7 @@ genParser blocks = myMain where
         go (body_name, (param_name, match_decls)) rule_env
             = case Map.lookup body_name rule_env of
                 Nothing -> return (Map.insert body_name (param_name, match_decls) rule_env)
-                _ -> throwE (body_name ++ " has duplicate definition.")
+                _ -> throwE (body_name ++ " has duplicate definitions.")
     myMain :: ExceptT ErrMsg Identity [String]
     myMain = do
         hs_head <- getHsHead
@@ -240,10 +240,10 @@ genParser blocks = myMain where
                 ]
             getTSymId TSEOF = return 0
             getTSymId (TSVar tsv) = case [ n | (n, TerminalInfo patn ts prec assoc) <- zip [1, 2 .. ] terminal_infos, ts == TSVar tsv ] of
-                [] -> throwE ("the terminal symbol " ++ pprint 0 (TSVar tsv) " hasn't declared.")
+                [] -> throwE ("the terminal symbol " ++ pprint 0 (TSVar tsv) " hasn't been declared.")
                 [n] -> return n
-                _ -> throwE ("the terminal symbol " ++ pprint 0 (TSVar tsv) " has declared twice or more.")
-            getNSymId nsym = maybe (throwE ("the terminal symbol " ++ pprint 0 nsym " hasn't declared.")) return (Map.lookup nsym id_env)
+                _ -> throwE ("the terminal symbol " ++ pprint 0 (TSVar tsv) " has been declared twice or more.")
+            getNSymId nsym = maybe (throwE ("the terminal symbol " ++ pprint 0 nsym " hasn't been declared.")) return (Map.lookup nsym id_env)
         checkTerminalOccurence (Set.fromList [ ts | (lhs, Just pairs) <- cache', (rhs, prec) <- pairs, TS ts <- rhs ]) (Set.fromList [ tsym | TerminalInfo patn tsym prec assoc <- terminal_infos ])
         (collection, lalr1) <- catchE (makeCollectionAndLALR1Parser (CFGrammar { getStartSym = start_symbol, getTerminalSyms = terminal_symbols, getProductionRules = production_rules })) $ throwE . show
         ((), y_out) <- runWriterT $ do
@@ -465,6 +465,5 @@ genParser blocks = myMain where
             tellLine (strstr "        , getReduceTable = YMap.fromAscList " . plist 12 table2)
             tellLine (strstr "        }")
             tellLine (strstr "")
-            tellLine (strstr "{- The canonical collection of LR(0) items is:" . nl . pprint 0 collection . nl . strstr "-}")
             return ()
         return y_out
