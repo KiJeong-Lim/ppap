@@ -1,6 +1,7 @@
 module PGS.Read where
 
 import Control.Applicative
+import Data.Functor
 import Control.Monad
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
@@ -11,7 +12,7 @@ import Z.Utils
 
 readTSym :: PC TSym
 readTSym = mconcat
-    [ consumePC "\\$" *> pure TSEOF
+    [ consumePC "\\$" $> TSEOF
     , consumePC "$" *> (TSVar <$> smallid)
     ]
 
@@ -45,19 +46,17 @@ readDestructors
                     consumePC "."
                     field <- regexPC "['a'-'z' '_'] ['a'-'z' 'A'-'Z' '0'-'9' '_']*"
                     return (DsTSPatn idx field)
-                , negPC (consumePC ".") *> pure (DsNSPatn idx)
+                , negPC (consumePC ".") $> DsNSPatn idx
                 ]
             des <- readDestructors
             return (de : des)
         , do
             consumePC "$"
             str <- many (acceptPC (\ch -> ch == ' '))
-            if null str
-                then negPC intPC
-                else return ()
+            when (null str) $ negPC intPC
             des <- readDestructors
             return (DsSource ("$" ++ str) : des)
-        , lend *> pure []
+        , lend $> []
         ]
 
 readSym :: PC Sym
@@ -125,9 +124,9 @@ readScheme = do
 
 readAssoc :: PC Associativity
 readAssoc = mconcat
-    [ consumePC "none" *> pure ANone
-    , consumePC "left" *> pure ALeft
-    , consumePC "right" *> pure ARight
+    [ consumePC "none" $> ANone
+    , consumePC "left" $> ALeft
+    , consumePC "right" $> ARight
     ]
 
 readTerminalInfo :: PC TerminalInfo
@@ -196,7 +195,7 @@ readBlock = mconcat
         skipWhite
         consumePC "{"
         lend
-        hshead <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend *> pure ""))
+        hshead <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend $> ""))
         consumePC "}"
         lend
         return (HsHead hshead)
@@ -205,7 +204,7 @@ readBlock = mconcat
         skipWhite
         consumePC "{"
         lend
-        hstail <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend *> pure ""))
+        hstail <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend $> ""))
         consumePC "}"
         lend
         return (HsTail hstail)

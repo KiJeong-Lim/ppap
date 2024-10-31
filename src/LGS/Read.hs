@@ -2,6 +2,7 @@ module LGS.Read where
 
 import Control.Applicative
 import Control.Monad
+import Data.Functor
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -21,10 +22,10 @@ readCharSet = go 0 where
         , go 2
         ]
     go 2 = mconcat
-        [ pure CsVar <* consumePC "$" <*> smallid
+        [ (CsVar <$ consumePC "$") <*> smallid
         , CsSingle <$> charPC
         , CsEnum <$> charPC <* consumePC "-" <*> charPC
-        , consumePC "." *> pure CsUniv
+        , consumePC "." $> CsUniv
         , go 3
         ]
     go _ = consumePC "(" *> go 0 <* consumePC ")"
@@ -33,9 +34,9 @@ readRegEx :: PC RegEx
 readRegEx = go 0 where
     suffix :: PC (RegEx -> RegEx)
     suffix = mconcat
-        [ consumePC "+" *> pure ReDagger
-        , consumePC "*" *> pure ReStar 
-        , consumePC "?" *> pure ReQuest
+        [ consumePC "+" $> ReDagger
+        , consumePC "*" $> ReStar
+        , consumePC "?" $> ReQuest
         ]
     go :: Int -> PC RegEx
     go 0 = List.foldl' ReUnion <$> go 1 <*> many (consumePC " + " *> go 1)
@@ -43,9 +44,9 @@ readRegEx = go 0 where
     go 2 = List.foldl' (flip ($)) <$> go 3 <*> many suffix
     go 3 = mconcat
         [ consumePC "[" *> (ReCharSet <$> readCharSet) <* consumePC "]"
-        , pure ReWord <*> acceptQuote
-        , consumePC "()" *> pure ReZero
-        , pure ReVar <* consumePC "$" <*> largeid
+        , ReWord <$> acceptQuote
+        , consumePC "()" $> ReZero
+        , (ReVar <$ consumePC "$") <*> largeid
         , go 4
         ]
     go _ = consumePC "(" *> go 0 <* consumePC ")"
@@ -57,7 +58,7 @@ readBlock = mconcat
         skipWhite
         consumePC "{"
         lend
-        hshead <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend *> pure ""))
+        hshead <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend $> ""))
         consumePC "}"
         lend
         return (HsHead hshead)
@@ -66,7 +67,7 @@ readBlock = mconcat
         skipWhite
         consumePC "{"
         lend
-        hstail <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend *> pure ""))
+        hstail <- many ((indent 4 *> regexPC "[.\\'\\n']*" <* lend) <|> (lend $> ""))
         consumePC "}"
         lend
         return (HsTail hstail)
@@ -99,12 +100,10 @@ readBlock = mconcat
         right_ctx <- mconcat
             [ do
                 consumePC " +/ "
-                regex' <- readRegEx
-                return (PosRCtx regex')
+                PosRCtx <$> readRegEx
             , do
                 consumePC " / "
-                regex' <- readRegEx
-                return (OddRCtx regex')
+                OddRCtx <$> readRegEx
             , return NilRCtx
             ]
         skipWhite

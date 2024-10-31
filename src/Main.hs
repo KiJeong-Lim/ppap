@@ -66,7 +66,7 @@ ppap = do
 
 copyright :: IO ()
 copyright = do
-    shelly ("ppap> Copyright (c) 2021, Kijeong Lim")
+    shelly ("ppap> Copyright (c) 2021-2024, Kijeong Lim")
     shelly ("ppap> All rights reserved")
     return ()
 
