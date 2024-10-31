@@ -14,6 +14,7 @@ import Aladdin.Front.Desugarer.Main
 import Aladdin.Front.Header
 import Aladdin.Front.TypeChecker.Main
 import Control.Monad
+import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
@@ -145,7 +146,7 @@ runREPL program = lift (newIORef False) >>= go where
                                 go isDebugging
                             Right query4 -> do
                                 runtime_env <- lift $ mkRuntimeEnv isDebugging query4
-                                answer <- runExceptT (execRuntime runtime_env (_FactDecls program) query4)
+                                answer <- runExceptT (execRuntime runtime_env isDebugging (_FactDecls program) query4)
                                 case answer of
                                     Left runtime_err -> case runtime_err of
                                         BadGoalGiven _ -> lift $ putStrLn "*** runtime-error: bad goal given!"
