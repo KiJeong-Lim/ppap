@@ -139,10 +139,6 @@
 }
 
 \define $TermRep5 : "TermRep" {
-    35 [$pi, $TermRep5]:
-        RApp ($1.loc <> getSLoc $2) (RCon $1.loc (DC_LO LO_pi)) $2
-    35 [$sigma, $TermRep5]:
-        RApp ($1.loc <> getSLoc $2) (RCon $1.loc (DC_LO LO_sigma)) $2
     35 [$TermRep6, $is, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_is)) $1) $3
     35 [$TermRep6, $eq, $TermRep6]:
@@ -184,6 +180,10 @@
         $1
     50 [$TermRep8, $largeid, $bslash, $TermRep0]:
         RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs ($2.loc <> getSLoc $4) $2.contents $4)
+    50 [$pi]:
+        RCon $1.loc (DC_LO LO_pi)
+    50 [$sigma]:
+        RCon $1.loc (DC_LO LO_sigma)
     50 [$succ]:
         RCon $1.loc DC_Succ
 }
