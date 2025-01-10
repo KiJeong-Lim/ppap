@@ -1,8 +1,10 @@
 \hshead {
-    module ALPHA1.PlanHolParser where
+    module ALPHA2.PlanHolParser where
 
-    import ALPHA1.Ast
-    import ALPHA1.Grammar
+    import ALPHA2.Ast
+    import ALPHA2.Grammar
+    import ALPHA2.Header
+    import ALPHA2.PlanHolLexer
 }
 
 \target {
@@ -37,6 +39,7 @@
         "T_cut loc": $cut 0 none
         "T_true loc": $true 0 none
         "T_fail loc": $fail 0 none
+        "T_is loc": $is 0 none
         "T_debug loc": $debug 0 none
         "T_bslash loc": $bslash 0 none
         "T_cons loc": $cons 0 none
@@ -142,6 +145,8 @@
         RApp ($1.loc <> getSLoc $2) (RCon $1.loc (DC_LO LO_pi)) $2
     35 [$sigma, $TermRep5]:
         RApp ($1.loc <> getSLoc $2) (RCon $1.loc (DC_LO LO_sigma)) $2
+    35 [$TermRep6, $is, $TermRep6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_is)) $1) $3
     35 [$TermRep6, $eq, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_eq) $1) $3
     35 [$TermRep6, $le, $TermRep6]:

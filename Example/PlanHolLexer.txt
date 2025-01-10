@@ -1,8 +1,9 @@
 \hshead {
-    module ALPHA1.PlanHolLexer where
+    module ALPHA2.PlanHolLexer where
 
-    import ALPHA1.Ast
-    import ALPHA1.Grammar
+    import ALPHA2.Ast
+    import ALPHA2.Grammar
+    import ALPHA2.Header
 }
 
 \target {
@@ -71,6 +72,8 @@
     T_true (SLoc (row1, col1) (row2, col2))
 \xmatch "fail":
     T_fail (SLoc (row1, col1) (row2, col2))
+\xmatch "is":
+    T_is (SLoc (row1, col1) (row2, col2))
 \xmatch "debug":
     T_debug (SLoc (row1, col1) (row2, col2))
 \xmatch "\\":
@@ -123,6 +126,7 @@
         | T_cut SLoc
         | T_true SLoc
         | T_fail SLoc
+        | T_is SLoc
         | T_debug SLoc
         | T_bslash SLoc
         | T_cons SLoc
@@ -190,6 +194,7 @@
             T_cut loc -> loc
             T_true loc -> loc
             T_fail loc -> loc
+            T_is loc -> loc
             T_debug loc -> loc
             T_bslash loc -> loc
             T_cons loc -> loc
