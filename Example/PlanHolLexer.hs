@@ -1,7 +1,5 @@
 module ALPHA2.PlanHolLexer where
 
-import ALPHA2.Ast
-import ALPHA2.Grammar
 import ALPHA2.Header
 import qualified Control.Monad.Trans.State.Strict as XState
 import qualified Data.Functor.Identity as XIdentity

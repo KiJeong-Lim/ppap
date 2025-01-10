@@ -1,8 +1,6 @@
 \hshead {
     module ALPHA2.PlanHolParser where
 
-    import ALPHA2.Ast
-    import ALPHA2.Grammar
     import ALPHA2.Header
     import ALPHA2.PlanHolLexer
 }
@@ -184,7 +182,7 @@
         RApp (getSLoc $1 <> getSLoc $2) $1 $2
     50 [$TermRep9]:
         $1
-    50 [$TermRep9, $largeid, $bslash, $TermRep0]:
+    50 [$TermRep8, $largeid, $bslash, $TermRep0]:
         RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs ($2.loc <> getSLoc $4) $2.contents $4)
     50 [$succ]:
         RCon $1.loc DC_Succ
