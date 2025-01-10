@@ -290,7 +290,7 @@ runHolLexer = runHolLexer_this . addLoc 1 1 where
             ((11, this), ((row1, col1), (row2, col2))) -> return_one (T_if (SLoc (row1, col1) (row2, col2)))
             ((12, this), ((row1, col1), (row2, col2))) -> return_one (T_succ (SLoc (row1, col1) (row2, col2)))
             ((13, this), ((row1, col1), (row2, col2))) -> return_one (T_eq (SLoc (row1, col1) (row2, col2)))
-            ((14, this), ((row1, col1), (row2, col2))) -> return_one (T_;e (SLoc (row1, col1) (row2, col2)))
+            ((14, this), ((row1, col1), (row2, col2))) -> return_one (T_le (SLoc (row1, col1) (row2, col2)))
             ((15, this), ((row1, col1), (row2, col2))) -> return_one (T_lt (SLoc (row1, col1) (row2, col2)))
             ((16, this), ((row1, col1), (row2, col2))) -> return_one (T_ge (SLoc (row1, col1) (row2, col2)))
             ((17, this), ((row1, col1), (row2, col2))) -> return_one (T_gt (SLoc (row1, col1) (row2, col2)))

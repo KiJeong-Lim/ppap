@@ -45,7 +45,7 @@
 \xmatch "=":
     T_eq (SLoc (row1, col1) (row2, col2))
 \xmatch "=<":
-    T_;e (SLoc (row1, col1) (row2, col2))
+    T_le (SLoc (row1, col1) (row2, col2))
 \xmatch "<":
     T_lt (SLoc (row1, col1) (row2, col2))
 \xmatch ">=":
