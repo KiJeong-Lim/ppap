@@ -9,7 +9,7 @@
 
 \target {
     token-type: "Token"
-    parser-name: "runAladdinParser"
+    parser-name: "runHolParser"
     result-type: "Either TermRep [DeclRep]"
     start: $Either $Query ($Sequence $Decl)
     terminals:

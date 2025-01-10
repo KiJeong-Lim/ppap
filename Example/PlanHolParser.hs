@@ -42,8 +42,8 @@ data ParsingTree
     | PTBranch NSym [ParsingTree]
     deriving ()
 
-runAladdinParser :: [Token] -> Either (Maybe (Token)) (Either TermRep [DeclRep])
-runAladdinParser = fmap (getEither getQuery (getSequence getDecl)) . runLALR1 theLALR1Parser where
+runHolParser :: [Token] -> Either (Maybe (Token)) (Either TermRep [DeclRep])
+runHolParser = fmap (getEither getQuery (getSequence getDecl)) . runLALR1 theLALR1Parser where
     getQuery :: ParsingTree -> (TermRep)
     getQuery (PTBranch _ [PTLeaf (T_quest loc_1), _2@(PTBranch guard2 _), PTLeaf (T_dot loc_3)])
         | [guard2] `elem` [[3]] = (getTermRep0 _2)
