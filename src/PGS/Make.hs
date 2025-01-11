@@ -193,7 +193,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                     TerminalSet tss
                                         | Nothing `Set.member` tss -> do
                                             result <- getLA False (LR0Item lhs' left' (sym' : right'), p)
-                                            return (Set.union (Set.delete Nothing tss) (unTerminalSet result))
+                                            return (tss `Set.union` unTerminalSet result) -- fixed: original= return (Set.delete Nothing tss `Set.union` unTerminalSet result)
                                         | otherwise -> return tss
                                 | LR0Item lhs' left' (sym' : right') <- Set.toList items'
                                 , sym' == NS lhs
