@@ -106,8 +106,7 @@ instance HasSLoc Token where
         T_cons loc -> loc
         T_kind loc -> loc
         T_type loc -> loc
-        T_smallid loc _ -> loc
-        T_largeid loc _ -> loc
+        T_id loc _ -> loc
         T_nat_lit loc _ -> loc
         T_chr_lit loc _ -> loc
         T_str_lit loc _ -> loc
