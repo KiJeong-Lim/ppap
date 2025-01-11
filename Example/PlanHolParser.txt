@@ -93,7 +93,7 @@
 
 \define $TypeRep2 : "TypeRep" {
     20 [$id]:
-        if head $1.contents `elem` ['A' .. 'Z'] then RTyCon $1.loc (TC_Named $1.contents) else RTyVar $1.loc $1.contents
+        if head $1.contents `elem` ['A' .. 'Z'] then RTyVar $1.loc $1.contents else RTyCon $1.loc (TC_Named $1.contents)
     20 [$lparen, $TypeRep0, $rparen]:
         RTyPrn ($1.loc <> $3.loc) $2
 }
@@ -197,7 +197,7 @@
     55 [$debug]:
         RCon $1.loc (DC_LO LO_debug)
     55 [$id]:
-        if head $1.contents `elem` ['A' .. 'Z'] then RCon $1.loc (DC_Named $1.contents) else RVar $1.loc $1.contents
+        if head $1.contents `elem` ['A' .. 'Z'] then RVar $1.loc $1.contents else RCon $1.loc (DC_Named $1.contents)
     55 [$natlit]:
         mkNatLit $1.loc $1.contents
     55 [$strlit]:
