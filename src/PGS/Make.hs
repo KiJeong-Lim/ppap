@@ -14,6 +14,7 @@ import Y.Base
 import Z.Algo.Function
 import Z.Algo.Sorting
 import Z.Utils
+import Data.Maybe (isJust, isNothing)
 
 instance Outputable Associativity where
     pprint _ ALeft = strstr "left"
@@ -184,7 +185,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 case Map.lookup (LR0Item lhs left right, q) mapping of
                     Just (correct, tss)
                         | correct || not final -> return tss
-                    _ -> do
+                    res -> do
                         put (Map.insert (LR0Item lhs left right, q) (False, TerminalSet Set.empty) mapping)
                         result' <- fmap (TerminalSet . Set.unions) $ sequence
                             [ fmap Set.unions $ sequence

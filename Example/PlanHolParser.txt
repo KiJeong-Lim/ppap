@@ -43,8 +43,7 @@
         "T_cons loc": $cons 0 none
         "T_kind loc": $kind 0 none
         "T_type loc": $type 0 none
-        "T_smallid loc contents": $smallid 0 none
-        "T_largeid loc contents": $largeid 0 none
+        "T_id loc contents": $id 0 none
         "T_nat_lit loc contents": $natlit 0 none
         "T_chr_lit loc contents": $chrlit 0 none
         "T_str_lit loc contents": $strlit 0 none
@@ -56,9 +55,9 @@
 }
 
 \define $Decl : "DeclRep" {
-    10 [$kind, $smallid, $KindRep0, $dot]:
+    10 [$kind, $id, $KindRep0, $dot]:
         RKindDecl ($1.loc <> $4.loc) (TC_Named $2.contents) $3
-    10 [$type, $smallid, $TypeRep0, $dot]:
+    10 [$type, $id, $TypeRep0, $dot]:
         RTypeDecl ($1.loc <> $4.loc) (DC_Named $2.contents) $3
     10 [$TermRep0, $dot]:
         RFactDecl (getSLoc $1 <> $2.loc) $1
@@ -93,17 +92,15 @@
 }
 
 \define $TypeRep2 : "TypeRep" {
-    20 [$largeid]:
-        RTyVar $1.loc $1.contents
-    20 [$smallid]:
-        RTyCon $1.loc (TC_Named $1.contents)
+    20 [$id]:
+        if head $1.contents `elem` ['A' .. 'Z'] then RTyCon $1.loc (TC_Named $1.contents) else RTyVar $1.loc $1.contents
     20 [$lparen, $TypeRep0, $rparen]:
         RTyPrn ($1.loc <> $3.loc) $2
 }
 
 \define $TermRep0 : "TermRep" {
-    10 [$Atom, $bslash, $TermRep0]:
-        RAbs (fst $1 <> getSLoc $3) (snd $1) $3
+    10 [$id, $bslash, $TermRep0]:
+        RAbs ($1.loc <> getSLoc $3) $1.contents $3
     10 [$TermRep1, $if, $TermRep0]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_if)) $1) $3
     10 [$TermRep1]:
@@ -178,8 +175,8 @@
         RApp (getSLoc $1 <> getSLoc $2) $1 $2
     50 [$TermRep9]:
         $1
-    50 [$TermRep8, $Atom, $bslash, $TermRep0]:
-        RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs (fst $2 <> getSLoc $4) (snd $2) $4)
+    50 [$TermRep8, $id, $bslash, $TermRep0]:
+        RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs ($2.loc <> getSLoc $4) $2.contents $4)
     50 [$pi]:
         RCon $1.loc (DC_LO LO_pi)
     50 [$sigma]:
@@ -199,10 +196,8 @@
         RCon $1.loc (DC_LO LO_fail)
     55 [$debug]:
         RCon $1.loc (DC_LO LO_debug)
-    55 [$smallid]:
-        RCon $1.loc (DC_Named $1.contents)
-    55 [$largeid]:
-        RVar $1.loc $1.contents
+    55 [$id]:
+        if head $1.contents `elem` ['A' .. 'Z'] then RCon $1.loc (DC_Named $1.contents) else RVar $1.loc $1.contents
     55 [$natlit]:
         mkNatLit $1.loc $1.contents
     55 [$strlit]:
@@ -213,13 +208,6 @@
         RCon ($1.loc <> $2.loc) DC_Nil
     55 [$lbracket, $ListBody, $rbracket]:
         RPrn ($1.loc <> $3.loc) $2
-}
-
-\define $Atom : "(SLoc, String)" {
-    0 [$largeid]:
-        ($1.loc, $1.contents)
-    0 [$smallid]:
-        ($1.loc, $1.contents)
 }
 
 \define $Sequence ($Elem : "a") : "[a]" {

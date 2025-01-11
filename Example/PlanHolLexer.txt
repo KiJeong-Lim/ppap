@@ -82,10 +82,8 @@
     T_kind (SLoc (row1, col1) (row2, col2))
 \xmatch "type":
     T_type (SLoc (row1, col1) (row2, col2))
-\xmatch $SmallId:
-    T_smallid (SLoc (row1, col1) (row2, col2)) this
-\xmatch $LargeId:
-    T_largeid (SLoc (row1, col1) (row2, col2)) this
+\xmatch $LargeId + $SmallId:
+    T_id (SLoc (row1, col1) (row2, col2)) this
 \xmatch [$digit]+:
     T_nat_lit (SLoc (row1, col1) (row2, col2)) (read this)
 \xmatch "\"" $Char* "\"":
@@ -130,8 +128,7 @@
         | T_cons SLoc
         | T_kind SLoc
         | T_type SLoc
-        | T_smallid SLoc SmallId
-        | T_largeid SLoc LargeId
+        | T_id SLoc String
         | T_nat_lit SLoc Integer
         | T_chr_lit SLoc Char
         | T_str_lit SLoc String
