@@ -194,7 +194,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 m' = Map.fromList [ ((q, item), getLA m (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items ]
         makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
         makeLATable = do
-            triples <- sequence [ return ((q, item), getLA lfp (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
+            triples <- sequence [ return ((q, item), lfp Map.! (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
             return [ ((q, t), (lhs, left ++ right)) | ((q, LR0Item lhs left right), ts) <- triples, Just t <- Set.toList (unTerminalSet ts) ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) getLATable where
