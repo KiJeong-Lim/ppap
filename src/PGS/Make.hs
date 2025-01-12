@@ -191,7 +191,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             go :: Map.Map (ParserS, LR0Item) TerminalSet -> Map.Map (ParserS, LR0Item) TerminalSet
             go m = if m == m' then m' else go m' where
                 m' :: Map.Map (ParserS, LR0Item) TerminalSet
-                m' = Map.fromList [ ((q, item), getLA m (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
+                m' = Map.fromList [ ((q, item), getLA m (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items ]
         makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
         makeLATable = do
             triples <- sequence [ return ((q, item), getLA lfp (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
