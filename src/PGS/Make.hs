@@ -166,6 +166,39 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             go (lhs, rhs) tss = Just (TerminalSet (unTerminalSet tss `Set.union` unTerminalSet (mconcat [ getFirstOf sym | sym <- rhs ])))
             mapping' :: Map.Map NSym TerminalSet
             mapping' = foldr (Map.update <$> go <*> fst) mapping (map fst (Map.toList productions'))
+    getFollow :: Map.Map NSym TerminalSet
+    getFollow = runIdentity makeFollow where
+        makeFollow :: Identity (Map.Map NSym TerminalSet)
+        makeFollow = do
+            (_, m) <- runStateT (mapM_ (loop1 . fst) (Map.toAscList productions') >> whileTrue loop2) (Map.singleton start' (TerminalSet (Set.singleton (Just TSEOF))))
+            return m
+        loop1 :: ProductionRule -> StateT (Map.Map NSym TerminalSet) Identity ()
+        loop1 (lhs, rhs) = do
+            sequence_
+                [ modify (add ns (TerminalSet $! Nothing `Set.delete` unTerminalSet (getFIRST Map.! ns)))
+                | NS ns : beta <- iterate tail rhs
+                , beta /= []
+                ]
+        loop2 :: StateT (Map.Map NSym TerminalSet) Identity (Bool, ())
+        loop2 = (flip (,) ()) <$> go False [ (lhs, rhs, suf) | ((lhs, rhs), _) <- Map.toList productions', suf <- iterate tail rhs ] where
+            go :: Bool -> [(NSym, [Sym], [Sym])] -> StateT (Map.Map NSym TerminalSet) Identity Bool
+            go changed [] = return changed
+            go changed ((_A, rhs, suf) : triples)
+                | [NS _B] <- suf = do
+                    m <- get
+                    put (add _B (m Map.! _A) m)
+                    go (changed || unTerminalSet (m Map.! _A) `Set.isSubsetOf` unTerminalSet (m Map.! _B)) triples
+                | NS _B : _ <- suf, Nothing `Set.member` unTerminalSet (getFIRST Map.! _B) = do
+                    m <- get
+                    put (add _B (m Map.! _A) m)
+                    go (changed || unTerminalSet (m Map.! _A) `Set.isSubsetOf` unTerminalSet (m Map.! _B)) triples
+                | otherwise = go changed triples
+        add :: (Ord k) => k -> TerminalSet -> Map.Map k TerminalSet -> Map.Map k TerminalSet
+        add k tss = Map.alter (Just . maybe tss (TerminalSet . Set.union (unTerminalSet tss) . unTerminalSet)) k
+        whileTrue :: Monad m => m (Bool, a) -> m a
+        whileTrue m = do
+            (b, x) <- m
+            if b then whileTrue m else return x
     getLATable :: [((ParserS, TSym), ProductionRule)]
     getLATable = runIdentity makeLATable where
         calcGOTO' :: ParserS -> [Sym] -> Maybe ParserS
