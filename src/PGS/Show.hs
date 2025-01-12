@@ -464,6 +464,8 @@ genParser blocks = myMain where
                 ]
             tellLine (strstr "        , getReduceTable = YMap.fromAscList " . plist 12 table2)
             tellLine (strstr "        }")
-            tellLine (strstr "")
+            tellLine (strstr "{-")
+            tellLine (strstr (pprint 0 collection ""))
+            tellLine (strstr "-}\n")
             return ()
         return y_out

@@ -177,23 +177,23 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Nothing -> error "getLALR1.getLATable.getFirstOf"
             Just tss -> tss <> getFirstOf syms
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
-        getLA :: Bool -> (LR0Item, ParserS) -> StateT (Map.Map (LR0Item, ParserS) (Bool, TerminalSet)) Identity TerminalSet
+        getLA :: Bool -> (LR0Item, ParserS) -> StateT (Map.Map (LR0Item, ParserS) (Set.Set (LR0Item, ParserS), TerminalSet)) Identity TerminalSet
         getLA final (LR0Item lhs left right, q)
             | lhs == start' = return (TerminalSet (Set.singleton (Just TSEOF)))
             | otherwise = do
-                mapping <- get
-                case Map.lookup (LR0Item lhs left right, q) mapping of
-                    Just (correct, tss)
-                        | correct || not final -> return tss
+                m <- get
+                case Map.lookup (LR0Item lhs left right, q) m of
+                    Just (vs, tss)
+                        | not final -> return tss
                     res -> do
-                        put (Map.insert (LR0Item lhs left right, q) (False, TerminalSet Set.empty) mapping)
-                        result' <- fmap (TerminalSet . Set.unions) $ sequence
+                        put (Map.alter (Just . maybe (Set.singleton (LR0Item lhs left right, q), TerminalSet Set.empty) (\v -> (Set.insert (LR0Item lhs left right, q) (fst v), snd v))) (LR0Item lhs left right, q) m)
+                        result' <- fmap Set.unions $ sequence
                             [ fmap Set.unions $ sequence
                                 [ case getFirstOf right' of
                                     TerminalSet tss
                                         | Nothing `Set.member` tss -> do
-                                            result <- getLA False (LR0Item lhs' left' (sym' : right'), p)
-                                            return (tss `Set.union` unTerminalSet result) -- fixed: original= return (Set.delete Nothing tss `Set.union` unTerminalSet result)
+                                            result <- getLA (isJust res) (LR0Item lhs' left' (sym' : right'), p)
+                                            return (tss `Set.union` unTerminalSet result)
                                         | otherwise -> return tss
                                 | LR0Item lhs' left' (sym' : right') <- Set.toList items'
                                 , sym' == NS lhs
@@ -201,9 +201,23 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                             | (items', p) <- Map.toList (getVertices getCannonical0)
                             , calcGOTO' p left == Just q
                             ]
-                        mapping' <- get
-                        put (Map.update (const (Just (final, result'))) (LR0Item lhs left right, q) mapping')
-                        return result'
+                        let sames = maybe (Set.singleton (LR0Item lhs left right, q)) (Set.insert (LR0Item lhs left right, q) . fst) res
+                        while1 $ propagate (TerminalSet result') sames (Set.toList sames)
+        while1 :: Monad m => m (Bool, a) -> m a
+        while1 m = do
+            (b, x) <- m
+            if b then while1 m else return x
+        propagate :: TerminalSet -> Set.Set (LR0Item, ParserS) -> [(LR0Item, ParserS)] -> StateT (Map.Map (LR0Item, ParserS) (Set.Set (LR0Item, ParserS), TerminalSet)) Identity (Bool, TerminalSet)
+        propagate tss sames [] = return (False, tss)
+        propagate tss sames (it : its) = do
+            m <- get
+            (changed, m') <- case it `Map.lookup` m of
+                Nothing -> return (True, Map.insert it (sames, tss) m)
+                Just (vs', tss') -> return (unTerminalSet tss `Set.isSubsetOf` unTerminalSet tss', Map.update (Just . (Set.union sames <^> TerminalSet . Set.union (unTerminalSet tss) . unTerminalSet)) it m)
+            put m'
+            let (sames', tss') = m' Map.! it
+            (changed', tss') <- if changed then propagate tss' sames' (Set.toList sames') else propagate tss sames its
+            return (changed || changed', TerminalSet $! unTerminalSet tss `Set.union` unTerminalSet tss')
         makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
         makeLATable = do
             (triples, _) <- flip runStateT Map.empty $ sequence
