@@ -14,7 +14,7 @@ import Y.Base
 import Z.Algo.Function
 import Z.Algo.Sorting
 import Z.Utils
-import Data.Maybe (isJust, isNothing)
+import Data.Maybe (isJust, isNothing, fromMaybe)
 
 instance Outputable Associativity where
     pprint _ ALeft = strstr "left"
@@ -169,56 +169,33 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     getLATable :: [((ParserS, TSym), ProductionRule)]
     getLATable = runIdentity makeLATable where
         calcGOTO' :: ParserS -> [Sym] -> Maybe ParserS
-        calcGOTO' q [] = Just q
-        calcGOTO' q (sym : syms) = maybe Nothing (\p -> calcGOTO' p syms) $ Map.lookup (q, sym) (getEdges getCannonical0)
+        calcGOTO' q [] = return q
+        calcGOTO' q (sym : syms) = do
+            q' <- (q, sym) `Map.lookup` getEdges getCannonical0
+            calcGOTO' q' syms
         getFirstOf :: [Sym] -> TerminalSet
         getFirstOf [] = mempty
         getFirstOf (NS ns : syms) = case Map.lookup ns getFIRST of
             Nothing -> error "getLALR1.getLATable.getFirstOf"
             Just tss -> tss <> getFirstOf syms
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
-        getLA :: Bool -> (LR0Item, ParserS) -> StateT (Map.Map (LR0Item, ParserS) (Bool, TerminalSet)) Identity TerminalSet
-        getLA final (LR0Item lhs left right, q)
-            | lhs == start' = return (TerminalSet (Set.singleton (Just TSEOF)))
-            | otherwise = do
-                mapping <- get
-                case Map.lookup (LR0Item lhs left right, q) mapping of
-                    Just (correct, tss)
-                        | correct || not final -> return tss
-                    res -> do
-                        put (Map.insert (LR0Item lhs left right, q) (False, TerminalSet Set.empty) mapping)
-                        result' <- fmap (TerminalSet . Set.unions) $ sequence
-                            [ fmap Set.unions $ sequence
-                                [ case getFirstOf right' of
-                                    TerminalSet tss
-                                        | Nothing `Set.member` tss -> do
-                                            result <- getLA False (LR0Item lhs' left' (sym' : right'), p)
-                                            return (Set.delete Nothing tss `Set.union` unTerminalSet result)
-                                        | otherwise -> return tss
-                                | LR0Item lhs' left' (sym' : right') <- Set.toList items'
-                                , sym' == NS lhs
-                                ]
-                            | (items', p) <- Map.toList (getVertices getCannonical0)
-                            , calcGOTO' p left == Just q
-                            ]
-                        mapping' <- get
-                        put (Map.update (const (Just (final, result'))) (LR0Item lhs left right, q) mapping')
-                        return result'
+        getLA :: Map.Map (ParserS, LR0Item) TerminalSet -> (ParserS, LR0Item) -> TerminalSet
+        getLA m (p, LR0Item lhs left right)
+            | lhs == start' = TerminalSet $ Set.singleton (Just TSEOF)
+            | otherwise = TerminalSet $ unTerminalSet (la (p, LR0Item lhs left right)) `Set.union` Set.unions [ unTerminalSet $! getFirstOf right' <> la (q, LR0Item lhs' left' (sym' : right')) | (items', q) <- Map.toList (getVertices getCannonical0), calcGOTO' q left == Just p, LR0Item lhs' left' (sym' : right') <- Set.toList items', sym' == NS lhs ]
+            where
+                la :: (ParserS, LR0Item) -> TerminalSet
+                la (q, item) = fromMaybe mempty $ (q, item) `Map.lookup` m
+        lfp :: Map.Map (ParserS, LR0Item) TerminalSet
+        lfp = go (Map.singleton (getRoot getCannonical0, LR0Item start' [] [NS start, TS TSEOF]) (TerminalSet (Set.singleton (Just TSEOF)))) where
+            go :: Map.Map (ParserS, LR0Item) TerminalSet -> Map.Map (ParserS, LR0Item) TerminalSet
+            go m = if m == m' then m' else go m' where
+                m' :: Map.Map (ParserS, LR0Item) TerminalSet
+                m' = Map.fromList [ ((q, item), getLA m (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
         makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
         makeLATable = do
-            (triples, _) <- flip runStateT Map.empty $ sequence
-                [ do
-                    ts <- getLA True (item, q)
-                    return ((item, q), ts)
-                | (items, q) <- Map.toList (getVertices getCannonical0)
-                , item <- Set.toList items
-                , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
-                ]
-            return
-                [ ((q, t), (lhs, left ++ right))
-                | ((LR0Item lhs left right, q), ts) <- triples
-                , Just t <- Set.toList (unTerminalSet ts)
-                ]
+            triples <- sequence [ return ((q, item), getLA lfp (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
+            return [ ((q, t), (lhs, left ++ right)) | ((q, LR0Item lhs left right), ts) <- triples, Just t <- Set.toList (unTerminalSet ts) ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) getLATable where
         base :: Map.Map (ParserS, TSym) Action
