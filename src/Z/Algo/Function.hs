@@ -59,22 +59,22 @@ instance FailableZero [a] where
 instance FailableZero b => FailableZero (a -> b) where
     nil = const nil
 
-digraph :: (HasCallStack, Ord a, Ord v) => Set.Set v -> (v -> v -> Bool) -> (v -> Set.Set a) -> Map.Map v (Set.Set a)
-digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ my_traverse (Set.toAscList your_X)) (([], Map.fromSet (const 0) your_X), Map.fromSet (const Set.empty) your_X)))) where
-    my_traverse x = do
+digraph :: forall a v. (HasCallStack, Ord a, Ord v) => Set.Set v -> (v -> v -> Bool) -> (v -> Set.Set a) -> Map.Map v (Set.Set a)
+digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ (my_traverse 1) (Set.toAscList your_X)) (([], Map.fromSet (const 0) your_X), Map.fromSet (const Set.empty) your_X)))) where
+    my_traverse :: HasCallStack => Int -> v -> StateT (([v], Map.Map v Int), Map.Map v (Set.Set a)) Identity ()
+    my_traverse k x = do
         ((my_S, my_N), my_F) <- get
         when (my_N Map.! x == 0) $ do
-            let d = 1 + length my_S
-            put ((x : my_S, Map.update (Just . const d) x my_N), Map.update (Just . const (your_F' x)) x my_F)
+            put ((x : my_S, Map.update (Just . const k) x my_N), Map.update (Just . const (your_F' x)) x my_F)
             forM_ your_X $ \y -> do
                 when (x `your_R` y) $ do
                     ((my_S, my_N), my_F) <- get
                     when (my_N Map.! y == 0) $ do
-                        my_traverse y
+                        my_traverse (k + 1) y
                         ((my_S, my_N), my_F) <- get
-                        put ((my_S, Map.update (Just . min (my_N Map.! x)) x my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
+                        put ((my_S, Map.update (Just . min (my_N Map.! y)) x my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
             ((my_S, my_N), my_F) <- get
-            when (my_N Map.! x == d) $ do
+            when (my_N Map.! x == k) $ do
                 fix $ \loop_handle -> do
                     ((my_S, my_N), my_F) <- get
                     let top = head my_S
