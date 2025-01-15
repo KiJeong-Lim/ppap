@@ -275,7 +275,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             my_R (p, LR0Item _ _ (NS _A : _)) (p', LR0Item _ _ (NS _A' : _)) = Nothing `Set.member` unTerminalSet (getFIRST Map.! _A') && isJust (delta' p [NS _A, NS _A'])
             my_R _ _ = False
             my_F' :: (ParserS, LR0Item) -> Set.Set TSym
-            my_F' (q, LR0Item lhs left right) = if lhs == start' then Set.singleton TSEOF else Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf right)) ]
+            my_F' (q, LR0Item lhs left right) = (if lhs == start' then Set.insert TSEOF else id) $ Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf right)) ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) getLATable' where
         base :: Map.Map (ParserS, TSym) Action
