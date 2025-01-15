@@ -14,7 +14,9 @@ import Y.Base
 import Z.Algo.Function
 import Z.Algo.Sorting
 import Z.Utils
+
 import Data.Maybe (isJust, isNothing, fromMaybe)
+import Data.Foldable
 
 instance Outputable Associativity where
     pprint _ ALeft = strstr "left"
@@ -229,6 +231,43 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         makeLATable = do
             triples <- sequence [ return ((q, item), lfp Map.! (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
             return [ ((q, t), (lhs, left ++ right)) | ((q, LR0Item lhs left right), ts) <- triples, Just t <- Set.toList (unTerminalSet ts) ]
+    getLATable' :: [((ParserS, TSym), ProductionRule)]
+    getLATable' = runIdentity makeLATable where
+        calcGOTO' :: ParserS -> [Sym] -> Maybe ParserS
+        calcGOTO' q [] = return q
+        calcGOTO' q (sym : syms) = do
+            q' <- (q, sym) `Map.lookup` getEdges getCannonical0
+            calcGOTO' q' syms
+        getFirstOf :: [Sym] -> TerminalSet
+        getFirstOf [] = mempty
+        getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
+        getFirstOf (NS ns : syms) = case Map.lookup ns getFIRST of
+            Nothing -> error "getLALR1.getLATable.getFirstOf"
+            Just tss -> tss <> getFirstOf syms
+        _LA :: Map.Map (ParserS, ProductionRule) (Set.Set (Maybe TSym))
+        _LA = Map.fromList
+            [ ((q, (getLHS item, getLEFT item ++ getRIGHT item)), Set.unions [ _Follow Map.! (p, item') | (items', p) <- Map.toList (getVertices getCannonical0), item' <- Set.toList items', calcGOTO' q (getLEFT item ++ getRIGHT item) == Just p ])
+            | (items, q) <- Map.toList (getVertices getCannonical0)
+            , item <- Set.toList items
+            , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
+            ]
+        _Follow :: Map.Map (ParserS, LR0Item) (Set.Set (Maybe TSym))
+        _Follow = digraph my_X my_R my_F' where
+            my_X :: Set.Set (ParserS, LR0Item)
+            my_X = Set.fromList
+                [ (p, item)
+                | (items, p) <- Map.toList (getVertices getCannonical0)
+                , item <- Set.toList items
+                ]
+            my_R :: (ParserS, LR0Item) -> (ParserS, LR0Item) -> Bool
+            my_R (p, LR0Item _A _ _) (p', LR0Item _B beta (_A' : gamma)) = NS _A == _A' && Nothing `Set.member` unTerminalSet (getFirstOf gamma) && Just p == calcGOTO' p' beta
+            my_R _ _ = False
+            my_F' :: (ParserS, LR0Item) -> Set.Set (Maybe TSym)
+            my_F' (p, LR0Item _A alpha beta) = unTerminalSet (getFirstOf beta)
+        makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
+        makeLATable = do
+            triples <- sequence [ return ((q, item), _LA Map.! (q, (getLHS item, getLEFT item ++ getRIGHT item))) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
+            return [ ((q, t), (lhs, left ++ right)) | ((q, LR0Item lhs left right), ts) <- triples, Just t <- Set.toList ts ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) getLATable where
         base :: Map.Map (ParserS, TSym) Action

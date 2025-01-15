@@ -2,9 +2,14 @@ module Z.Algo.Function where
 
 import Control.Monad
 import Control.Monad.Trans.Except
+import Control.Monad.Fix
+import Control.Monad.Trans.State.Strict
 import qualified Data.Foldable as Foldable
 import qualified Data.Function as Function
+import Data.Functor.Identity
 import qualified Data.Maybe as Maybe
+import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import GHC.Stack
 import Z.Utils
 
@@ -53,6 +58,28 @@ instance FailableZero [a] where
 
 instance FailableZero b => FailableZero (a -> b) where
     nil = const nil
+
+digraph :: (HasCallStack, Ord a, Ord v) => Set.Set v -> (v -> v -> Bool) -> (v -> Set.Set a) -> Map.Map v (Set.Set a)
+digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ my_traverse (Set.toAscList your_X)) (([], Map.fromSet (const 0) your_X), Map.fromSet (const Set.empty) your_X)))) where
+    my_traverse x = do
+        ((my_S, my_N), my_F) <- get
+        when (my_N Map.! x == 0) $ do
+            let d = 1 + length my_S
+            put ((x : my_S, Map.update (Just . const d) x my_N), Map.update (Just . const (your_F' x)) x my_F)
+            forM_ (Set.filter (x `your_R`) your_X) $ \y -> do
+                ((my_S, my_N), my_F) <- get
+                when (my_N Map.! y == 0) $ do
+                    my_traverse y
+                    ((my_S, my_N), my_F) <- get
+                    put ((my_S, Map.update (Just . min (my_N Map.! x)) y my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
+            ((my_S, my_N), my_F) <- get
+            when (my_N Map.! x == d) $ do
+                mfix $ \loop -> do
+                    ((my_S, my_N), my_F) <- get
+                    let top = head my_S
+                    when (top /= x) $ do
+                        put ((tail my_S, Map.update (Just . const maxBound) top my_N), Map.update (Just . Set.union (my_F Map.! x)) top my_F)
+                        return loop
 
 (/>) :: Failable a => a -> a -> a
 x /> y = alt x y
