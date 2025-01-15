@@ -71,15 +71,15 @@ digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ my_trave
                 when (my_N Map.! y == 0) $ do
                     my_traverse y
                     ((my_S, my_N), my_F) <- get
-                    put ((my_S, Map.update (Just . min (my_N Map.! x)) y my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
+                    put ((my_S, Map.update (Just . min (my_N Map.! x)) x my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
             ((my_S, my_N), my_F) <- get
             when (my_N Map.! x == d) $ do
-                mfix $ \loop -> do
+                fix $ \loop -> do
                     ((my_S, my_N), my_F) <- get
                     let top = head my_S
                     when (top /= x) $ do
                         put ((tail my_S, Map.update (Just . const maxBound) top my_N), Map.update (Just . Set.union (my_F Map.! x)) top my_F)
-                        return loop
+                        loop
 
 (/>) :: Failable a => a -> a -> a
 x /> y = alt x y
