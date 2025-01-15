@@ -246,7 +246,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Just tss -> tss <> getFirstOf syms
         _LA :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
         _LA = Map.fromList
-            [ ((q, (getLHS item, getLEFT item ++ getRIGHT item)), Set.unions [ _Follow Map.! (p, LR0Item _B alpha1 (_A' : alpha2)) | (items', p) <- Map.toList (getVertices getCannonical0), LR0Item _B alpha1 (_A' : alpha2) <- Set.toList items', NS (getLHS item) == _A', delta' p (getLEFT item) == Just q ])
+            [ ((q, (getLHS item, getLEFT item ++ getRIGHT item)), if getLHS item == start' then Set.singleton TSEOF else Set.unions [ _Follow Map.! (p, LR0Item _B alpha1 (_A' : alpha2)) | (items', p) <- Map.toList (getVertices getCannonical0), LR0Item _B alpha1 (_A' : alpha2) <- Set.toList items', NS (getLHS item) == _A', delta' p (getLEFT item) == Just q ])
             | (items, q) <- Map.toList (getVertices getCannonical0)
             , item <- Set.toList items
             , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
@@ -275,7 +275,14 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             my_R (p, LR0Item _ _ (NS _A : _)) (p', LR0Item _ _ (NS _A' : _)) = Nothing `Set.member` unTerminalSet (getFIRST Map.! _A') && isJust (delta' p [NS _A, NS _A'])
             my_R _ _ = False
             my_F' :: (ParserS, LR0Item) -> Set.Set TSym
-            my_F' (q, LR0Item lhs left right) = (if q == getRoot getCannonical0 then Set.insert TSEOF else id) $ Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf right)) ]
+            my_F' (q, LR0Item lhs left right) = (if isFromStart then Set.insert TSEOF else id) $ Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf right)) ] where
+                isFromStart :: Bool
+                isFromStart
+                    | NS _A : _ <- right
+                    , Just p <- delta' q [NS _A]
+                    = q == getRoot getCannonical0
+                    | otherwise
+                    = False
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) getLATable' where
         base :: Map.Map (ParserS, TSym) Action
