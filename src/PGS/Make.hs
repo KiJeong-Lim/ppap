@@ -245,15 +245,39 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         getFirstOf (NS ns : syms) = case Map.lookup ns getFIRST of
             Nothing -> error "getLALR1.getLATable.getFirstOf"
             Just tss -> tss <> getFirstOf syms
+        _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
+        _Read = Map.fromList
+            [ ((p, _A), Set.fromList [ t | Just t <- Set.toList $ unTerminalSet (getFirstOf alpha2) ])
+            | (items, p) <- Map.toList (getVertices getCannonical0)
+            , LR0Item _B alpha1 (NS _A : alpha2) <- Set.toList items
+            ]
+        _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
+        _Follow = digraph my_X my_R my_F' where
+            my_X :: Set.Set (ParserS, NSym)
+            my_X = Set.fromList
+                [ (p, _A)
+                | (items, p) <- Map.toList (getVertices getCannonical0)
+                , LR0Item _B alpha1 (NS _A : alpha2) <- Set.toList items
+                ]
+            my_F' :: (ParserS, NSym) -> Set.Set TSym
+            my_F' (p, _A) = _Read Map.! (p, _A)
+            my_R :: (ParserS, NSym) -> (ParserS, NSym) -> Bool
+            my_R (p, _A) (q, _B) = or
+                [ Nothing `Set.member` unTerminalSet (getFirstOf alpha1) && delta' p alpha1 == Just q
+                | (items, p') <- Map.toList (getVertices getCannonical0)
+                , p == p'
+                , LR0Item _B' alpha1 (NS _A' : alpha2) <- Set.toList items
+                , _A == _A'
+                ]
         _LA :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
         _LA = Map.fromList
             [
                 ( (q, (getLHS item, getLEFT item ++ getRIGHT item))
                 , Set.unions
-                    [ _Follow Map.! (p, LR0Item _B alpha1 (_A' : alpha2))
+                    [ _Follow Map.! (p, _A)
                     | (items', p) <- Map.toList (getVertices getCannonical0)
-                    , LR0Item _B alpha1 (_A' : alpha2) <- Set.toList items'
-                    , NS (getLHS item) == _A'
+                    , LR0Item _B alpha1 (NS _A : alpha2) <- Set.toList items'
+                    , getLHS item == _A
                     , delta' p (getLEFT item) == Just q
                     ]
                 )
@@ -261,42 +285,8 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             , item <- Set.toList items
             , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
             ]
-        _Follow :: Map.Map (ParserS, LR0Item) (Set.Set TSym)
-        _Follow = digraph my_X my_R my_F' where
-            my_X :: Set.Set (ParserS, LR0Item)
-            my_X = Set.fromList
-                [ (p, item)
-                | (items, p) <- Map.toList (getVertices getCannonical0)
-                , item <- Set.toList items
-                ]
-            my_R :: (ParserS, LR0Item) -> (ParserS, LR0Item) -> Bool
-            my_R (q, LR0Item _B alpha1 (NS _A : alpha2)) (q', LR0Item _ _ (NS _B' : _))
-                | _B == _B' = Nothing `Set.member` unTerminalSet (getFirstOf alpha2) && delta' q' alpha1 == Just q
-            my_R _ _ = False
-            my_F' :: (ParserS, LR0Item) -> Set.Set TSym
-            my_F' (q, item) = _Read Map.! (q, item)
-        _Read :: Map.Map (ParserS, LR0Item) (Set.Set TSym)
-        _Read = digraph my_X my_R my_F' where
-            my_X :: Set.Set (ParserS, LR0Item)
-            my_X = Set.fromList
-                [ (p, item)
-                | (items, p) <- Map.toList (getVertices getCannonical0)
-                , item <- Set.toList items
-                ]
-            my_R :: (ParserS, LR0Item) -> (ParserS, LR0Item) -> Bool
-            my_R (p, LR0Item _ _ (NS _A : _)) (p', LR0Item _ _ (NS _A' : _)) = Nothing `Set.member` unTerminalSet (getFIRST Map.! _A') && isJust (delta' p [NS _A, NS _A'])
-            my_R _ _ = False
-            my_F' :: (ParserS, LR0Item) -> Set.Set TSym
-            my_F' (q, LR0Item lhs left right) = (if isFromStart then Set.insert TSEOF else id) $ Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf right)) ] where
-                isFromStart :: Bool
-                isFromStart
-                    | NS _A : _ <- right
-                    , Just p <- delta' q [NS _A]
-                    = p == getRoot getCannonical0
-                    | otherwise
-                    = False
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
-    resolveConflicts = foldr loop (Right base) getLATable where
+    resolveConflicts = foldr loop (Right base) getLATable' where
         base :: Map.Map (ParserS, TSym) Action
         base = Map.fromList
             [ ((q, t), Shift p)
