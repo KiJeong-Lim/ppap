@@ -233,7 +233,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             triples <- sequence [ return ((q, item), lfp Map.! (q, item)) | (items, q) <- Map.toList (getVertices getCannonical0), item <- Set.toList items, getMarkSym item `elem` [Nothing, Just (TS TSEOF)] ]
             return [ ((q, t), (lhs, left ++ right)) | ((q, LR0Item lhs left right), ts) <- triples, Just t <- Set.toList (unTerminalSet ts) ]
     getLATable' :: [((ParserS, TSym), ProductionRule)]
-    getLATable' = [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- Map.toList _LA, t <- Set.toList ts ] where
+    getLATable' = [ ((q, t), rule) | ((q, rule), ts) <- Map.toList _LA, t <- Set.toList ts ] where
         delta' :: ParserS -> [Sym] -> Maybe ParserS
         delta' q [] = return q
         delta' q (sym : syms) = do
@@ -271,13 +271,13 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 ]
         _LA :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
         _LA = Map.fromList
-            [
+            [ mkstrict
                 ( (q, (getLHS item, getLEFT item ++ getRIGHT item))
                 , Set.unions
-                    [ _Follow Map.! (p, _A)
+                    [ _Follow Map.! (p, getLHS item)
                     | (items', p) <- Map.toList (getVertices getCannonical0)
-                    , LR0Item _B alpha1 (NS _A : alpha2) <- Set.toList items'
-                    , getLHS item == _A
+                    , item' <- Set.toList items'
+                    , Just (NS (getLHS item)) == getMarkSym item'
                     , delta' p (getLEFT item) == Just q
                     ]
                 )
@@ -285,6 +285,8 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             , item <- Set.toList items
             , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
             ]
+        mkstrict :: (a, b) -> (a, b)
+        mkstrict p = snd p `seq` p
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) getLATable' where
         base :: Map.Map (ParserS, TSym) Action
