@@ -5,6 +5,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Writer.Strict
+import Data.Function
 import Data.Functor.Identity
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
@@ -294,8 +295,64 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     = p == getRoot getCannonical0
                     | otherwise
                     = False
+    getLATable'' :: [((ParserS, TSym), ProductionRule)]
+    getLATable'' = runIdentity makeLATable where
+        calcGOTO' :: ParserS -> [Sym] -> Maybe ParserS
+        calcGOTO' q [] = Just q
+        calcGOTO' q (sym : syms) = maybe Nothing (\p -> calcGOTO' p syms) $ Map.lookup (q, sym) (getEdges getCannonical0)
+        getFirstOf :: [Sym] -> TerminalSet
+        getFirstOf [] = mempty
+        getFirstOf (NS ns : syms) = case Map.lookup ns getFIRST of
+            Nothing -> error "getLALR1.getLATable.getFirstOf"
+            Just tss -> tss <> getFirstOf syms
+        getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
+        getLA :: Int -> (LR0Item, ParserS) -> StateT ([(LR0Item, ParserS)], Map.Map (LR0Item, ParserS) (Int, TerminalSet)) Identity TerminalSet
+        getLA k (LR0Item lhs left right, q)
+            | lhs == start' = return (TerminalSet (Set.singleton (Just TSEOF)))
+            | otherwise = do
+                (stack, m) <- get
+                case (LR0Item lhs left right, q) `Map.lookup` m of
+                    Nothing -> do
+                        put ((LR0Item lhs left right, q) : stack, Map.insert (LR0Item lhs left right, q) (k, TerminalSet Set.empty) m)
+                        result <- fmap (TerminalSet . Set.unions) $ sequence
+                            [ fmap Set.unions $ sequence
+                                [ do
+                                    tss <- getLA (k + 1) (LR0Item lhs' left' (sym' : right'), p)
+                                    let la = unTerminalSet (getFirstOf right <> tss)
+                                    (stack, m) <- get
+                                    put (stack, Map.update (Just . (min (fst $ m Map.! (LR0Item lhs' left' (sym' : right'), p)) <^> TerminalSet . Set.union la . unTerminalSet)) (LR0Item lhs left right, q) m)
+                                    return la
+                                | LR0Item lhs' left' (sym' : right') <- Set.toList items'
+                                , sym' == NS lhs
+                                ]
+                            | (items', p) <- Map.toList (getVertices getCannonical0)
+                            , calcGOTO' p left == Just q
+                            ]
+                        fix $ \loop -> do
+                            (stack, m) <- get
+                            let top = head stack
+                            put (tail stack, Map.update (Just . (const maxBound <^> TerminalSet . Set.union (unTerminalSet result) . unTerminalSet)) top m)
+                            unless (top == (LR0Item lhs left right, q)) $ do
+                                loop
+                        return result
+                    Just (_, tss) -> return tss
+        makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
+        makeLATable = do
+            (triples, _) <- flip runStateT ([], Map.singleton (LR0Item start' [] [NS start, TS TSEOF], getRoot getCannonical0) (maxBound, TerminalSet $ Set.singleton (Just TSEOF))) $ sequence
+                [ do
+                    ts <- getLA 1 (item, q)
+                    return ((item, q), ts)
+                | (items, q) <- Map.toList (getVertices getCannonical0)
+                , item <- Set.toList items
+                , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
+                ]
+            return
+                [ ((q, t), (lhs, left ++ right))
+                | ((LR0Item lhs left right, q), ts) <- triples
+                , Just t <- Set.toList (unTerminalSet ts)
+                ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
-    resolveConflicts = foldr loop (Right base) getLATable' where
+    resolveConflicts = foldr loop (Right base) getLATable'' where
         base :: Map.Map (ParserS, TSym) Action
         base = Map.fromList
             [ ((q, t), Shift p)
