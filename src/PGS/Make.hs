@@ -328,12 +328,14 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                             | (items', p) <- Map.toList (getVertices getCannonical0)
                             , calcGOTO' p left == Just q
                             ]
-                        fix $ \loop -> do
-                            (stack, m) <- get
-                            let top = head stack
-                            put (tail stack, Map.update (Just . (const maxBound <^> TerminalSet . Set.union (unTerminalSet result) . unTerminalSet)) top m)
-                            unless (top == (LR0Item lhs left right, q)) $ do
-                                loop
+                        (stack, m) <- get
+                        when (fst (m Map.! (LR0Item lhs left right, q)) == k) $ do
+                            fix $ \loop -> do
+                                (stack, m) <- get
+                                let top = head stack
+                                put (tail stack, Map.update (Just . (const maxBound <^> TerminalSet . Set.union (unTerminalSet result) . unTerminalSet)) top m)
+                                unless (top == (LR0Item lhs left right, q)) $ do
+                                    loop
                         return result
                     Just (_, tss) -> return tss
         makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
