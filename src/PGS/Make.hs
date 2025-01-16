@@ -263,7 +263,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             my_F' (p, _A) = _Read Map.! (p, _A)
             my_R :: (ParserS, NSym) -> (ParserS, NSym) -> Bool
             my_R (p, _A) (q, _B) = or
-                [ Nothing `Set.member` unTerminalSet (getFirstOf alpha1) && delta' p alpha1 == Just q
+                [ Nothing `Set.member` unTerminalSet (getFirstOf alpha2) && delta' p alpha1 == Just q
                 | (items, p') <- Map.toList (getVertices getCannonical0)
                 , p == p'
                 , LR0Item _B' alpha1 (NS _A' : alpha2) <- Set.toList items
