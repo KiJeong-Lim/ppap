@@ -246,7 +246,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Nothing -> error "getLALR1.getLATable.getFirstOf"
             Just tss -> tss <> getFirstOf syms
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Read = Map.fromList
+        _Read = foldr (uncurry $ \key -> \val -> Map.alter (Just . maybe val (Set.union val)) key) Map.empty
             [ ((p, _A), Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf alpha2)) ])
             | (items, p) <- Map.toList (getVertices getCannonical0)
             , LR0Item _B alpha1 (NS _A : alpha2) <- Set.toList items
@@ -263,11 +263,12 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             my_F' (p, _A) = _Read Map.! (p, _A)
             my_R :: (ParserS, NSym) -> (ParserS, NSym) -> Bool
             my_R (p, _A) (q, _B) = or
-                [ Nothing `Set.member` unTerminalSet (getFirstOf alpha2) && delta' q alpha1 == Just p
+                [ Nothing `Set.member` unTerminalSet (getFirstOf alpha2)
                 | (items, p') <- Map.toList (getVertices getCannonical0)
                 , p == p'
                 , LR0Item _B' alpha1 (NS _A' : alpha2) <- Set.toList items
                 , _A == _A' && _B == _B'
+                , delta' q alpha1 == Just p
                 ]
         _LA :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
         _LA = Map.fromList
