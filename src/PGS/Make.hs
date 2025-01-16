@@ -313,7 +313,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 (stack, m) <- get
                 case (LR0Item lhs left right, q) `Map.lookup` m of
                     Nothing -> do
-                        put ((LR0Item lhs left right, q) : stack, Map.insert (LR0Item lhs left right, q) (k, TerminalSet Set.empty) m)
+                        put ((LR0Item lhs left right, q) : stack, Map.insert (LR0Item lhs left right, q) (k, TerminalSet (Set.singleton (Just TSEOF))) m)
                         result <- fmap (TerminalSet . Set.unions) $ sequence
                             [ fmap Set.unions $ sequence
                                 [ do
