@@ -246,7 +246,16 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Just tss -> tss <> getFirstOf syms
         _LA :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
         _LA = Map.fromList
-            [ ((q, (getLHS item, getLEFT item ++ getRIGHT item)), if getLHS item == start' then Set.singleton TSEOF else Set.unions [ _Follow Map.! (p, LR0Item _B alpha1 (_A' : alpha2)) | (items', p) <- Map.toList (getVertices getCannonical0), LR0Item _B alpha1 (_A' : alpha2) <- Set.toList items', NS (getLHS item) == _A', delta' p (getLEFT item) == Just q ])
+            [
+                ( (q, (getLHS item, getLEFT item ++ getRIGHT item))
+                , Set.unions
+                    [ _Follow Map.! (p, LR0Item _B alpha1 (_A' : alpha2))
+                    | (items', p) <- Map.toList (getVertices getCannonical0)
+                    , LR0Item _B alpha1 (_A' : alpha2) <- Set.toList items'
+                    , NS (getLHS item) == _A'
+                    , delta' p (getLEFT item) == Just q
+                    ]
+                )
             | (items, q) <- Map.toList (getVertices getCannonical0)
             , item <- Set.toList items
             , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
@@ -260,7 +269,9 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 , item <- Set.toList items
                 ]
             my_R :: (ParserS, LR0Item) -> (ParserS, LR0Item) -> Bool
-            my_R (q, item) (q', item') = Just (NS (getLHS item)) == getMarkSym item' && Nothing `Set.member` unTerminalSet (getFirstOf (getRIGHT item)) && delta' q' (getLEFT item) == Just q
+            my_R (q, LR0Item _B alpha1 (NS _A : alpha2)) (q', LR0Item _ _ (NS _B' : _))
+                | _B == _B' = Nothing `Set.member` unTerminalSet (getFirstOf alpha2) && delta' q' alpha1 == Just q
+            my_R _ _ = False
             my_F' :: (ParserS, LR0Item) -> Set.Set TSym
             my_F' (q, item) = _Read Map.! (q, item)
         _Read :: Map.Map (ParserS, LR0Item) (Set.Set TSym)
