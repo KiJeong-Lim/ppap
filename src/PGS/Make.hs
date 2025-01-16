@@ -280,7 +280,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 isFromStart
                     | NS _A : _ <- right
                     , Just p <- delta' q [NS _A]
-                    = q == getRoot getCannonical0
+                    = p == getRoot getCannonical0
                     | otherwise
                     = False
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)

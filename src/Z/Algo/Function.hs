@@ -61,7 +61,7 @@ instance FailableZero b => FailableZero (a -> b) where
 
 digraph :: forall a v. (HasCallStack, Ord a, Ord v) => Set.Set v -> (v -> v -> Bool) -> (v -> Set.Set a) -> Map.Map v (Set.Set a)
 digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ (my_traverse 1) (Set.toAscList your_X)) (([], Map.fromSet (const 0) your_X), Map.fromSet (const Set.empty) your_X)))) where
-    my_traverse :: HasCallStack => Int -> v -> StateT (([v], Map.Map v Int), Map.Map v (Set.Set a)) Identity ()
+    my_traverse :: Int -> v -> StateT (([v], Map.Map v Int), Map.Map v (Set.Set a)) Identity ()
     my_traverse k x = do
         ((my_S, my_N), my_F) <- get
         when (my_N Map.! x == 0) $ do
