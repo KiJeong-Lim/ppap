@@ -246,7 +246,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Nothing -> error "getLALR1.getLATable.getFirstOf"
             Just tss -> tss <> getFirstOf syms
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Read = foldr (uncurry $ \key -> \val -> Map.alter (Just . maybe val (Set.union val)) key) Map.empty
+        _Read = foldr (uncurry $ flip $ \val -> Map.alter (Just . maybe val (Set.union val))) Map.empty
             [ ((p, _A), Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf alpha2)) ])
             | (items, p) <- Map.toList (getVertices getCannonical0)
             , LR0Item _B alpha1 (NS _A : alpha2) <- Set.toList items
