@@ -417,6 +417,7 @@ getParserSInfo 20 = ParserSInfo
         ]
     , myNexts = []
     }
+
 _First = 
     [ "<Term0> +-> {`lid', `lprn', `sid'}"
     , "<Term1> +-> {`lid', `lprn', `sid'}"
@@ -424,6 +425,7 @@ _First =
     , "<Term3> +-> {`lid', `lprn', `sid'}"
     , "<\\ACCEPT> +-> {`lid', `lprn', `sid'}"
     ]
+
 _LA = 
     [ "( q = 1, [<\\ACCEPT> ::= <Term0> `\\$'] ) +-> {`\\$'}"
     , "( q = 2, [<Term0> ::= <Term1>] ) +-> {`\\$', `rprn'}"

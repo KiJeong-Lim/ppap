@@ -12,7 +12,7 @@
         "SmallId nm": $sid 0 none
         "LParen": $lprn 0 none
         "RParen": $rprn 0 none
-        "Lambda": $lambda 0 none
+        "Lambda": $lambda 90 right
 }
 
 \define $Term0 : "Term" {
