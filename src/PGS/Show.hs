@@ -470,7 +470,7 @@ genParser blocks = myMain where
             tellLine (strstr "")
             tellLine (strstr "_First = " . plist 4 [ shows (withZero $ pprint 0 (NS ns) . strstr " +-> {" . ppunc ", " [ pprint 0 (TS t) | Just t <- Set.toList (unTerminalSet tss) ] . strstr "}") | (ns, tss) <- Map.toAscList _First ])
             tellLine (strstr "")
-            tellLine (strstr "_LA = " . plist 4 [ shows (withZero $ strstr "( q = " . shows q . strstr ", [" . pprint 0 (NS lhs) . strstr " ::= " . ppunc " " (map (pprint 0) rhs) . strstr "] ) +-> [" . ppunc ", " [ pprint 0 (TS t) | t <- Set.toList tss ] . strstr "]") | ((q, (lhs, rhs)), tss) <- sortByMerging (<=) _LA ])
+            tellLine (strstr "_LA = " . plist 4 [ shows (withZero $ strstr "( q = " . shows q . strstr ", [" . pprint 0 (NS lhs) . strstr " ::= " . ppunc " " (map (pprint 0) rhs) . strstr "] ) +-> {" . ppunc ", " [ pprint 0 (TS t) | t <- Set.toList tss ] . strstr "}") | ((q, (lhs, rhs)), tss) <- sortByMerging (<=) _LA ])
             tellLine (strstr "-}")
             return ()
         return y_out

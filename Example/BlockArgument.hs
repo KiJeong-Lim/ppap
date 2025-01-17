@@ -427,19 +427,19 @@ _First =
     ]
 
 _LA = 
-    [ "( q = 1, [<\\ACCEPT> ::= <Term0> `\\$'] ) +-> [`\\$']"
-    , "( q = 2, [<Term0> ::= <Term1>] ) +-> [`\\$', `rprn']"
-    , "( q = 3, [<Term1> ::= <Term2>] ) +-> [`\\$', `rprn']"
-    , "( q = 4, [<Term2> ::= <Term3>] ) +-> [`\\$', `lid', `lprn', `rprn', `sid']"
-    , "( q = 5, [<Term3> ::= `lid'] ) +-> [`\\$', `lid', `lprn', `rprn', `sid']"
-    , "( q = 7, [<Term3> ::= `sid'] ) +-> [`\\$', `lid', `lprn', `rprn', `sid']"
-    , "( q = 11, [<Term2> ::= <Term2> <Term3>] ) +-> [`\\$', `lid', `lprn', `rprn', `sid']"
-    , "( q = 12, [<Term3> ::= `lid'] ) +-> [`\\$', `lid', `lprn', `rprn', `sid']"
-    , "( q = 13, [<Term3> ::= `sid'] ) +-> [`\\$', `lid', `lprn', `rprn', `sid']"
-    , "( q = 14, [<Term0> ::= `lid' `lambda' <Term0>] ) +-> [`\\$', `rprn']"
-    , "( q = 15, [<Term0> ::= `sid' `lambda' <Term0>] ) +-> [`\\$', `rprn']"
-    , "( q = 18, [<Term3> ::= `lprn' <Term0> `rprn'] ) +-> [`\\$', `lid', `lprn', `rprn', `sid']"
-    , "( q = 19, [<Term1> ::= <Term2> `lid' `lambda' <Term0>] ) +-> [`\\$', `rprn']"
-    , "( q = 20, [<Term1> ::= <Term2> `sid' `lambda' <Term0>] ) +-> [`\\$', `rprn']"
+    [ "( q = 1, [<\\ACCEPT> ::= <Term0> `\\$'] ) +-> {`\\$'}"
+    , "( q = 2, [<Term0> ::= <Term1>] ) +-> {`\\$', `rprn'}"
+    , "( q = 3, [<Term1> ::= <Term2>] ) +-> {`\\$', `rprn'}"
+    , "( q = 4, [<Term2> ::= <Term3>] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 5, [<Term3> ::= `lid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 7, [<Term3> ::= `sid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 11, [<Term2> ::= <Term2> <Term3>] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 12, [<Term3> ::= `lid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 13, [<Term3> ::= `sid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 14, [<Term0> ::= `lid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
+    , "( q = 15, [<Term0> ::= `sid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
+    , "( q = 18, [<Term3> ::= `lprn' <Term0> `rprn'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 19, [<Term1> ::= <Term2> `lid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
+    , "( q = 20, [<Term1> ::= <Term2> `sid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
     ]
 -}

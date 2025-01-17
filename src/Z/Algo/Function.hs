@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Z.Algo.Function where
 
 import Control.Monad
