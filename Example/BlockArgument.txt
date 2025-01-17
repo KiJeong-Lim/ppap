@@ -1,0 +1,66 @@
+\hshead {
+    module BlockArgument where
+}
+
+\target {
+    token-type: "Tok"
+    parser-name: "hello"
+    result-type: "Term"
+    start: $Term0
+    terminals:
+        "LargeId nm": $lid 0 none
+        "SmallId nm": $sid 0 none
+        "LParen": $lprn 0 none
+        "RParen": $rprn 0 none
+        "Lambda": $lambda 0 none
+}
+
+\define $Term0 : "Term" {
+    90 [$lid, $lambda, $Term0]:
+        Lam $1.nm $3
+    90 [$sid, $lambda, $Term0]:
+        Lam $1.nm $3
+    90 [$Term1]:
+        $1
+}
+
+\define $Term1 : "Term" {
+    80 [$Term2, $lid, $lambda, $Term0]:
+        App $1 (Lam $2.nm $4)
+    80 [$Term2, $sid, $lambda, $Term0]:
+        App $1 (Lam $2.nm $4)
+    80 [$Term2]:
+        $1
+}
+
+\define $Term2 : "Term" {
+    70 [$Term2, $Term3]:
+        App $1 $2
+    70 [$Term3]:
+        $1
+}
+
+\define $Term3 : "Term" {
+    60 [$lid]:
+        Var $1.nm
+    60 [$sid]:
+        Var $1.nm
+    60 [$lprn, $Term0, $rprn]:
+        $2
+}
+
+\hstail {
+    data Tok
+        = LargeId String
+        | SmallId String
+        | LParen
+        | RParen
+        | Lambda
+        deriving (Eq, Ord, Show)
+
+    data Term
+        = Lam String Term
+        | App Term Term
+        | Var String
+        deriving (Eq, Ord, Show)
+}
