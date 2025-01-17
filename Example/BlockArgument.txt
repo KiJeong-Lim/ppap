@@ -4,7 +4,7 @@
 
 \target {
     token-type: "Tok"
-    parser-name: "hello"
+    parser-name: "parser"
     result-type: "Term"
     start: $Term0
     terminals:
@@ -66,6 +66,6 @@
 
     main :: IO ()
     main = do
-        let example = [SmallId "sigma", LargeId "X", Lambda, SmallId "p", LargeId "X"]
+        let example = [SmallId "sigma", LargeId "X", Lambda, SmallId "p", LargeId "X", LParen, SmallId "q", LargeId "X", RParen]
         print (parser example)
 }
