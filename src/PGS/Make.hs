@@ -90,7 +90,7 @@ instance Outputable LR1Parser where
         , strstr "reduceT: " . plist 2 [ strstr "(" . shows q . strstr ", " . pprint 0 (NS nt) . shows p | ((q, nt), p) <- Map.toList reduceT ] . nl
         ]
 
-makeCollectionAndLALR1Parser :: CFGrammar -> ExceptT Conflict Identity (Cannonical0, LR1Parser)
+makeCollectionAndLALR1Parser :: CFGrammar -> ExceptT Conflict Identity ((Cannonical0, (Map.Map NSym TerminalSet, [((ParserS, ProductionRule), Set.Set TSym)])), LR1Parser)
 makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult where
     maxPrec :: Precedence
     maxPrec = 100
@@ -166,7 +166,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             go (lhs, rhs) tss = Just (TerminalSet (unTerminalSet tss `Set.union` unTerminalSet (mconcat [ getFirstOf sym | sym <- rhs ])))
             mapping' :: Map.Map NSym TerminalSet
             mapping' = foldr (Map.update <$> go <*> fst) mapping (map fst (Map.toList productions'))
-    getLATable :: [((ParserS, TSym), ProductionRule)]
+    getLATable :: [((ParserS, ProductionRule), Set.Set TSym)]
     getLATable = runIdentity makeLATable where
         calcGOTO' :: ParserS -> [Sym] -> Maybe ParserS
         calcGOTO' q [] = Just q
@@ -204,7 +204,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                         mapping' <- get
                         put (Map.update (const (Just (final, result'))) (LR0Item lhs left right, q) mapping')
                         return result'
-        makeLATable :: Identity [((ParserS, TSym), ProductionRule)]
+        makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = do
             (triples, _) <- flip runStateT Map.empty $ sequence
                 [ do
@@ -215,12 +215,11 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
                 ]
             return
-                [ ((q, t), (lhs, left ++ right))
+                [ ((q, (lhs, left ++ right)), Set.fromList [ t | Just t <- Set.toList (unTerminalSet ts) ])
                 | ((LR0Item lhs left right, q), ts) <- triples
-                , Just t <- Set.toList (unTerminalSet ts)
                 ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
-    resolveConflicts = foldr loop (Right base) getLATable where
+    resolveConflicts = foldr loop (Right base) [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- getLATable, t <- Set.toList ts ] where
         base :: Map.Map (ParserS, TSym) Action
         base = Map.fromList
             [ ((q, t), Shift p)
@@ -243,11 +242,11 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     | prec1 > prec2 -> Right getActionT
                     | prec1 < prec2 -> Right (Map.update (const (Just ra)) (q, t) getActionT)
                 _ -> Left (Conflict { because = (Reduce production', ra), whereIs = (q, t), withEnv = getCannonical0 })
-    theResult :: ExceptT Conflict Identity (Cannonical0, LR1Parser)
+    theResult :: ExceptT Conflict Identity ((Cannonical0, (Map.Map NSym TerminalSet, [((ParserS, ProductionRule), Set.Set TSym)])), LR1Parser)
     theResult = case resolveConflicts of
         Left conflict -> throwE conflict
         Right getActionT -> return 
-            ( getCannonical0
+            ( (getCannonical0, (getFIRST, getLATable))
             , LR1Parser
                 { getInitialS = getRoot getCannonical0
                 , getActionTable = getActionT

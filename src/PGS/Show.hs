@@ -245,7 +245,7 @@ genParser blocks = myMain where
                 _ -> throwE ("the terminal symbol " ++ pprint 0 (TSVar tsv) " has been declared twice or more.")
             getNSymId nsym = maybe (throwE ("the terminal symbol " ++ pprint 0 nsym " hasn't been declared.")) return (Map.lookup nsym id_env)
         checkTerminalOccurence (Set.fromList [ ts | (lhs, Just pairs) <- cache', (rhs, prec) <- pairs, TS ts <- rhs ]) (Set.fromList [ tsym | TerminalInfo patn tsym prec assoc <- terminal_infos ])
-        (collection, lalr1) <- catchE (makeCollectionAndLALR1Parser (CFGrammar { getStartSym = start_symbol, getTerminalSyms = terminal_symbols, getProductionRules = production_rules })) $ throwE . show
+        ((collection, (_First, _LA)), lalr1) <- catchE (makeCollectionAndLALR1Parser (CFGrammar { getStartSym = start_symbol, getTerminalSyms = terminal_symbols, getProductionRules = production_rules })) $ throwE . show
         ((), y_out) <- runWriterT $ do
             tellLine (ppunc "\n" (map strstr hs_head))
             tellLine (strstr "import qualified Control.Monad.Trans.Class as Y")
@@ -465,5 +465,12 @@ genParser blocks = myMain where
             tellLine (strstr "        , getReduceTable = YMap.fromAscList " . plist 12 table2)
             tellLine (strstr "        }")
             tellLine (strstr "")
+            tellLine (strstr "{-")
+            tellLine (pprint 0 collection)
+            tellLine (strstr "")
+            tellLine (strstr "_First = Map.fromList" . plist 4 [ strstr "(" . pprint 0 ns . strstr ", Set.fromList " . ppunc ", " [ pprint 0 t | Just t <- Set.toList (unTerminalSet tss) ] . strstr ")" | (ns, tss) <- Map.toAscList _First ])
+            tellLine (strstr "")
+            tellLine (strstr "_LA = " . plist 4 [ strstr "( q = " . shows q . strstr ", [" . pprint 0 (NS lhs) . strstr " ::= " . ppunc " " (map (pprint 0) rhs) . strstr "] ) +-> [" . ppunc ", " [ pprint 0 t | t <- Set.toList tss ] . strstr "]" | ((q, (lhs, rhs)), tss) <- _LA ])
+            tellLine (strstr "-}")
             return ()
         return y_out

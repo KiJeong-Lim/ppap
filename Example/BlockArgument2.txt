@@ -1,10 +1,10 @@
 \hshead {
-    module BlockArgument where
+    module BlockArgument2 where
 }
 
 \target {
     token-type: "Tok"
-    parser-name: "hello"
+    parser-name: "parser"
     result-type: "Term"
     start: $Term0
     terminals:
@@ -13,6 +13,7 @@
         "LParen": $lprn 0 none
         "RParen": $rprn 0 none
         "Lambda": $lambda 0 none
+        "InfixSym nm": $infixsym 85 none
 }
 
 \define $Term0 : "Term" {
@@ -25,27 +26,34 @@
 }
 
 \define $Term1 : "Term" {
-    80 [$Term2, $lid, $lambda, $Term0]:
-        App $1 (Lam $2.nm $4)
-    80 [$Term2, $sid, $lambda, $Term0]:
-        App $1 (Lam $2.nm $4)
+    80 [$Term2, $infixsym, $Term2]:
+        App (App (Var $2.nm) $1) $3
     80 [$Term2]:
         $1
 }
 
 \define $Term2 : "Term" {
-    70 [$Term2, $Term3]:
-        App $1 $2
+    70 [$Term3, $lid, $lambda, $Term0]:
+        App $1 (Lam $2.nm $4)
+    70 [$Term3, $sid, $lambda, $Term0]:
+        App $1 (Lam $2.nm $4)
     70 [$Term3]:
         $1
 }
 
 \define $Term3 : "Term" {
-    60 [$lid]:
+    60 [$Term3, $Term4]:
+        App $1 $2
+    60 [$Term4]:
+        $1
+}
+
+\define $Term4 : "Term" {
+    50 [$lid]:
         Var $1.nm
-    60 [$sid]:
+    50 [$sid]:
         Var $1.nm
-    60 [$lprn, $Term0, $rprn]:
+    50 [$lprn, $Term0, $rprn]:
         $2
 }
 
@@ -56,6 +64,7 @@
         | LParen
         | RParen
         | Lambda
+        | InfixSym String
         deriving (Eq, Ord, Show)
 
     data Term
@@ -66,6 +75,6 @@
 
     main :: IO ()
     main = do
-        let example = [SmallId "sigma", LargeId "X", Lambda, SmallId "p", LargeId "X"]
+        let example = [SmallId "pi", LargeId "X", Lambda, LargeId "X", InfixSym "=", LargeId "X"]
         print (parser example)
 }
