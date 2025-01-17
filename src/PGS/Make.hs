@@ -247,7 +247,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Just tss -> tss <> getFirstOf syms
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Read = foldr (uncurry $ flip $ \val -> Map.alter (Just . maybe val (Set.union val))) Map.empty
-            [ ((p, _A), Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf alpha2)) ])
+            [ ((p, _A), (if _B == start then Set.insert TSEOF else id) $ Set.fromList [ t | Just t <- Set.toList (unTerminalSet (getFirstOf alpha2)) ])
             | (items, p) <- Map.toList (getVertices getCannonical0)
             , LR0Item _B alpha1 (NS _A : alpha2) <- Set.toList items
             ]
@@ -272,7 +272,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 ]
         _LA :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
         _LA = Map.fromList
-            [ mkstrict
+            [ after
                 ( (q, (getLHS item, getLEFT item ++ getRIGHT item))
                 , Set.unions
                     [ _Follow Map.! (p, getLHS item)
@@ -286,8 +286,10 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             , item <- Set.toList items
             , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
             ]
-        mkstrict :: (a, b) -> (a, b)
-        mkstrict p = snd p `seq` p
+        after :: ((ParserS, ProductionRule), Set.Set TSym) -> ((ParserS, ProductionRule), Set.Set TSym)
+        after ((q, pr), la)
+            | fst pr == start' = ((q, pr), Set.insert TSEOF la)
+            | otherwise = ((q, pr), la)  
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) getLATable' where
         base :: Map.Map (ParserS, TSym) Action
