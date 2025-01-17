@@ -11,6 +11,7 @@ data Tok
     | LParen
     | RParen
     | Lambda
+    | InfixSym String
     deriving (Eq, Ord, Show)
 
 data Term
@@ -56,8 +57,8 @@ data ParsingTree
     | PTBranch NSym [ParsingTree]
     deriving ()
 
-hello :: [Tok] -> Either (Maybe (Tok)) (Term)
-hello = fmap (getTerm0) . runLALR1 theLALR1Parser where
+parser :: [Tok] -> Either (Maybe (Tok)) (Term)
+parser = fmap (getTerm0) . runLALR1 theLALR1Parser where
     getTerm0 :: ParsingTree -> (Term)
     getTerm0 (PTBranch _ [PTLeaf (LargeId nm_1), PTLeaf (Lambda), _3@(PTBranch guard3 _)])
         | [guard3] `elem` [[1]] = Lam (nm_1) (getTerm0 _3)
@@ -161,4 +162,3 @@ hello = fmap (getTerm0) . runLALR1 theLALR1Parser where
             , ((22, 1), 25), ((22, 2), 2), ((22, 3), 3), ((22, 4), 4), ((22, 5), 5)
             ]
         }
-

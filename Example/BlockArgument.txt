@@ -4,7 +4,7 @@
 
 \target {
     token-type: "Tok"
-    parser-name: "hello"
+    parser-name: "parser"
     result-type: "Term"
     start: $Term0
     terminals:
@@ -64,6 +64,7 @@
         | LParen
         | RParen
         | Lambda
+        | InfixSym String
         deriving (Eq, Ord, Show)
 
     data Term
