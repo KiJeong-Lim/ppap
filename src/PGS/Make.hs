@@ -99,7 +99,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     terminals' :: Map.Map TSym (Associativity, Precedence)
     terminals' = Map.insert TSEOF (ANone, maxPrec) terminals
     productions' :: Map.Map ProductionRule Precedence
-    productions' = Map.insert (start', [NS start, TS TSEOF]) maxPrec productions
+    productions' = Map.insert (start', [NS start]) maxPrec productions
     getMarkSym :: LR0Item -> Maybe Sym
     getMarkSym item = case getRIGHT item of
         [] -> Nothing
@@ -148,7 +148,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 else loop collection'
         makeCannonical0 :: Identity Cannonical0
         makeCannonical0 = do
-            items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start, TS TSEOF]))
+            items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start]))
             loop (Cannonical0 (Map.singleton items0 0) 0 Map.empty)
     getFIRST :: Map.Map NSym TerminalSet
     getFIRST = loop base where
@@ -212,7 +212,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     return ((item, q), ts)
                 | (items, q) <- Map.toList (getVertices getCannonical0)
                 , item <- Set.toList items
-                , getMarkSym item `elem` [Nothing, Just (TS TSEOF)]
+                , isNothing (getMarkSym item)
                 ]
             return
                 [ ((q, (lhs, left ++ right)), Set.fromList [ t | Just t <- Set.toList (unTerminalSet ts) ])
