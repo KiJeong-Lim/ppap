@@ -201,7 +201,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                             | (items', p) <- Map.toList (getVertices getCannonical0)
                             , calcGOTO' p left == Just q
                             ]
-                        modify (Map.update (const (Just (final, result))) (LR0Item lhs left right, q))
+                        modify (Map.update (const (Just (True, result))) (LR0Item lhs left right, q))
                         return result
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = do
