@@ -178,30 +178,30 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Just tss -> tss <> getFirstOf syms
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
         getLA :: Bool -> (LR0Item, ParserS) -> StateT (Map.Map (LR0Item, ParserS) (Bool, TerminalSet)) Identity TerminalSet
-        getLA final (LR0Item lhs left right, q)
-            | lhs == start' = return (TerminalSet (Set.singleton (Just TSEOF)))
+        getLA final (item, q)
+            | getLHS item == start' = return (TerminalSet (Set.singleton (Just TSEOF)))
             | otherwise = do
                 m <- get
-                case Map.lookup (LR0Item lhs left right, q) m of
+                case Map.lookup (item, q) m of
                     Just (correct, TerminalSet tss)
                         | correct || not final -> return (TerminalSet tss)
                     _ -> do
-                        put (Map.insert (LR0Item lhs left right, q) (False, TerminalSet Set.empty) m)
+                        put (Map.insert (item, q) (False, TerminalSet Set.empty) m)
                         result <- fmap (TerminalSet . Set.unions) $ sequence
                             [ fmap Set.unions $ sequence
                                 [ do
-                                    let tss = unTerminalSet (getFirstOf right')
+                                    let tss = unTerminalSet (getFirstOf (tail (getRIGHT item')))
                                     if Nothing `Set.member` tss then do
-                                        result <- getLA False (LR0Item lhs' left' (sym' : right'), p)
+                                        result <- getLA False (item', q')
                                         return (Set.delete Nothing tss `Set.union` unTerminalSet result)
                                     else return tss
-                                | LR0Item lhs' left' (sym' : right') <- Set.toList items'
-                                , sym' == NS lhs
+                                | item' <- Set.toList items'
+                                , getMarkSym item' == Just (NS (getLHS item))
                                 ]
-                            | (items', p) <- Map.toList (getVertices getCannonical0)
-                            , calcGOTO' p left == Just q
+                            | (items', q') <- Map.toList (getVertices getCannonical0)
+                            , calcGOTO' q' (getLEFT item) == Just q
                             ]
-                        modify (Map.update (const (Just (final, result))) (LR0Item lhs left right, q))
+                        modify (Map.update (const (Just (True, result))) (item, q))
                         return result
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = do
