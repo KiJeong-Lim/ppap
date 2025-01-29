@@ -165,7 +165,7 @@ getParserSInfo 0 = ParserSInfo
         , "<Term3> ::= . `lid'"
         , "<Term3> ::= . `lprn' <Term0> `rprn'"
         , "<Term3> ::= . `sid'"
-        , "<\\ACCEPT> ::= . <Term0> `\\$'"
+        , "<\\ACCEPT> ::= . <Term0>"
         ]
     , myNexts = 
         [ "<Term0> +-> 1"
@@ -179,7 +179,7 @@ getParserSInfo 0 = ParserSInfo
     }
 getParserSInfo 1 = ParserSInfo
     { myItems = 
-        [ "<\\ACCEPT> ::= <Term0> . `\\$'"
+        [ "<\\ACCEPT> ::= <Term0> ."
         ]
     , myNexts = []
     }
@@ -427,7 +427,7 @@ _First =
     ]
 
 _LA = 
-    [ "( q = 1, [<\\ACCEPT> ::= <Term0> `\\$'] ) +-> {`\\$'}"
+    [ "( q = 1, [<\\ACCEPT> ::= <Term0>] ) +-> {`\\$'}"
     , "( q = 2, [<Term0> ::= <Term1>] ) +-> {`\\$', `rprn'}"
     , "( q = 3, [<Term1> ::= <Term2>] ) +-> {`\\$', `rprn'}"
     , "( q = 4, [<Term2> ::= <Term3>] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
