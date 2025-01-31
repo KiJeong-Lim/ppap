@@ -177,22 +177,22 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Nothing -> error "getLALR1.getLATable.getFirstOf"
             Just tss -> tss <> getFirstOf syms
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
-        getLA :: Bool -> (LR0Item, ParserS) -> StateT (Map.Map (LR0Item, ParserS) (Bool, TerminalSet)) Identity TerminalSet
-        getLA final (item, q)
+        getLA :: Bool -> (ParserS, LR0Item) -> StateT (Map.Map (ParserS, LR0Item) (Bool, TerminalSet)) Identity TerminalSet
+        getLA final (q, item)
             | getLHS item == start' = return (TerminalSet (Set.singleton (Just TSEOF)))
             | otherwise = do
                 m <- get
-                case Map.lookup (item, q) m of
+                case Map.lookup (q, item) m of
                     Just (correct, TerminalSet tss)
                         | correct || not final -> return (TerminalSet tss)
                     _ -> do
-                        put (Map.insert (item, q) (False, TerminalSet Set.empty) m)
+                        put (Map.insert (q, item) (False, TerminalSet Set.empty) m)
                         result <- fmap (TerminalSet . Set.unions) $ sequence
                             [ fmap Set.unions $ sequence
                                 [ do
                                     let tss = unTerminalSet (getFirstOf (tail (getRIGHT item')))
                                     if Nothing `Set.member` tss then do
-                                        result <- getLA False (item', q')
+                                        result <- getLA False (q', item')
                                         return (Set.delete Nothing tss `Set.union` unTerminalSet result)
                                     else return tss
                                 | item' <- Set.toList items'
@@ -201,21 +201,21 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                             | (items', q') <- Map.toList (getVertices getCannonical0)
                             , calcGOTO' q' (getLEFT item) == Just q
                             ]
-                        modify (Map.update (const (Just (True, result))) (item, q))
+                        modify (Map.update (const (Just (True, result))) (q, item))
                         return result
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = do
             (triples, _) <- flip runStateT Map.empty $ sequence
                 [ do
-                    ts <- getLA True (item, q)
-                    return ((item, q), ts)
+                    ts <- getLA True (q, item)
+                    return ((q, item), ts)
                 | (items, q) <- Map.toList (getVertices getCannonical0)
                 , item <- Set.toList items
                 , isNothing (getMarkSym item)
                 ]
             return
                 [ ((q, (lhs, left ++ right)), Set.fromList [ t | Just t <- Set.toList (unTerminalSet ts) ])
-                | ((LR0Item lhs left right, q), ts) <- triples
+                | ((q, LR0Item lhs left right), ts) <- triples
                 ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- getLATable, t <- Set.toList ts ] where
