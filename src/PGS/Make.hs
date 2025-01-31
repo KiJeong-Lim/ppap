@@ -132,7 +132,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                 then return () 
                                 else do
                                     Cannonical0 vertices root edges <- get
-                                    case [ p | (p, items'') <- Map.toAscList vertices, items' == items'' ] of
+                                    case [ _p | (_p, _item') <- Map.toAscList vertices, items' == _item' ] of
                                         [] -> do
                                             let p = Map.size vertices
                                             put (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges))
@@ -192,8 +192,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                     let tss = unTerminalSet (getFirstOf (tail (getRIGHT item')))
                                     if Nothing `Set.member` tss then do
                                         (k0, result) <- getLA (k + 1) (q', item')
-                                        tss <- if k0 == 0 then return $! unTerminalSet result else return Set.empty
-                                        return ((Nothing `Set.delete` tss) `Set.union` tss)
+                                        return ((Nothing `Set.delete` tss) `Set.union` unTerminalSet result)
                                     else return tss
                                 | item' <- Set.toAscList items'
                                 , getMarkSym item' == Just (NS (getLHS item))
