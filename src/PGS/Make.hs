@@ -6,6 +6,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Writer.Strict
 import Data.Functor.Identity
+import Data.Function
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -63,11 +64,8 @@ instance Outputable Cannonical0 where
         where
             formatedVertices :: [(ParserS, [LR0Item])]
             formatedVertices = do
-                (items, q) <- sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) (Map.toAscList vertices)
-                return
-                    ( q
-                    , Set.toAscList items
-                    )
+                (q, items) <- sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) (Map.toAscList vertices)
+                return (q, Set.toAscList items)
             formatedEdges :: [(ParserS, [(Sym, ParserS)])]
             formatedEdges = do
                 triples <- splitUnless (\triple1 -> \triple2 -> fst (fst triple1) == fst (fst triple2)) (Map.toAscList edges)
@@ -134,14 +132,15 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                 then return () 
                                 else do
                                     Cannonical0 vertices root edges <- get
-                                    case Map.lookup items' vertices of
-                                        Nothing -> do
+                                    case [ p | (p, items'') <- Map.toAscList vertices, items' == items'' ] of
+                                        [] -> do
                                             let p = Map.size vertices
-                                            put (Cannonical0 (Map.insert items' p vertices) root (Map.insert (q, sym) p edges))
-                                        Just p -> put (Cannonical0 vertices root (Map.insert (q, sym) p edges))
+                                            put (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges))
+                                        [p] -> put (Cannonical0 vertices root (Map.insert (q, sym) p edges))
+                                        _ -> error "makeCollectionAndLALR1Parser.getCannonical0.loop"
                         | Just sym <- Set.toList (Set.map getMarkSym cl)
                         ]
-                | (items, q) <- Map.toList (getVertices collection)
+                | (q, items) <- Map.toList (getVertices collection)
                 ]
             if collection == collection'
                 then return collection'
@@ -149,7 +148,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         makeCannonical0 :: Identity Cannonical0
         makeCannonical0 = do
             items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start]))
-            loop (Cannonical0 (Map.singleton items0 0) 0 Map.empty)
+            loop (Cannonical0 (Map.singleton 0 items0) 0 Map.empty)
     getFIRST :: Map.Map NSym TerminalSet
     getFIRST = loop base where
         base :: Map.Map NSym TerminalSet
@@ -177,40 +176,41 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             Nothing -> error "getLALR1.getLATable.getFirstOf"
             Just tss -> tss <> getFirstOf syms
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
-        getLA :: Bool -> (ParserS, LR0Item) -> StateT (Map.Map (ParserS, LR0Item) (Bool, TerminalSet)) Identity TerminalSet
-        getLA final (q, item)
-            | getLHS item == start' = return (TerminalSet (Set.singleton (Just TSEOF)))
+        getLA :: Int -> (ParserS, LR0Item) -> StateT (Map.Map (ParserS, LR0Item) (Int, TerminalSet)) Identity (Int, TerminalSet)
+        getLA k (q, item)
+            | getLHS item == start' = return (0, TerminalSet (Set.singleton (Just TSEOF)))
             | otherwise = do
                 m <- get
-                case Map.lookup (q, item) m of
-                    Just (correct, TerminalSet tss)
-                        | correct || not final -> return (TerminalSet tss)
+                case (q, item) `Map.lookup` m of
+                    Just (k0, TerminalSet tss)
+                        | k >= k0 -> return (k0, TerminalSet tss)
                     _ -> do
-                        put (Map.insert (q, item) (False, TerminalSet Set.empty) m)
+                        put (Map.insert (q, item) (k, TerminalSet Set.empty) m)
                         result <- fmap (TerminalSet . Set.unions) $ sequence
                             [ fmap Set.unions $ sequence
                                 [ do
                                     let tss = unTerminalSet (getFirstOf (tail (getRIGHT item')))
                                     if Nothing `Set.member` tss then do
-                                        result <- getLA False (q', item')
-                                        return (Set.delete Nothing tss `Set.union` unTerminalSet result)
+                                        (k0, result) <- getLA (k + 1) (q', item')
+                                        tss <- if k0 == 0 then return $! unTerminalSet result else return Set.empty
+                                        return ((Nothing `Set.delete` tss) `Set.union` tss)
                                     else return tss
-                                | item' <- Set.toList items'
+                                | item' <- Set.toAscList items'
                                 , getMarkSym item' == Just (NS (getLHS item))
                                 ]
-                            | (items', q') <- Map.toList (getVertices getCannonical0)
+                            | (q', items') <- Map.toAscList (getVertices getCannonical0)
                             , calcGOTO' q' (getLEFT item) == Just q
                             ]
-                        modify (Map.update (const (Just (True, result))) (q, item))
-                        return result
+                        modify (Map.update (const (Just (0, result))) (q, item))
+                        return (0, result)
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = do
             (triples, _) <- flip runStateT Map.empty $ sequence
                 [ do
-                    ts <- getLA True (q, item)
-                    return ((q, (getLHS item, getLEFT item)), Set.fromList [ t | Just t <- Set.toList (unTerminalSet ts) ])
-                | (items, q) <- Map.toList (getVertices getCannonical0)
-                , item <- Set.toList items
+                    (_, result) <- getLA 1 (q, item)
+                    return ((q, (getLHS item, getLEFT item)), Set.fromAscList [ t | Just t <- Set.toAscList (unTerminalSet result) ])
+                | (q, items) <- Map.toAscList (getVertices getCannonical0)
+                , item <- Set.toAscList items
                 , isNothing (getMarkSym item)
                 ]
             return triples

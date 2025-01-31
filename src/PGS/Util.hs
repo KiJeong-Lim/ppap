@@ -58,7 +58,7 @@ data LR0Item
 
 data Cannonical0
     = Cannonical0
-        { getVertices :: Map.Map (Set.Set LR0Item) ParserS
+        { getVertices :: Map.Map ParserS (Set.Set LR0Item)
         , getRoot :: ParserS
         , getEdges :: Map.Map (ParserS, Sym) ParserS
         }

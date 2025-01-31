@@ -34,18 +34,15 @@ instance Show Conflict where
                     , strstr "        , myNexts = " . plist 12 [ quotify (pprint 0 sym . strstr " +-> " . shows p) | (sym, p) <- maybe [] id (lookup q formatedEdges) ]
                     , strstr "        }"
                     ]
-                | (q, items) <- formatedVertices
+                | (items, q) <- formatedVertices
                 ]
             , nl . strstr "  }" . nl
             ]
         where
-            formatedVertices :: [(ParserS, [LR0Item])]
+            formatedVertices :: [([LR0Item], ParserS)]
             formatedVertices = do
-                (items, q) <- sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) (Map.toAscList vertices)
-                return
-                    ( q
-                    , Set.toAscList items
-                    )
+                (q, items) <- sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) (Map.toAscList vertices)
+                return (Set.toAscList items, q)
             formatedEdges :: [(ParserS, [(Sym, ParserS)])]
             formatedEdges = do
                 triples <- splitUnless (\triple1 -> \triple2 -> fst (fst triple1) == fst (fst triple2)) (Map.toAscList edges)
