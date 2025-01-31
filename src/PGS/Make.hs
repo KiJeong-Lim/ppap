@@ -208,15 +208,12 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             (triples, _) <- flip runStateT Map.empty $ sequence
                 [ do
                     ts <- getLA True (q, item)
-                    return ((q, item), ts)
+                    return ((q, (getLHS item, getLEFT item)), Set.fromList [ t | Just t <- Set.toList (unTerminalSet ts) ])
                 | (items, q) <- Map.toList (getVertices getCannonical0)
                 , item <- Set.toList items
                 , isNothing (getMarkSym item)
                 ]
-            return
-                [ ((q, (lhs, left ++ right)), Set.fromList [ t | Just t <- Set.toList (unTerminalSet ts) ])
-                | ((q, LR0Item lhs left right), ts) <- triples
-                ]
+            return triples
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- getLATable, t <- Set.toList ts ] where
         base :: Map.Map (ParserS, TSym) Action
