@@ -191,7 +191,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                 [ do
                                     let tss = unTerminalSet (getFirstOf (tail (getRIGHT item')))
                                     if Nothing `Set.member` tss then do
-                                        (k0, result) <- getLA (k + 1) (q', item')
+                                        (k', result) <- getLA (k + 1) (q', item')
                                         return ((Nothing `Set.delete` tss) `Set.union` unTerminalSet result)
                                     else return tss
                                 | item' <- Set.toAscList items'
