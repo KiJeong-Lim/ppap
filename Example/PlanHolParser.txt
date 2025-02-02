@@ -171,42 +171,47 @@
 }
 
 \define $TermRep8 : "TermRep" {
-    40 [$TermRep8, $TermRep9]:
-        RApp (getSLoc $1 <> getSLoc $2) $1 $2
     40 [$TermRep9]:
         $1
     40 [$TermRep8, $id, $bslash, $TermRep0]:
         RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs ($2.loc <> getSLoc $4) $2.contents $4)
-    40 [$pi]:
-        RCon $1.loc (DC_LO LO_pi)
-    40 [$sigma]:
-        RCon $1.loc (DC_LO LO_sigma)
-    40 [$succ]:
-        RCon $1.loc DC_Succ
 }
 
 \define $TermRep9 : "TermRep" {
-    35 [$lparen, $TermRep0, $rparen]:
+    10 [$TermRep9, $TermRep10]:
+        RApp (getSLoc $1 <> getSLoc $2) $1 $2
+    10 [$TermRep10]:
+        $1
+    10 [$pi]:
+        RCon $1.loc (DC_LO LO_pi)
+    10 [$sigma]:
+        RCon $1.loc (DC_LO LO_sigma)
+    10 [$succ]:
+        RCon $1.loc DC_Succ
+}
+
+\define $TermRep10 : "TermRep" {
+    5 [$lparen, $TermRep0, $rparen]:
         RPrn ($1.loc <> $3.loc) $2
-    35 [$cut]:
+    5 [$cut]:
         RCon $1.loc (DC_LO LO_cut)
-    35 [$true]:
+    5 [$true]:
         RCon $1.loc (DC_LO LO_true)
-    35 [$fail]:
+    5 [$fail]:
         RCon $1.loc (DC_LO LO_fail)
-    35 [$debug]:
+    5 [$debug]:
         RCon $1.loc (DC_LO LO_debug)
-    35 [$id]:
+    5 [$id]:
         if head $1.contents `elem` ['A' .. 'Z'] then RVar $1.loc $1.contents else RCon $1.loc (DC_Named $1.contents)
-    35 [$natlit]:
+    5 [$natlit]:
         mkNatLit $1.loc $1.contents
-    35 [$strlit]:
+    5 [$strlit]:
         mkStrLit $1.loc $1.contents
-    35 [$chrlit]:
+    5 [$chrlit]:
         mkChrLit $1.loc $1.contents
-    35 [$lbracket, $rbracket]:
+    5 [$lbracket, $rbracket]:
         RCon ($1.loc <> $2.loc) DC_Nil
-    35 [$lbracket, $ListBody, $rbracket]:
+    5 [$lbracket, $ListBody, $rbracket]:
         RPrn ($1.loc <> $3.loc) $2
 }
 
