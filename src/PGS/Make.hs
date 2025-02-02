@@ -132,7 +132,8 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                 then return () 
                                 else do
                                     Cannonical0 vertices root edges <- get
-                                    case [ _p | (_p, _item') <- Map.toAscList vertices, items' == _item' ] of
+                                    let ps = [ _p | (_p, _items') <- Map.toAscList vertices, items' == _items' ]
+                                    case ps of
                                         [] -> do
                                             let p = Map.size vertices
                                             put (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges))
@@ -200,7 +201,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                             | (q', items') <- Map.toAscList (getVertices getCannonical0)
                             , calcGOTO' q' (getLEFT item) == Just q
                             ]
-                        modify (Map.update (const (Just (0, result))) (q, item))
+                        modify (Map.adjust (const (0, result)) (q, item))
                         return (0, result)
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = do
@@ -228,14 +229,14 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             (Just (Shift p), ra) -> case (Map.lookup t terminals', Map.lookup production productions') of
                 (Just (assoc, prec1), Just prec2)
                     | prec1 > prec2 -> Right getActionT
-                    | prec1 < prec2 -> Right (Map.update (const (Just ra)) (q, t) getActionT)
-                    | assoc == ALeft -> Right (Map.update (const (Just ra)) (q, t) getActionT)
+                    | prec1 < prec2 -> Right (Map.adjust (const ra) (q, t) getActionT)
+                    | assoc == ALeft -> Right (Map.adjust (const ra) (q, t) getActionT)
                     | assoc == ARight -> Right getActionT
                 _ -> Left (Conflict { because = (Shift p, ra), whereIs = (q, t), withEnv = getCannonical0 })
             (Just (Reduce production'), ra) -> case (Map.lookup production' productions', Map.lookup production productions') of
                 (Just prec1, Just prec2)
                     | prec1 > prec2 -> Right getActionT
-                    | prec1 < prec2 -> Right (Map.update (const (Just ra)) (q, t) getActionT)
+                    | prec1 < prec2 -> Right (Map.adjust (const ra) (q, t) getActionT)
                 _ -> Left (Conflict { because = (Reduce production', ra), whereIs = (q, t), withEnv = getCannonical0 })
     theResult :: ExceptT Conflict Identity ((Cannonical0, (Map.Map NSym TerminalSet, [((ParserS, ProductionRule), Set.Set TSym)])), LR1Parser)
     theResult = case resolveConflicts of
