@@ -60,26 +60,28 @@ instance FailableZero [a] where
 instance FailableZero b => FailableZero (a -> b) where
     nil = const nil
 
-digraph :: forall a v. (HasCallStack, Ord a, Ord v) => Set.Set v -> (v -> v -> Bool) -> (v -> Set.Set a) -> Map.Map v (Set.Set a)
-digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ (my_traverse 1) (Set.toAscList your_X)) (([], Map.fromSet (const 0) your_X), Map.fromSet (const Set.empty) your_X)))) where
-    my_traverse :: Int -> v -> StateT (([v], Map.Map v Int), Map.Map v (Set.Set a)) Identity ()
-    my_traverse k x = do
-        ((my_S, my_N), my_F) <- get
-        when (my_N Map.! x == 0) $ do
-            put ((x : my_S, Map.update (Just . const k) x my_N), Map.update (Just . const (your_F' x)) x my_F)
+digraph :: forall vertex output. (Ord vertex, Monoid output, HasCallStack) => Set.Set vertex -> (vertex -> vertex -> Bool) -> (vertex -> output) -> Map.Map vertex output
+digraph your_X your_R your_F' = Map.map snd (snd (snd (runIdentity (runStateT (mapM_ (go 1) (Set.toList your_X)) ([], Map.fromSet (const (0, mempty)) your_X))))) where
+    go :: Int -> vertex -> StateT ([vertex], Map.Map vertex (Int, output)) Identity ()
+    go k x = do
+        (stack, _N_F) <- get
+        when (fst (_N_F Map.! x) == 0) $ do
+            put (x : stack, Map.adjust (const (k, your_F' x)) x _N_F)
             forM_ your_X $ \y -> do
-                when (x `your_R` y) $ do
-                    my_traverse (k + 1) y
-                    ((my_S, my_N), my_F) <- get
-                    put ((my_S, Map.update (Just . min (my_N Map.! y)) x my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
-            ((my_S, my_N), my_F) <- get
-            when (my_N Map.! x == k) $ do
-                fix $ \loop_handle -> do
-                    ((my_S, my_N), my_F) <- get
-                    let top = head my_S
-                    put ((tail my_S, Map.update (Just . const maxBound) top my_N), Map.update (Just . const (my_F Map.! x)) top my_F)
+                when (your_R x y) $ do
+                    go (k + 1) y
+                    (stack, _N_F) <- get
+                    let (yN, yF) = _N_F Map.! y
+                    put (stack, Map.adjust (min yN <^> mappend yF) x _N_F)
+            (_, _N_F) <- get
+            let (xN, xF) = _N_F Map.! x
+            when (xN == k) $ do
+                Function.fix $ \loop -> do
+                    (stack, _N_F) <- get
+                    let top = head stack
+                    put (tail stack, Map.adjust (const (maxBound, xF)) top _N_F)
                     unless (top == x) $ do
-                        loop_handle
+                        loop
 
 (/>) :: Failable a => a -> a -> a
 x /> y = alt x y

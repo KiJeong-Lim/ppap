@@ -122,10 +122,10 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 ]
         loop :: Cannonical0 -> Identity Cannonical0
         loop collection = do
-            (_, collection') <- flip runStateT collection $ sequence
+            (_, collection') <- flip runStateT collection $ sequence_
                 [ do
                     cl <- lift (getClosure items)
-                    sequence
+                    sequence_
                         [ do 
                             items' <- lift (calcGOTO (items, sym))
                             if Set.null items'
