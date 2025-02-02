@@ -64,8 +64,8 @@ instance Outputable Cannonical0 where
         where
             formatedVertices :: [(ParserS, [LR0Item])]
             formatedVertices = do
-                q <- Set.toAscList (Map.keysSet vertices)
-                return (q, Set.toAscList (vertices Map.! q))
+                (q, items) <- Map.toAscList vertices
+                return (q, Set.toAscList items)
             formatedEdges :: [(ParserS, [(Sym, ParserS)])]
             formatedEdges = do
                 triples <- splitUnless (\triple1 -> \triple2 -> fst (fst triple1) == fst (fst triple2)) (Map.toAscList edges)
@@ -73,9 +73,8 @@ instance Outputable Cannonical0 where
                     [] -> []
                     ((q, sym), p) : triples' -> return
                         ( q
-                        , sortByMerging (\pair1 -> \pair2 -> fst pair1 <= fst pair2) ((sym, p) : [ (sym', p') | ((q', sym'), p') <- triples' ])
+                        , sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) ((sym, p) : [ (sym', p') | ((q', sym'), p') <- triples' ])
                         )
-
 
 instance Outputable Action where
     pprint _ (Shift p) = strstr "SHIFT: " . shows p . strstr ";"
@@ -114,11 +113,13 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 , any (\item -> getMarkSym item == Just (NS lhs)) (Set.toList items)
                 ]
         calcGOTO :: (Set.Set LR0Item, Sym) -> Identity (Set.Set LR0Item)
-        calcGOTO (items, sym) = getClosure $ Set.fromList
-            [ LR0Item lhs (left ++ [sym']) right
-            | LR0Item lhs left (sym' : right) <- Set.toList items
-            , sym == sym'
-            ]
+        calcGOTO (items, sym)
+            | sym == TS TSEOF = return Set.empty
+            | otherwise = getClosure $ Set.fromList
+                [ LR0Item lhs (left ++ [sym']) right
+                | LR0Item lhs left (sym' : right) <- Set.toList items
+                , sym == sym'
+                ]
         loop :: Cannonical0 -> Identity Cannonical0
         loop collection = do
             (_, collection') <- flip runStateT collection $ sequence
@@ -131,7 +132,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                                 then return () 
                                 else do
                                     Cannonical0 vertices root edges <- get
-                                    let ps = [ _p | (_p, _item') <- Map.toAscList vertices, items' == _item' ]
+                                    let ps = [ _p | (_p, _items') <- Map.toAscList vertices, items' == _items' ]
                                     case ps of
                                         [] -> do
                                             let p = Map.size vertices
