@@ -61,7 +61,7 @@ instance FailableZero b => FailableZero (a -> b) where
     nil = const nil
 
 digraph :: forall vertex output. (Ord vertex, Monoid output, HasCallStack) => Set.Set vertex -> (vertex -> vertex -> Bool) -> (vertex -> output) -> Map.Map vertex output
-digraph your_X your_R your_F' = Map.map snd (snd (snd (runIdentity (runStateT (mapM_ (go 1) (Set.toList your_X)) ([], Map.fromSet (const (0, mempty)) your_X))))) where
+digraph your_X your_R your_F' = Map.map snd (snd (snd (runIdentity (runStateT (mapM_ (go 1) your_X) ([], Map.fromSet (const (0, mempty)) your_X))))) where
     go :: Int -> vertex -> StateT ([vertex], Map.Map vertex (Int, output)) Identity ()
     go k x = do
         (stack, _N_F) <- get
