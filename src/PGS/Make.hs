@@ -207,6 +207,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     return ((q, (_A, _omega)), Set.unions result)
                 | (q, items) <- Map.toAscList (getVertices getCannonical0)
                 , LR0Item _A _omega [] <- Set.toAscList items
+                , _A /= start'
                 ]
             return (((getEdges getCannonical0 Map.! (getRoot getCannonical0, NS start), (start', [NS start])), Set.singleton TSEOF) : triples)
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
