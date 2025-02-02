@@ -50,114 +50,114 @@
 }
 
 \define $Query : "TermRep" {
-    10 [$quest, $TermRep0, $dot]:
+    95 [$quest, $TermRep0, $dot]:
         $2
 }
 
 \define $Decl : "DeclRep" {
-    10 [$kind, $id, $KindRep0, $dot]:
+    95 [$kind, $id, $KindRep0, $dot]:
         RKindDecl ($1.loc <> $4.loc) (TC_Named $2.contents) $3
-    10 [$type, $id, $TypeRep0, $dot]:
+    95 [$type, $id, $TypeRep0, $dot]:
         RTypeDecl ($1.loc <> $4.loc) (DC_Named $2.contents) $3
-    10 [$TermRep0, $dot]:
+    95 [$TermRep0, $dot]:
         RFactDecl (getSLoc $1 <> $2.loc) $1
 }
 
 \define $KindRep0 : "KindRep" {
-    10 [$KindRep1, $arrow, $KindRep0]:
+    80 [$KindRep1, $arrow, $KindRep0]:
         RKArr (getSLoc $1 <> getSLoc $3) $1 $3
-    10 [$KindRep1]:
+    80 [$KindRep1]:
         $1
 }
 
 \define $KindRep1 : "KindRep" {
-    15 [$type]:
+    75 [$type]:
         RStar $1.loc
-    15 [$lparen, $KindRep0, $rparen]:
+    75 [$lparen, $KindRep0, $rparen]:
         RKPrn ($1.loc <> $3.loc) $2
 }
 
 \define $TypeRep0 : "TypeRep" {
-    10 [$TypeRep1, $arrow, $TypeRep0]:
+    80 [$TypeRep1, $arrow, $TypeRep0]:
         RTyApp (getSLoc $1 <> getSLoc $3) (RTyApp (getSLoc $1 <> $2.loc) (RTyCon $2.loc TC_Arrow) $1) $3
-    10 [$TypeRep1]:
+    80 [$TypeRep1]:
         $1
 }
 
 \define $TypeRep1 : "TypeRep" {
-    15 [$TypeRep1, $TypeRep2]:
+    75 [$TypeRep1, $TypeRep2]:
         RTyApp (getSLoc $1 <> getSLoc $2) $1 $2
-    15 [$TypeRep2]:
+    75 [$TypeRep2]:
         $1
 }
 
 \define $TypeRep2 : "TypeRep" {
-    20 [$id]:
+    70 [$id]:
         if head $1.contents `elem` ['A' .. 'Z'] then RTyVar $1.loc $1.contents else RTyCon $1.loc (TC_Named $1.contents)
-    20 [$lparen, $TypeRep0, $rparen]:
+    70 [$lparen, $TypeRep0, $rparen]:
         RTyPrn ($1.loc <> $3.loc) $2
 }
 
 \define $TermRep0 : "TermRep" {
-    10 [$id, $bslash, $TermRep0]:
+    80 [$id, $bslash, $TermRep0]:
         RAbs ($1.loc <> getSLoc $3) $1.contents $3
-    10 [$TermRep1, $if, $TermRep0]:
+    80 [$TermRep5, $if, $TermRep0]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_if)) $1) $3
-    10 [$TermRep1]:
+    80 [$TermRep1]:
         $1
 }
 
 \define $TermRep1 : "TermRep" {
-    15 [$TermRep1, $semicolon, $TermRep2]:
+    75 [$TermRep1, $semicolon, $TermRep2]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_or)) $1) $3
-    15 [$TermRep2]:
+    75 [$TermRep2]:
         $1
 }
 
 \define $TermRep2 : "TermRep" {
-    20 [$TermRep3, $fatarrow, $TermRep2]:
+    70 [$TermRep3, $fatarrow, $TermRep2]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_imply)) $1) $3
-    20 [$TermRep3]:
+    70 [$TermRep3]:
         $1
 }
 
 \define $TermRep3 : "TermRep" {
-    25 [$TermRep3, $comma, $TermRep4]:
+    65 [$TermRep3, $comma, $TermRep4]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_and)) $1) $3
-    25 [$TermRep4]:
+    65 [$TermRep4]:
         $1
 }
 
 \define $TermRep4 : "TermRep" {
-    30 [$TermRep5, $cons, $TermRep4]:
+    60 [$TermRep5, $cons, $TermRep4]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_Cons) $1) $3
-    30 [$TermRep5]:
+    60 [$TermRep5]:
         $1
 }
 
 \define $TermRep5 : "TermRep" {
-    35 [$TermRep6, $is, $TermRep6]:
+    55 [$TermRep6, $is, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_is)) $1) $3
-    35 [$TermRep6, $eq, $TermRep6]:
+    55 [$TermRep6, $eq, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_eq) $1) $3
-    35 [$TermRep6, $le, $TermRep6]:
+    55 [$TermRep6, $le, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_le) $1) $3
-    35 [$TermRep6, $lt, $TermRep6]:
+    55 [$TermRep6, $lt, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_lt) $1) $3
-    35 [$TermRep6, $ge, $TermRep6]:
+    55 [$TermRep6, $ge, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_ge) $1) $3
-    35 [$TermRep6, $gt, $TermRep6]:
+    55 [$TermRep6, $gt, $TermRep6]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_gt) $1) $3
-    35 [$TermRep6]:
+    55 [$TermRep6]:
         $1
 }
 
 \define $TermRep6 : "TermRep" {
-    40 [$TermRep6, $plus, $TermRep7]:
+    50 [$TermRep6, $plus, $TermRep7]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_plus) $1) $3
-    40 [$TermRep6, $minus, $TermRep7]:
+    50 [$TermRep6, $minus, $TermRep7]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_minus) $1) $3
-    40 [$TermRep7]:
+    50 [$TermRep7]:
         $1
 }
 
@@ -171,57 +171,43 @@
 }
 
 \define $TermRep8 : "TermRep" {
-    50 [$TermRep8, $TermRep9]:
+    40 [$TermRep8, $TermRep9]:
         RApp (getSLoc $1 <> getSLoc $2) $1 $2
-    50 [$TermRep9]:
+    40 [$TermRep9]:
         $1
-    50 [$TermRep8, $id, $bslash, $TermRep0]:
+    40 [$TermRep8, $id, $bslash, $TermRep0]:
         RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs ($2.loc <> getSLoc $4) $2.contents $4)
-    50 [$pi]:
+    40 [$pi]:
         RCon $1.loc (DC_LO LO_pi)
-    50 [$sigma]:
+    40 [$sigma]:
         RCon $1.loc (DC_LO LO_sigma)
-    50 [$succ]:
+    40 [$succ]:
         RCon $1.loc DC_Succ
 }
 
 \define $TermRep9 : "TermRep" {
-    55 [$lparen, $TermRep0, $rparen]:
+    35 [$lparen, $TermRep0, $rparen]:
         RPrn ($1.loc <> $3.loc) $2
-    55 [$cut]:
+    35 [$cut]:
         RCon $1.loc (DC_LO LO_cut)
-    55 [$true]:
+    35 [$true]:
         RCon $1.loc (DC_LO LO_true)
-    55 [$fail]:
+    35 [$fail]:
         RCon $1.loc (DC_LO LO_fail)
-    55 [$debug]:
+    35 [$debug]:
         RCon $1.loc (DC_LO LO_debug)
-    55 [$id]:
+    35 [$id]:
         if head $1.contents `elem` ['A' .. 'Z'] then RVar $1.loc $1.contents else RCon $1.loc (DC_Named $1.contents)
-    55 [$natlit]:
+    35 [$natlit]:
         mkNatLit $1.loc $1.contents
-    55 [$strlit]:
+    35 [$strlit]:
         mkStrLit $1.loc $1.contents
-    55 [$chrlit]:
+    35 [$chrlit]:
         mkChrLit $1.loc $1.contents
-    55 [$lbracket, $rbracket]:
+    35 [$lbracket, $rbracket]:
         RCon ($1.loc <> $2.loc) DC_Nil
-    55 [$lbracket, $ListBody, $rbracket]:
+    35 [$lbracket, $ListBody, $rbracket]:
         RPrn ($1.loc <> $3.loc) $2
-}
-
-\define $Sequence ($Elem : "a") : "[a]" {
-    50 []:
-        []
-    50 [$Elem, $Sequence $Elem]:
-        $1 : $2
-}
-
-\define $Either ($Left : "a") ($Right : "b") : "Either a b" {
-    50 [$Left]:
-        Left $1
-    50 [$Right]:
-        Right $1
 }
 
 \define $ListBody : "TermRep" {
@@ -229,6 +215,20 @@
         RApp (getSLoc $1) (RApp (getSLoc $1) (RCon (getSLoc $1) DC_Cons) $1) (RCon (getSLoc $1) DC_Nil)
     90 [$TermRep5, $comma, $ListBody]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_Cons) $1) $3
+}
+
+\define $Sequence ($Elem : "a") : "[a]" {
+    10 []:
+        []
+    10 [$Elem, $Sequence $Elem]:
+        $1 : $2
+}
+
+\define $Either ($Left : "a") ($Right : "b") : "Either a b" {
+    10 [$Left]:
+        Left $1
+    10 [$Right]:
+        Right $1
 }
 
 \hstail {
