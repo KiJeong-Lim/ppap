@@ -538,7 +538,6 @@ getParserSInfo 1 = ParserSInfo
         , "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
-        , "<Sequence Decl> +-> 31"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
@@ -554,6 +553,7 @@ getParserSInfo 1 = ParserSInfo
         , "`succ' +-> 28"
         , "`true' +-> 29"
         , "`type' +-> 30"
+        , "<Sequence Decl> +-> 31"
         ]
     }
 getParserSInfo 2 = ParserSInfo
@@ -665,17 +665,17 @@ getParserSInfo 11 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep9> +-> 48"
-        , "`chrlit' +-> 15"
+        [ "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 49"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
         , "`strlit' +-> 27"
         , "`true' +-> 29"
+        , "<TermRep9> +-> 48"
+        , "`id' +-> 49"
         ]
     }
 getParserSInfo 12 = ParserSInfo
@@ -775,9 +775,7 @@ getParserSInfo 21 = ParserSInfo
         , "<TermRep9> ::= `lbracket' . `rbracket'"
         ]
     , myNexts = 
-        [ "<ListBody> +-> 52"
-        , "<TermRep5> +-> 53"
-        , "<TermRep6> +-> 9"
+        [ "<TermRep6> +-> 9"
         , "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
@@ -785,16 +783,18 @@ getParserSInfo 21 = ParserSInfo
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
         , "`pi' +-> 24"
-        , "`rbracket' +-> 55"
         , "`sigma' +-> 26"
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "<ListBody> +-> 52"
+        , "<TermRep5> +-> 53"
+        , "`id' +-> 54"
+        , "`rbracket' +-> 55"
         ]
     }
 getParserSInfo 22 = ParserSInfo
@@ -843,8 +843,7 @@ getParserSInfo 22 = ParserSInfo
         , "<TermRep9> ::= `lparen' . <TermRep0> `rparen'"
         ]
     , myNexts = 
-        [ "<TermRep0> +-> 56"
-        , "<TermRep1> +-> 4"
+        [ "<TermRep1> +-> 4"
         , "<TermRep2> +-> 5"
         , "<TermRep3> +-> 6"
         , "<TermRep4> +-> 7"
@@ -866,6 +865,7 @@ getParserSInfo 22 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "<TermRep0> +-> 56"
         ]
     }
 getParserSInfo 23 = ParserSInfo
@@ -926,8 +926,7 @@ getParserSInfo 25 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep0> +-> 57"
-        , "<TermRep1> +-> 4"
+        [ "<TermRep1> +-> 4"
         , "<TermRep2> +-> 5"
         , "<TermRep3> +-> 6"
         , "<TermRep4> +-> 7"
@@ -949,6 +948,7 @@ getParserSInfo 25 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "<TermRep0> +-> 57"
         ]
     }
 getParserSInfo 26 = ParserSInfo
@@ -1041,8 +1041,7 @@ getParserSInfo 33 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep0> +-> 59"
-        , "<TermRep1> +-> 4"
+        [ "<TermRep1> +-> 4"
         , "<TermRep2> +-> 5"
         , "<TermRep3> +-> 6"
         , "<TermRep4> +-> 7"
@@ -1064,6 +1063,7 @@ getParserSInfo 33 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "<TermRep0> +-> 59"
         ]
     }
 getParserSInfo 34 = ParserSInfo
@@ -1107,8 +1107,7 @@ getParserSInfo 34 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep2> +-> 60"
-        , "<TermRep3> +-> 6"
+        [ "<TermRep3> +-> 6"
         , "<TermRep4> +-> 7"
         , "<TermRep5> +-> 8"
         , "<TermRep6> +-> 9"
@@ -1119,7 +1118,6 @@ getParserSInfo 34 = ParserSInfo
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1128,6 +1126,8 @@ getParserSInfo 34 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep2> +-> 60"
         ]
     }
 getParserSInfo 35 = ParserSInfo
@@ -1167,8 +1167,7 @@ getParserSInfo 35 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep4> +-> 61"
-        , "<TermRep5> +-> 8"
+        [ "<TermRep5> +-> 8"
         , "<TermRep6> +-> 9"
         , "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
@@ -1177,7 +1176,6 @@ getParserSInfo 35 = ParserSInfo
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1186,6 +1184,8 @@ getParserSInfo 35 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep4> +-> 61"
         ]
     }
 getParserSInfo 36 = ParserSInfo
@@ -1229,8 +1229,7 @@ getParserSInfo 36 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep2> +-> 62"
-        , "<TermRep3> +-> 6"
+        [ "<TermRep3> +-> 6"
         , "<TermRep4> +-> 7"
         , "<TermRep5> +-> 8"
         , "<TermRep6> +-> 9"
@@ -1241,7 +1240,6 @@ getParserSInfo 36 = ParserSInfo
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1250,6 +1248,8 @@ getParserSInfo 36 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep2> +-> 62"
         ]
     }
 getParserSInfo 37 = ParserSInfo
@@ -1289,8 +1289,7 @@ getParserSInfo 37 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep4> +-> 63"
-        , "<TermRep5> +-> 8"
+        [ "<TermRep5> +-> 8"
         , "<TermRep6> +-> 9"
         , "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
@@ -1299,7 +1298,6 @@ getParserSInfo 37 = ParserSInfo
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1308,6 +1306,8 @@ getParserSInfo 37 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep4> +-> 63"
         ]
     }
 getParserSInfo 38 = ParserSInfo
@@ -1338,15 +1338,13 @@ getParserSInfo 38 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep6> +-> 64"
-        , "<TermRep7> +-> 10"
+        [ "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1355,6 +1353,8 @@ getParserSInfo 38 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep6> +-> 64"
         ]
     }
 getParserSInfo 39 = ParserSInfo
@@ -1385,15 +1385,13 @@ getParserSInfo 39 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep6> +-> 65"
-        , "<TermRep7> +-> 10"
+        [ "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1402,6 +1400,8 @@ getParserSInfo 39 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep6> +-> 65"
         ]
     }
 getParserSInfo 40 = ParserSInfo
@@ -1432,15 +1432,13 @@ getParserSInfo 40 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep6> +-> 66"
-        , "<TermRep7> +-> 10"
+        [ "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1449,6 +1447,8 @@ getParserSInfo 40 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep6> +-> 66"
         ]
     }
 getParserSInfo 41 = ParserSInfo
@@ -1479,15 +1479,13 @@ getParserSInfo 41 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep6> +-> 67"
-        , "<TermRep7> +-> 10"
+        [ "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1496,6 +1494,8 @@ getParserSInfo 41 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep6> +-> 67"
         ]
     }
 getParserSInfo 42 = ParserSInfo
@@ -1526,15 +1526,13 @@ getParserSInfo 42 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep6> +-> 68"
-        , "<TermRep7> +-> 10"
+        [ "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1543,6 +1541,8 @@ getParserSInfo 42 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep6> +-> 68"
         ]
     }
 getParserSInfo 43 = ParserSInfo
@@ -1573,15 +1573,13 @@ getParserSInfo 43 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep6> +-> 69"
-        , "<TermRep7> +-> 10"
+        [ "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1590,6 +1588,8 @@ getParserSInfo 43 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep6> +-> 69"
         ]
     }
 getParserSInfo 44 = ParserSInfo
@@ -1617,14 +1617,12 @@ getParserSInfo 44 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep7> +-> 70"
-        , "<TermRep8> +-> 11"
+        [ "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1633,6 +1631,8 @@ getParserSInfo 44 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep7> +-> 70"
         ]
     }
 getParserSInfo 45 = ParserSInfo
@@ -1660,14 +1660,12 @@ getParserSInfo 45 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep7> +-> 71"
-        , "<TermRep8> +-> 11"
+        [ "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1676,6 +1674,8 @@ getParserSInfo 45 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep7> +-> 71"
         ]
     }
 getParserSInfo 46 = ParserSInfo
@@ -1700,13 +1700,11 @@ getParserSInfo 46 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep8> +-> 72"
-        , "<TermRep9> +-> 12"
+        [ "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1715,6 +1713,8 @@ getParserSInfo 46 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep8> +-> 72"
         ]
     }
 getParserSInfo 47 = ParserSInfo
@@ -1739,13 +1739,11 @@ getParserSInfo 47 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep8> +-> 73"
-        , "<TermRep9> +-> 12"
+        [ "<TermRep9> +-> 12"
         , "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -1754,6 +1752,8 @@ getParserSInfo 47 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "`id' +-> 54"
+        , "<TermRep8> +-> 73"
         ]
     }
 getParserSInfo 48 = ParserSInfo
@@ -1817,8 +1817,7 @@ getParserSInfo 50 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep0> +-> 75"
-        , "<TermRep1> +-> 4"
+        [ "<TermRep1> +-> 4"
         , "<TermRep2> +-> 5"
         , "<TermRep3> +-> 6"
         , "<TermRep4> +-> 7"
@@ -1840,6 +1839,7 @@ getParserSInfo 50 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "<TermRep0> +-> 75"
         ]
     }
 getParserSInfo 51 = ParserSInfo
@@ -2056,17 +2056,17 @@ getParserSInfo 72 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep9> +-> 48"
-        , "`chrlit' +-> 15"
+        [ "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 49"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
         , "`strlit' +-> 27"
         , "`true' +-> 29"
+        , "<TermRep9> +-> 48"
+        , "`id' +-> 49"
         ]
     }
 getParserSInfo 73 = ParserSInfo
@@ -2087,17 +2087,17 @@ getParserSInfo 73 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep9> +-> 48"
-        , "`chrlit' +-> 15"
+        [ "`chrlit' +-> 15"
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 49"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
         , "`strlit' +-> 27"
         , "`true' +-> 29"
+        , "<TermRep9> +-> 48"
+        , "`id' +-> 49"
         ]
     }
 getParserSInfo 74 = ParserSInfo
@@ -2146,8 +2146,7 @@ getParserSInfo 74 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<TermRep0> +-> 89"
-        , "<TermRep1> +-> 4"
+        [ "<TermRep1> +-> 4"
         , "<TermRep2> +-> 5"
         , "<TermRep3> +-> 6"
         , "<TermRep4> +-> 7"
@@ -2169,6 +2168,7 @@ getParserSInfo 74 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "<TermRep0> +-> 89"
         ]
     }
 getParserSInfo 75 = ParserSInfo
@@ -2203,10 +2203,10 @@ getParserSInfo 78 = ParserSInfo
         , "<KindRep1> ::= `lparen' . <KindRep0> `rparen'"
         ]
     , myNexts = 
-        [ "<KindRep0> +-> 92"
-        , "<KindRep1> +-> 77"
+        [ "<KindRep1> +-> 77"
         , "`lparen' +-> 78"
         , "`type' +-> 79"
+        , "<KindRep0> +-> 92"
         ]
     }
 getParserSInfo 79 = ParserSInfo
@@ -2258,9 +2258,7 @@ getParserSInfo 81 = ParserSInfo
         , "<TermRep9> ::= . `true'"
         ]
     , myNexts = 
-        [ "<ListBody> +-> 93"
-        , "<TermRep5> +-> 53"
-        , "<TermRep6> +-> 9"
+        [ "<TermRep6> +-> 9"
         , "<TermRep7> +-> 10"
         , "<TermRep8> +-> 11"
         , "<TermRep9> +-> 12"
@@ -2268,7 +2266,6 @@ getParserSInfo 81 = ParserSInfo
         , "`cut' +-> 16"
         , "`debug' +-> 17"
         , "`fail' +-> 18"
-        , "`id' +-> 54"
         , "`lbracket' +-> 21"
         , "`lparen' +-> 22"
         , "`natlit' +-> 23"
@@ -2277,6 +2274,9 @@ getParserSInfo 81 = ParserSInfo
         , "`strlit' +-> 27"
         , "`succ' +-> 28"
         , "`true' +-> 29"
+        , "<TermRep5> +-> 53"
+        , "`id' +-> 54"
+        , "<ListBody> +-> 93"
         ]
     }
 getParserSInfo 82 = ParserSInfo
@@ -2308,10 +2308,10 @@ getParserSInfo 85 = ParserSInfo
         , "<TypeRep2> ::= . `lparen' <TypeRep0> `rparen'"
         ]
     , myNexts = 
-        [ "<TypeRep2> +-> 95"
-        , "`arrow' +-> 96"
-        , "`id' +-> 87"
+        [ "`id' +-> 87"
         , "`lparen' +-> 88"
+        , "<TypeRep2> +-> 95"
+        , "`arrow' +-> 96"
         ]
     }
 getParserSInfo 86 = ParserSInfo
@@ -2337,11 +2337,11 @@ getParserSInfo 88 = ParserSInfo
         , "<TypeRep2> ::= `lparen' . <TypeRep0> `rparen'"
         ]
     , myNexts = 
-        [ "<TypeRep0> +-> 97"
-        , "<TypeRep1> +-> 85"
+        [ "<TypeRep1> +-> 85"
         , "<TypeRep2> +-> 86"
         , "`id' +-> 87"
         , "`lparen' +-> 88"
+        , "<TypeRep0> +-> 97"
         ]
     }
 getParserSInfo 89 = ParserSInfo
@@ -2365,10 +2365,10 @@ getParserSInfo 91 = ParserSInfo
         , "<KindRep1> ::= . `type'"
         ]
     , myNexts = 
-        [ "<KindRep0> +-> 98"
-        , "<KindRep1> +-> 77"
+        [ "<KindRep1> +-> 77"
         , "`lparen' +-> 78"
         , "`type' +-> 79"
+        , "<KindRep0> +-> 98"
         ]
     }
 getParserSInfo 92 = ParserSInfo
@@ -2408,11 +2408,11 @@ getParserSInfo 96 = ParserSInfo
         , "<TypeRep2> ::= . `lparen' <TypeRep0> `rparen'"
         ]
     , myNexts = 
-        [ "<TypeRep0> +-> 100"
-        , "<TypeRep1> +-> 85"
+        [ "<TypeRep1> +-> 85"
         , "<TypeRep2> +-> 86"
         , "`id' +-> 87"
         , "`lparen' +-> 88"
+        , "<TypeRep0> +-> 100"
         ]
     }
 getParserSInfo 97 = ParserSInfo
