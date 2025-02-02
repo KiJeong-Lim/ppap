@@ -12,6 +12,7 @@ import qualified Data.Maybe as Maybe
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import GHC.Stack
+import Debug.Trace
 import Z.Utils
 
 infixr 3 />
@@ -66,22 +67,31 @@ digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ (my_trav
     my_traverse k x = do
         ((my_S, my_N), my_F) <- get
         when (my_N Map.! x == 0) $ do
-            put ((x : my_S, Map.update (Just . const k) x my_N), Map.update (Just . const (your_F' x)) x my_F)
+            put ((x : my_S, Map.adjust (const k) x my_N), Map.adjust (const (your_F' x)) x my_F)
             forM_ your_X $ \y -> do
                 when (x `your_R` y) $ do
+                    my_traverse (k + 1) y
                     ((my_S, my_N), my_F) <- get
-                    when (my_N Map.! y == 0) $ do
-                        my_traverse (k + 1) y
-                        ((my_S, my_N), my_F) <- get
-                        put ((my_S, Map.update (Just . min (my_N Map.! y)) x my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
+                    put ((my_S, Map.adjust (min (my_N Map.! y)) x my_N), Map.adjust (Set.union (my_F Map.! y)) x my_F)
             ((my_S, my_N), my_F) <- get
             when (my_N Map.! x == k) $ do
                 fix $ \loop_handle -> do
                     ((my_S, my_N), my_F) <- get
                     let top = head my_S
-                    put ((tail my_S, Map.update (Just . const maxBound) top my_N), Map.update (Just . const (my_F Map.! x)) top my_F)
+                    put ((tail my_S, Map.adjust (const maxBound) top my_N), Map.adjust (const (my_F Map.! x)) top my_F)
                     unless (top == x) $ do
                         loop_handle
+
+digraphTest1 :: Map.Map Char (Set.Set Char)
+-- fromList [('a',fromList "abcdf"),('b',fromList "abcdf"),('c',fromList "abcdf"),('d',fromList "d"),('e',fromList "de"),('f',fromList "f")]
+digraphTest1 = digraph (Set.fromList "abcdef") out Set.singleton where
+    out 'a' 'b' = True
+    out 'b' 'c' = True
+    out 'c' 'a' = True
+    out 'c' 'd' = True
+    out 'c' 'f' = True
+    out 'e' 'd' = True
+    out _ _ = False
 
 (/>) :: Failable a => a -> a -> a
 x /> y = alt x y

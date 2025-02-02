@@ -34,15 +34,15 @@ instance Show Conflict where
                     , strstr "        , myNexts = " . plist 12 [ quotify (pprint 0 sym . strstr " +-> " . shows p) | (sym, p) <- maybe [] id (lookup q formatedEdges) ]
                     , strstr "        }"
                     ]
-                | (items, q) <- formatedVertices
+                | (q, items) <- formatedVertices
                 ]
             , nl . strstr "  }" . nl
             ]
         where
-            formatedVertices :: [([LR0Item], ParserS)]
+            formatedVertices :: [(ParserS, [LR0Item])]
             formatedVertices = do
-                (q, items) <- sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) (Map.toAscList vertices)
-                return (Set.toAscList items, q)
+                q <- Set.toAscList (Map.keysSet vertices)
+                return (q, Set.toAscList (vertices Map.! q))
             formatedEdges :: [(ParserS, [(Sym, ParserS)])]
             formatedEdges = do
                 triples <- splitUnless (\triple1 -> \triple2 -> fst (fst triple1) == fst (fst triple2)) (Map.toAscList edges)
@@ -50,7 +50,7 @@ instance Show Conflict where
                     [] -> []
                     ((q, sym), p) : triples' -> return
                         ( q
-                        , sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) ((sym, p) : [ (sym', p') | ((q', sym'), p') <- triples' ])
+                        , sortByMerging (\pair1 -> \pair2 -> fst pair1 <= fst pair2) ((sym, p) : [ (sym', p') | ((q', sym'), p') <- triples' ])
                         )
 
 unFoldNSApp :: NSym -> (String, [NSym])
