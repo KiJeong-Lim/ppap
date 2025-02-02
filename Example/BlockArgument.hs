@@ -201,9 +201,9 @@ getParserSInfo 3 = ParserSInfo
         , "<Term3> ::= . `sid'"
         ]
     , myNexts = 
-        [ "<Term3> +-> 8"
+        [ "`lprn' +-> 6"
+        , "<Term3> +-> 8"
         , "`lid' +-> 9"
-        , "`lprn' +-> 6"
         , "`sid' +-> 10"
         ]
     }
@@ -238,13 +238,13 @@ getParserSInfo 6 = ParserSInfo
         , "<Term3> ::= `lprn' . <Term0> `rprn'"
         ]
     , myNexts = 
-        [ "<Term0> +-> 12"
-        , "<Term1> +-> 2"
+        [ "<Term1> +-> 2"
         , "<Term2> +-> 3"
         , "<Term3> +-> 4"
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
+        , "<Term0> +-> 12"
         ]
     }
 getParserSInfo 7 = ParserSInfo
@@ -296,13 +296,13 @@ getParserSInfo 11 = ParserSInfo
         , "<Term3> ::= . `sid'"
         ]
     , myNexts = 
-        [ "<Term0> +-> 16"
-        , "<Term1> +-> 2"
+        [ "<Term1> +-> 2"
         , "<Term2> +-> 3"
         , "<Term3> +-> 4"
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
+        , "<Term0> +-> 16"
         ]
     }
 getParserSInfo 12 = ParserSInfo
@@ -329,13 +329,13 @@ getParserSInfo 13 = ParserSInfo
         , "<Term3> ::= . `sid'"
         ]
     , myNexts = 
-        [ "<Term0> +-> 18"
-        , "<Term1> +-> 2"
+        [ "<Term1> +-> 2"
         , "<Term2> +-> 3"
         , "<Term3> +-> 4"
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
+        , "<Term0> +-> 18"
         ]
     }
 getParserSInfo 14 = ParserSInfo
@@ -354,13 +354,13 @@ getParserSInfo 14 = ParserSInfo
         , "<Term3> ::= . `sid'"
         ]
     , myNexts = 
-        [ "<Term0> +-> 19"
-        , "<Term1> +-> 2"
+        [ "<Term1> +-> 2"
         , "<Term2> +-> 3"
         , "<Term3> +-> 4"
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
+        , "<Term0> +-> 19"
         ]
     }
 getParserSInfo 15 = ParserSInfo
@@ -379,13 +379,13 @@ getParserSInfo 15 = ParserSInfo
         , "<Term3> ::= . `sid'"
         ]
     , myNexts = 
-        [ "<Term0> +-> 20"
-        , "<Term1> +-> 2"
+        [ "<Term1> +-> 2"
         , "<Term2> +-> 3"
         , "<Term3> +-> 4"
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
+        , "<Term0> +-> 20"
         ]
     }
 getParserSInfo 16 = ParserSInfo
@@ -428,8 +428,7 @@ _First =
     ]
 
 _LA = 
-    [ "( q = 1, [<\\ACCEPT> ::= <Term0>] ) +-> {}"
-    , "( q = 1, [<\\ACCEPT> ::= <Term0>] ) +-> {`\\$'}"
+    [ "( q = 1, [<\\ACCEPT> ::= <Term0>] ) +-> {`\\$'}"
     , "( q = 2, [<Term0> ::= <Term1>] ) +-> {`\\$', `rprn'}"
     , "( q = 3, [<Term1> ::= <Term2>] ) +-> {`\\$', `rprn'}"
     , "( q = 4, [<Term2> ::= <Term3>] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
