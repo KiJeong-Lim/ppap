@@ -195,21 +195,18 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 ]
             _Read' (p, _A) = _Read Map.! (p, _A)
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
-        makeLATable = do
-            triples <- sequence
-                [ do
-                    result <- sequence
-                        [ return (_Follow Map.! (p, _A))
-                        | (p, items') <- Map.toAscList (getVertices getCannonical0)
-                        , calcGOTO p _omega == Just q
-                        , isJust (calcGOTO p [NS _A])
-                        ]
-                    return ((q, (_A, _omega)), Set.unions result)
-                | (q, items) <- Map.toAscList (getVertices getCannonical0)
-                , LR0Item _A _omega [] <- Set.toAscList items
-                , _A /= start'
-                ]
-            return (((getEdges getCannonical0 Map.! (getRoot getCannonical0, NS start), (start', [NS start])), Set.singleton TSEOF) : triples)
+        makeLATable = sequence
+            [ do
+                result <- sequence
+                    [ return (_Follow Map.! (p, _A))
+                    | (p, items') <- Map.toAscList (getVertices getCannonical0)
+                    , calcGOTO p _omega == Just q
+                    , isJust (calcGOTO p [NS _A])
+                    ]
+                return ((q, (_A, _omega)), (if _A == start' then Set.insert TSEOF else id) $! Set.unions result)
+            | (q, items) <- Map.toAscList (getVertices getCannonical0)
+            , LR0Item _A _omega [] <- Set.toAscList items
+            ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- getLATable, t <- Set.toList ts ] where
         base :: Map.Map (ParserS, TSym) Action

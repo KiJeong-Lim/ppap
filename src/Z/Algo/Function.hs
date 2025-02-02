@@ -69,7 +69,7 @@ digraph your_X your_R your_F' = Map.map snd (snd (snd (runIdentity (runStateT (m
             put (x : stack, Map.adjust (const (k, your_F' x)) x _N_F)
             forM_ your_X $ \y -> do
                 when (your_R x y) $ do
-                    go (k + 1) y
+                    (go $! succ k) y
                     (stack, _N_F) <- get
                     let (yN, yF) = _N_F Map.! y
                     put (stack, Map.adjust (min yN <^> mappend yF) x _N_F)
