@@ -180,10 +180,10 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         isNullable :: [Sym] -> Bool
         isNullable omega = Nothing `Set.member` unTerminalSet (getFirstOf omega)
         _Dom :: Set.Set (ParserS, NSym)
-        _Dom = Set.fromList [ (p, _A') | (p, items') <- Map.toAscList (getVertices getCannonical0), LR0Item _ _ (NS _A' : _) <- Set.toAscList items' ]
+        _Dom = Set.fromList [ (p, _A) | (p, items') <- Map.toAscList (getVertices getCannonical0), LR0Item _ _ (NS _A : _) <- Set.toAscList items' ]
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Read = digraph _Dom _reads _DR' where
-            _reads (p, _A) (r, _C) = isJust (calcGOTO p [NS _A, NS _C]) && isNullable [NS _C]
+            _reads (p, _A) (r, _C) = calcGOTO p [NS _A] == Just r && isNullable [NS _C]
             _DR' (p, _A) = if p == getRoot getCannonical0 && _A == start then TSEOF `Set.insert` _DR else _DR where
                 _DR = Set.fromList [ t | t <- Set.toAscList (Map.keysSet terminals), isJust (calcGOTO p [NS _A, TS t]) ]
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
@@ -193,7 +193,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 | LR0Item _B' _beta (NS _A' : _gamma) <- Set.toAscList (getVertices getCannonical0 Map.! p)
                 , _A == _A' && _B == _B'
                 ]
-            _Read' k = _Read Map.! k
+            _Read' (p, _A) = _Read Map.! (p, _A)
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = do
             triples <- sequence
