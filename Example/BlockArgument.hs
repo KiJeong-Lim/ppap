@@ -121,33 +121,33 @@ parser = fmap (getTerm0) . runLALR1 theLALR1Parser where
             [ ((0, 1), Shift 5), ((0, 2), Shift 7), ((0, 3), Shift 6)
             , ((1, 0), Accept)
             , ((2, 0), Reduce (1, [NS 2])), ((2, 4), Reduce (1, [NS 2]))
-            , ((3, 0), Reduce (2, [NS 3])), ((3, 1), Shift 12), ((3, 2), Shift 13), ((3, 3), Shift 6), ((3, 4), Reduce (2, [NS 3]))
+            , ((3, 0), Reduce (2, [NS 3])), ((3, 1), Shift 9), ((3, 2), Shift 10), ((3, 3), Shift 6), ((3, 4), Reduce (2, [NS 3]))
             , ((4, 0), Reduce (3, [NS 4])), ((4, 1), Reduce (3, [NS 4])), ((4, 2), Reduce (3, [NS 4])), ((4, 3), Reduce (3, [NS 4])), ((4, 4), Reduce (3, [NS 4]))
-            , ((5, 0), Reduce (4, [TS 1])), ((5, 1), Reduce (4, [TS 1])), ((5, 2), Reduce (4, [TS 1])), ((5, 3), Reduce (4, [TS 1])), ((5, 4), Reduce (4, [TS 1])), ((5, 5), Shift 9)
+            , ((5, 0), Reduce (4, [TS 1])), ((5, 1), Reduce (4, [TS 1])), ((5, 2), Reduce (4, [TS 1])), ((5, 3), Reduce (4, [TS 1])), ((5, 4), Reduce (4, [TS 1])), ((5, 5), Shift 11)
             , ((6, 1), Shift 5), ((6, 2), Shift 7), ((6, 3), Shift 6)
-            , ((7, 0), Reduce (4, [TS 2])), ((7, 1), Reduce (4, [TS 2])), ((7, 2), Reduce (4, [TS 2])), ((7, 3), Reduce (4, [TS 2])), ((7, 4), Reduce (4, [TS 2])), ((7, 5), Shift 10)
-            , ((8, 4), Shift 18)
-            , ((9, 1), Shift 5), ((9, 2), Shift 7), ((9, 3), Shift 6)
-            , ((10, 1), Shift 5), ((10, 2), Shift 7), ((10, 3), Shift 6)
-            , ((11, 0), Reduce (3, [NS 3, NS 4])), ((11, 1), Reduce (3, [NS 3, NS 4])), ((11, 2), Reduce (3, [NS 3, NS 4])), ((11, 3), Reduce (3, [NS 3, NS 4])), ((11, 4), Reduce (3, [NS 3, NS 4]))
-            , ((12, 0), Reduce (4, [TS 1])), ((12, 1), Reduce (4, [TS 1])), ((12, 2), Reduce (4, [TS 1])), ((12, 3), Reduce (4, [TS 1])), ((12, 4), Reduce (4, [TS 1])), ((12, 5), Shift 16)
-            , ((13, 0), Reduce (4, [TS 2])), ((13, 1), Reduce (4, [TS 2])), ((13, 2), Reduce (4, [TS 2])), ((13, 3), Reduce (4, [TS 2])), ((13, 4), Reduce (4, [TS 2])), ((13, 5), Shift 17)
-            , ((14, 0), Reduce (1, [TS 1, TS 5, NS 1])), ((14, 4), Reduce (1, [TS 1, TS 5, NS 1]))
-            , ((15, 0), Reduce (1, [TS 2, TS 5, NS 1])), ((15, 4), Reduce (1, [TS 2, TS 5, NS 1]))
-            , ((16, 1), Shift 5), ((16, 2), Shift 7), ((16, 3), Shift 6)
-            , ((17, 1), Shift 5), ((17, 2), Shift 7), ((17, 3), Shift 6)
-            , ((18, 0), Reduce (4, [TS 3, NS 1, TS 4])), ((18, 1), Reduce (4, [TS 3, NS 1, TS 4])), ((18, 2), Reduce (4, [TS 3, NS 1, TS 4])), ((18, 3), Reduce (4, [TS 3, NS 1, TS 4])), ((18, 4), Reduce (4, [TS 3, NS 1, TS 4]))
+            , ((7, 0), Reduce (4, [TS 2])), ((7, 1), Reduce (4, [TS 2])), ((7, 2), Reduce (4, [TS 2])), ((7, 3), Reduce (4, [TS 2])), ((7, 4), Reduce (4, [TS 2])), ((7, 5), Shift 13)
+            , ((8, 0), Reduce (3, [NS 3, NS 4])), ((8, 1), Reduce (3, [NS 3, NS 4])), ((8, 2), Reduce (3, [NS 3, NS 4])), ((8, 3), Reduce (3, [NS 3, NS 4])), ((8, 4), Reduce (3, [NS 3, NS 4]))
+            , ((9, 0), Reduce (4, [TS 1])), ((9, 1), Reduce (4, [TS 1])), ((9, 2), Reduce (4, [TS 1])), ((9, 3), Reduce (4, [TS 1])), ((9, 4), Reduce (4, [TS 1])), ((9, 5), Shift 14)
+            , ((10, 0), Reduce (4, [TS 2])), ((10, 1), Reduce (4, [TS 2])), ((10, 2), Reduce (4, [TS 2])), ((10, 3), Reduce (4, [TS 2])), ((10, 4), Reduce (4, [TS 2])), ((10, 5), Shift 15)
+            , ((11, 1), Shift 5), ((11, 2), Shift 7), ((11, 3), Shift 6)
+            , ((12, 4), Shift 17)
+            , ((13, 1), Shift 5), ((13, 2), Shift 7), ((13, 3), Shift 6)
+            , ((14, 1), Shift 5), ((14, 2), Shift 7), ((14, 3), Shift 6)
+            , ((15, 1), Shift 5), ((15, 2), Shift 7), ((15, 3), Shift 6)
+            , ((16, 0), Reduce (1, [TS 1, TS 5, NS 1])), ((16, 4), Reduce (1, [TS 1, TS 5, NS 1]))
+            , ((17, 0), Reduce (4, [TS 3, NS 1, TS 4])), ((17, 1), Reduce (4, [TS 3, NS 1, TS 4])), ((17, 2), Reduce (4, [TS 3, NS 1, TS 4])), ((17, 3), Reduce (4, [TS 3, NS 1, TS 4])), ((17, 4), Reduce (4, [TS 3, NS 1, TS 4]))
+            , ((18, 0), Reduce (1, [TS 2, TS 5, NS 1])), ((18, 4), Reduce (1, [TS 2, TS 5, NS 1]))
             , ((19, 0), Reduce (2, [NS 3, TS 1, TS 5, NS 1])), ((19, 4), Reduce (2, [NS 3, TS 1, TS 5, NS 1]))
             , ((20, 0), Reduce (2, [NS 3, TS 2, TS 5, NS 1])), ((20, 4), Reduce (2, [NS 3, TS 2, TS 5, NS 1]))
             ]
         , getReduceTable = YMap.fromAscList 
             [ ((0, 1), 1), ((0, 2), 2), ((0, 3), 3), ((0, 4), 4)
-            , ((3, 4), 11)
-            , ((6, 1), 8), ((6, 2), 2), ((6, 3), 3), ((6, 4), 4)
-            , ((9, 1), 14), ((9, 2), 2), ((9, 3), 3), ((9, 4), 4)
-            , ((10, 1), 15), ((10, 2), 2), ((10, 3), 3), ((10, 4), 4)
-            , ((16, 1), 19), ((16, 2), 2), ((16, 3), 3), ((16, 4), 4)
-            , ((17, 1), 20), ((17, 2), 2), ((17, 3), 3), ((17, 4), 4)
+            , ((3, 4), 8)
+            , ((6, 1), 12), ((6, 2), 2), ((6, 3), 3), ((6, 4), 4)
+            , ((11, 1), 16), ((11, 2), 2), ((11, 3), 3), ((11, 4), 4)
+            , ((13, 1), 18), ((13, 2), 2), ((13, 3), 3), ((13, 4), 4)
+            , ((14, 1), 19), ((14, 2), 2), ((14, 3), 3), ((14, 4), 4)
+            , ((15, 1), 20), ((15, 2), 2), ((15, 3), 3), ((15, 4), 4)
             ]
         }
 
@@ -202,9 +202,9 @@ getParserSInfo 3 = ParserSInfo
         ]
     , myNexts = 
         [ "`lprn' +-> 6"
-        , "<Term3> +-> 11"
-        , "`lid' +-> 12"
-        , "`sid' +-> 13"
+        , "<Term3> +-> 8"
+        , "`lid' +-> 9"
+        , "`sid' +-> 10"
         ]
     }
 getParserSInfo 4 = ParserSInfo
@@ -219,7 +219,7 @@ getParserSInfo 5 = ParserSInfo
         , "<Term3> ::= `lid' ."
         ]
     , myNexts = 
-        [ "`lambda' +-> 9"
+        [ "`lambda' +-> 11"
         ]
     }
 getParserSInfo 6 = ParserSInfo
@@ -244,7 +244,7 @@ getParserSInfo 6 = ParserSInfo
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
-        , "<Term0> +-> 8"
+        , "<Term0> +-> 12"
         ]
     }
 getParserSInfo 7 = ParserSInfo
@@ -253,18 +253,34 @@ getParserSInfo 7 = ParserSInfo
         , "<Term3> ::= `sid' ."
         ]
     , myNexts = 
-        [ "`lambda' +-> 10"
+        [ "`lambda' +-> 13"
         ]
     }
 getParserSInfo 8 = ParserSInfo
     { myItems = 
-        [ "<Term3> ::= `lprn' <Term0> . `rprn'"
+        [ "<Term2> ::= <Term2> <Term3> ."
         ]
-    , myNexts = 
-        [ "`rprn' +-> 18"
-        ]
+    , myNexts = []
     }
 getParserSInfo 9 = ParserSInfo
+    { myItems = 
+        [ "<Term1> ::= <Term2> `lid' . `lambda' <Term0>"
+        , "<Term3> ::= `lid' ."
+        ]
+    , myNexts = 
+        [ "`lambda' +-> 14"
+        ]
+    }
+getParserSInfo 10 = ParserSInfo
+    { myItems = 
+        [ "<Term1> ::= <Term2> `sid' . `lambda' <Term0>"
+        , "<Term3> ::= `sid' ."
+        ]
+    , myNexts = 
+        [ "`lambda' +-> 15"
+        ]
+    }
+getParserSInfo 11 = ParserSInfo
     { myItems = 
         [ "<Term0> ::= . <Term1>"
         , "<Term0> ::= . `lid' `lambda' <Term0>"
@@ -286,10 +302,18 @@ getParserSInfo 9 = ParserSInfo
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
-        , "<Term0> +-> 14"
+        , "<Term0> +-> 16"
         ]
     }
-getParserSInfo 10 = ParserSInfo
+getParserSInfo 12 = ParserSInfo
+    { myItems = 
+        [ "<Term3> ::= `lprn' <Term0> . `rprn'"
+        ]
+    , myNexts = 
+        [ "`rprn' +-> 17"
+        ]
+    }
+getParserSInfo 13 = ParserSInfo
     { myItems = 
         [ "<Term0> ::= . <Term1>"
         , "<Term0> ::= . `lid' `lambda' <Term0>"
@@ -311,46 +335,10 @@ getParserSInfo 10 = ParserSInfo
         , "`lid' +-> 5"
         , "`lprn' +-> 6"
         , "`sid' +-> 7"
-        , "<Term0> +-> 15"
-        ]
-    }
-getParserSInfo 11 = ParserSInfo
-    { myItems = 
-        [ "<Term2> ::= <Term2> <Term3> ."
-        ]
-    , myNexts = []
-    }
-getParserSInfo 12 = ParserSInfo
-    { myItems = 
-        [ "<Term1> ::= <Term2> `lid' . `lambda' <Term0>"
-        , "<Term3> ::= `lid' ."
-        ]
-    , myNexts = 
-        [ "`lambda' +-> 16"
-        ]
-    }
-getParserSInfo 13 = ParserSInfo
-    { myItems = 
-        [ "<Term1> ::= <Term2> `sid' . `lambda' <Term0>"
-        , "<Term3> ::= `sid' ."
-        ]
-    , myNexts = 
-        [ "`lambda' +-> 17"
+        , "<Term0> +-> 18"
         ]
     }
 getParserSInfo 14 = ParserSInfo
-    { myItems = 
-        [ "<Term0> ::= `lid' `lambda' <Term0> ."
-        ]
-    , myNexts = []
-    }
-getParserSInfo 15 = ParserSInfo
-    { myItems = 
-        [ "<Term0> ::= `sid' `lambda' <Term0> ."
-        ]
-    , myNexts = []
-    }
-getParserSInfo 16 = ParserSInfo
     { myItems = 
         [ "<Term0> ::= . <Term1>"
         , "<Term0> ::= . `lid' `lambda' <Term0>"
@@ -375,7 +363,7 @@ getParserSInfo 16 = ParserSInfo
         , "<Term0> +-> 19"
         ]
     }
-getParserSInfo 17 = ParserSInfo
+getParserSInfo 15 = ParserSInfo
     { myItems = 
         [ "<Term0> ::= . <Term1>"
         , "<Term0> ::= . `lid' `lambda' <Term0>"
@@ -400,9 +388,21 @@ getParserSInfo 17 = ParserSInfo
         , "<Term0> +-> 20"
         ]
     }
-getParserSInfo 18 = ParserSInfo
+getParserSInfo 16 = ParserSInfo
+    { myItems = 
+        [ "<Term0> ::= `lid' `lambda' <Term0> ."
+        ]
+    , myNexts = []
+    }
+getParserSInfo 17 = ParserSInfo
     { myItems = 
         [ "<Term3> ::= `lprn' <Term0> `rprn' ."
+        ]
+    , myNexts = []
+    }
+getParserSInfo 18 = ParserSInfo
+    { myItems = 
+        [ "<Term0> ::= `sid' `lambda' <Term0> ."
         ]
     , myNexts = []
     }
@@ -434,12 +434,12 @@ _LA =
     , "( q = 4, [<Term2> ::= <Term3>] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
     , "( q = 5, [<Term3> ::= `lid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
     , "( q = 7, [<Term3> ::= `sid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
-    , "( q = 11, [<Term2> ::= <Term2> <Term3>] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
-    , "( q = 12, [<Term3> ::= `lid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
-    , "( q = 13, [<Term3> ::= `sid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
-    , "( q = 14, [<Term0> ::= `lid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
-    , "( q = 15, [<Term0> ::= `sid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
-    , "( q = 18, [<Term3> ::= `lprn' <Term0> `rprn'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 8, [<Term2> ::= <Term2> <Term3>] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 9, [<Term3> ::= `lid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 10, [<Term3> ::= `sid'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 16, [<Term0> ::= `lid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
+    , "( q = 17, [<Term3> ::= `lprn' <Term0> `rprn'] ) +-> {`\\$', `lid', `lprn', `rprn', `sid'}"
+    , "( q = 18, [<Term0> ::= `sid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
     , "( q = 19, [<Term1> ::= <Term2> `lid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
     , "( q = 20, [<Term1> ::= <Term2> `sid' `lambda' <Term0>] ) +-> {`\\$', `rprn'}"
     ]
