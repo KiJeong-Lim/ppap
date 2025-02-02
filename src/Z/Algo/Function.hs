@@ -69,11 +69,9 @@ digraph your_X your_R your_F' = snd (snd (runIdentity (runStateT (mapM_ (my_trav
             put ((x : my_S, Map.update (Just . const k) x my_N), Map.update (Just . const (your_F' x)) x my_F)
             forM_ your_X $ \y -> do
                 when (x `your_R` y) $ do
+                    my_traverse (k + 1) y
                     ((my_S, my_N), my_F) <- get
-                    when (my_N Map.! y == 0) $ do
-                        my_traverse (k + 1) y
-                        ((my_S, my_N), my_F) <- get
-                        put ((my_S, Map.update (Just . min (my_N Map.! y)) x my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
+                    put ((my_S, Map.update (Just . min (my_N Map.! y)) x my_N), Map.update (Just . Set.union (my_F Map.! y)) x my_F)
             ((my_S, my_N), my_F) <- get
             when (my_N Map.! x == k) $ do
                 fix $ \loop_handle -> do

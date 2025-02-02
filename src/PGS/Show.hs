@@ -41,7 +41,7 @@ instance Show Conflict where
         where
             formatedVertices :: [([LR0Item], ParserS)]
             formatedVertices = do
-                (q, items) <- sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) (Map.toAscList vertices)
+                (q, items) <- Map.toAscList vertices
                 return (Set.toAscList items, q)
             formatedEdges :: [(ParserS, [(Sym, ParserS)])]
             formatedEdges = do

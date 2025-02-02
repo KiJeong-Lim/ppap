@@ -64,7 +64,7 @@ instance Outputable Cannonical0 where
         where
             formatedVertices :: [(ParserS, [LR0Item])]
             formatedVertices = do
-                (q, items) <- sortByMerging (\pair1 -> \pair2 -> snd pair1 < snd pair2) (Map.toAscList vertices)
+                (q, items) <- Map.toAscList vertices
                 return (q, Set.toAscList items)
             formatedEdges :: [(ParserS, [(Sym, ParserS)])]
             formatedEdges = do
