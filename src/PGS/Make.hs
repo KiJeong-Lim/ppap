@@ -97,7 +97,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     terminals' :: Map.Map TSym (Associativity, Precedence)
     terminals' = Map.insert TSEOF (ANone, maxPrec) terminals
     productions' :: Map.Map ProductionRule Precedence
-    productions' = Map.insert (start', [NS start]) maxPrec productions
+    productions' = Map.insert (start', [NS start, TS TSEOF]) maxPrec productions
     getMarkSym :: LR0Item -> Maybe Sym
     getMarkSym item = case getRIGHT item of
         [] -> Nothing
@@ -113,13 +113,11 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 , any (\item -> getMarkSym item == Just (NS lhs)) (Set.toList items)
                 ]
         calcGOTO :: (Set.Set LR0Item, Sym) -> Identity (Set.Set LR0Item)
-        calcGOTO (items, sym)
-            | sym == TS TSEOF = return Set.empty
-            | otherwise = getClosure $ Set.fromList
-                [ LR0Item lhs (left ++ [sym']) right
-                | LR0Item lhs left (sym' : right) <- Set.toList items
-                , sym == sym'
-                ]
+        calcGOTO (items, sym) = getClosure $ Set.fromList
+            [ LR0Item lhs (left ++ [sym']) right
+            | LR0Item lhs left (sym' : right) <- Set.toList items
+            , sym == sym'
+            ]
         loop :: Cannonical0 -> Identity Cannonical0
         loop collection = do
             (_, collection') <- flip runStateT collection $ sequence_
@@ -148,7 +146,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 else loop collection'
         makeCannonical0 :: Identity Cannonical0
         makeCannonical0 = do
-            items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start]))
+            items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start, TS TSEOF]))
             loop (Cannonical0 (Map.singleton 0 items0) 0 Map.empty)
     getFIRST :: Map.Map NSym TerminalSet
     getFIRST = loop base where
@@ -184,8 +182,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Read = digraph _Dom _reads _DR' where
             _reads (p, _A) (r, _C) = calcGOTO p [NS _A] == Just r && isNullable [NS _C]
-            _DR' (p, _A) = if p == getRoot getCannonical0 && _A == start then TSEOF `Set.insert` _DR else _DR where
-                _DR = Set.fromList [ t | t <- Set.toAscList (Map.keysSet terminals), isJust (calcGOTO p [NS _A, TS t]) ]
+            _DR' (p, _A) = Set.fromList [ t | t <- Set.toAscList (Map.keysSet terminals'), isJust (calcGOTO p [NS _A, TS t]) ]
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Follow = digraph _Dom _Includes _Read' where
             _Includes (p, _A) (p', _B) = or
@@ -203,7 +200,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     , calcGOTO p _omega == Just q
                     , isJust (calcGOTO p [NS _A])
                     ]
-                return ((q, (_A, _omega)), (if _A == start' then Set.insert TSEOF else id) $! Set.unions result)
+                return ((q, (_A, _omega)), Set.unions result)
             | (q, items) <- Map.toAscList (getVertices getCannonical0)
             , LR0Item _A _omega [] <- Set.toAscList items
             ]
@@ -211,12 +208,12 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     resolveConflicts = foldr loop (Right base) [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- getLATable, t <- Set.toList ts ] where
         base :: Map.Map (ParserS, TSym) Action
         base = Map.fromList
-            [ ((q, t), Shift p)
+            [ ((q, t), if t == TSEOF then Accept else Shift p)
             | ((q, TS t), p) <- Map.toList (getEdges getCannonical0)
             ]
         loop :: ((ParserS, TSym), ProductionRule) -> Either Conflict (Map.Map (ParserS, TSym) Action) -> Either Conflict (Map.Map (ParserS, TSym) Action)
         loop _ (Left conf) = Left conf
-        loop ((q, t), production) (Right getActionT) = case (Map.lookup (q, t) getActionT, if fst production == start' then Accept else Reduce production) of
+        loop ((q, t), production) (Right getActionT) = case (Map.lookup (q, t) getActionT, Reduce production) of
             (Nothing, ra) -> Right (Map.insert (q, t) ra getActionT)
             (Just Accept, ra) -> Right getActionT
             (Just (Shift p), ra) -> case (Map.lookup t terminals', Map.lookup production productions') of
