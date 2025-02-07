@@ -177,15 +177,15 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
         isNullable :: [Sym] -> Bool
         isNullable omega = Nothing `Set.member` unTerminalSet (getFirstOf omega)
-        _Dom :: Set.Set (ParserS, NSym)
-        _Dom = Set.fromList [ (p, _A) | (p, items') <- Map.toAscList (getVertices getCannonical0), LR0Item _ _ (NS _A : _) <- Set.toAscList items' ]
+        _Domain :: Set.Set (ParserS, NSym)
+        _Domain = Set.fromList [ (p, _A) | (p, items') <- Map.toAscList (getVertices getCannonical0), LR0Item _ _ (NS _A : _) <- Set.toAscList items' ]
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Read = digraph _Dom _reads _DR where
+        _Read = digraph _Domain _reads _DR where
             _reads (p, _A) (r, _C) = calcGOTO p [NS _A] == Just r && isNullable [NS _C]
             _DR (p, _A) = Set.fromList [ t | t <- Set.toAscList (Map.keysSet terminals'), isJust (calcGOTO p [NS _A, TS t]) ]
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Follow = digraph _Dom _Includes (call _Read) where
-            _Includes (p, _A) (p', _B) = or
+        _Follow = digraph _Domain _includes (call _Read) where
+            _includes (p, _A) (p', _B) = or
                 [ isNullable _gamma && calcGOTO p' _beta == Just p
                 | LR0Item _B' _beta (NS _A' : _gamma) <- Set.toAscList (getVertices getCannonical0 Map.! p)
                 , _A == _A' && _B == _B'
