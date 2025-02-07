@@ -99,9 +99,8 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     productions' :: Map.Map ProductionRule Precedence
     productions' = Map.insert (start', [NS start, TS TSEOF]) maxPrec productions
     getMarkSym :: LR0Item -> Maybe Sym
-    getMarkSym item = case getRIGHT item of
-        [] -> Nothing
-        sym : syms -> Just sym
+    getMarkSym (LR0Item _ _ []) = Nothing
+    getMarkSym (LR0Item _ _ (sym : _)) = Just sym
     getCannonical0 :: Cannonical0
     getCannonical0 = runIdentity makeCannonical0 where
         getClosure :: Set.Set LR0Item -> Identity (Set.Set LR0Item)
@@ -126,24 +125,22 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     sequence_
                         [ do 
                             items' <- lift (calcGOTO (items, sym))
-                            if Set.null items'
-                                then return () 
-                                else do
-                                    Cannonical0 vertices root edges <- get
-                                    let ps = [ _p | (_p, _items') <- Map.toAscList vertices, items' == _items' ]
-                                    case ps of
-                                        [] -> do
-                                            let p = Map.size vertices
-                                            put (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges))
-                                        [p] -> put (Cannonical0 vertices root (Map.insert (q, sym) p edges))
-                                        _ -> error "makeCollectionAndLALR1Parser.getCannonical0.loop"
+                            if Set.null items' then
+                                return () 
+                            else do
+                                Cannonical0 vertices root edges <- get
+                                let ps = [ _p | (_p, _items') <- Map.toAscList vertices, items' == _items' ]
+                                case ps of
+                                    [] -> do
+                                        let p = Map.size vertices
+                                        put (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges))
+                                    [p] -> put (Cannonical0 vertices root (Map.insert (q, sym) p edges))
+                                    _ -> error "makeCollectionAndLALR1Parser.getCannonical0.loop"
                         | Just sym <- Set.toList (Set.map getMarkSym cl)
                         ]
                 | (q, items) <- Map.toList (getVertices collection)
                 ]
-            if collection == collection'
-                then return collection'
-                else loop collection'
+            if collection == collection' then return collection' else loop collection'
         makeCannonical0 :: Identity Cannonical0
         makeCannonical0 = do
             items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start, TS TSEOF]))
@@ -167,13 +164,13 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     getLATable :: [((ParserS, ProductionRule), Set.Set TSym)]
     getLATable = runIdentity makeLATable where
         calcGOTO :: ParserS -> [Sym] -> Maybe ParserS
-        calcGOTO q [] = Just q
-        calcGOTO q (sym : syms) = maybe Nothing (\p -> calcGOTO p syms) $ Map.lookup (q, sym) (getEdges getCannonical0)
+        calcGOTO q [] = return q
+        calcGOTO q (sym : syms) = do
+            p <- Map.lookup (q, sym) (getEdges getCannonical0)
+            calcGOTO p syms
         getFirstOf :: [Sym] -> TerminalSet
         getFirstOf [] = mempty
-        getFirstOf (NS ns : syms) = case Map.lookup ns getFIRST of
-            Nothing -> error "getLALR1.getLATable.getFirstOf"
-            Just tss -> tss <> getFirstOf syms
+        getFirstOf (NS ns : syms) = getFIRST Map.! ns <> getFirstOf syms
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
         isNullable :: [Sym] -> Bool
         isNullable omega = Nothing `Set.member` unTerminalSet (getFirstOf omega)
@@ -186,7 +183,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Follow = digraph _Domain _includes (call _Read) where
             _includes (p, _A) (p', _B) = or
-                [ isNullable _gamma && calcGOTO p' _beta == Just p
+                [ calcGOTO p' _beta == Just p && isNullable _gamma
                 | LR0Item _B' _beta (NS _A' : _gamma) <- Set.toAscList (getVertices getCannonical0 Map.! p)
                 , _A == _A' && _B == _B'
                 ]
