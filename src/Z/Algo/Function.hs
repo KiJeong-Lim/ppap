@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
 module Z.Algo.Function where
 
 import Control.Monad
@@ -8,6 +9,7 @@ import Control.Monad.Trans.State.Strict
 import qualified Data.Foldable as Foldable
 import qualified Data.Function as Function
 import Data.Functor.Identity
+import Data.Kind
 import qualified Data.Maybe as Maybe
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -23,11 +25,28 @@ type MyNat = Integer
 
 type ErrMsgM = Either String
 
+class Callable obj where
+    type Dom obj :: Type
+    type Cod obj :: Type
+    call :: HasCallStack => obj -> Dom obj -> Cod obj
+
 class Failable a where
     alt :: a -> a -> a
 
 class Failable a => FailableZero a where
     nil :: a
+
+instance Callable (dom -> cod) where
+    type Dom (dom -> cod) = dom
+    type Cod (dom -> cod) = cod
+    call = ($!)
+
+instance Ord key => Callable (Map.Map key val) where
+    type Dom (Map.Map key val) = key
+    type Cod (Map.Map key val) = val
+    call m k = case k `Map.lookup` m of
+        Nothing -> error "call: out of domain"
+        Just v -> v
 
 instance Failable Bool where
     alt (False) = id

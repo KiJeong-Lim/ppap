@@ -180,17 +180,16 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         _Dom :: Set.Set (ParserS, NSym)
         _Dom = Set.fromList [ (p, _A) | (p, items') <- Map.toAscList (getVertices getCannonical0), LR0Item _ _ (NS _A : _) <- Set.toAscList items' ]
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Read = digraph _Dom _reads _DR' where
+        _Read = digraph _Dom _reads _DR where
             _reads (p, _A) (r, _C) = calcGOTO p [NS _A] == Just r && isNullable [NS _C]
-            _DR' (p, _A) = Set.fromList [ t | t <- Set.toAscList (Map.keysSet terminals'), isJust (calcGOTO p [NS _A, TS t]) ]
+            _DR (p, _A) = Set.fromList [ t | t <- Set.toAscList (Map.keysSet terminals'), isJust (calcGOTO p [NS _A, TS t]) ]
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Follow = digraph _Dom _Includes _Read' where
+        _Follow = digraph _Dom _Includes (call _Read) where
             _Includes (p, _A) (p', _B) = or
                 [ isNullable _gamma && calcGOTO p' _beta == Just p
                 | LR0Item _B' _beta (NS _A' : _gamma) <- Set.toAscList (getVertices getCannonical0 Map.! p)
                 , _A == _A' && _B == _B'
                 ]
-            _Read' (p, _A) = _Read Map.! (p, _A)
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = sequence
             [ do
