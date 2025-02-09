@@ -9,6 +9,7 @@ import Control.Monad.Trans.State.Strict
 import qualified Data.Foldable as Foldable
 import qualified Data.Function as Function
 import Data.Functor.Identity
+import Data.Semigroup
 import Data.Kind
 import qualified Data.Maybe as Maybe
 import qualified Data.Map.Strict as Map
@@ -36,9 +37,9 @@ class Failable a where
 class Failable a => FailableZero a where
     nil :: a
 
-instance Callable (dom -> cod) where
-    type Dom (dom -> cod) = dom
-    type Cod (dom -> cod) = cod
+instance Callable (src -> tgt) where
+    type Dom (src -> tgt) = src
+    type Cod (src -> tgt) = tgt
     call = ($!)
 
 instance Ord key => Callable (Map.Map key val) where
@@ -47,6 +48,21 @@ instance Ord key => Callable (Map.Map key val) where
     call m k = case k `Map.lookup` m of
         Nothing -> error "call: out of domain"
         Just v -> v
+
+instance Ord elem => Callable (Set.Set elem) where
+    type Dom (Set.Set elem) = elem
+    type Cod (Set.Set elem) = Bool
+    call xs x = x `Set.member` xs
+
+instance (Callable f1, Callable f2) => Callable (f1, f2) where
+    type Dom (f1, f2) = (Dom f1, Dom f2)
+    type Cod (f1, f2) = (Cod f1, Cod f2)
+    call (f1, f2) (x1, x2) = (call f1 x1, call f2 x2)
+
+instance Callable () where
+    type Dom () = ()
+    type Cod () = ()
+    call () () = ()
 
 instance Failable Bool where
     alt (False) = id
@@ -80,8 +96,10 @@ instance FailableZero b => FailableZero (a -> b) where
     nil = const nil
 
 digraph :: forall vertex output. (Ord vertex, Monoid output, HasCallStack) => Set.Set vertex -> (vertex -> vertex -> Bool) -> (vertex -> output) -> Map.Map vertex output
-digraph your_X your_R your_F' = Map.map snd (snd (snd (runIdentity (runStateT (mapM_ (go 1) your_X) ([], Map.fromSet (const (0, mempty)) your_X))))) where
-    go :: Int -> vertex -> StateT ([vertex], Map.Map vertex (Int, output)) Identity ()
+digraph your_X your_R your_F' = Map.map snd (snd (snd (runIdentity (runStateT (mapM_ (go k0) your_X) ([], Map.fromSet (const (0, mempty)) your_X))))) where
+    k0 :: Min Int
+    k0 = 1
+    go :: forall n. (Num n, Enum n, Ord n, Bounded n) => Min n -> vertex -> StateT ([vertex], Map.Map vertex (Min n, output)) Identity ()
     go k x = do
         (stack, _N_F) <- get
         when (fst (_N_F Map.! x) == 0) $ do
@@ -90,17 +108,26 @@ digraph your_X your_R your_F' = Map.map snd (snd (snd (runIdentity (runStateT (m
                 when (your_R x y) $ do
                     (go $! succ k) y
                     (stack, _N_F) <- get
-                    let (yN, yF) = _N_F Map.! y
-                    put (stack, Map.adjust (min yN <^> mappend yF) x _N_F)
+                    put (stack, Map.adjust (mappend (_N_F Map.! y)) x _N_F)
             (_, _N_F) <- get
             let (xN, xF) = _N_F Map.! x
             when (xN == k) $ do
                 Function.fix $ \loop -> do
                     (stack, _N_F) <- get
                     let top = head stack
-                    put (tail stack, Map.adjust (const (maxBound, xF)) top _N_F)
+                    put (tail stack, Map.adjust (const (mempty, xF)) top _N_F)
                     unless (top == x) $ do
                         loop
+    digraphTest :: Map.Map Char (Set.Set Char)
+    digraphTest = digraph (Set.fromList "abcdef") edge Set.singleton where
+        edge 'a' 'b' = True
+        edge 'b' 'c' = True
+        edge 'c' 'a' = True
+        edge 'c' 'd' = True
+        edge 'c' 'f' = True
+        edge 'e' 'd' = True
+        edge _ _ = False
+    -- digraphTest = fromList [('a',fromList "abcdf"),('b',fromList "abcdf"),('c',fromList "abcdf"),('d',fromList "d"),('e',fromList "de"),('f',fromList "f")]
 
 (/>) :: Failable a => a -> a -> a
 x /> y = alt x y
@@ -127,7 +154,7 @@ recNat :: (Num nat, Enum nat) => (res) -> (nat -> res -> res) -> (nat -> res)
 recNat my_init my_step n = foldr my_step my_init [n - 1, n - 2 .. 0]
 
 (<^>) :: (fst1 -> fst2) -> (snd1 -> snd2) -> ((fst1, snd1) -> (fst2, snd2))
-map_fst <^> map_snd = pure (curry id) <*> map_fst . fst <*> map_snd . snd
+f1 <^> f2 = call (f1, f2)
 
 kconcat :: (Foldable.Foldable t, Monad m) => t (a -> m a) -> (a -> m a)
 kconcat = Foldable.foldr (>=>) return
