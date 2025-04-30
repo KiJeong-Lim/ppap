@@ -5,9 +5,9 @@ import Z.Algo.Function
 import Z.System.Shelly
 
 testPresburger :: IO ()
-testPresburger = mapM_ (shelly . testCase . getCase) [1 .. 12] where
-    getCase :: Int -> MyPresburgerFormulaRep
-    getCase = at
+testPresburger = mapM_ (shelly . testCase . at getCase) [1 .. length getCase] where
+    getCase :: [MyPresburgerFormulaRep]
+    getCase =
         [ (AllF 1 (AllF 2 (EqnF (Plus (IVar 1) (IVar 2)) (Plus (IVar 2) (IVar 1)))))
         , (AllF 1 (LeqF (IVar 1) (IVar 1)))
         , (AllF 1 (AllF 2 (NegF (ConF (LeqF (IVar 1) (IVar 2)) (GtnF (IVar 1) (IVar 2))))))
