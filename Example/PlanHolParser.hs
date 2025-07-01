@@ -94,7 +94,7 @@ runHolParser = fmap (getEither getQuery (getSequence getDecl)) . runLALR1 theLAL
         | [guard1] `elem` [[6]] = (getTermRep1L2 _1)
     getTermRep1L2 :: ParsingTree -> (TermRep)
     getTermRep1L2 (PTBranch _ [_1@(PTBranch guard1 _), PTLeaf (T_fatarrow loc_2), _3@(PTBranch guard3 _)])
-        | [guard1, guard3] `elem` [[7, 6]] = RApp (getSLoc (getTermRep1L3 _1) <> getSLoc (getTermRep1L2 _3)) (RApp (getSLoc (getTermRep1L3 _1) <> (loc_2)) (RCon (loc_2) (DC_LO LO_or)) (getTermRep1L3 _1)) (getTermRep1L2 _3)
+        | [guard1, guard3] `elem` [[7, 6]] = RApp (getSLoc (getTermRep1L3 _1) <> getSLoc (getTermRep1L2 _3)) (RApp (getSLoc (getTermRep1L3 _1) <> (loc_2)) (RCon (loc_2) (DC_LO LO_imply)) (getTermRep1L3 _1)) (getTermRep1L2 _3)
     getTermRep1L2 (PTBranch _ [_1@(PTBranch guard1 _)])
         | [guard1] `elem` [[7]] = (getTermRep1L3 _1)
     getTermRep1L3 :: ParsingTree -> (TermRep)

@@ -121,7 +121,7 @@
 
 \define $TermRep1L2 : "TermRep" {
     70 [$TermRep1L3, $fatarrow, $TermRep1L2]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_or)) $1) $3
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_imply)) $1) $3
     70 [$TermRep1L3]:
         $1
 }
