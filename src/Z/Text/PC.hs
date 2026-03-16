@@ -77,3 +77,14 @@ charPC = pure read <*> regexPC "\"\\\'\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' 
 
 acceptList :: PC a -> PC [a]
 acceptList pc = consumePC "[" *> (skipWhite *> (pure [] <|> (pure (:) <*> pc <*> many (consumePC "," *> skipWhite *> pc)))) <* consumePC "]"
+
+endPC :: PC ()
+endPC = MyPC go where
+    go :: PB LocChr ()
+    go = PAct (const [(PVal (), [])])
+
+skipSpace :: PC Int
+skipSpace = MyPC go where
+    go :: PB LocChr Int
+    go = mkPB $ \lstr0 -> case span (\lch -> snd lch `elem` [' ', '\n', '\t']) lstr0 of
+        (ws, lstr1) -> one (length ws, lstr1)

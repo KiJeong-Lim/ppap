@@ -27,6 +27,7 @@ executable ppap
     , vector >= 0.12
     , math-functions >= 0.3
     , extra >= 1.7
+    , filepath >= 1.5
   other-modules:
     Aladdin.Back.Base.TermNode.Read
     Aladdin.Back.Base.TermNode.Show
@@ -134,6 +135,7 @@ executable ppap
     Z.Text.PC
     Z.Text.PM
     Z.Utils
+    Isa.Dep
   c-sources:
     src/X/machine.c
     src/X/machine.h
