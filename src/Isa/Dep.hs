@@ -8,10 +8,12 @@ import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 import qualified System.Directory as Directory
 import System.FilePath
+import Y.Base
 import Z.Text.PC
 import Z.System.Shelly
 import Z.System.File
 import Z.System.Path
+import Z.Utils
 
 l4v :: FilePath
 l4v = "l4v/"
@@ -44,24 +46,30 @@ readimports pth = go where
             Nothing -> return (Left "cannot open the file")
             Just src -> return (runPC pth parser src)
     id :: PC String
-    id = regexPC "['A'-'Z' 'a'-'z'] ['A'-'Z' 'a'-'z' '_' '0'-'9']*"
+    id = negPC (consumePC "begin") *> regexPC "['A'-'Z' 'a'-'z'] ['A'-'Z' 'a'-'z' '_' '0'-'9']*"
     qualid :: PC String
     qualid = do
         hd <- id
         tl <- many $ do
             consumePC "."
             id
-        return (List.foldl' cat hd tl)
+        return (last (hd : tl))
+    quoteid :: PC String
+    quoteid = do
+        q <- acceptQuote
+        return $! last (splitBy '.' q)
     cat :: String -> String -> String
     x `cat` y = y
     skipComment :: PC ()
     skipComment = do
+        skipSpace
         many $ do
             regexPC "\"(*\" ([.\\\'*\'] + \"*\" [.\\\')\'])* \"*)\""
             skipSpace
         many $ do
-            regexPC "\"text \" \"\\\\<open>\" [.\\\'\\\\\']* \"\\\\<close>\""
+            regexPC "\"text \\\\<open>\" [.\\\'\\\\\']* \"\\\\<close>\""
             skipSpace
+        skipSpace
         return ()
     parser :: PC [String]
     parser = do
@@ -69,13 +77,14 @@ readimports pth = go where
         consumePC "theory"
         skipSpace
         id
-        skipSpace
+        skipComment
         consumePC "imports"
-        skipSpace
+        skipComment
         res <- many $ do
-            it <- qualid <> acceptQuote
-            skipSpace
+            it <- qualid <> quoteid
+            skipComment
             return it
+        skipComment
         consumePC "begin"
         endPC
         return res
@@ -87,5 +96,32 @@ testreadimports = do
         Left err -> putStrLn err
         Right res -> print res
 
+findDep :: [FilePath] -> FilePath -> IO [(FilePath, FilePath)]
+findDep pths pth
+    | pth == "Main" = return []
+    | pth `elem` pths = return [(pth, pth)]
+    | otherwise = do
+        m <- loadthys
+        imps <- case pth `Map.lookup` m of
+            Nothing -> return (Left ("error=" ++ show pth))
+            Just cur -> readimports cur
+        case imps of
+            Left err -> return []
+            Right imps -> do
+                res <- concat <$> mapM (findDep pths) [ pth ++ ".thy" | pth <- imps ]
+                return [ (pth, tgt) | (src, tgt) <- res ]
+
 main :: IO ()
-main = testreadimports
+main = do
+    list <- readFileNow "list.txt"
+    case list of
+        Nothing -> putStrLn "cannot find \"list.txt\""
+        Just list -> do
+            let thys = splitBy '\n' list
+            thys <- return $! map takeFileName $! filter (not . null) thys
+            sequence_
+                [ do
+                    out <- findDep (thys List.\\ [thy]) (takeFileName thy)
+                    print (List.nub out)
+                | thy <- thys
+                ]
