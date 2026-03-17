@@ -19,10 +19,7 @@ l4v :: FilePath
 l4v = "l4v/"
 
 loadthys :: IO (Map.Map FilePath FilePath)
-loadthys = do
-    files <- findThyFiles l4v
-    return $ Map.fromList [(takeFileName f, f) | f <- files]
-  where
+loadthys = this where
     findThyFiles :: FilePath -> IO [FilePath]
     findThyFiles dir = do
         exists <- Directory.doesDirectoryExist dir
@@ -30,12 +27,16 @@ loadthys = do
             then return []
             else do
                 contents <- Directory.listDirectory dir
-                let fullPaths = map (dir </>) contents
+                let fullPaths = map (\it -> dir </> it) contents
                 files <- filterM Directory.doesFileExist fullPaths
                 dirs <- filterM Directory.doesDirectoryExist fullPaths
                 let thyFiles = filter (\f -> takeExtension f == ".thy") files
                 subFiles <- concat <$> mapM findThyFiles dirs
                 return (thyFiles ++ subFiles)
+    this :: IO (Map.Map FilePath FilePath)
+    this = do
+        files <- findThyFiles l4v
+        return $ Map.fromList [ (takeFileName f, f) | f <- files ]
 
 readimports :: FilePath -> IO (Either String [FilePath])
 readimports pth = go where
