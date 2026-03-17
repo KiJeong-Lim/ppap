@@ -23,16 +23,16 @@ loadthys = this where
     findThyFiles :: FilePath -> IO [FilePath]
     findThyFiles dir = do
         exists <- Directory.doesDirectoryExist dir
-        if not exists
-            then return []
-            else do
-                contents <- Directory.listDirectory dir
-                let fullPaths = map (\it -> dir </> it) contents
-                files <- filterM Directory.doesFileExist fullPaths
-                dirs <- filterM Directory.doesDirectoryExist fullPaths
-                let thyFiles = filter (\f -> takeExtension f == ".thy") files
-                subFiles <- concat <$> mapM findThyFiles dirs
-                return (thyFiles ++ subFiles)
+        if not exists then
+            return []
+        else do
+            contents <- Directory.listDirectory dir
+            let fullPaths = map (\it -> dir </> it) contents
+            files <- filterM Directory.doesFileExist fullPaths
+            dirs <- filterM Directory.doesDirectoryExist fullPaths
+            let thyFiles = filter (\f -> takeExtension f == ".thy") files
+            subFiles <- concat <$> mapM findThyFiles dirs
+            return (thyFiles ++ subFiles)
     this :: IO (Map.Map FilePath FilePath)
     this = do
         files <- findThyFiles l4v
@@ -46,21 +46,19 @@ readimports pth = go where
         case src of
             Nothing -> return (Left "cannot open the file")
             Just src -> return (runPC pth parser src)
-    id :: PC String
-    id = negPC (consumePC "begin") *> regexPC "['A'-'Z' 'a'-'z'] ['A'-'Z' 'a'-'z' '_' '0'-'9']*"
+    qid :: PC String
+    qid = negPC (consumePC "begin") *> regexPC "['A'-'Z' 'a'-'z'] ['A'-'Z' 'a'-'z' '_' '0'-'9']*"
     qualid :: PC String
     qualid = do
-        hd <- id
+        hd <- qid
         tl <- many $ do
             consumePC "."
-            id
+            qid
         return (last (hd : tl))
     quoteid :: PC String
     quoteid = do
         q <- acceptQuote
         return $! last (splitBy '.' q)
-    cat :: String -> String -> String
-    x `cat` y = y
     skipComment :: PC ()
     skipComment = do
         skipSpace
@@ -77,7 +75,7 @@ readimports pth = go where
         skipComment
         consumePC "theory"
         skipSpace
-        id
+        qid
         skipComment
         consumePC "imports"
         skipComment
@@ -89,13 +87,6 @@ readimports pth = go where
         consumePC "begin"
         endPC
         return res
-
-testreadimports :: IO ()
-testreadimports = do
-    imps <- readimports (l4v ++ "proof/infoflow/ADT_IF.thy")
-    case imps of
-        Left err -> putStrLn err
-        Right res -> print res
 
 findDep :: [FilePath] -> FilePath -> IO [(FilePath, FilePath)]
 findDep pths pth
