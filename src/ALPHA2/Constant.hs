@@ -1,7 +1,7 @@
-module Aladdin.Back.Base.Constant where
+module ALPHA2.Constant where
 
-import Aladdin.Front.Header
-import Y.Base
+import ALPHA2.Header
+import Z.Utils
 
 data Constant
     = DC DataConstructor

@@ -1,6 +1,6 @@
 module Main where
 
-import qualified Aladdin.Main as Aladdin
+import qualified ALPHA2.Main as ALPHA2
 import qualified Calc.Main as Calc
 import qualified Genie.Main as Genie
 import qualified Jasmine.Main as Jasmine
@@ -25,7 +25,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = takeFirstOf matchPrefix ["Aladdin", "Calc", "LGS", "PGS", "TEST"]
+    | otherwise = takeFirstOf matchPrefix ["ALPHA2", "Calc", "LGS", "PGS", "TEST"]
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix cmd = go (splitAt (length cmd) str) where
@@ -40,9 +40,9 @@ ppap = do
             shelly ("ppap >>= tell (invalid-command=" ++ shows command ")")
             ppap
         Just ("", []) -> return ()
-        Just ("Aladdin", []) -> do
-            shelly ("ppap >>= exec (Aladdin.main)")
-            Aladdin.main
+        Just ("ALPHA2", []) -> do
+            shelly ("ppap >>= exec (ALPHA2.main)")
+            ALPHA2.main
         Just ("Calc", []) -> do
             shelly ("ppap >>= exec (Calc.main)")
             Calc.main
@@ -55,11 +55,9 @@ ppap = do
         Just ("LGS", []) -> do
             shelly ("ppap >>= exec (LGS.main)")
             LGS.main
-            -- src/Aladdin/Front/Analyzer/Lexer.txt
         Just ("PGS", []) -> do
             shelly ("ppap >>= exec (PGS.main)")
             PGS.main
-            -- src/Aladdin/Front/Analyzer/Parser.txt
         Just (cmd, args) -> do
             shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()

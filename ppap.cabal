@@ -29,40 +29,17 @@ executable ppap
     , extra >= 1.7
     , filepath >= 1.5
   other-modules:
-    Aladdin.Back.Base.TermNode.Read
-    Aladdin.Back.Base.TermNode.Show
-    Aladdin.Back.Base.TermNode.Util
-    Aladdin.Back.Base.Constant
-    Aladdin.Back.Base.Labeling
-    Aladdin.Back.Base.TermNode
-    Aladdin.Back.Base.VarBinding
-    Aladdin.Back.Converter.Main
-    Aladdin.Back.Converter.Scheme
-    Aladdin.Back.Converter.Util
-    Aladdin.Back.HOPU.Bind
-    Aladdin.Back.HOPU.Main
-    Aladdin.Back.HOPU.MkSubst
-    Aladdin.Back.HOPU.Select
-    Aladdin.Back.HOPU.Simplify
-    Aladdin.Back.HOPU.Util
-    Aladdin.Back.Runtime.Instantiation
-    Aladdin.Back.Runtime.LogicalOperator
-    Aladdin.Back.Runtime.Main
-    Aladdin.Back.Runtime.Transition
-    Aladdin.Back.Runtime.Util
-    Aladdin.Back.BackEnd
-    Aladdin.Front.Analyzer.Grammar
-    Aladdin.Front.Analyzer.Lexer
-    Aladdin.Front.Analyzer.Main
-    Aladdin.Front.Analyzer.Parser
-    Aladdin.Front.Desugarer.ForKind
-    Aladdin.Front.Desugarer.ForTerm
-    Aladdin.Front.Desugarer.ForType
-    Aladdin.Front.Desugarer.Main
-    Aladdin.Front.TypeChecker.Main
-    Aladdin.Front.TypeChecker.Util
-    Aladdin.Front.Header
-    Aladdin.Main
+    ALPHA2.Header
+    ALPHA2.PlanHolLexer
+    ALPHA2.PlanHolParser
+    ALPHA2.Constant
+    ALPHA2.Desugarer
+    ALPHA2.TypeChecker
+    ALPHA2.TermNode
+    ALPHA2.HOPU
+    ALPHA2.Runtime
+    ALPHA2.Compiler
+    ALPHA2.Main
     Calc.ControlSystem.Diagram.Solver
     Calc.ControlSystem.Export
     Calc.ControlSystem.Test

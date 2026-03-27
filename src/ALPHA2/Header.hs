@@ -1,4 +1,4 @@
-module Aladdin.Front.Header where
+module ALPHA2.Header where
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
@@ -8,9 +8,7 @@ import Data.Functor.Identity
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Y.Base
-
-type ErrMsg = String
+import Z.Utils
 
 type SPos = (Int, Int)
 
@@ -35,14 +33,6 @@ data SLoc
         }
     deriving (Eq, Ord)
 
-newtype Unique
-    = Unique { unUnique :: Integer }
-    deriving (Eq, Ord)
-
-newtype UniqueGenT m a
-    = UniqueGenT { unUniqueGenT :: StateT Integer m a }
-    deriving ()
-
 data Literal
     = NatL Integer
     | ChrL Char
@@ -61,6 +51,7 @@ data LogicalOperator
     | LO_pi
     | LO_sigma
     | LO_debug
+    | LO_is
     deriving (Eq, Ord)
 
 data DataConstructor
@@ -72,7 +63,16 @@ data DataConstructor
     | DC_ChrL Char
     | DC_NatL Integer
     | DC_Succ
-    | DC_Eq
+    | DC_eq
+    | DC_le
+    | DC_lt
+    | DC_ge
+    | DC_gt
+    | DC_plus
+    | DC_minus
+    | DC_mul
+    | DC_div
+    | DC_wc
     deriving (Eq, Ord)
 
 data TypeConstructor
@@ -102,10 +102,10 @@ data PolyType
     deriving ()
 
 data TermExpr dcon annot
-    = IVar annot IVar
-    | DCon annot dcon 
-    | IApp annot (TermExpr dcon annot) (TermExpr dcon annot)
-    | IAbs annot IVar (TermExpr dcon annot)
+    = Var annot IVar
+    | Con annot dcon 
+    | App annot (TermExpr dcon annot) (TermExpr dcon annot)
+    | Lam annot IVar (TermExpr dcon annot)
     deriving ()
 
 data Program term
@@ -119,12 +119,6 @@ data Program term
 
 class HasSLoc a where
     getSLoc :: a -> SLoc
-
-class HasAnnot f where
-    getAnnot :: f a -> a
-
-class Monad m => GenUniqueM m where
-    getNewUnique :: m Unique
 
 instance Semigroup SLoc where
     SLoc pos1 pos2 <> SLoc pos1' pos2' = SLoc (min pos1 pos1') (max pos2 pos2')
@@ -143,46 +137,13 @@ instance Outputable SLoc where
         , showsPrec 0 col2
         ]
 
-instance Show Unique where
-    showsPrec _ = showsPrec 0 . unUnique
-
-instance Functor m => Functor (UniqueGenT m) where
-    fmap a2b = UniqueGenT . fmap a2b . unUniqueGenT
-
-instance Monad m => Applicative (UniqueGenT m) where
-    pure = UniqueGenT . pure
-    m1 <*> m2 = UniqueGenT (unUniqueGenT m1 <*> unUniqueGenT m2)
-
-instance Monad m => Monad (UniqueGenT m) where
-    m1 >>= m2 = UniqueGenT (unUniqueGenT m1 >>= unUniqueGenT . m2)
-
-instance Monad m => GenUniqueM (UniqueGenT m) where
-    getNewUnique = UniqueGenT go where
-        go :: Monad m => StateT Integer m Unique
-        go = do
-            n <- get
-            let n' = n + 1
-            n' `seq` put n'
-            return (Unique n')
-
-instance GenUniqueM m => GenUniqueM (ExceptT s m) where
-    getNewUnique = lift getNewUnique
-
-instance GenUniqueM m => GenUniqueM (StateT s m) where
-    getNewUnique = lift getNewUnique
-
-instance MonadTrans UniqueGenT where
-    lift = UniqueGenT . lift
-
-instance MonadIO m => MonadIO (UniqueGenT m) where
-    liftIO = UniqueGenT . liftIO
-
 instance Show LogicalOperator where
     showsPrec _ logical_operator = case logical_operator of
         LO_ty_pi -> strstr "Lambda"
         LO_if -> strstr ":-"
         LO_true -> strstr "true"
         LO_fail -> strstr "fail"
+        LO_is -> strstr "is"
         LO_cut -> strstr "!"
         LO_and -> strstr ","
         LO_or -> strstr ";"
@@ -201,7 +162,7 @@ instance Show DataConstructor where
         DC_ChrL chr -> showsPrec 0 chr
         DC_NatL nat -> showsPrec 0 nat
         DC_Succ -> strstr "s"
-        DC_Eq -> strstr "="
+        DC_eq -> strstr "="
 
 instance Show TypeConstructor where
     showsPrec _ type_constructor = case type_constructor of
@@ -232,13 +193,14 @@ instance Outputable TCon where
     pprint _ (TCon type_constructor _) = showsPrec 0 type_constructor
 
 instance HasAnnot (TermExpr dcon) where
-    getAnnot (IVar annot _) = annot
-    getAnnot (DCon annot _) = annot
-    getAnnot (IApp annot _ _) = annot
-    getAnnot (IAbs annot _ _) = annot
-
-runUniqueGenT :: Functor m => UniqueGenT m a -> m a
-runUniqueGenT = fmap fst . flip runStateT 0 . unUniqueGenT
+    getAnnot (Var annot _) = annot
+    getAnnot (Con annot _) = annot
+    getAnnot (App annot _ _) = annot
+    getAnnot (Lam annot _ _) = annot
+    setAnnot annot (Var _ x) = Var annot x
+    setAnnot annot (Con _ c) = Con annot c
+    setAnnot annot (App _ t1 t2) = App annot t1 t2
+    setAnnot annot (Lam _ x t1) = Lam annot x t1
 
 mkTyList :: MonoType tvar -> MonoType tvar
 mkTyList typ1 = TyApp (TyCon (TCon (TC_Named "list") (read "* -> *"))) typ1
