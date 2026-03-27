@@ -12,7 +12,7 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Y.Base
-import Z.Utils
+import Z.Utils hiding (Outputable, pprint, pshow, Indentation, ErrMsg, Unique, unUnique, UniqueT, runUniqueT, HasAnnot, getAnnot, setAnnot, strstr, strcat, nl, pindent, ppunc, plist', plist, quotify, plist1)
 
 data Fixity extra
     = Prefix String extra

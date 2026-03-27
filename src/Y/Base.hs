@@ -1,6 +1,6 @@
 module Y.Base where
 
-import Z.Utils
+import Z.Utils hiding (Outputable, Indentation, strstr, strcat, nl, pindent, ppunc, plist', plist, quotify, plist1)
 
 type Indentation = Int
 

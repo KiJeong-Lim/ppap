@@ -5,7 +5,7 @@ import Z.Algo.Function
 import Z.Text.Doc
 import Z.Text.PC.Base
 import Z.Text.PC.Internal
-import Z.Utils
+import Z.Utils hiding (ErrMsg, plist')
 
 type PC = MyPC
 

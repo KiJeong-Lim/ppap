@@ -7,7 +7,7 @@ import Control.Applicative
 import qualified Data.List as List
 import Y.Base
 import Z.Text.PM
-import Z.Utils
+import Z.Utils hiding (Outputable, pprint, pshow, Indentation, ErrMsg, Unique, unUnique, UniqueT, runUniqueT, HasAnnot, getAnnot, setAnnot, strstr, strcat, nl, pindent, ppunc, plist', plist, quotify, plist1)
 
 instance Read TermNode where
     readsPrec = unPM . flip go [] where

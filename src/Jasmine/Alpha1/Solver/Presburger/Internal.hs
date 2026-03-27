@@ -5,7 +5,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Y.Base
 import Z.Algo.Function
-import Z.Utils
+import Z.Utils hiding (Outputable, pprint, pshow, Indentation, strstr, strcat, nl, pindent, ppunc, plist', plist, quotify, plist1)
 
 type MyVar = PositiveInteger
 

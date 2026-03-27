@@ -101,16 +101,16 @@ executable ppap
     Json.JsonParser
     Json.JsonTest
     Json.JsonViewer
+    LGS.Alpha1
     LGS.Main
-    LGS.Make
-    LGS.Read
-    LGS.Show
-    LGS.Util
+    PGS.Alpha1
+    PGS.LALR
     PGS.Main
-    PGS.Make
-    PGS.Read
-    PGS.Show
-    PGS.Util
+    Z.Algorithms
+    Z.Doc
+    Z.OldPC
+    Z.PC
+    Z.System
     TEST.Main
     Y.Text.Ppr.Viewer
     Y.Text.Ppr

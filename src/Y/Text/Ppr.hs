@@ -4,7 +4,7 @@ import System.Console.Pretty
 import Y.Base
 import Y.Text.Ppr.Viewer
 import qualified Z.Text.Doc.Internal as Z
-import Z.Utils
+import Z.Utils hiding (Outputable, pprint, pshow, Indentation, strstr, strcat, nl, pindent, ppunc, plist', plist, quotify, plist1)
 
 data Doc
     = DE

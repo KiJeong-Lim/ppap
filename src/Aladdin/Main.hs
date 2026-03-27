@@ -27,7 +27,7 @@ import System.Exit
 import System.IO
 import Z.System.Path
 import Z.System.Shelly
-import Z.Utils
+import Z.Utils hiding (ErrMsg, Unique, unUnique, UniqueT, runUniqueT, HasAnnot, getAnnot, setAnnot)
 
 theInitialKindDecls :: KindEnv
 theInitialKindDecls = Map.fromList

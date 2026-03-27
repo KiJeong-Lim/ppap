@@ -1,7 +1,7 @@
 module Z.Text.Doc where
 
 import Z.Text.Doc.Internal
-import Z.Utils
+import Z.Utils hiding (plist')
 
 infixr 9 +>
 

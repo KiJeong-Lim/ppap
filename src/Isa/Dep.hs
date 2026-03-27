@@ -13,7 +13,7 @@ import Z.Text.PC
 import Z.System.Shelly
 import Z.System.File
 import Z.System.Path
-import Z.Utils
+import Z.Utils hiding (Outputable, pprint, pshow, Indentation, strstr, strcat, nl, pindent, ppunc, plist', plist, quotify, plist1)
 
 l4v :: FilePath
 l4v = "l4v/"

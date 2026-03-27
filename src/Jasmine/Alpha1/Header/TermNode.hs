@@ -5,7 +5,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Jasmine.Alpha1.Header.Util
 import Z.Algo.Function
-import Z.Utils
+import Z.Utils hiding (Unique, UniqueT, runUniqueT, unUnique, HasAnnot, getAnnot, setAnnot)
 
 type SmallNat = Int
 

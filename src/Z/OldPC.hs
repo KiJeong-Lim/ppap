@@ -1,17 +1,118 @@
-module Z.Text.PC.Internal where
+module Z.OldPC where
 
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Trans.State.Strict
+import Data.Function
 import qualified Data.List as List
-import Z.Algo.Function
-import Z.Algo.Sorting
-import Z.Text.Doc
-import Z.Text.Doc.Internal
-import Z.Text.PC.Base
-import Z.Text.PM
-import Z.Utils hiding (ErrMsg, plist')
+import Z.Algorithms
+import Z.Doc
+import Z.Utils hiding (calcTab)
 
+newtype PM a
+    = PM { unPM :: ReadS a }
+    deriving ()
+
+instance Functor PM where
+    fmap a2b p1 = PM $ \str0 -> [ (a2b a, str1) | (a, str1) <- unPM p1 str0 ]
+
+instance Applicative PM where
+    pure a = PM $ \str0 -> [(a, str0)]
+    p1 <*> p2 = PM $ \str0 -> [ (a2b a, str2) | (a2b, str1) <- unPM p1 str0, (a, str2) <- unPM p2 str1 ]
+
+instance Monad PM where
+    -- return = PM . curry return
+    p1 >>= p2 = PM (unPM p1 >=> uncurry (unPM . p2))
+
+instance Alternative PM where
+    empty = PM (pure mempty)
+    p1 <|> p2 = PM (pure mappend <*> unPM p1 <*> unPM p2)
+
+instance MonadPlus PM where
+
+instance MonadFail PM where
+    fail = const empty
+
+instance Semigroup (PM a) where
+    p1 <> p2 = p1 <|> p2
+
+instance Monoid (PM a) where
+    mempty = empty
+
+autoPM :: Read a => Precedence -> PM a
+autoPM = PM . readsPrec
+
+acceptCharIf :: (Char -> Bool) -> PM Char
+acceptCharIf condition = PM $ \str -> if null str then [] else let ch = head str in if condition ch then [(ch, tail str)] else []
+
+consumeStr :: String -> PM ()
+consumeStr prefix = PM $ \str -> let n = length prefix in if take n str == prefix then return ((), drop n str) else []
+
+matchPrefix :: String -> PM ()
+matchPrefix prefix = PM $ \str -> let n = length prefix in if take n str == prefix then return ((), str) else []
+
+type PB = ParserBase
+
+data ParserBase chr val
+    = PVal val
+    | PAct ([chr] -> [(ParserBase chr val, [chr])])
+    deriving ()
+
+instance Functor (ParserBase chr) where
+    fmap a2b = flip bindPB (returnPB . a2b)
+
+instance Applicative (ParserBase chr) where
+    pure = returnPB
+    p1 <*> p2 = bindPB p1 (flip fmap p2)
+
+instance Monad (ParserBase chr) where
+    p1 >>= p2 = bindPB p1 p2
+
+instance Alternative (ParserBase chr) where
+    empty = emptyPB
+    p1 <|> p2 = appendPB p1 p2
+
+instance MonadPlus (ParserBase chr) where
+
+returnPB :: val -> PB chr val
+returnPB val1 = PVal val1
+
+bindPB :: PB chr val -> (val -> PB chr val') -> PB chr val'
+bindPB (PVal val1) p2 = p2 val1
+bindPB (PAct act1) p2 = PAct $ \str0 -> [ (bindPB p1 p2, str1) | (p1, str1) <- act1 str0 ]
+
+emptyPB :: PB chr val
+emptyPB = PAct $ \str0 -> []
+
+appendPB :: PB chr val -> PB chr val -> PB chr val
+appendPB p1 p2 = PAct $ \str0 -> [(p1, str0), (p2, str0)]
+
+mkPB :: ([chr] -> [(val, [chr])]) -> PB chr val
+mkPB givenReadS = PAct $ \str0 -> [ (PVal val1, str1) | (val1, str1) <- givenReadS str0 ]
+
+runPB :: PB chr val -> [chr] -> [(val, [chr])]
+runPB (PVal val1) = curry return val1
+runPB (PAct act1) = uncurry runPB <=< act1
+
+execPB :: PB chr val -> [chr] -> Either [chr] val
+execPB = go where
+    strictLeft :: a -> Either a b
+    strictLeft x = x `seq` Left x
+    findShortest :: [[chr]] -> [chr]
+    findShortest = head . mSort ((<=) `on` length)
+    loop :: PB chr val -> [chr] -> Either [chr] [(val, [chr])]
+    loop (PVal val1) lstr0 = return [(val1, lstr0)]
+    loop (PAct act1) lstr0 = case [ loop p1 lstr1 | (p1, lstr1) <- act1 lstr0 ] of
+        [] -> strictLeft lstr0
+        results -> case [ (val2, lstr2) | Right pairs <- results, (val2, lstr2) <- pairs ] of
+            [] -> strictLeft (findShortest [ lstr2 | Left lstr2 <- results ])
+            pairs -> return pairs
+    go :: PB chr val -> [chr] -> Either [chr] val
+    go p lstr0 = case loop p lstr0 of
+        Left lstr1 -> strictLeft lstr1
+        Right pairs -> case [ val | (val, lstr1) <- pairs, null lstr1 ] of
+            [] -> strictLeft (findShortest (map snd pairs))
+            val : _ -> return val
 type Row = Int
 
 type Col = Int
@@ -21,8 +122,6 @@ type LocChr = ((Row, Col), Char)
 type LocStr = [LocChr]
 
 type Src = String
-
-type ErrMsg = String
 
 type RegExRep = String
 
@@ -154,6 +253,9 @@ initRow = 1
 initCol :: Col
 initCol = 1
 
+calcTab :: Int -> Int
+calcTab n = 4 & (\my_tab_width -> my_tab_width - n `mod` my_tab_width)
+
 addLoc :: Src -> LocStr
 addLoc = foldr (\ch -> \kont -> uncurry $ \r -> \c -> r `seq` c `seq` (((r, c), ch) : kont (getNextRow r ch, getNextCol c ch))) (const []) <*> pure (initRow, initCol) where
     getNextRow :: Row -> Char -> Row
@@ -165,7 +267,7 @@ addLoc = foldr (\ch -> \kont -> uncurry $ \r -> \c -> r `seq` c `seq` (((r, c), 
     getNextCol c _ = succ c
 
 makeMessageForParsingError :: FilePath -> Src -> LocStr -> ErrMsg
-makeMessageForParsingError path src lstr = shows theMsgDoc "" where
+makeMessageForParsingError path src lstr = renderDoc theMsgDoc where
     stuckRow :: Row
     stuckRow = case lstr of
         [] -> length (filter (\lch -> snd lch == '\n') lstr) + initRow
@@ -178,23 +280,23 @@ makeMessageForParsingError path src lstr = shows theMsgDoc "" where
         ((r, c), _) : _ -> c
     theMsgDoc :: Doc
     theMsgDoc = vcat
-        [ pstr path +> pstr ":" +> pp stuckRow +> pstr ":" +> pp stuckCol +> pstr ": error:"
-        , pstr "parse error " +> (if null lstr then pstr "at EOF" else pstr "on input `" +> pstr (dispatchChar (snd (head lstr))) +> pstr "'")
-        , pcat
+        [ text path <> text ":" <> (textbf (show stuckRow)) <> text ":" <> (textbf (show stuckCol)) <> text ": error:"
+        , text "parse error " <> (if null lstr then text "at EOF" else text "on input `" <> text (dispatchChar (snd (head lstr))) <> text "'")
+        , hcat
             [ vcat
-                [ pstr ""
-                , pcat
-                    [ pstr " "
-                    , pp stuckRow
-                    , pstr " "
+                [ text ""
+                , hcat
+                    [ text " "
+                    , (textbf (show stuckRow))
+                    , text " "
                     ]
-                , pstr ""
+                , text ""
                 ]
             , beam '|'
             , vcat
-                [ pstr " "
-                , pstr " " +> pstr stuckLine
-                , pstr " " +> pstr (replicate (stuckCol - initCol) ' ') +> pstr "^"
+                [ text " "
+                , text " " <> text stuckLine
+                , text " " <> text (replicate (stuckCol - initCol) ' ') <> text "^"
                 ]
             ]
         ]
@@ -328,3 +430,84 @@ myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression 
     go :: [RegEx] -> ParserBase LocChr String
     go [regex] = mkPB (maybe [] pure . takeStringMatchedWithRegexFromStreamByMaximalMunchRule regex)
     go _ = error myErrMsg
+
+type PC = MyPC
+
+execPC :: PC val -> Src -> Either LocStr val
+execPC p str = execPB (unMyPC p) (addLoc str)
+
+runPC :: FilePath -> PC val -> Src -> Either ErrMsg val
+runPC path p src = either (callWithStrictArg Left . makeMessageForParsingError path src) (callWithStrictArg return) (execPC p src)
+
+acceptPC :: (Char -> Bool) -> PC Char
+acceptPC = MyPC . mkPB . go where
+    go :: (Char -> Bool) -> LocStr -> [(Char, LocStr)]
+    go cond lstr = [ (ch, drop 1 lstr) | (_, ch) <- take 1 lstr, cond ch ]
+
+consumePC :: String -> PC ()
+consumePC = mapM_ acceptPC . map (==)
+
+matchPC :: String -> PC ()
+matchPC = MyPC . go where
+    go :: String -> PB LocChr ()
+    go expecteds = mkPB $ \lstr0 -> case splitAt (length expecteds) lstr0 of
+        (token, lstr1) -> if map snd token == expecteds then one ((), lstr1) else []
+
+eofPC :: PC ()
+eofPC = MyPC go where
+    go :: PB LocChr ()
+    go = mkPB $ \lstr0 -> if null lstr0 then one ((), lstr0) else []
+
+regexPC :: RegExRep -> PC String
+regexPC = myAtomicParserCombinatorReturningLongestStringMatchedWithGivenRegularExpression
+
+intPC :: PC Int
+intPC = pure read <*> regexPC "['-']? ['0'-'9']+"
+
+negPC :: PC val -> PC ()
+negPC p1 = do
+    p1_passed <- (p1 *> return True) /> return False
+    if p1_passed then empty else return ()
+
+acceptQuote :: PC String
+acceptQuote = pure read <*> regexPC "\"\\\"\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\'])* \"\\\"\""
+
+skipWhite :: PC Int
+skipWhite = MyPC go where
+    go :: PB LocChr Int
+    go = mkPB $ \lstr0 -> case span (\lch -> snd lch == ' ') lstr0 of
+        (ws, lstr1) -> one (length ws, lstr1)
+
+smallid :: PC String
+smallid = regexPC "[\'a\'-\'z\'] [\'a\'-\'z\' \'0\'-\'9\' \'_\']*"
+
+largeid :: PC String
+largeid = regexPC "[\'A\'-\'Z\'] [\'a\'-\'z\' \'0\'-\'9\' \'A\'-\'Z\']*"
+
+puncPC :: String -> PC val -> PC [val]
+puncPC str p = (pure (:) <*> p <*> many (consumePC str *> p)) <|> pure []
+
+parenPC :: Char -> Char -> PC val -> PC val
+parenPC ch1 ch2 p = acceptPC (\ch -> ch == ch1) *> p <* acceptPC (\ch -> ch == ch2)
+
+lend :: PC ()
+lend = skipWhite *> consumePC "\n"
+
+indent :: Int -> PC ()
+indent n = consumePC (replicate n ' ')
+
+charPC :: PC Char
+charPC = pure read <*> regexPC "\"\\\'\" (\"\\\\\" [\'n\' \'t\' \'\"\' \'\\\\\' \'\\\'\'] + [.\\\'\\n\'\\\'\\t\'\\\'\\\"\'\\\'\\\\\']) \"\\\'\""
+
+acceptList :: PC a -> PC [a]
+acceptList pc = consumePC "[" *> (skipWhite *> (pure [] <|> (pure (:) <*> pc <*> many (consumePC "," *> skipWhite *> pc)))) <* consumePC "]"
+
+dispatchChar :: Char -> String
+dispatchChar '\"' = "\\\""
+dispatchChar '\'' = "\\\'"
+dispatchChar '\\' = "\\\\"
+dispatchChar '\t' = "\\t"
+dispatchChar '\n' = "\\n"
+dispatchChar '\r' = "\\r"
+dispatchChar '\f' = "\\f"
+dispatchChar ch = [ch]

@@ -7,7 +7,7 @@ import Test.QuickCheck.Classes
 import Z.System.Shelly
 import Z.Text.Doc
 import Z.Text.Doc.Internal
-import Z.Utils
+import Z.Utils hiding (plist')
 
 instance Arbitrary Doc_ where
     arbitrary = chooseInt (0, 10) >>= go where

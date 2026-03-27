@@ -24,7 +24,7 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.Exit
 import Z.System.Shelly
-import Z.Utils
+import Z.Utils hiding (ErrMsg, Unique, unUnique, UniqueT, runUniqueT, HasAnnot, getAnnot, setAnnot)
 
 isYES :: String -> Bool
 isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
