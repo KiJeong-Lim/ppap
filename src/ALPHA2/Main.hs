@@ -39,10 +39,8 @@ runAnalyzer src0
 isYES :: String -> Bool
 isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
 
-addIndex :: Fact -> (Constant, Fact)
-addIndex fact = (hd fact', fact') where
-    fact' :: Fact
-    fact' = rewrite NF fact
+addIndex :: [Fact] -> Map.Map Constant [Fact]
+addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, let f' = rewrite NF f ] where
     hd :: Fact -> Constant
     hd t = case unfoldlNApp t of
         (NLam t, _) -> hd t
@@ -55,7 +53,7 @@ execRuntime :: RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr (
 execRuntime env isDebugging facts query = do
     call_id <- getUnique
     let initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = Labeling { _ConLabel = Map.empty, _VarLabel = Map.fromSet (const 0) (getLVars query) }, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
-    runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = map addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
+    runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
 runREPL :: Program TermNode -> UniqueT IO ()
 runREPL program = lift (newIORef False) >>= go where

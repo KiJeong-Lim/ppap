@@ -43,7 +43,7 @@ data Constraint
 
 data Cell
     = Cell
-        { _GivenFacts :: [(Constant, Fact)]
+        { _GivenFacts :: Map.Map Constant [Fact]
         , _GivenHypos :: [Fact]
         , _ScopeLevel :: ScopeLevel
         , _WantedGoal :: Goal
@@ -96,7 +96,7 @@ instance Show Constraint where
     showsPrec prec (EvalutionConstraint lhs rhs) = showsPrec prec lhs . strstr " is " . showsPrec prec rhs
     showsPrec prec (ArithmeticConstraint arith) = showsPrec prec arith
 
-mkCell :: [(Constant, Fact)] -> [Fact] -> ScopeLevel -> Goal -> CallId -> Cell
+mkCell :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Goal -> CallId -> Cell
 mkCell facts hyps level goal call_id = goal `seq` Cell { _GivenFacts = facts, _GivenHypos = hyps, _ScopeLevel = level, _WantedGoal = goal, _CellCallId = call_id }
 
 showsvdash :: Indentation -> [Fact] -> Goal -> ShowS
@@ -148,7 +148,7 @@ instantiateFact fact level
         (NCon (DC (DC_LO logical_operator)), args) -> lift (throwE (BadFactGiven (foldlNApp (mkNCon logical_operator) args)))
         (t, ts) -> return (foldlNApp t ts, mkNCon LO_true)
 
-runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> [(Constant, Fact)] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
 runLogicalOperator LO_true [] ctx facts hyps level call_id cells stack = return ((ctx, cells) : stack)
 runLogicalOperator LO_fail [] ctx facts hyps level call_id cells stack = return stack
 runLogicalOperator LO_debug [loc_str] ctx facts hyps level call_id cells stack = runDebugger loc_str ctx facts hyps level call_id cells stack
@@ -233,7 +233,7 @@ evaluateB (NApp (NApp (NCon (DC DC_gt)) t1) t2) = do
     return (v1 > v2)
 evaluateB _ = Left "non"
 
-runDebugger :: TermNode -> Context -> [(Constant, Fact)] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+runDebugger :: TermNode -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
 runDebugger loc_str ctx facts hyps level call_id cells stack = do
     liftIO $ writeIORef (_debuggindModeOn ctx) True
     liftIO $ putStrLn ("*** debugger called with " ++ shows loc_str "")
@@ -245,12 +245,10 @@ runTransition env free_lvars = go where
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueT IO) Stack
     success with = return [with]
-    search :: [(Constant, Fact)] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
+    search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique
-        ans1 <- case lookup predicate [(DC DC_ge, (>=)), (DC DC_gt, (>)), (DC DC_le, (<=)), (DC DC_lt, (<))] of
-            Nothing -> failure
-            Just op -> case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
+        let arithCheck op = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
                 Left "non" -> success
                     ( Context
                         { _TotalVarBinding = _TotalVarBinding ctx
@@ -263,7 +261,13 @@ runTransition env free_lvars = go where
                     )
                 Right okay -> if okay then success (ctx, cells) else failure
                 _ -> failure
-        ans2 <- fmap concat $ forM [ fact | (predicate', fact) <- facts, predicate == predicate' ] $ \fact -> do
+        ans1 <- case predicate of
+            DC DC_ge -> arithCheck (>=)
+            DC DC_gt -> arithCheck (>)
+            DC DC_le -> arithCheck (<=)
+            DC DC_lt -> arithCheck (<)
+            _ -> failure
+        ans2 <- fmap concat $ forM (Map.findWithDefault [] predicate facts) $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
                 (NCon predicate', args')
@@ -317,7 +321,7 @@ runTransition env free_lvars = go where
                                         )
                 _ -> failure
         return (ans1 ++ ans2 ++ ans3)
-    dispatch :: Context -> [(Constant, Fact)] -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
+    dispatch :: Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
     dispatch ctx facts hyps level (NCon predicate, args) call_id cells stack
         | DC (DC_LO logical_operator) <- predicate
         = do
