@@ -34,4 +34,4 @@ check tt           unit       :- true.
 check (absurd M)   C          :- infer M empty.
 infer (anno M A)   A          :- check M A.
 check M            B          :- sigma A\ infer M A, A = B.
-infer X            A          :- var X A, !; check X A.
+infer X            A          :- var X A.
