@@ -90,27 +90,28 @@ instance Labelable LogicVar where
 
 instance ZonkLVar Labeling where
     zonkLVar subst labeling
-        = labeling
-            { _VarLabel = Map.fromAscList
-                [ mkstrict
-                    ( v
-                    , foldr min (lookupLabel v labeling)
-                        [ level'
-                        | (v', t') <- Map.toList mapsto
-                        , v `Set.member` getLVars t'
-                        , level' <- toList (Map.lookup v' varlabel)
-                        ]
-                    )
-                | v <- Set.toAscList (Map.keysSet mapsto `Set.union` Map.keysSet varlabel)
-                ]
-            }
+        = labeling { _VarLabel = varlabel' }
         where
             mapsto :: Map.Map LogicVar TermNode
             mapsto = unVarBinding subst
             varlabel :: Map.Map LogicVar ScopeLevel
             varlabel = _VarLabel labeling
-            mkstrict :: (LogicVar, ScopeLevel) -> (LogicVar, ScopeLevel)
-            mkstrict pair = snd pair `seq` pair
+            varlabel' :: Map.Map LogicVar ScopeLevel
+            varlabel' = Map.foldlWithKey' applyBinding varlabel mapsto
+            applyBinding :: Map.Map LogicVar ScopeLevel -> LogicVar -> TermNode -> Map.Map LogicVar ScopeLevel
+            applyBinding acc v' t'
+                = case Map.lookup v' varlabel of
+                    Nothing -> acc
+                    Just level' -> Set.foldr (\v a -> Map.insertWith min v level' a) acc (fvNF t')
+            fvNF :: TermNode -> Set.Set LogicVar
+            fvNF = flip goNF Set.empty
+            goNF :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
+            goNF (LVar v) = Set.insert v
+            goNF (NCon _) = id
+            goNF (NIdx _) = id
+            goNF (NApp t1 t2) = goNF t1 . goNF t2
+            goNF (NLam t) = goNF t
+            goNF (Susp {}) = id
 
 instance HasLVar TermNode where
     accLVars = go . rewrite NF where
@@ -334,7 +335,7 @@ simplify :: [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail (U
 simplify = flip loop mempty . zip (repeat 0) where
     loop :: [(Int, Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
-    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
+    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite HNF lhs) (rewrite HNF rhs) where
         dispatch :: Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
         dispatch l lhs rhs
             | (lambda1, lhs') <- viewNestedNLam lhs
@@ -424,11 +425,14 @@ flatten (VarBinding mapsto) = go . rewrite NF where
 (+->) :: Monad m => LogicVar -> TermNode -> ExceptT HopuFail m VarBinding
 v +-> t
     | LVar v == t' = return (VarBinding $! Map.empty)
-    | v `Set.member` getLVars t' = throwE OccursCheckFail
+    | Set.null fvs = return (VarBinding $! Map.singleton v t')
+    | v `Set.member` fvs = throwE OccursCheckFail
     | otherwise = return (VarBinding $! Map.singleton v t')
     where
         t' :: TermNode
         t' = etaReduce (rewrite NF t)
+        fvs :: Set.Set LogicVar
+        fvs = getLVars t'
 
 getNewLVar :: MonadUnique m => IsTypeLevel -> ScopeLevel -> StateT Labeling m TermNode
 getNewLVar is_ty label = do

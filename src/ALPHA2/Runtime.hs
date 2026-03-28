@@ -335,7 +335,9 @@ runTransition env free_lvars = go where
     go :: Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
     go [] = return False
     go ((ctx, cells) : stack) = do
-        liftIO (_PutStr env ctx (showsCurrentState free_lvars ctx cells stack ""))
+        liftIO $ do
+            dbg <- readIORef (_debuggindModeOn ctx)
+            when dbg $ _PutStr env ctx (showsCurrentState free_lvars ctx cells stack "")
         case cells of
             [] -> do
                 want_more <- liftIO (_Answer env ctx)

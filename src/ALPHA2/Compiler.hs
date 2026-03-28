@@ -1,5 +1,6 @@
 module ALPHA2.Compiler where
 
+import ALPHA2.Constant
 import ALPHA2.Header
 import ALPHA2.TermNode
 import Control.Monad.Trans.Class
@@ -48,17 +49,28 @@ convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithou
     makeUniversalClosure :: TermNode -> TermNode
     makeUniversalClosure = flip (foldr (\_ -> \term -> (mkNApp (mkNCon LO_ty_pi)) (mkNLam term))) [1, 2 .. Map.size used_mtvs] . flip (foldr (\_ -> \term -> mkNApp (mkNCon LO_pi) (mkNLam term))) [1, 2 .. Map.size assumptions]
 
+replaceWildcards :: MonadUnique m => TermNode -> m TermNode
+replaceWildcards (NCon (DC DC_wc)) = fmap (mkLVar . LV_Unique) getUnique
+replaceWildcards (NApp t1 t2) = do
+    t1' <- replaceWildcards t1
+    t2' <- replaceWildcards t2
+    return (mkNApp t1' t2')
+replaceWildcards (NLam t) = fmap mkNLam (replaceWildcards t)
+replaceWildcards t = return t
+
 convertQuery :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> FreeVariableEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
-convertQuery used_mtvs assumptions var_name_env query
-    | Map.null used_mtvs = convertWithoutChecking var_name_env [] query
-    | otherwise = do
-        extra_env <- sequence
-            [ do
-                uni <- getUnique
-                return (mtv, LVar (LV_ty_var uni))
-            | (mtv, small_id) <- Map.toDescList used_mtvs
-            ]
-        convertWithoutChecking (foldr (uncurry Map.insert) var_name_env extra_env) [] query
+convertQuery used_mtvs assumptions var_name_env query = do
+    node <- if Map.null used_mtvs
+        then convertWithoutChecking var_name_env [] query
+        else do
+            extra_env <- sequence
+                [ do
+                    uni <- getUnique
+                    return (mtv, LVar (LV_ty_var uni))
+                | (mtv, small_id) <- Map.toDescList used_mtvs
+                ]
+            convertWithoutChecking (foldr (uncurry Map.insert) var_name_env extra_env) [] query
+    lift (replaceWildcards node)
 
 viewLam :: TermExpr dcon annot -> ([IVar], TermExpr dcon annot)
 viewLam = go [] where

@@ -32,11 +32,11 @@ data Flush
     deriving (Eq, Ord, Show)
 
 newtype UniqueT m a
-    = UniqueT { runUniqueT :: StateT Integer m a }
+    = UniqueT { runUniqueT :: StateT Int m a }
     deriving ()
 
 newtype Unique
-    = Unique { unUnique :: Integer }
+    = Unique { unUnique :: Int }
     deriving (Eq, Ord)
 
 class OStreamTrain os where
