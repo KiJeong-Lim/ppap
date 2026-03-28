@@ -263,7 +263,7 @@ bind var = go . rewrite HNF where
                         return (selected_lhs_parameters, selected_rhs_parameters)
                 lhs_outer <- common_arguments `down` lhs_arguments
                 rhs_outer <- common_arguments `down` rhs_arguments
-                common_head <- getNewLVar (isTyLVar var) (lookupLabel var labeling)
+                common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
                 theta <- lift $ var' +-> makeNestedNLam (length rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (lhs_inner ++ lhs_outer))
@@ -274,7 +274,7 @@ bind var = go . rewrite HNF where
                     isBetaPattern (NCon c)
                         | lookupLabel c labeling <= lookupLabel var labeling = True
                     isBetaPattern z = z `elem` common_arguments
-                common_head <- getNewLVar (isTyLVar var) (lookupLabel var labeling)
+                common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
                 theta <- lift $ var' +-> makeNestedNLam (length rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (rhs_arguments >>= mkBetaPattern))
@@ -299,7 +299,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
                 return mempty
             else do
                 unless (isPatternRespectTo var' rhs_arguments labeling) $ lift (throwE NotAPattern)
-                common_head <- getNewLVar (isTyLVar var) (lookupLabel var labeling)
+                common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
                 theta <- lift $ var' +-> makeNestedNLam n (List.foldl' mkNApp common_head common_arguments)
                 modify (zonkLVar theta)
                 return theta
