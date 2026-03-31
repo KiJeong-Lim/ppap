@@ -1,7 +1,7 @@
-module ALPHA2.PlanHolParser where
+module Hol.ALPHA2.PlanHolParser where
 
-import ALPHA2.Header
-import ALPHA2.PlanHolLexer
+import Hol.ALPHA2.Header
+import Hol.ALPHA2.PlanHolLexer
 import qualified Control.Monad.Trans.Class as Y
 import qualified Control.Monad.Trans.Except as Y
 import qualified Control.Monad.Trans.State.Strict as Y

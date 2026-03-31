@@ -1,15 +1,15 @@
-module ALPHA2.Main where
+module Hol.ALPHA2.Main where
 
-import ALPHA2.Compiler
-import ALPHA2.Constant
-import ALPHA2.Desugarer
-import ALPHA2.Header
-import ALPHA2.HOPU
-import ALPHA2.PlanHolLexer
-import ALPHA2.PlanHolParser
-import ALPHA2.Runtime
-import ALPHA2.TermNode
-import ALPHA2.TypeChecker
+import Hol.ALPHA2.Compiler
+import Hol.ALPHA2.Constant
+import Hol.ALPHA2.Desugarer
+import Hol.ALPHA2.Header
+import Hol.ALPHA2.HOPU
+import Hol.ALPHA2.PlanHolLexer
+import Hol.ALPHA2.PlanHolParser
+import Hol.ALPHA2.Runtime
+import Hol.ALPHA2.TermNode
+import Hol.ALPHA2.TypeChecker
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class

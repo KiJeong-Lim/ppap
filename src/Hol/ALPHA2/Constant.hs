@@ -1,6 +1,6 @@
-module ALPHA2.Constant where
+module Hol.ALPHA2.Constant where
 
-import ALPHA2.Header
+import Hol.ALPHA2.Header
 import Z.Utils
 
 data Constant

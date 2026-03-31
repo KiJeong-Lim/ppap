@@ -1,4 +1,4 @@
-module ALPHA2.Header where
+module Hol.ALPHA2.Header where
 
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class

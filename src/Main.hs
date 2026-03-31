@@ -1,6 +1,6 @@
 module Main where
 
-import qualified ALPHA2.Main as ALPHA2
+import qualified Hol.ALPHA2.Main as Hol
 import qualified Calc.Main as Calc
 import qualified Genie.Main as Genie
 import qualified Jasmine.Main as Jasmine
@@ -25,7 +25,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = takeFirstOf matchPrefix ["ALPHA2", "Calc", "LGS", "PGS", "TEST"]
+    | otherwise = takeFirstOf matchPrefix ["Hol", "Calc", "LGS", "PGS", "TEST"]
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix cmd = go (splitAt (length cmd) str) where
@@ -40,9 +40,9 @@ ppap = do
             shelly ("ppap >>= tell (invalid-command=" ++ shows command ")")
             ppap
         Just ("", []) -> return ()
-        Just ("ALPHA2", []) -> do
-            shelly ("ppap >>= exec (ALPHA2.main)")
-            ALPHA2.main
+        Just ("Hol", []) -> do
+            shelly ("ppap >>= exec (Hol.main)")
+            Hol.main
         Just ("Calc", []) -> do
             shelly ("ppap >>= exec (Calc.main)")
             Calc.main

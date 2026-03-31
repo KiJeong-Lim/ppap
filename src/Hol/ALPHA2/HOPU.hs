@@ -1,8 +1,8 @@
-module ALPHA2.HOPU where
+module Hol.ALPHA2.HOPU where
 
-import ALPHA2.TermNode
-import ALPHA2.Header
-import ALPHA2.Constant
+import Hol.ALPHA2.TermNode
+import Hol.ALPHA2.Header
+import Hol.ALPHA2.Constant
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class

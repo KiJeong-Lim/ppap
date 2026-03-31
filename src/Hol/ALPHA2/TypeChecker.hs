@@ -1,8 +1,8 @@
 
-module ALPHA2.TypeChecker where
+module Hol.ALPHA2.TypeChecker where
 
-import ALPHA2.Constant
-import ALPHA2.Header
+import Hol.ALPHA2.Constant
+import Hol.ALPHA2.Header
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except

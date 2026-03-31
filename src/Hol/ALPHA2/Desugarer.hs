@@ -1,7 +1,7 @@
-module ALPHA2.Desugarer where
+module Hol.ALPHA2.Desugarer where
 
-import ALPHA2.Header
-import ALPHA2.PlanHolLexer
+import Hol.ALPHA2.Header
+import Hol.ALPHA2.PlanHolLexer
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict

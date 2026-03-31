@@ -1,6 +1,6 @@
-module ALPHA2.PlanHolLexer where
+module Hol.ALPHA2.PlanHolLexer where
 
-import ALPHA2.Header
+import Hol.ALPHA2.Header
 import qualified Control.Monad.Trans.State.Strict as XState
 import qualified Data.Functor.Identity as XIdentity
 import qualified Data.Map.Strict as XMap
