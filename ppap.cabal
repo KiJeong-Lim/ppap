@@ -34,35 +34,10 @@ executable ppap
     Calc.ControlSystem.Export
     Calc.ControlSystem.Test
     Calc.ControlSystem.Util
+    Calc.Presburger.Internal
+    Calc.Presburger.Test
     Calc.Runtime.Executor
     Calc.Main
-    Genie.Main
-    Jasmine.Alpha1.Analyzer.Export
-    Jasmine.Alpha1.Analyzer.Grammar
-    Jasmine.Alpha1.Compiler.Export
-    Jasmine.Alpha1.Desugarer.Export
-    Jasmine.Alpha1.Interpreter.Export
-    Jasmine.Alpha1.Interpreter.Runtime
-    Jasmine.Alpha1.Header.TermNode.DeBruijn
-    Jasmine.Alpha1.Header.TermNode.Render
-    Jasmine.Alpha1.Header.TermNode.Test
-    Jasmine.Alpha1.Header.Export
-    Jasmine.Alpha1.Header.TermNode
-    Jasmine.Alpha1.Header.Util
-    Jasmine.Alpha1.Solver.HOPU.Internal
-    Jasmine.Alpha1.Solver.HOPU.Test
-    Jasmine.Alpha1.Solver.HOPU.Util
-    Jasmine.Alpha1.Solver.Presburger.Internal
-    Jasmine.Alpha1.Solver.Presburger.Test
-    Jasmine.Alpha1.Solver.HOPU
-    Jasmine.Alpha1.Solver.Presburger
-    Jasmine.Alpha1.TypeChecker.Export
-    Jasmine.Alpha1.API
-    Jasmine.Alpha2.Header.Export
-    Jasmine.Alpha2.Header.TermNode
-    Jasmine.Alpha2.Solver.Hopu
-    Jasmine.Alpha2.API
-    Jasmine.Main
     Json.JsonAst
     Json.JsonLexer
     Json.JsonParser

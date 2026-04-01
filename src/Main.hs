@@ -1,8 +1,6 @@
 module Main where
 
 import qualified Calc.Main as Calc
-import qualified Genie.Main as Genie
-import qualified Jasmine.Main as Jasmine
 import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
@@ -46,12 +44,6 @@ ppap = do
         Just ("Calc", []) -> do
             shelly ("ppap >>= exec (Calc.main)")
             Calc.main
-        Just ("Genie", []) -> do
-            shelly ("ppap >>= exec (Genie.main)")
-            Genie.main
-        Just ("Jasmine", []) -> do
-            shelly ("ppap >>= exec (Jasmine.main)")
-            Jasmine.main
         Just ("LGS", []) -> do
             shelly ("ppap >>= exec (LGS.main)")
             LGS.main

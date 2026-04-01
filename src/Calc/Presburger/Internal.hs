@@ -1,4 +1,4 @@
-module Jasmine.Alpha1.Solver.Presburger.Internal where
+module Calc.Presburger.Internal where
 
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
