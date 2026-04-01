@@ -30,17 +30,6 @@ executable ppap
     , extra >= 1.7
     , filepath >= 1.5
   other-modules:
-    Hol.ALPHA2.Header
-    Hol.ALPHA2.PlanHolLexer
-    Hol.ALPHA2.PlanHolParser
-    Hol.ALPHA2.Constant
-    Hol.ALPHA2.Desugarer
-    Hol.ALPHA2.TypeChecker
-    Hol.ALPHA2.TermNode
-    Hol.ALPHA2.HOPU
-    Hol.ALPHA2.Runtime
-    Hol.ALPHA2.Compiler
-    Hol.ALPHA2.Main
     Calc.ControlSystem.Diagram.Solver
     Calc.ControlSystem.Export
     Calc.ControlSystem.Test
@@ -79,6 +68,19 @@ executable ppap
     Json.JsonParser
     Json.JsonTest
     Json.JsonViewer
+    Hol.ALPHA2.Header
+    Hol.ALPHA2.PlanHolLexer
+    Hol.ALPHA2.PlanHolParser
+    Hol.ALPHA2.Constant
+    Hol.ALPHA2.Desugarer
+    Hol.ALPHA2.TypeChecker
+    Hol.ALPHA2.TermNode
+    Hol.ALPHA2.HOPU
+    Hol.ALPHA2.Runtime
+    Hol.ALPHA2.Compiler
+    Hol.ALPHA2.Main
+    Hol.BETA1.Main
+    Hol.Main
     LGS.Alpha1
     LGS.Main
     PGS.Alpha1
