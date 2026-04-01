@@ -306,6 +306,7 @@ runTransition env free_lvars = go where
                                             }
                                         , zonkLVar subst (mkCell facts new_hyps new_level new_goal call_id : cells)
                                         )
+                _ -> failure
         ans3 <- fmap concat $ forM hyps $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
