@@ -90,16 +90,20 @@ makeTypeEnv kind_env = go where
         go2 (TyApp typ _) = go2 typ
         go2 _ = False
     go :: [(SLoc, (DataConstructor, TypeRep))] -> TypeEnv -> Either ErrMsg TypeEnv
-    go [] type_env = return type_env
-    go ((loc, (con, trep)) : triples) type_env = case Map.lookup con type_env of
-        Nothing -> do
-            (kin, typ) <- unRep trep
-            if kin == Star
-                then if hasValidHead typ
-                    then go triples (Map.insert con (generalize typ) type_env)
-                    else Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? the head of the type `" ++ showsPrec 0 con "\' is invalid."))
-                else Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? couldn't solve `" ++ pprint 0 kin "\' ~ `type\'."))
-        _ -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? it is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "\'."))
+    go [] type_env
+        = return type_env
+    go ((loc, (con, trep)) : triples) type_env
+        = case Map.lookup con type_env of
+            Nothing -> do
+                (kin, typ) <- unRep trep
+                if kin == Star then
+                    if hasValidHead typ then
+                        go triples (Map.insert con (generalize typ) type_env)
+                    else
+                        Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? the head of the type `" ++ showsPrec 0 con "\' is invalid."))
+                else
+                    Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? couldn't solve `" ++ pprint 0 kin "\' ~ `type\'."))
+            _ -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? it is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "\'."))
 
 desugarTerm :: MonadUnique m => TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
 desugarTerm (R_wc loc1) = do
