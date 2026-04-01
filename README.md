@@ -21,5 +21,3 @@ Hol >>= quit
 # ppap
 
 - Project Putting All Power!
-
-- In `Windows 10`, everything works fine.

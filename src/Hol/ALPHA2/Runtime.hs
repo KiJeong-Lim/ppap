@@ -149,21 +149,30 @@ instantiateFact fact level
         (t, ts) -> return (foldlNApp t ts, mkNCon LO_true)
 
 runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
-runLogicalOperator LO_true [] ctx facts hyps level call_id cells stack = return ((ctx, cells) : stack)
-runLogicalOperator LO_fail [] ctx facts hyps level call_id cells stack = return stack
-runLogicalOperator LO_debug [loc_str] ctx facts hyps level call_id cells stack = runDebugger loc_str ctx facts hyps level call_id cells stack
-runLogicalOperator LO_cut [] ctx facts hyps level call_id cells stack = return ((ctx, cells) : [ (ctx', cells') | (ctx', cells') <- stack, _ContextThreadId ctx' < call_id ])
-runLogicalOperator LO_and [goal1, goal2] ctx facts hyps level call_id cells stack = return ((ctx, mkCell facts hyps level goal1 call_id : mkCell facts hyps level goal2 call_id : cells) : stack)
-runLogicalOperator LO_or [goal1, goal2] ctx facts hyps level call_id cells stack = return ((ctx, mkCell facts hyps level goal1 call_id : cells) : (ctx, mkCell facts hyps level goal2 call_id : cells) : stack)
-runLogicalOperator LO_imply [fact1, goal2] ctx facts hyps level call_id cells stack = return ((ctx, mkCell facts (fact1 : hyps) level goal2 call_id : cells) : stack)
-runLogicalOperator LO_sigma [goal1] ctx facts hyps level call_id cells stack = do
-    uni <- getUnique
-    let var = LV_Unique uni
-    return ((ctx { _CurrentLabeling = enrollLabel var level (_CurrentLabeling ctx) }, mkCell facts hyps level (mkNApp goal1 (mkLVar var)) call_id : cells) : stack)
-runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack = do
-    uni <- getUnique
-    let con = DC (DC_Unique uni)
-    return ((ctx { _CurrentLabeling = enrollLabel con (level + 1) (_CurrentLabeling ctx) }, mkCell facts hyps (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
+runLogicalOperator LO_true [] ctx facts hyps level call_id cells stack
+    = return ((ctx, cells) : stack)
+runLogicalOperator LO_fail [] ctx facts hyps level call_id cells stack
+    = return stack
+runLogicalOperator LO_debug [loc_str] ctx facts hyps level call_id cells stack
+    = runDebugger loc_str ctx facts hyps level call_id cells stack
+runLogicalOperator LO_cut [] ctx facts hyps level call_id cells stack
+    = return ((ctx, cells) : [ (ctx', cells') | (ctx', cells') <- stack, _ContextThreadId ctx' < call_id ])
+runLogicalOperator LO_and [goal1, goal2] ctx facts hyps level call_id cells stack
+    = return ((ctx, mkCell facts hyps level goal1 call_id : mkCell facts hyps level goal2 call_id : cells) : stack)
+runLogicalOperator LO_or [goal1, goal2] ctx facts hyps level call_id cells stack
+    = return ((ctx, mkCell facts hyps level goal1 call_id : cells) : (ctx, mkCell facts hyps level goal2 call_id : cells) : stack)
+runLogicalOperator LO_imply [fact1, goal2] ctx facts hyps level call_id cells stack
+    = return ((ctx, mkCell facts (fact1 : hyps) level goal2 call_id : cells) : stack)
+runLogicalOperator LO_sigma [goal1] ctx facts hyps level call_id cells stack
+    = do
+        uni <- getUnique
+        let var = LV_Unique uni
+        return ((ctx { _CurrentLabeling = enrollLabel var level (_CurrentLabeling ctx) }, mkCell facts hyps level (mkNApp goal1 (mkLVar var)) call_id : cells) : stack)
+runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack
+    = do
+        uni <- getUnique
+        let con = DC (DC_Unique uni)
+        return ((ctx { _CurrentLabeling = enrollLabel con (level + 1) (_CurrentLabeling ctx) }, mkCell facts hyps (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
 runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     | Left "ill" == evaluateA (rewrite NF rhs)
     = return stack
@@ -175,7 +184,8 @@ runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     = return ((ctx, cells) : stack)
     | otherwise
     = return ((ctx { _LeftConstraints = EvalutionConstraint (rewrite NF lhs) (rewrite NF rhs) : _LeftConstraints ctx }, cells) : stack)
-runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
+runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack
+    = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
 
 execIs :: MonadUnique m => Context -> [Cell] -> Stack -> m Stack
 execIs ctx cells stack

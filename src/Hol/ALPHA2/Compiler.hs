@@ -3,6 +3,7 @@ module Hol.ALPHA2.Compiler where
 import Hol.ALPHA2.Constant
 import Hol.ALPHA2.Header
 import Hol.ALPHA2.TermNode
+import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
@@ -18,15 +19,16 @@ type DeBruijnIndicesEnv = [Unique]
 type FreeVariableEnv = Map.Map Unique TermNode
 
 convertVar :: FreeVariableEnv -> DeBruijnIndicesEnv -> IVar -> TermNode
-convertVar var_name_env env var = case var `List.elemIndex` env of
-    Nothing -> var_name_env Map.! var
-    Just idx -> mkNIdx idx
+convertVar var_name_env env var
+    = case var `List.elemIndex` env of
+        Nothing -> var_name_env Map.! var
+        Just idx -> mkNIdx idx
 
 convertType :: FreeVariableEnv -> DeBruijnIndicesEnv -> MonoType Int -> TermNode
 convertType var_name_env env (TyMTV mtv) = convertVar var_name_env env mtv
 convertType var_name_env env (TyApp typ1 typ2) = mkNApp (convertType var_name_env env typ1) (convertType var_name_env env typ2)
 convertType var_name_env env (TyCon (TCon tc _)) = mkNCon tc
-convertType var_name_env env (TyVar _) = error "`convertType\'"
+convertType var_name_env env _ = error "`convertType\'"
 
 convertCon :: FreeVariableEnv -> DeBruijnIndicesEnv -> DataConstructor -> [MonoType Int] -> TermNode
 convertCon var_name_env env con tapps = List.foldl' mkNApp (mkNCon con) (map (convertType var_name_env env) tapps)
@@ -51,17 +53,14 @@ convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithou
 
 replaceWildcards :: MonadUnique m => TermNode -> m TermNode
 replaceWildcards (NCon (DC DC_wc)) = fmap (mkLVar . LV_Unique) getUnique
-replaceWildcards (NApp t1 t2) = do
-    t1' <- replaceWildcards t1
-    t2' <- replaceWildcards t2
-    return (mkNApp t1' t2')
+replaceWildcards (NApp t1 t2) = liftM2 mkNApp (replaceWildcards t1) (replaceWildcards t2)
 replaceWildcards (NLam t) = fmap mkNLam (replaceWildcards t)
 replaceWildcards t = return t
 
 convertQuery :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> FreeVariableEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
 convertQuery used_mtvs assumptions var_name_env query = do
-    node <- if Map.null used_mtvs
-        then convertWithoutChecking var_name_env [] query
+    node <- if Map.null used_mtvs then
+            convertWithoutChecking var_name_env [] query
         else do
             extra_env <- sequence
                 [ do

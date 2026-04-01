@@ -111,7 +111,7 @@ instance ZonkLVar Labeling where
             goNF (NIdx _) = id
             goNF (NApp t1 t2) = goNF t1 . goNF t2
             goNF (NLam t) = goNF t
-            goNF (Susp {}) = id
+            goNF (Susp t ol nl env) = goNF (rewriteWithSusp t ol nl env NF)
 
 instance HasLVar TermNode where
     accLVars = go . rewrite NF where
