@@ -1,9 +1,9 @@
 module Main where
 
-import qualified Hol.ALPHA2.Main as Hol
 import qualified Calc.Main as Calc
 import qualified Genie.Main as Genie
 import qualified Jasmine.Main as Jasmine
+import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import Z.Algo.Function
