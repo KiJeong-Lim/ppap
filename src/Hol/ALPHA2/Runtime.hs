@@ -245,27 +245,30 @@ runTransition env free_lvars = go where
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueT IO) Stack
     success with = return [with]
+    arithCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr (UniqueT IO) Stack
+    arithCheck call_id ctx cells predicate args op
+        = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
+            Left "non" -> success
+                ( Context
+                    { _TotalVarBinding = _TotalVarBinding ctx
+                    , _CurrentLabeling = _CurrentLabeling ctx
+                    , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
+                    , _ContextThreadId = call_id
+                    , _debuggindModeOn = _debuggindModeOn ctx
+                    }
+                , cells
+                )
+            Right okay -> if okay then success (ctx, cells) else failure
+            _ -> failure
     search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique
-        let arithCheck op = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
-                Left "non" -> success
-                    ( Context
-                        { _TotalVarBinding = _TotalVarBinding ctx
-                        , _CurrentLabeling = _CurrentLabeling ctx
-                        , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
-                        , _ContextThreadId = call_id
-                        , _debuggindModeOn = _debuggindModeOn ctx
-                        }
-                    , cells
-                    )
-                Right okay -> if okay then success (ctx, cells) else failure
-                _ -> failure
+        let arithCheck' = arithCheck call_id ctx cells predicate args
         ans1 <- case predicate of
-            DC DC_ge -> arithCheck (>=)
-            DC DC_gt -> arithCheck (>)
-            DC DC_le -> arithCheck (<=)
-            DC DC_lt -> arithCheck (<)
+            DC DC_ge -> arithCheck' (>=)
+            DC DC_gt -> arithCheck' (>)
+            DC DC_le -> arithCheck' (<=)
+            DC DC_lt -> arithCheck' (<)
             _ -> failure
         ans2 <- fmap concat $ forM (Map.findWithDefault [] predicate facts) $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
