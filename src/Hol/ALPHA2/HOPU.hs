@@ -335,7 +335,7 @@ simplify :: [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail (U
 simplify = flip loop mempty . zip (repeat 0) where
     loop :: [(Int, Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
-    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite HNF lhs) (rewrite HNF rhs) where
+    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
         dispatch :: Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
         dispatch l lhs rhs
             | (lambda1, lhs') <- viewNestedNLam lhs
