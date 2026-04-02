@@ -23,6 +23,7 @@ import qualified Data.Set as Set
 import System.IO
 import Z.System
 import Z.Utils
+import Data.IntMap (restrictKeys)
 
 type AnalyzerOuput = Either TermRep [DeclRep]
 
@@ -77,7 +78,7 @@ runREPL program = lift (newIORef False) >>= go where
                         return ()
                     _ -> return ()
         printAnswer :: Context -> IO RunMore
-        printAnswer final_ctx
+        printAnswer ctx
             | isShort && isClear = return False
             | isClear && List.null theAnswerSubst = return False
             | isClear = do
@@ -92,6 +93,40 @@ runREPL program = lift (newIORef False) >>= go where
                 printDisagreements
                 askToRunMore
             where
+                transCl :: Ord a => (a -> Set.Set a) -> a -> Set.Set a
+                transCl rel start = dfs (rel start) Set.empty where
+                    dfs current visited
+                        | Set.null current = visited
+                        | otherwise = dfs next visited'
+                        where
+                            news = current `Set.difference` visited
+                            visited' = visited `Set.union` news
+                            next = Set.unions [ rel x | x <- Set.toList news ]
+                dependOn :: LogicVar -> Set.Set LogicVar
+                dependOn x
+                    = case Map.lookup x (unVarBinding (_TotalVarBinding ctx)) of
+                        Nothing -> Set.empty
+                        Just t -> getLVars t
+                relevants :: Set.Set LogicVar
+                relevants = Set.fromList [ LV_Named nm | nm <- nms ] `Set.union` Set.unions [ transCl dependOn (LV_Named nm) | nm <- nms ] where
+                    nms = [ nm | LV_Named nm <- Set.toList (Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]
+                final_ctx :: Context
+                final_ctx = Context
+                    { _TotalVarBinding = VarBinding (unVarBinding (_TotalVarBinding ctx) `Map.restrictKeys` relevants)
+                    , _CurrentLabeling = _CurrentLabeling ctx
+                    , _LeftConstraints = do
+                        it <- _LeftConstraints ctx
+                        case it of
+                            ArithmeticConstraint b -> case evaluateB b of
+                                Right True -> []
+                                _ -> pure it
+                            EvalutionConstraint lhs rhs -> case (evaluateA lhs, evaluateA rhs) of
+                                (Right x, Right y) -> if x == y then [] else pure it
+                                _ -> pure it
+                            it -> pure it
+                    , _ContextThreadId = _ContextThreadId ctx
+                    , _debuggindModeOn = _debuggindModeOn ctx
+                    }
                 theAnswerSubst :: [(LargeId, TermNode)]
                 theAnswerSubst = [ (v, t) | (LV_Named v, t) <- Map.toList (unVarBinding (eraseTrivialBinding (_TotalVarBinding final_ctx))) ]
                 isShort :: Bool
@@ -106,7 +141,7 @@ runREPL program = lift (newIORef False) >>= go where
                 printDisagreements = do
                     promptify "The remaining constraints are:"
                     sequence_
-                        [ promptify (myTabs ++ shows constraint "")
+                        [ promptify (showsvdash (length myTabs) [] constraint "")
                         | constraint <- _LeftConstraints final_ctx
                         ]
                     promptify "The binding is:"

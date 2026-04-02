@@ -89,29 +89,27 @@ instance Labelable LogicVar where
         theDefaultLevel (LV_Unique _) = maxBound
 
 instance ZonkLVar Labeling where
-    zonkLVar subst labeling
-        = labeling { _VarLabel = varlabel' }
-        where
-            mapsto :: Map.Map LogicVar TermNode
-            mapsto = unVarBinding subst
-            varlabel :: Map.Map LogicVar ScopeLevel
-            varlabel = _VarLabel labeling
-            varlabel' :: Map.Map LogicVar ScopeLevel
-            varlabel' = Map.foldlWithKey' applyBinding varlabel mapsto
-            applyBinding :: Map.Map LogicVar ScopeLevel -> LogicVar -> TermNode -> Map.Map LogicVar ScopeLevel
-            applyBinding acc v' t'
-                = case Map.lookup v' varlabel of
-                    Nothing -> acc
-                    Just level' -> Set.foldr (\v a -> Map.insertWith min v level' a) acc (fvNF t')
-            fvNF :: TermNode -> Set.Set LogicVar
-            fvNF = flip goNF Set.empty
-            goNF :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
-            goNF (LVar v) = Set.insert v
-            goNF (NCon _) = id
-            goNF (NIdx _) = id
-            goNF (NApp t1 t2) = goNF t1 . goNF t2
-            goNF (NLam t) = goNF t
-            goNF (Susp t ol nl env) = goNF (rewriteWithSusp t ol nl env NF)
+    zonkLVar subst labeling = labeling { _VarLabel = varlabel' } where
+        mapsto :: Map.Map LogicVar TermNode
+        mapsto = unVarBinding subst
+        varlabel :: Map.Map LogicVar ScopeLevel
+        varlabel = _VarLabel labeling
+        varlabel' :: Map.Map LogicVar ScopeLevel
+        varlabel' = Map.foldlWithKey' applyBinding varlabel mapsto
+        applyBinding :: Map.Map LogicVar ScopeLevel -> LogicVar -> TermNode -> Map.Map LogicVar ScopeLevel
+        applyBinding acc v' t'
+            = case Map.lookup v' varlabel of
+                Nothing -> acc
+                Just level' -> Set.foldr (\v -> Map.insertWith min v level') acc (fvNF t')
+        fvNF :: TermNode -> Set.Set LogicVar
+        fvNF = flip goNF Set.empty
+        goNF :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
+        goNF (LVar v) = Set.insert v
+        goNF (NCon _) = id
+        goNF (NIdx _) = id
+        goNF (NApp t1 t2) = goNF t1 . goNF t2
+        goNF (NLam t) = goNF t
+        goNF (Susp t ol nl env) = goNF (rewriteWithSusp t ol nl env NF)
 
 instance HasLVar TermNode where
     accLVars = go . rewrite NF where

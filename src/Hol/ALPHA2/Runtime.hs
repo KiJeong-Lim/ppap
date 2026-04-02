@@ -99,7 +99,7 @@ instance Show Constraint where
 mkCell :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Goal -> CallId -> Cell
 mkCell facts hyps level goal call_id = goal `seq` Cell { _GivenFacts = facts, _GivenHypos = hyps, _ScopeLevel = level, _WantedGoal = goal, _CellCallId = call_id }
 
-showsvdash :: Indentation -> [Fact] -> Goal -> ShowS
+showsvdash :: Show goal => Indentation -> [Fact] -> goal -> ShowS
 showsvdash space [] goal = strstr "|- " . shows goal
 showsvdash space [hyp] goal = shows hyp . strstr " |- " . shows goal
 showsvdash space (hyp : hyps) goal = shows hyp . strstr ", " . showsvdash space hyps goal
@@ -255,8 +255,8 @@ runTransition env free_lvars = go where
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueT IO) Stack
     success with = return [with]
-    arithCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr (UniqueT IO) Stack
-    arithCheck call_id ctx cells predicate args op
+    arithOpCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr (UniqueT IO) Stack
+    arithOpCheck call_id ctx cells predicate args op
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
             Left "non" -> success
                 ( Context
@@ -273,12 +273,12 @@ runTransition env free_lvars = go where
     search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique
-        let arithCheck' = arithCheck call_id ctx cells predicate args
+        let arithOpCheck' = arithOpCheck call_id ctx cells predicate args
         ans1 <- case predicate of
-            DC DC_ge -> arithCheck' (>=)
-            DC DC_gt -> arithCheck' (>)
-            DC DC_le -> arithCheck' (<=)
-            DC DC_lt -> arithCheck' (<)
+            DC DC_ge -> arithOpCheck' (>=)
+            DC DC_gt -> arithOpCheck' (>)
+            DC DC_le -> arithOpCheck' (<=)
+            DC DC_lt -> arithOpCheck' (<)
             _ -> failure
         ans2 <- fmap concat $ forM (Map.findWithDefault [] predicate facts) $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
