@@ -141,7 +141,7 @@ runREPL program = lift (newIORef False) >>= go where
                 printDisagreements = do
                     promptify "The remaining constraints are:"
                     sequence_
-                        [ promptify (showsvdash (length myTabs) [] constraint "")
+                        [ promptify (myTabs ++ shows constraint "")
                         | constraint <- _LeftConstraints final_ctx
                         ]
                     promptify "The binding is:"
