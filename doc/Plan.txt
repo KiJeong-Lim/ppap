@@ -1,0 +1,15 @@
+1. Support custom notations:
+
+```
+{prefix/infix/suffix} {fixity} {symbol}
+```
+
+```
+infix 4 ==>
+```
+
+2. Support simultaneous declarations.
+
+3. Support import
+
+4. Deriving method (e.g., copy)
