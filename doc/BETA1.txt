@@ -1,11 +1,13 @@
 1. Support custom notations:
 
 ```
-{prefix/infix/suffix} {fixity} {symbol}
+{prefix/infix/suffix} {symbol} {fixity}.
 ```
 
 ```
-infix 4 ==>
+kind frm type.
+infix ==> 4.
+type (==>) frm -> frm -> frm.
 ```
 
 2. Support simultaneous declarations.
