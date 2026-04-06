@@ -10,6 +10,14 @@ infix 4 ==>
 
 2. Support simultaneous declarations.
 
+```
+p (f X Y) & p (g X Y) :- p X Y, p X Y.
+```
+
 3. Support import
 
-4. Deriving method (e.g., copy)
+```
+:- require XXX.ABC.
+:- require export XXX.DEF.
+:- require import XXX.GHI.
+```
