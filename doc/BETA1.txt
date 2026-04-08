@@ -23,3 +23,7 @@ p (f X Y) & p (g X Y) :- p X Y, p X Y.
 :- require export XXX.DEF.
 :- require import XXX.GHI.
 ```
+
+4. Read/Write
+
+5. Communication with Debugger
