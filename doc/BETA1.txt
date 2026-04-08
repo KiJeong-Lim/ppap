@@ -26,4 +26,4 @@ p (f X Y) & p (g X Y) :- p X Y, p X Y.
 
 4. Read/Write
 
-5. Communication with Debugger
+5. Interaction with Debugger
