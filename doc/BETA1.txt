@@ -13,7 +13,7 @@ type (==>) frm -> frm -> frm.
 2. Support simultaneous declarations.
 
 ```
-p (f X Y) & p (g X Y) :- p X Y, p X Y.
+p (f X Y) & p (g X Y) :- p X, p Y.
 ```
 
 3. Support import
@@ -25,5 +25,10 @@ p (f X Y) & p (g X Y) :- p X Y, p X Y.
 ```
 
 4. Read/Write
+
+```
+type read (A -> o).
+type show (string -> o).
+```
 
 5. Interaction with Debugger
