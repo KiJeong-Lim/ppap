@@ -28,7 +28,7 @@ p (f X Y) & p (g X Y) :- p X, p Y.
 
 ```
 type read (A -> o).
-type show (string -> o).
+type show (A -> o).
 ```
 
 5. Interaction with Debugger
