@@ -5,9 +5,11 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Writer
 import Data.Function
+import Data.IORef
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -32,7 +34,7 @@ data Flush
     deriving (Eq, Ord, Show)
 
 newtype UniqueT m a
-    = UniqueT { runUniqueT :: StateT Int m a }
+    = UniqueT { runUniqueT :: ReaderT (IORef Int) m a }
     deriving ()
 
 newtype Unique
@@ -110,8 +112,10 @@ my_ostream << your_cargo = do
     hput my_handle your_cargo
     return my_handle
 
-execUniqueT :: Functor m => UniqueT m a -> m a
-execUniqueT = fmap fst . flip runStateT 0 . runUniqueT
+execUniqueT :: MonadIO m => UniqueT m a -> m a
+execUniqueT m = do
+    ref <- liftIO (newIORef 0)
+    runReaderT (runUniqueT m) ref
 {-# INLINABLE execUniqueT #-}
 
 strstr :: String -> ShowS
@@ -222,34 +226,45 @@ instance Outputable Unique where
     pprint _ (Unique i) = strstr "#" . shows i
 
 instance Functor m => Functor (UniqueT m) where
+    {-# INLINE fmap #-}
     fmap a2b = UniqueT . fmap a2b . runUniqueT
 
 instance Monad m => Applicative (UniqueT m) where
+    {-# INLINE pure #-}
     pure = UniqueT . pure
+    {-# INLINE (<*>) #-}
     (<*>) = ap
 
 instance Monad m => Monad (UniqueT m) where
+    {-# INLINE (>>=) #-}
     m >>= k = UniqueT $ runUniqueT m >>= runUniqueT . k
 
-instance Monad m => MonadUnique (UniqueT m) where
-    getUnique = UniqueT $ do
-        i <- get
-        i `seq` put (succ i)
+instance MonadIO m => MonadUnique (UniqueT m) where
+    {-# INLINE getUnique #-}
+    getUnique = UniqueT $ ReaderT $ \ref -> liftIO $ do
+        i <- readIORef ref
+        let i' = i + 1
+        i' `seq` writeIORef ref i'
         return (Unique i)
 
 instance MonadIO m => MonadIO (UniqueT m) where
+    {-# INLINE liftIO #-}
     liftIO = UniqueT . liftIO
 
 instance MonadTrans UniqueT where
+    {-# INLINE lift #-}
     lift = UniqueT . lift
 
 instance MonadUnique m => MonadUnique (ExceptT e m) where
+    {-# INLINE getUnique #-}
     getUnique = lift getUnique
 
 instance MonadUnique m => MonadUnique (StateT s m) where
+    {-# INLINE getUnique #-}
     getUnique = lift getUnique
 
 instance (Monoid w, MonadUnique m) => MonadUnique (WriterT w m) where
+    {-# INLINE getUnique #-}
     getUnique = lift getUnique
 
 instance IsInt Int where

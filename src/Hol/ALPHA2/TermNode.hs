@@ -24,22 +24,22 @@ data LogicVar
     deriving (Eq, Ord)
 
 data TermNode
-    = LVar LogicVar
-    | NCon Constant
-    | NIdx DeBruijn
-    | NApp TermNode TermNode
-    | NLam TermNode
+    = LVar !LogicVar
+    | NCon !Constant
+    | NIdx {-# UNPACK #-} !DeBruijn
+    | NApp !TermNode !TermNode
+    | NLam !TermNode
     | Susp
-        { getSuspBody :: TermNode
-        , getSuspOL :: Int
-        , getSuspNL :: Int
-        , getSuspEnv :: SuspEnv
+        { getSuspBody :: !TermNode
+        , getSuspOL :: {-# UNPACK #-} !Int
+        , getSuspNL :: {-# UNPACK #-} !Int
+        , getSuspEnv :: !SuspEnv
         }
     deriving (Eq, Ord)
 
 data SuspItem
-    = Dummy Int
-    | Binds TermNode Int
+    = Dummy {-# UNPACK #-} !Int
+    | Binds TermNode {-# UNPACK #-} !Int
     deriving (Eq, Ord)
 
 data ReduceOption
@@ -104,33 +104,40 @@ instance Show LogicVar where
     showsPrec prec (LV_Unique uni) = strstr "?LV_" . showsPrec prec (unUnique uni)
     showsPrec prec (LV_Named name) = strstr name
 
+{-# INLINE mkLVar #-}
 mkLVar :: LogicVar -> TermNode
-mkLVar v = v `seq` LVar v
+mkLVar v = LVar v
 
 mkNCon :: ToConstant a => a -> TermNode
 mkNCon = go . makeConstant where
     go :: Constant -> TermNode
-    go c = c `seq` NCon c
+    go c = NCon c
 
+{-# INLINE mkNIdx #-}
 mkNIdx :: DeBruijn -> TermNode
-mkNIdx i = i `seq` NIdx i
+mkNIdx i = NIdx i
 
+{-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
 mkNApp (NCon (DC (DC_Succ))) (NCon (DC (DC_NatL n))) = let n' = n + 1  in n' `seq` mkNCon (DC_NatL n')
-mkNApp t1 t2 = t1 `seq` t2 `seq` NApp t1 t2
+mkNApp t1 t2 = NApp t1 t2
 
+{-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
-mkNLam t = t `seq` NLam t
+mkNLam t = NLam t
 
+{-# INLINE mkSusp #-}
 mkSusp :: TermNode -> Int -> Int -> SuspEnv -> TermNode
 mkSusp t 0 0 [] = t
-mkSusp t ol nl env = t `seq` ol `seq` nl `seq` env `seq` Susp { getSuspBody = t, getSuspOL = ol, getSuspNL = nl, getSuspEnv = env }
+mkSusp t ol nl env = Susp { getSuspBody = t, getSuspOL = ol, getSuspNL = nl, getSuspEnv = env }
 
+{-# INLINE mkDummy #-}
 mkDummy :: Int -> SuspItem
-mkDummy l = l `seq` Dummy l
+mkDummy l = Dummy l
 
+{-# INLINE mkBinds #-}
 mkBinds :: TermNode -> Int -> SuspItem
-mkBinds t l = t `seq` l `seq` Binds t l
+mkBinds t l = Binds t l
 
 rewriteWithSusp :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
 rewriteWithSusp t ol nl env option = dispatch t where
@@ -138,7 +145,7 @@ rewriteWithSusp t ol nl env option = dispatch t where
     dispatch (LVar {})
         = t
     dispatch (NIdx i)
-        | i >= ol = mkNIdx (i - ol + nl)
+        | i >= ol = if ol == nl then t else mkNIdx (i - ol + nl)
         | i >= 0 = case env !! i of
             Dummy l -> mkNIdx (nl - l)
             Binds t' l -> rewriteWithSusp t' 0 (nl - l) [] option
@@ -147,8 +154,8 @@ rewriteWithSusp t ol nl env option = dispatch t where
         = t
     dispatch (NApp t1 t2)
         | NLam t11 <- t1' = beta t11
-        | option == WHNF = mkNApp t1' (Susp t2 ol nl env)
-        | option == HNF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (Susp t2 ol nl env)
+        | option == WHNF = mkNApp t1' (mkSusp t2 ol nl env)
+        | option == HNF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (mkSusp t2 ol nl env)
         | option == NF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
         where
             t1' :: TermNode
@@ -158,15 +165,20 @@ rewriteWithSusp t ol nl env option = dispatch t where
                 | nl' == l' = rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
             beta t' = rewriteWithSusp t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
     dispatch (NLam t1)
-        | option == WHNF = mkNLam (Susp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
-        | otherwise = mkNLam (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
+        | option == NF = mkNLam (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
+        | otherwise = mkNLam (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
     dispatch (Susp t' ol' nl' env')
         | ol' == 0 && nl' == 0 = rewriteWithSusp t' ol nl env option
         | ol == 0 = rewriteWithSusp t' ol' (nl + nl') env' option
         | otherwise = rewriteWithSusp (rewriteWithSusp t' ol' nl' env' WHNF) ol nl env option
 
+{-# INLINE rewrite #-}
 rewrite :: ReduceOption -> TermNode -> TermNode
-rewrite option t = rewriteWithSusp t 0 0 [] option
+rewrite option t = case t of
+    LVar {} -> t
+    NCon {} -> t
+    NIdx {} -> t
+    _ -> rewriteWithSusp t 0 0 [] option
 
 unfoldlNApp :: TermNode -> (TermNode, [TermNode])
 unfoldlNApp = flip go [] where

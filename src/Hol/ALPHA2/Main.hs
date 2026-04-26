@@ -18,6 +18,7 @@ import Control.Monad.Trans.State.Strict
 import Data.IORef
 import Data.Maybe
 import qualified Data.List as List
+import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.IO
@@ -53,7 +54,7 @@ addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <
 execRuntime :: RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr (UniqueT IO) Satisfied
 execRuntime env isDebugging facts query = do
     call_id <- getUnique
-    let initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = Labeling { _ConLabel = Map.empty, _VarLabel = Map.fromSet (const 0) (getLVars query) }, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
+    let initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = Labeling { _ConLabel = IntMap.empty, _VarLabel = IntMap.empty }, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
     runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
 runREPL :: Program TermNode -> UniqueT IO ()
@@ -305,6 +306,4 @@ runHol = do
             return ()
 
 main :: IO ()
-main = do
-    runStateT (runUniqueT runHol) 0
-    return ()
+main = execUniqueT runHol

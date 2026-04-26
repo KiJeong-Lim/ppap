@@ -11,6 +11,7 @@ import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Writer
 import Data.Char
 import Data.Foldable
+import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -29,8 +30,8 @@ type HasChanged = Bool
 
 data Labeling
     = Labeling
-        { _ConLabel :: Map.Map Constant ScopeLevel
-        , _VarLabel :: Map.Map LogicVar ScopeLevel
+        { _ConLabel :: IntMap.IntMap ScopeLevel
+        , _VarLabel :: IntMap.IntMap ScopeLevel
         }
     deriving (Eq, Ord, Show)
 
@@ -72,53 +73,61 @@ class ZonkLVar expr where
     zonkLVar :: LogicVarSubst -> expr -> expr
 
 instance Labelable Constant where
-    enrollLabel atom level labeling = labeling { _ConLabel = Map.insert atom level (_ConLabel labeling) }
-    updateLabel atom level labeling = labeling { _ConLabel = Map.update (const (Just level)) atom (_ConLabel labeling) }
-    lookupLabel atom = maybe (theDefaultLevel atom) id . Map.lookup atom . _ConLabel where
-        theDefaultLevel :: Constant -> ScopeLevel
-        theDefaultLevel (DC (DC_Unique _)) = maxBound
-        theDefaultLevel _ = 0
+    {-# INLINE enrollLabel #-}
+    enrollLabel (DC (DC_Unique uni)) level labeling = labeling { _ConLabel = IntMap.insert (unUnique uni) level (_ConLabel labeling) }
+    enrollLabel _ _ labeling = labeling
+    {-# INLINE updateLabel #-}
+    updateLabel (DC (DC_Unique uni)) level labeling = labeling { _ConLabel = IntMap.update (const (Just level)) (unUnique uni) (_ConLabel labeling) }
+    updateLabel _ _ labeling = labeling
+    {-# INLINE lookupLabel #-}
+    lookupLabel (DC (DC_Unique uni)) labeling = IntMap.findWithDefault maxBound (unUnique uni) (_ConLabel labeling)
+    lookupLabel _ _ = 0
 
 instance Labelable LogicVar where
-    enrollLabel atom level labeling = labeling { _VarLabel = Map.insert atom level (_VarLabel labeling) }
-    updateLabel atom level labeling = labeling { _VarLabel = Map.update (const (Just level)) atom (_VarLabel labeling) }
-    lookupLabel atom = maybe (theDefaultLevel atom) id . Map.lookup atom . _VarLabel where
-        theDefaultLevel :: LogicVar -> ScopeLevel
-        theDefaultLevel (LV_Named _) = 0
-        theDefaultLevel (LV_ty_var _) = maxBound
-        theDefaultLevel (LV_Unique _) = maxBound
+    {-# INLINE enrollLabel #-}
+    enrollLabel (LV_Named _) _ labeling = labeling
+    enrollLabel v level labeling = labeling { _VarLabel = IntMap.insert (lvKey v) level (_VarLabel labeling) }
+    {-# INLINE updateLabel #-}
+    updateLabel (LV_Named _) _ labeling = labeling
+    updateLabel v level labeling = labeling { _VarLabel = IntMap.update (const (Just level)) (lvKey v) (_VarLabel labeling) }
+    {-# INLINE lookupLabel #-}
+    lookupLabel (LV_Named _) _ = 0
+    lookupLabel v labeling = IntMap.findWithDefault maxBound (lvKey v) (_VarLabel labeling)
+
+{-# INLINE lvKey #-}
+lvKey :: LogicVar -> Int
+lvKey (LV_Unique u) = unUnique u
+lvKey (LV_ty_var u) = unUnique u
+lvKey (LV_Named _) = error "lvKey: LV_Named has no Int key"
 
 instance ZonkLVar Labeling where
-    zonkLVar subst labeling = labeling { _VarLabel = varlabel' } where
-        mapsto :: Map.Map LogicVar TermNode
-        mapsto = unVarBinding subst
-        varlabel :: Map.Map LogicVar ScopeLevel
-        varlabel = _VarLabel labeling
-        varlabel' :: Map.Map LogicVar ScopeLevel
-        varlabel' = Map.foldlWithKey' applyBinding varlabel mapsto
-        applyBinding :: Map.Map LogicVar ScopeLevel -> LogicVar -> TermNode -> Map.Map LogicVar ScopeLevel
-        applyBinding acc v' t'
-            = case Map.lookup v' varlabel of
-                Nothing -> acc
-                Just level' -> Set.foldr (\v -> Map.insertWith min v level') acc (fvNF t')
-        fvNF :: TermNode -> Set.Set LogicVar
-        fvNF = flip goNF Set.empty
-        goNF :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
-        goNF (LVar v) = Set.insert v
-        goNF (NCon _) = id
-        goNF (NIdx _) = id
-        goNF (NApp t1 t2) = goNF t1 . goNF t2
-        goNF (NLam t) = goNF t
-        goNF (Susp t ol nl env) = goNF (rewriteWithSusp t ol nl env NF)
+    zonkLVar subst labeling = Map.foldlWithKey' applyBinding labeling (unVarBinding subst) where
+        applyBinding :: Labeling -> LogicVar -> TermNode -> Labeling
+        applyBinding lbl v t = case getLevel v lbl of
+            Nothing -> lbl
+            Just level -> Set.foldr (insertVarMin level) lbl (accLVarsTerm t Set.empty)
+        getLevel :: LogicVar -> Labeling -> Maybe ScopeLevel
+        getLevel (LV_Named _) _ = Just 0
+        getLevel v lbl = IntMap.lookup (lvKey v) (_VarLabel lbl)
+        insertVarMin :: ScopeLevel -> LogicVar -> Labeling -> Labeling
+        insertVarMin _ (LV_Named _) lbl = lbl
+        insertVarMin level v lbl = lbl { _VarLabel = IntMap.insertWith min (lvKey v) level (_VarLabel lbl) }
+
+accLVarsTerm :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
+accLVarsTerm (LVar v) = Set.insert v
+accLVarsTerm (NCon _) = id
+accLVarsTerm (NIdx _) = id
+accLVarsTerm (NApp t1 t2) = accLVarsTerm t1 . accLVarsTerm t2
+accLVarsTerm (NLam t) = accLVarsTerm t
+accLVarsTerm (Susp t _ _ env) = accLVarsTerm t . accLVarsSuspEnv env
+
+accLVarsSuspEnv :: SuspEnv -> Set.Set LogicVar -> Set.Set LogicVar
+accLVarsSuspEnv [] = id
+accLVarsSuspEnv (Dummy _ : env) = accLVarsSuspEnv env
+accLVarsSuspEnv (Binds t _ : env) = accLVarsTerm t . accLVarsSuspEnv env
 
 instance HasLVar TermNode where
-    accLVars = go . rewrite NF where
-        go :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
-        go (LVar v) = Set.insert v
-        go (NCon c) = id
-        go (NIdx i) = id
-        go (NApp t1 t2) = go t1 . go t2
-        go (NLam t) = go t
+    accLVars = accLVarsTerm
     bindVars = flatten
 
 instance HasLVar a => HasLVar [a] where
@@ -134,18 +143,16 @@ instance HasLVar a => HasLVar (Map.Map k a) where
     bindVars = Map.map . bindVars
 
 instance Semigroup VarBinding where
-    theta2 <> theta1 = VarBinding $! map21 where
-        map1 :: Map.Map LogicVar TermNode
-        map1 = unVarBinding theta1
-        map2 :: Map.Map LogicVar TermNode
-        map2 = unVarBinding theta2
-        map21 :: Map.Map LogicVar TermNode
-        map21 = bindVars theta2 map1 `Map.union` map2
+    theta2 <> theta1
+        | Map.null map2 = theta1
+        | Map.null map1 = theta2
+        | otherwise = VarBinding $! bindVars theta2 map1 `Map.union` map2
+        where
+            map1 = unVarBinding theta1
+            map2 = unVarBinding theta2
 
 instance Monoid VarBinding where
-    mempty = VarBinding $! map0 where
-        map0 :: Map.Map LogicVar TermNode
-        map0 = Map.empty
+    mempty = VarBinding Map.empty
 
 instance ZonkLVar VarBinding where
     zonkLVar subst binding = subst <> binding
@@ -164,8 +171,8 @@ instance Outputable Labeling where
     pprint _ labeling
         = strcat
             [ strstr "Labeling\n"
-            , strstr "    { _ConLabel = " . plist 8 [ shows (LVar x) . strstr " *---> " . shows scp | (x, scp) <- Map.toList (_VarLabel labeling) ] . nl
-            , strstr "    , _VarLabel = " . plist 8 [ shows (NCon c) . strstr " *---> " . shows scp | (c, scp) <- Map.toList (_ConLabel labeling) ] . nl
+            , strstr "    { _ConLabel = " . plist 8 [ strstr "DC_Unique " . shows k . strstr " *---> " . shows scp | (k, scp) <- IntMap.toList (_ConLabel labeling) ] . nl
+            , strstr "    , _VarLabel = " . plist 8 [ strstr "Var " . shows k . strstr " *---> " . shows scp | (k, scp) <- IntMap.toList (_VarLabel labeling) ] . nl
             , strstr "    } "
             ]
 
@@ -180,12 +187,14 @@ instance Outputable Disagreement where
             go :: ShowS
             go = shows lhs . strstr " ~ " . shows rhs
 
+{-# INLINE isRigidAtom #-}
 isRigidAtom :: TermNode -> Bool
 isRigidAtom (NCon (DC DC_wc)) = False
 isRigidAtom (NCon {}) = True
 isRigidAtom (NIdx {}) = True
 isRigidAtom _ = False
 
+{-# INLINE isTyLVar #-}
 isTyLVar :: LogicVar -> Bool
 isTyLVar (LV_ty_var {}) = True
 isTyLVar _ = False
@@ -412,13 +421,19 @@ getLVars :: HasLVar expr => expr -> Set.Set LogicVar
 getLVars = flip accLVars Set.empty
 
 flatten :: VarBinding -> TermNode -> TermNode
-flatten (VarBinding mapsto) = go . rewrite NF where
-    go :: TermNode -> TermNode
-    go (LVar v) = maybe (mkLVar v) id (Map.lookup v mapsto)
-    go (NCon c) = mkNCon c
-    go (NIdx i) = mkNIdx i
-    go (NApp t1 t2) = mkNApp (go t1) (go t2)
-    go (NLam t) = mkNLam (go t)
+flatten (VarBinding mapsto)
+    | Map.null mapsto = id
+    | otherwise = go . rewrite NF
+    where
+        go :: TermNode -> TermNode
+        go (LVar v) = case Map.lookup v mapsto of
+            Just t -> t
+            Nothing -> LVar v
+        go t@(NCon _) = t
+        go t@(NIdx _) = t
+        go (NApp t1 t2) = mkNApp (go t1) (go t2)
+        go (NLam t) = mkNLam (go t)
+        go t = t
 
 (+->) :: Monad m => LogicVar -> TermNode -> ExceptT HopuFail m VarBinding
 v +-> t
