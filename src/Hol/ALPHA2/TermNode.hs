@@ -165,8 +165,8 @@ rewriteWithSusp t ol nl env option = dispatch t where
                 | nl' == l' = rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
             beta t' = rewriteWithSusp t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
     dispatch (NLam t1)
-        | option == NF = mkNLam (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
-        | otherwise = mkNLam (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
+        | option == WHNF = mkNLam (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
+        | otherwise = mkNLam (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
     dispatch (Susp t' ol' nl' env')
         | ol' == 0 && nl' == 0 = rewriteWithSusp t' ol nl env option
         | ol == 0 = rewriteWithSusp t' ol' (nl + nl') env' option
