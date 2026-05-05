@@ -1,4 +1,4 @@
-module Isa.Dep where
+module IsabelleHol.Dependecies where
 
 import Control.Applicative
 import Control.Monad

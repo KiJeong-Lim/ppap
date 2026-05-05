@@ -38,11 +38,6 @@ executable ppap
     Calc.Presburger.Test
     Calc.Runtime.Executor
     Calc.Main
-    Json.JsonAst
-    Json.JsonLexer
-    Json.JsonParser
-    Json.JsonTest
-    Json.JsonViewer
     Hol.ALPHA2.Header
     Hol.ALPHA2.PlanHolLexer
     Hol.ALPHA2.PlanHolParser
@@ -56,6 +51,12 @@ executable ppap
     Hol.ALPHA2.Main
     Hol.BETA1.Main
     Hol.Main
+    IsabelleHol.Dependecies
+    Json.JsonAst
+    Json.JsonLexer
+    Json.JsonParser
+    Json.JsonTest
+    Json.JsonViewer
     LGS.Alpha1
     LGS.Main
     PGS.Alpha1
@@ -90,7 +91,6 @@ executable ppap
     Z.Text.PC
     Z.Text.PM
     Z.Utils
-    Isa.Dep
   c-sources:
     src/X/machine.c
     src/X/machine.h
