@@ -93,10 +93,11 @@ There is no layout rule; every declaration and clause is terminated by `.`.
 --------------------------------------------------------------------------------
 
   kinds  κ ::= type | κ -> κ -- however, must be `order κ ≤ 1` 
-  types  A ::= a             -- type constant (introduced by `kind`)
-             | A -> A
-             | A B           -- type application
-             | X             -- type variable (implicitly generalised)
+  types  A ::=
+    | a             -- type constant (introduced by `kind`)
+    | A -> A
+    | A B           -- type application
+    | X             -- type variable (implicitly generalised)
 
 Built-in type constants:
 
@@ -119,14 +120,15 @@ Type variables appearing free in a `type` declaration are universally quantified
 1.3 Terms
 --------------------------------------------------------------------------------
 
-  t ::= c                   -- data constant
-      | X                   -- logic variable
-      | t t                 -- application
-      | x \ t               -- λ-abstraction (`x` is a name hint)
-      | <literal>
-      | [ t, ..., t ]       -- list sugar
-      | t :: t              -- cons
-      | []                  -- nil
+  t ::=
+    | c                   -- data constant
+    | X                   -- logic variable
+    | t t                 -- application
+    | x \ t               -- λ-abstraction (`x` is a name hint)
+    | <literal>
+    | [ t, ..., t ]       -- list sugar
+    | t :: t              -- cons
+    | []                  -- nil
 
 Internally each `x \ t` is stored as a de Bruijn index together with the name hint `x`.
 The name hint is used only for display and for diagnostic messages; α-equivalence is decided on the de Bruijn form.
@@ -144,16 +146,17 @@ A clause is one of
 
 The body grammar:
 
-  body ::= <atom>
-         | body , body                       -- conjunction
-         | body ; body                       -- disjunction
-         | body => body                      -- hypothetical implication
-         | pi    x \ body                    -- universal
-         | sigma x \ body                    -- existential
-         | true | fail | !
-         | t is <arith>                      -- arithmetic evaluation
-         | presburger <string-literal>       -- Presburger entailment query
-         | debug "..."
+  body ::=
+    | <atom>
+    | body , body                       -- conjunction
+    | body ; body                       -- disjunction
+    | body => body                      -- hypothetical implication
+    | pi    x \ body                    -- universal
+    | sigma x \ body                    -- existential
+    | true | fail | !
+    | t is <arith>                      -- arithmetic evaluation
+    | presburger <string-literal>       -- Presburger entailment query
+    | debug "..."
 
 `=>`, `pi`, and `sigma` form the core of λProlog's intuitionistic proof-search calculus (see §2.2).
 
@@ -270,34 +273,34 @@ Reduction modes:
 Write `Δ; Ψ ⊢ G | C` for "under program Δ and hypothesis set Ψ, the goal G
 is provable, leaving residual constraint set C".
 
-  (TRUE)   ──────────────────
-           Δ; Ψ ⊢ true | ∅
+  (TRUE)  ──────────────────
+          Δ; Ψ ⊢ true | ∅
 
-  (AND)    Δ;Ψ ⊢ G₁ | C₁     Δ;Ψ ⊢ G₂ | C₂
-           ─────────────────────────────────
-           Δ;Ψ ⊢ G₁, G₂ | C₁ ⊎ C₂
+  (AND)   Δ;Ψ ⊢ G₁ | C₁     Δ;Ψ ⊢ G₂ | C₂
+          ─────────────────────────────────
+          Δ;Ψ ⊢ G₁, G₂ | C₁ ⊎ C₂
 
-  (OR-i)   Δ;Ψ ⊢ Gᵢ | C
-           ─────────────────────
-           Δ;Ψ ⊢ G₁; G₂ | C        (i ∈ {1,2})
+  (OR-i)  Δ;Ψ ⊢ Gᵢ | C
+          ─────────────────────
+          Δ;Ψ ⊢ G₁; G₂ | C        (i ∈ {1,2})
 
-  (IMP)    Δ; Ψ ∪ {D} ⊢ G | C
-           ───────────────────
-           Δ;Ψ ⊢ D => G | C
+  (IMP)   Δ; Ψ ∪ {D} ⊢ G | C
+          ───────────────────
+          Δ;Ψ ⊢ D => G | C
 
-  (ALL)    Δ;Ψ ⊢ G[c/x] | C        (c fresh constant)
-           ──────────────────────────────────────────
-           Δ;Ψ ⊢ pi x\ G | C
+  (ALL)   Δ;Ψ ⊢ G[c/x] | C        (c fresh constant)
+          ──────────────────────────────────────────
+          Δ;Ψ ⊢ pi x\ G | C
 
-  (EXS)    Δ;Ψ ⊢ G[?X/x] | C       (?X fresh logic variable)
-           ────────────────────────────────────────────────
-           Δ;Ψ ⊢ sigma x\ G | C
+  (EXS)   Δ;Ψ ⊢ G[?X/x] | C       (?X fresh logic variable)
+          ────────────────────────────────────────────────
+          Δ;Ψ ⊢ sigma x\ G | C
 
-  (BACK)   D ∈ Δ ∪ Ψ      D = ∀.(B :- A₁,…,Aₙ)
-           θ ∈ HOPU(A, head(D)) with residual C′
-           Δ;Ψ ⊢ θ(A₁),…,θ(Aₙ) | C″
-           ──────────────────────────────────────
-           Δ;Ψ ⊢ A | C′ ⊎ C″
+  (BACK)  D ∈ Δ ∪ Ψ      D = ∀.(B :- A₁,…,Aₙ)
+          θ ∈ HOPU(A, head(D)) with residual C′
+          Δ;Ψ ⊢ θ(A₁),…,θ(Aₙ) | C″
+          ──────────────────────────────────────
+          Δ;Ψ ⊢ A | C′ ⊎ C″
 
 (BACK) uses *higher-order pattern unification* (HOPU).
 Unification candidates outside the pattern fragment are not solved on the spot;
@@ -617,3 +620,8 @@ Appendix A. Open Questions
 ================================================================================
 Appendix B. Other feedbacks to claude
 ================================================================================
+
+  [1] In `Hol BETA1`, like the original λProlog, we will support a multiple declaration---e.g.:
+  ```
+  p (f X Y) & p (g X Y) :- p X, p Y.
+  ```
