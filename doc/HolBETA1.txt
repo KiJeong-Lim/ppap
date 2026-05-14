@@ -307,45 +307,158 @@ Unification candidates outside the pattern fragment are not solved on the spot;
 they are deferred as `DisagreementConstraint`s and re-tried at each binding event.
 
 
-2.3 Arithmetic Constraints and the `presburger` Predicate
+2.3 Arithmetic Constraints and the `presburger` Special Form
 --------------------------------------------------------------------------------
 
-A branch's constraint multiset C is partitioned into:
+2.3.1 The constraint multiset
 
-  Constraint ::= DisagreementConstraint  ⟨t, u⟩    -- HOPU residual
-              | EvaluationConstraint    ⟨t, u⟩    -- from `t is u`
-              | ArithmeticConstraint    φ          -- Presburger atom
+A branch's constraint multiset C is partitioned into three kinds.
 
-ALPHA2 already accumulates `EvaluationConstraint` and a degenerate form of `ArithmeticConstraint`.
-BETA1 *makes them queryable*.
+  Constraint ::=
+    | DisagreementConstraint <pair>     -- HOPU residual (from §2.2)
+    | EvaluationConstraint   <pair>     -- pending `t is u`
+    | ArithmeticConstraint   φ          -- atom in Presburger form
+
+ALPHA2 already accumulates `EvaluationConstraint` and a degenerate form
+of `ArithmeticConstraint` (only when both sides of an equality fully
+reduce to closed naturals). BETA1 keeps this collection but adds a way
+to *query* it.
+
+2.3.2 The special form
+
+Surface syntax (see the §1.4 grammar):
+
+  presburger <string-literal>
+
+is presented to users as if it were a predicate
 
   presburger : string -> o.
 
-Operationally:
+In reality BETA1 treats it as a *special form*. The surface type
+signature is a documentation lie — it is never registered in the type
+environment — and the form is dispatched by the runtime, not by clause
+lookup. Two motivations.
 
-  1. The string argument must reduce to a ground string literal. Otherwise the goal fails with a `bad-presburger` runtime error.
-  2. The literal is parsed as a Presburger formula φ using the grammar of `Calc.Presburger.Internal.PresburgerTermRep` / `PresburgerFormula PresburgerTermRep`.
-  3. Let Φ be the conjunction of all `ArithmeticConstraint`s currently in C.
-  The goal succeeds iff
+  1. The argument is *always* a literal. There is no useful semantics for a unification variable in the argument slot.
+  2. We want the formula AST available at compile time, not re-parsed on every reduction.
 
-    Φ  ⊨  φ        (i.e.  Φ ∧ ¬φ  is unsatisfiable),
+A non-literal argument (e.g. `presburger S` where `S` is a logic
+variable or a partially-unfolded `list char` term) is a *compile-time*
+error reported at the source location of the offending body item.
 
-  decided by the procedure exported from `src/Calc/Presburger/Internal.hs`.
-  4. The check produces no substitution and adds no new constraints.
+2.3.3 Compilation pipeline
 
-Implicit consistency pruning. At every BACK / AND step, BETA1 conceptually inserts the goal
+The pipeline transforms the surface form into an internal goal node.
 
-    presburger "_|_", !, fail
+  surface              RawTermRep                TermNode (internal)
+  -------------------  ----------------------    ---------------------
+  presburger "..."     RPresburger SLoc "..."    NPresburgerCheck rep
+                                                 where
+                                                   rep :: PresburgerFormulaRep
 
-before evaluating the original goal.
-In words: "if ⊥ is entailed by the current Φ, then commit and fail this branch".
-This recovers the eager consistency-check behaviour suggested in earlier drafts,
-but as a derived notion expressed in terms of the user-visible predicate.
+Stage 1 (Lexer)
+    Recognise the keyword `presburger` followed by a single string
+    literal as one body item; emit two tokens.
 
-Implementations are free to omit the implicit check when the constraint store has not changed since the previous check;
-equivalence is up to branch pruning behaviour, not to answer correctness.
+Stage 2 (Parser)
+    Emit `RPresburger SLoc String` carrying the raw literal content
+    verbatim, *without* attempting to interpret it as a `string` term.
 
-Examples.
+Stage 3 (Desugarer)
+    Call `Arith.parsePresburger sloc src env`, where `env` is the
+    identifier→`LogicVar` map already being threaded for the
+    surrounding clause (see §2.3.4). The call returns either a parse
+    error (reported with `sloc`) or a pair `(rep, env')` of the parsed
+    formula and the extended map. Wrap `rep` in the new constructor
+
+      NPresburgerCheck :: PresburgerFormulaRep -> TermNode
+
+Stage 4 (TypeChecker)
+    `NPresburgerCheck rep` has type `o`. No type constraint is emitted
+    for `rep` itself.
+
+Stage 5 (Runtime)
+    See §2.3.5.
+
+`NPresburgerCheck` is the only `TermNode` constructor whose appearance
+is restricted to *goal position*. The type checker enforces this by
+refusing to type it where a non-`o` type is expected. Reduction
+(`rewriteWithSusp`) treats it as a normal form; HOPU never inspects
+it.
+
+2.3.4 Variable binding inside the literal
+
+A free identifier inside the literal binds to the *same* logic
+variable as an identifier of the same name outside the literal.
+Concretely, the desugarer maintains
+
+  nameOfClause :: Map LargeId LogicVar
+
+shared with the desugaring of the surrounding clause. When
+`parsePresburger` reports a free identifier `X`, the desugarer
+
+  - reuses the existing `LogicVar` if `X` is already in `nameOfClause`;
+  - otherwise introduces a fresh `LV_Named "X"` and adds it.
+
+So, for example,
+
+  ?- X is 3, presburger "X > 5".
+
+mentions a single `X`. After `X is 3` succeeds, the substitution
+contains `X := 3`; the runtime zonk before evaluating the presburger
+goal substitutes `X` to `3` inside `rep`, yielding the closed formula
+`3 > 5`, which is decided as false.
+
+Identifiers occurring *only* inside the literal (with no companion
+outside) are still lifted to `LV_Named` of the same name; the solver
+then treats them as free variables for the entailment check.
+
+Names bound by quantifiers *within* the literal (e.g. `Y` in
+`presburger "exists Y. Y + Y = X"`) are scoped to the formula; they
+do not introduce or shadow logic variables outside.
+
+2.3.5 Runtime evaluation
+
+When the runtime reaches a goal `NPresburgerCheck rep`:
+
+  1. Apply the current substitution θ to `rep`. Any `LV_Named v` whose
+  θ(v) is a closed natural-number literal is replaced by that
+  literal (i.e. `Succ (Succ ... Zero)`). Other shapes of θ(v) leave
+  the identifier as a free variable. See §4.2 for the safety
+  argument.
+
+  2. Build Φ from the current `ArithmeticConstraint`s in C, dropping
+  any conjunct that does not lift into the Presburger fragment
+  (best-effort lifting — §4.2).
+
+  3. Call
+
+      entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
+
+  from `Arith`. The check produces no substitution and adds no
+  constraint.
+
+  4. The goal succeeds iff `entails Φ φ` returns `True`; otherwise it
+  fails and the runtime backtracks.
+
+2.3.6 Implicit consistency pruning
+
+The §2.3 contract is sharpened by an implicit pruning hook. At every
+(BACK) and (AND) edge of the proof-search tree, BETA1 *conceptually*
+inserts
+
+  presburger "_|_", !, fail
+
+before evaluating the original goal. In words: "if ⊥ is entailed by
+the current Φ, commit and fail this branch". This subsumes the eager
+consistency check originally proposed in earlier drafts, but as a
+*derived* notion expressed in terms of the user-visible primitive.
+
+Implementations may skip the implicit check whenever the constraint
+store has not changed since the last check; the equivalence is up to
+branch-pruning behaviour, not to answer correctness.
+
+Examples (repeated from §2.3.2):
 
   ?- X is 3, presburger "X > 5".
   no.
@@ -356,7 +469,7 @@ Examples.
   ?- presburger "exists Y. Y + Y = X", X is 4.
   yes.
 
-  ?- X > 5, X < 3.        % implicitly `presburger "_|_"` succeeds → fail
+  ?- X > 5, X < 3.        % implicit `presburger "_|_"` succeeds → fail
   no.
 
 
@@ -495,18 +608,42 @@ Chapter 4. Implementation Notes (informative)
 4.2 Presburger Bridge
 --------------------------------------------------------------------------------
 
-`Arith.hs` exposes:
+`Arith.hs` exposes the following surface.
 
-  parsePresburger :: String -> Either ErrMsg MyPresburgerFormulaRep
-  entails         :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
+  parsePresburger :: SLoc -> String -> Map LargeId LogicVar -> Either ErrMsg (PresburgerFormulaRep, Map LargeId LogicVar)
 
-`entails Φ φ` is implemented as the unsatisfiability check on `Φ ∧ ¬φ` provided by `Calc.Presburger.Internal`.
-BETA1 makes no assumption about the solver's internals beyond decidability.
+  zonkPresburger :: (LogicVar -> Maybe TermNode) -> PresburgerFormulaRep -> PresburgerFormulaRep
 
-Lifting of `ArithmeticConstraint`s currently in C to `MyPresburgerFormula` is best-effort:
-a term outside the linear-integer fragment (e.g. a product of two variables) is *omitted* from Φ.
-This is sound for entailment in the direction we use it:
-dropping conjuncts from Φ can only make fewer formulas entailed, never more, so `entails` never erroneously reports success.
+  liftConstraint :: TermNode -> Maybe MyPresburgerFormula
+
+  entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
+
+Roles.
+
+  parsePresburger sloc src env
+      Reads `src` (carrying `sloc` for error location) and produces the parsed formula together with the *updated* identifier→`LogicVar` map.
+      Any free identifier missing from `env` is added as a fresh `LV_Named`. Used at desugaring (§2.3.3, Stage 3).
+
+  zonkPresburger θ rep
+      Applies the substitution-as-function θ to every free identifier in `rep`, replacing closed-naturals with the corresponding `Zero`/`Succ` chain and leaving everything else unchanged.
+      Used at runtime (§2.3.5, Step 1).
+
+  liftConstraint t
+      Attempts to lift a `TermNode`-shaped arithmetic constraint (e.g. `EqnF t1 t2`) into `MyPresburgerFormula`.
+      Returns `Nothing` for constraints outside the Presburger fragment (e.g., a product of two unbound variables).
+      Used at runtime (§2.3.5, Step 2).
+
+  entails Φ φ
+      Implemented as the unsatisfiability check on `Φ ∧ ¬φ` provided by `Calc.Presburger.Internal`. BETA1 makes no assumption about the solver's internals beyond decidability.
+
+Soundness of best-effort lifting.
+    Dropping a conjunct from Φ can only weaken the antecedent of
+    `Φ ⊨ φ`. A weaker antecedent makes fewer formulas entailed, never
+    more, so `entails` never erroneously returns `True`. For the
+    implicit consistency check (`entails Φ False`) this means: if
+    BETA1 says "Φ is unsat", it really is unsat; if BETA1 says "Φ is
+    consistent", we only know that the *lifted portion* is consistent,
+    but that is sufficient to keep proof search sound.
 
 
 4.3 Named-Binder Display
@@ -624,3 +761,4 @@ Appendix B. Other feedbacks to claude
   ```
   p (f X Y) & p (g X Y) :- p X, p Y.
   ```
+  // Feedback here.
