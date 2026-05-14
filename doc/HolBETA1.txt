@@ -617,20 +617,75 @@ Remark (zonk depth).
 
 2.3.6 Implicit consistency pruning
 
-The §2.3 contract is sharpened by an implicit pruning hook. At every
-(BACK) and (AND) edge of the proof-search tree, BETA1 *conceptually*
-inserts
+The §2.3 contract is sharpened by an implicit pruning hook: at certain
+runtime transitions, BETA1 *conceptually* inserts the goal
 
   presburger "_|_", !, fail
 
-before evaluating the original goal. In words: "if ⊥ is entailed by
-the current Φ, commit and fail this branch". This subsumes the eager
-consistency check originally proposed in earlier drafts, but as a
-*derived* notion expressed in terms of the user-visible primitive.
+before continuing. In words: "if ⊥ is entailed by the current Φ, commit
+and fail this branch". This subsumes the eager consistency check
+originally proposed in earlier drafts, but as a *derived* notion
+expressed in terms of the user-visible primitive.
 
-Implementations may skip the implicit check whenever the constraint
-store has not changed since the last check; the equivalence is up to
-branch-pruning behaviour, not to answer correctness.
+ALPHA2 already performs a degenerate version of this check (lines 295
+and 322 of `Hol/ALPHA2/Runtime.hs`) using `evaluateB` on fully-closed
+arithmetic atoms. BETA1 replaces the `evaluateB`-based predicate by
+`entails Φ False` from §4.2, and reuses the same insertion sites with
+two additions.
+
+The check fires at the following four points, and no others.
+
+  (T1) After a successful (BACK) edge in `search`.
+       Once HOPU produces a substitution θ and the runtime has
+       zonked C through θ, the runtime calls
+
+         entails (lift C) ⊥
+
+       on the resulting `ArithmeticConstraint`s. If `True`, the new
+       branch is discarded (the substitution is undone) and the
+       runtime fails over to the next alternative. If `False`, the
+       new branch is committed.
+
+  (T2) After `arithOpCheck` adds a new constraint.
+       When a built-in comparison (`<`, `=<`, `>`, `>=`) is invoked
+       on terms that cannot fully evaluate via `evaluateA`, the
+       resulting `ArithmeticConstraint` is appended to C. The check
+       fires before `success` returns.
+
+  (T3) After `LO_is` promotes an `EvaluationConstraint` to an
+       `ArithmeticConstraint`.
+       Whenever both sides of a pending `EvaluationConstraint` become
+       closed arithmetic terms, the constraint is promoted as in
+       §2.4. The check fires at that promotion step.
+
+  (T4) After `:assign` commits a user substitution (§3.2.4).
+       The committed substitution is run through the same zonk and
+       lift machinery used at (T1), and the check fires before the
+       debugger redraws its prompt.
+
+The check does *not* fire at (AND), (OR), (IMP), (PI), (SIGMA), or
+plain reduction edges, because none of those events can introduce a
+new `ArithmeticConstraint` into C. Skipping the check at those
+points is a soundness-preserving optimisation and a deliberate
+design choice — not a correctness gap.
+
+Two-tier evaluation.
+    For performance, BETA1 keeps ALPHA2's cheap pre-filter: at each
+    check point, the runtime first runs `evaluateB` on every closed
+    `ArithmeticConstraint`. If any returns `Right False` or
+    `Left "ill"`, the branch is killed without calling the solver.
+    Only constraints surviving this pre-filter are aggregated into Φ
+    and passed to `entails Φ False`. This matches ALPHA2's existing
+    `failure` path at lines 295/322 of `Hol/ALPHA2/Runtime.hs` and
+    keeps the solver out of the hot path for trivially-decidable
+    cases.
+
+Dirty-bit optimisation (informative).
+    Implementations may track a "constraints changed since last
+    Presburger call" bit at the context level. When set, (T1) and
+    (T4) re-run the solver; when clear, they skip it. (T2) and (T3)
+    always set the bit. This is sound because no other transition
+    can change C.
 
 Examples (repeated from §2.3.2):
 
@@ -643,7 +698,7 @@ Examples (repeated from §2.3.2):
   ?- presburger "exists Y. Y + Y = X", X is 4.
   yes.
 
-  ?- X > 5, X < 3.        % implicit `presburger "_|_"` succeeds → fail
+  ?- X > 5, X < 3.        % (T2) fires after `X < 3` is added → fail
   no.
 
 
@@ -825,6 +880,24 @@ the round-tripping cache of §3.5. If the variable has been α-renamed
 for display (e.g., shown as `X1` to avoid a shadow), the user must
 type the displayed name; the runtime maps it back to the underlying
 `LogicVar` via the cache.
+
+The right-hand-side `t`, by contrast, lives in the parser's *lexical*
+scope and has no awareness of runtime-introduced fresh constants.
+For instance, if the current breakpoint shows a goal like
+
+  c1: ?V c1 = foo
+
+where `c1` is a runtime constant introduced by an enclosing `pi`,
+then writing
+
+  :assign ?V := c1\ c1.
+
+is interpreted as the identity lambda `λx. x` (the `c1\` is a fresh
+binder; the inner `c1` references *that* binder, not the runtime
+constant). This is α-equivalent to `x\ x` and the runtime treats the
+two indistinguishably. The user cannot refer to a runtime-introduced
+constant by name directly; any such reference must be expressed
+through binders and HOPU unification.
 
 3.2.2 Preconditions
 
@@ -1158,7 +1231,7 @@ Appendix A. Open Questions
     Recommend stating in §1.6 that built-in abbreviations are "overridable, not privileged";
     this avoids surprising users who expect `list char` to always print as `string`.
     If we want certain built-ins to be sticky (e.g., the system never wants users to lose the `string` rendering),
-    we should introduce a separate `sealed abbrev` form — but I'd defer that to GAMMA1.
+    we should introduce a separate `sealed abbrev` form — but I'd defer that to BETA2.
 
   [Q4] When `presburger` is called with a non-ground string, should we (i) fail immediately, (ii) raise a runtime error, or (iii) suspend until the string becomes ground?
   Option (iii) is interesting but expensive.
