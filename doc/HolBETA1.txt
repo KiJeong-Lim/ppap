@@ -26,11 +26,12 @@ Chapter 0. Overview
 0.1 Design Goals
 --------------------------------------------------------------------------------
 
-BETA1 simultaneously pursues three goals.
+BETA1 simultaneously pursues four goals.
 
   1. *Expressiveness* — higher-order Horn clauses with first-class arithmetic reasoning available on demand via the `presburger` predicate.
   2. *Surface fidelity* — accept the original λProlog/Teyjus surface syntax, in particular fixity declarations and precedence levels, and replay them verbatim in answer output.
   3. *Forward compatibility with LoL* — design choices that make this interpreter a usable host for an interactive proof assistant kernel (named binders kept for display; debugger as proto-tactic engine).
+  4. *Coq-on-λProlog ergonomics* — a guiding motto: BETA1 should feel like Coq reimplemented for a Haskell-flavoured λProlog. This is the deciding consideration whenever a design choice in abbreviation/notation (§1.6, §2.7), debugger (§3.1), or named-binder display (§2.8) admits multiple reasonable readings: pick the one that matches Coq.
 
 
 0.2 Differences from ALPHA2
@@ -246,36 +247,77 @@ This table is identical to `checkOper` in `src/Hol/ALPHA2/TermNode.hs`;
 the difference is that BETA1 carries it as data (`NotationEnv`) rather than hard-coded in the pretty printer.
 
 
-1.6 Abbreviations
+1.6 Abbreviations and Notations
 --------------------------------------------------------------------------------
 
-BETA1 introduces a Coq-style abbreviation mechanism. Two forms are provided.
+BETA1 follows Coq's `Notation` convention closely (motto, §0.1.4): a
+*parsing rule* that expands eagerly at desugaring time, and a *display
+rule* that folds the parsed form back during pretty printing (§2.7).
 
-  (a) Type-level:
+Two forms are provided, distinguished by the level they operate on:
+`abbrev` for the type level, `notation` for the term level.
 
-        abbrev <name> := <type>.
+1.6.1 Type abbreviations
 
-      Example:
-        abbrev string := list char.
+  abbrev <name> <X1> ... <Xn> := <type>.
 
-  (b) Term-level (a constant-headed pattern that elaborates to a term):
+The parameters `X1`, ..., `Xn` are type variables of kind `type` (by
+the corollary of §1.2 — every implicitly bound variable is
+kind-`type`). The right-hand side is a type expression possibly
+mentioning the parameters and any in-scope type constants.
 
-        notation <name> <pat-args> := <term>.
+Examples:
 
-      Example:
-        notation single X := X :: [].
+  abbrev string := list char.
+  abbrev pair_t A B := list A.    -- illustrative only; pair_t is not
+                                  -- built in
 
-Semantics:
+1.6.2 Term notations
 
-  - At *parse time*, an occurrence of the abbreviation is expanded to its right-hand side.
-    The resulting term/type is what the elaborator sees;
-    abbreviations are *not* part of the kernel.
-  - At *display time*, the pretty printer attempts to fold the right-hand side back to the abbreviation (most-specific-first).
-    This is the distinguishing feature: `list char` is shown as `string` rather than as `list char`.
-  - Folding is purely syntactic and stops at the first match;
-    users can introduce ambiguous folds, and the order of declaration breaks ties.
+  notation <name> <X1> ... <Xn> := <term>.
 
-Built-in abbreviations seeded at startup:
+Identical mechanism on the term level. Parameters are *term*
+metavariables that may stand for any term of any type. The right-hand
+side is a term expression in the surrounding type context.
+
+Examples:
+
+  notation single X    := X :: [].
+  notation pair X Y    := (X, Y).         -- if a comma constructor exists
+
+1.6.3 Parsing direction
+
+At desugaring time, an occurrence of `<name> e_1 ... e_n` whose head
+is a declared abbreviation/notation is replaced by
+
+    <body> [ X_i := e_i ]
+
+with capture-avoiding substitution. If fewer than `n` arguments are
+supplied, the expansion is *partial*: the result is
+
+    λ X_{k+1} ... X_n. <body> [ X_1 := e_1, ..., X_k := e_k ]
+
+(η-expansion will recover the unsupplied parameters later if needed).
+
+In all cases the expanded form is what subsequent stages (type
+checker, runtime) see — abbreviations and notations are *not* part of
+the kernel.
+
+1.6.4 Display direction
+
+A separate folding pass runs before any user-visible output, in two
+places: (i) at display time inside the pretty printer, and (ii) at
+type-checking time inside any message that mentions a type or term.
+See §2.7 for the algorithm.
+
+1.6.5 Built-ins are overridable
+
+Built-in abbreviations and notations are declared *first*, so they
+are lowest-priority under the "last declared wins" rule (§2.7).
+User code may shadow `string` by declaring a later abbreviation
+whose right-hand side happens to be `list char`.
+
+Built-in seeded at startup:
 
   abbrev string := list char.
 
@@ -405,6 +447,7 @@ reverse-engineered from that module's `Show` instances:
     | arith < arith                -- strict less               (LtnF)
     | arith =< arith               -- less or equal             (LeqF)
     | arith > arith                -- strict greater            (GtnF)
+    | arith >= arith               -- greater or equal     (sugar — see below)
     | arith ==_{<decimal>} arith   -- congruence mod n          (ModF)
     | φ /\ φ                       -- conjunction               (ConF)
     | φ \/ φ                       -- disjunction               (DisF)
@@ -433,6 +476,11 @@ Precedence and associativity follow the `Show` instance:
   extend as far to the right as syntactically possible. Atoms (`=`,
   `<`, etc.) are non-associative. Inside `arith`, `+` is left-
   associative; variables and decimal literals are atomic.
+
+The `>=` form is *surface sugar*. There is no `GeqF` in
+`PresburgerFormula`; the parser desugars `a >= b` to `~ (a < b)`
+before constructing the IR. (Symmetric treatment for the other
+direction is unnecessary because `=<` is already `LeqF`.)
 
 2.3.3 Compilation pipeline
 
@@ -639,18 +687,83 @@ Mechanism.
 The public `Show TermNode` instance keeps its signature but is now defined in terms of the configured `NotationEnv`.
 
 
-2.7 Abbreviation Folding
+2.7 Abbreviation and Notation Folding
 --------------------------------------------------------------------------------
 
-Display-time folding is a separate pass that runs *after* notation pretty-printing has produced a `ViewNode`.
-For each registered abbreviation
+2.7.1 When folding runs
 
-    abbrev S := E
+Folding runs in two places.
 
-the viewer tries to rewrite occurrences of (the view of) `E` back to `S`, most-specific-first.
-Folding is purely textual on the `ViewNode` AST; it never changes the underlying term.
+  (P) Display time. Immediately before pretty printing (§2.6) emits
+      the final character stream, the folder walks the `ViewNode`
+      tree and rewrites subtrees that match a registered template.
 
-Term-level `notation` definitions fold analogously: their right-hand sides are interpreted as `ViewNode` patterns with the declared formal parameters acting as metavariables.
+  (T) Type-checking time. Whenever the type checker is about to emit
+      a user-visible message that mentions a type or a term, it pipes
+      the offending `MonoType` / `TermNode` through the same folder
+      first. Without this, an error like "expected `string`, got
+      `list nat`" would degenerate into "expected `list char`, got
+      `list nat`", losing the user-meaningful abbreviation.
+
+Both passes share the same algorithm and the same fold table; they
+differ only in which tree they walk.
+
+2.7.2 The fold table
+
+The desugarer maintains an *ordered* list of registered entries.
+
+  data FoldEntry = FoldEntry
+    { _name   :: SmallId       -- LHS head, e.g. "string", "single"
+    , _params :: [LargeId]     -- parameter names, in source order
+    , _rhs    :: Template      -- MonoType (Type) or TermNode (Term)
+    , _level  :: FoldLevel     -- Type | Term
+    , _seq    :: Int           -- declaration order (later = larger)
+    }
+
+The table is searched in *decreasing `_seq`* order ("last declared
+wins") on each fold attempt.
+
+2.7.3 Matching
+
+To attempt to fold a candidate subtree `t` at level `L`, the folder
+iterates the table from most-recent to least-recent and, for each
+entry whose `_level = L`, asks:
+
+    Does there exist a substitution θ for `_params` such that
+    θ(_rhs) ≡ t  (under α-equivalence and β/η of the host calculus) ?
+
+If yes, the candidate is replaced by `<_name> θ(X_1) ... θ(X_n)` in
+the surrounding tree and folding continues at the parent. If no, the
+next entry is tried; if all entries fail, `t` is left structural.
+
+The matching predicate `≡` is *higher-order pattern matching* in
+Miller's sense (the same pattern fragment used by HOPU, §2.2). For
+type-level entries this collapses to first-order matching (since
+types contain no λ-abstractions in BETA1). For term-level entries,
+restricting to the pattern fragment guarantees decidable, unique
+matches; richer patterns are rejected by the desugarer when the
+notation is declared.
+
+2.7.4 Walk order
+
+The folder walks the candidate tree *bottom-up*: every subtree is
+folded before its parent is attempted. This matches Coq's behaviour
+that a more deeply matching template is preferred over a shallower
+one. Within a single tree position, ties between entries are broken
+by `_seq` (the most recently declared template wins) — see Appendix
+Q3.
+
+2.7.5 Why "purely on the view"
+
+Folding rewrites the tree being printed; it never rewrites the
+underlying `TermNode` stored in the runtime state. Two consequences:
+
+  - α-equivalence is decided on the unfolded form. The folder can
+    therefore make no decisions that affect unification, reduction,
+    or HOPU.
+  - The same logical term can fold to different displays depending
+    on which entries are active (e.g., after a module import in a
+    later phase, §1.7). This is the intended Coq behaviour.
 
 
 2.8 Names vs. de Bruijn (Hybrid Representation)
@@ -682,30 +795,184 @@ Chapter 3. Runtime and Debugger
 Same as ALPHA2 plus the following additions.
 
   :d                 toggle debug mode (unchanged)
-  :assign ?V := t.   instantiate a flexible variable to a user-supplied term at the current breakpoint (debug mode only)
+  :assign ?V := t.   instantiate a flexible variable to a user-supplied
+                     term at the current breakpoint (debug mode only)
   :show ?V           show the current value (or "unbound") of ?V
   :constraints       dump the current constraint multiset C
   :q                 quit (unchanged)
 
-`:assign` is the seed of an interactive tactic engine. Its preconditions:
 
-  - The session is in debug mode and at a step boundary.
-  - The named variable is currently flexible (a `LVar`).
-  - The supplied term type-checks against ?V's expected type.
+3.2 The `:assign` Command
+--------------------------------------------------------------------------------
 
-On success, the assignment is committed as a normal HOPU substitution;
-on failure, the debugger reports the error and stays at the same breakpoint.
+`:assign ?V := t.` is the seed of an interactive tactic engine for the
+future `LoL` project.
+
+3.2.1 Surface syntax
+
+The right-hand side `t` is parsed by *the same parser as ordinary
+clause bodies*. There is no debugger-specific sub-language: every
+construct accepted in clause position — including custom-notation
+operators, abbreviations, `pi`/`sigma`, list sugar, and so on — is
+accepted here. The parser uses the live `NotationEnv` and abbreviation
+table active at the *main file's* evaluation point (see §3.4 for the
+notion of "main file"; this is also forward-compatible with the
+import system of Q5).
+
+The variable name on the left is the *display name* shown by the
+debugger at the current breakpoint, i.e., the name that came out of
+the round-tripping cache of §3.5. If the variable has been α-renamed
+for display (e.g., shown as `X1` to avoid a shadow), the user must
+type the displayed name; the runtime maps it back to the underlying
+`LogicVar` via the cache.
+
+3.2.2 Preconditions
+
+Before committing, the runtime checks in this order:
+
+  1. *Session*: debug mode is on and the engine is paused at a step
+     boundary.
+  2. *Flexibility*: the resolved `LogicVar` is currently unbound (a
+     genuine `LVar`, not a residual `Susp` to an already-bound
+     variable).
+  3. *Typing*: the parsed `t` type-checks against `?V`'s expected
+     type under the current type environment. Hindley–Milner
+     unification is run; an `MGU` failure rejects the command.
+  4. *Pattern fragment*: the resulting candidate substitution
+     `?V := t` lies in HOPU's pattern fragment, with the binding of
+     `?V` respecting the current local scope (de Bruijn shifts,
+     captured variables, etc.).
+  5. *Consistency*: with the candidate substitution applied, the
+     constraint store C remains satisfiable. Concretely, all
+     `EvaluationConstraint`s are re-promoted as in §2.4, all
+     `ArithmeticConstraint`s are checked against §2.3.6's implicit
+     `presburger "_|_"` hook, and HOPU's disagreement set is
+     re-run.
+
+Failure at *any* step reports a localised error to the user and
+*aborts the command*. See §3.2.3 for the transactional guarantee.
+
+3.2.3 Transactional behaviour
+
+`:assign` is a transaction. Before parsing the user's input, the
+runtime takes a snapshot of the relevant state:
+
+  - the current substitution θ,
+  - the constraint multiset C,
+  - the goal stack and current cell,
+  - the HOPU disagreement set,
+  - the display-name cache (§3.5).
+
+The candidate substitution is applied to a *copy* of this state.
+Only if every precondition succeeds does the runtime commit the new
+state in place; on any failure the snapshot is restored verbatim, so
+the user sees the same prompt they would have seen before issuing
+`:assign`.
+
+This makes `:assign` safe to use experimentally — the user can try
+out an assignment, observe that it fails, and try a different one
+without polluting the search.
+
+3.2.4 On success
+
+When all preconditions pass:
+
+  - The candidate substitution `?V := t` is absorbed into the global
+    substitution via the normal HOPU machinery (no new code path).
+  - All pending `EvaluationConstraint`s are zonked and possibly
+    promoted to `ArithmeticConstraint`s.
+  - The implicit consistency check (§2.3.6) runs once.
+  - The debugger redraws the prompt at the *same step boundary*.
+    The user must explicitly type `:d` off, press enter, or otherwise
+    continue execution; `:assign` itself never advances the search.
 
 
-3.2 Debug Output
+3.3 The `:show` and `:constraints` Commands
+--------------------------------------------------------------------------------
+
+  :show ?V
+
+prints the current value of the variable named `?V` (using the
+display-name resolution of §3.5) or the string `unbound` if it has
+no binding. The printed value is run through pretty printing (§2.6)
+and folding (§2.7) just like any other answer term.
+
+  :constraints
+
+dumps the multiset C in this format:
+
+  *** disagreements:
+        <t1> ?= <u1>
+        ...
+  *** evaluations:
+        <t1> is <u1>
+        ...
+  *** arithmetic:
+        <φ_1>
+        <φ_2>
+        ...
+
+Both commands are read-only and require no transaction.
+
+
+3.4 Debug Output During Stepping
 --------------------------------------------------------------------------------
 
 In debug mode the interpreter prints, before each transition:
 
   - the goal under consideration,
-  - the constraint multiset C (with arithmetic constraints rendered in `Calc.Presburger` form),
-  - the current `NotationEnv` and abbreviation table (compact form),
-  - the binding substitution restricted to user-visible names.
+  - the constraint multiset C (arithmetic constraints rendered as in
+    `Calc.Presburger`),
+  - the binding substitution restricted to user-visible names,
+  - the source location (SLoc) of the goal, where known.
+
+The `NotationEnv` and abbreviation table are *not* re-dumped each
+step (they would be noise); `:constraints` and `:show` use them
+silently.
+
+Environment notion: "the main file". The Hol REPL is launched with a
+file path:
+
+    Hol =<< Example/einstein.hol
+
+This file is the *main file*. The environment in effect at any
+breakpoint is the environment accumulated by elaborating the main
+file up to (eventually) the point where the current clause is
+defined, *plus* anything brought in by imports (Q5; not in BETA1).
+The debugger uses this environment for parsing `:assign` arguments
+and for pretty printing.
+
+
+3.5 Display-Name Cache
+--------------------------------------------------------------------------------
+
+The hybrid name-hint representation of §2.8 means a logic variable
+may be *shown* as `X1` while internally identified as some `LV_Unique
+n`. The debugger maintains a bidirectional cache
+
+  data NameCache = NameCache
+    { _toDisplay :: Map LogicVar  SmallId
+    , _fromDisplay :: Map SmallId LogicVar
+    }
+
+with the following lifecycle:
+
+  - The cache is created at the start of a debug session and reused
+    *throughout* that session.
+  - When the viewer renames a binder or a logic variable for
+    display, the rename is recorded here.
+  - When a logic variable is encountered for the first time in a
+    print pass, it is added to the cache with whatever stable name
+    the viewer picked (e.g., its `_hint`, or `X1` after collision
+    handling).
+  - `:assign`, `:show`, and any user-typed identifier inside the
+    debug REPL are resolved through `_fromDisplay`.
+
+The cache survives across stepping, across `:assign` commits, and
+across `:assign` aborts (the rollback of §3.2.3 does *not* discard
+cache entries — that would re-confuse the user about variable
+naming). The cache is discarded only when the debug session ends
+(`:d` off, `:q`, or process exit).
 
 
 ================================================================================
