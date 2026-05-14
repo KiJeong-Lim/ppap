@@ -556,6 +556,7 @@ Appendix A. Open Questions
 
   [Q5] Module / `import` system — not in BETA1, but it should be designed in a way that abbreviation tables and notation tables can be re-exported coherently.
   [A] If imported modules are inconsistent, then raise a compile error.
+  // claude's feedback here.
 
   [Q6] How does `:assign` interact with cut (`!`) when the assignment creates new disagreements? Should we re-run the constraint-promotion pass before resuming, or only at the next natural step boundary?
   [A] Why is it a problem? I couldn't find any problem; would you explain more?
