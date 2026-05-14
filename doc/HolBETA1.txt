@@ -2,24 +2,13 @@
 Hol BETA1 — Language Specification (Draft)
 ================================================================================
 
-This document specifies the syntax and semantics of `Hol BETA1`, a dialect of
-λProlog that supersedes `Hol ALPHA2`. BETA1 keeps every program accepted by
-ALPHA2 working and additionally provides:
+This document specifies the syntax and semantics of `Hol BETA1`, a dialect of λProlog that supersedes `Hol ALPHA2`. BETA1 keeps every program accepted by ALPHA2 working and additionally provides:
 
-  (A) Original λProlog-style user-defined notation
-      (`infixl`/`infixr`/`infix`/`prefix` with precedences),
-      with runtime pretty-printing that preserves the user's notation.
-  (B) An abbreviation mechanism, modelled after Coq's `Notation`/abbreviation
-      facility (e.g. `string` as a display-time abbreviation for `list char`).
-  (C) A `presburger : string -> o` predicate that parses its argument as a
-      Presburger formula and decides entailment from the arithmetic constraints
-      accumulated by the current proof branch. The solver is the one in
-      `src/Calc/Presburger/Internal.hs`.
-  (D) (Open / experimental) A hybrid representation that stores de Bruijn
-      indices internally while retaining user-supplied binder names, à la Coq.
-  (E) (Open / experimental) Interactive instantiation of flexible (logic)
-      variables during a debugging session — the foundational primitive for
-      tactic-style proof construction in the future `LoL` project.
+  (A) Original λProlog-style user-defined notation (`infixl`/`infixr`/`infix`/`prefix` with precedences), with runtime pretty-printing that preserves the user's notation.
+  (B) An abbreviation mechanism, modelled after Coq's `Notation`/abbreviation facility (e.g. `string` as a display-time abbreviation for `list char`).
+  (C) A `presburger : string -> o` predicate that parses its argument as a Presburger formula and decides entailment from the arithmetic constraints accumulated by the current proof branch. The solver is the one in `src/Calc/Presburger/Internal.hs`.
+  (D) (Open / experimental) A hybrid representation that stores de Bruijn indices internally while retaining user-supplied binder names, à la Coq.
+  (E) (Open / experimental) Interactive instantiation of flexible (logic) variables during a debugging session — the foundational primitive for tactic-style proof construction in the future `LoL` project.
 
 Compatibility minimum: the test scripts
 
@@ -39,30 +28,25 @@ Chapter 0. Overview
 
 BETA1 simultaneously pursues three goals.
 
-  1. *Expressiveness* — higher-order Horn clauses with first-class arithmetic
-     reasoning available on demand via the `presburger` predicate.
-  2. *Surface fidelity* — accept the original λProlog/Teyjus surface syntax,
-     in particular fixity declarations and precedence levels, and replay them
-     verbatim in answer output.
-  3. *Forward compatibility with LoL* — design choices that make this
-     interpreter a usable host for an interactive proof assistant kernel
-     (named binders kept for display; debugger as proto-tactic engine).
+  1. *Expressiveness* — higher-order Horn clauses with first-class arithmetic reasoning available on demand via the `presburger` predicate.
+  2. *Surface fidelity* — accept the original λProlog/Teyjus surface syntax, in particular fixity declarations and precedence levels, and replay them verbatim in answer output.
+  3. *Forward compatibility with LoL* — design choices that make this interpreter a usable host for an interactive proof assistant kernel (named binders kept for display; debugger as proto-tactic engine).
 
 
 0.2 Differences from ALPHA2
 --------------------------------------------------------------------------------
 
-  +-----------------------+-------------------------+--------------------------+
-  | Aspect                | ALPHA2                  | BETA1                    |
-  +-----------------------+-------------------------+--------------------------+
-  | Notation declaration  | none                    | infixl/infixr/infix/prefix
-  | Answer pretty-print   | built-in fixity table   | user notation preserved  |
-  | Abbreviation          | none                    | `abbrev`/`notation`      |
-  | Arithmetic            | collected only          | + `presburger : str->o`  |
-  | Inconsistency pruning | n/a                     | implicit `presburger ⊥`  |
-  | Binder representation | de Bruijn               | de Bruijn + name hints   |
-  | Interactive debug     | step / continue         | + `:assign ?V := t`      |
-  +-----------------------+-------------------------+--------------------------+
+  +-----------------------+-------------------------+----------------------------+
+  | Aspect                | ALPHA2                  | BETA1                      |
+  +-----------------------+-------------------------+----------------------------+
+  | Notation declaration  | none                    | infixl/infixr/infix/prefix |
+  | Answer pretty-print   | built-in fixity table   | user notation preserved    |
+  | Abbreviation          | none                    | `abbrev`/`notation`        |
+  | Arithmetic            | collected only          | + `presburger : str->o`    |
+  | Inconsistency pruning | n/a                     | implicit `presburger "_|_"`|
+  | Binder representation | de Bruijn               | de Bruijn + name hints     |
+  | Interactive debug     | step / continue         | + `:assign ?V := t`        |
+  +-----------------------+-------------------------+----------------------------+
 
 
 0.3 Notational Conventions
@@ -98,11 +82,7 @@ Token classes:
   - character lit   : `'c'` (with the usual escapes)
   - string lit      : `"..."`
   - punctuation     : `( ) [ ] { } , . | \ :- => ;`
-  - reserved words  : `kind`, `type`, `module`,
-                      `infixl`, `infixr`, `infix`, `prefix`,
-                      `abbrev`, `notation`,
-                      `pi`, `sigma`, `is`, `true`, `fail`, `!`, `debug`,
-                      `presburger`
+  - reserved words  : `kind`, `type`, `module`, `infixl`, `infixr`, `infix`, `prefix`, `abbrev`, `notation`, `pi`, `sigma`, `is`, `true`, `fail`, `!`, `debug`, `presburger`
   - line comment    : `% ...`
   - block comment   : `/* ... */`        (nested — see Q1)
 
@@ -112,11 +92,11 @@ There is no layout rule; every declaration and clause is terminated by `.`.
 1.2 Kinds and Types
 --------------------------------------------------------------------------------
 
-  kinds  κ ::= type | κ -> κ
-  types  A ::= a            -- type constant (introduced by `kind`)
+  kinds  κ ::= type | κ -> κ -- however, must be `order κ ≤ 1` 
+  types  A ::= a             -- type constant (introduced by `kind`)
              | A -> A
-             | A B          -- type application
-             | X            -- type variable (implicitly generalised)
+             | A B           -- type application
+             | X             -- type variable (implicitly generalised)
 
 Built-in type constants:
 
@@ -132,9 +112,8 @@ Declarations:
   kind <lowercase> <κ>.
   type <lowercase> <A>.
 
-Polymorphism is Hindley–Milner with implicit prenex generalisation at type
-declarations. Type variables appearing free in a `type` declaration are
-universally quantified at the outermost level.
+Polymorphism is Hindley–Milner with implicit prenex generalisation at type declarations.
+Type variables appearing free in a `type` declaration are universally quantified at the outermost level.
 
 
 1.3 Terms
@@ -149,17 +128,16 @@ universally quantified at the outermost level.
       | t :: t              -- cons
       | []                  -- nil
 
-Internally each `x \ t` is stored as a de Bruijn index together with the
-name hint `x`. The name hint is used only for display and for diagnostic
-messages; α-equivalence is decided on the de Bruijn form. See §3.3 for the
-hybrid representation and §D (Open Questions) for issues around capture-free
-display.
+Internally each `x \ t` is stored as a de Bruijn index together with the name hint `x`.
+The name hint is used only for display and for diagnostic messages; α-equivalence is decided on the de Bruijn form.
+See §3.3 for the hybrid representation and §D (Open Questions) for issues around capture-free display.
 
 
 1.4 Facts and Clauses
 --------------------------------------------------------------------------------
 
-A program is an ordered list of declarations and clauses. A clause is one of
+A program is an ordered list of declarations and clauses.
+A clause is one of
 
   <atom>.                                   -- a unit fact
   <atom> :- <body>.                         -- a Horn clause
@@ -177,8 +155,7 @@ The body grammar:
          | presburger <string-literal>       -- Presburger entailment query
          | debug "..."
 
-`=>`, `pi`, and `sigma` form the core of λProlog's intuitionistic
-proof-search calculus (see §2.2).
+`=>`, `pi`, and `sigma` form the core of λProlog's intuitionistic proof-search calculus (see §2.2).
 
 
 1.5 User-Defined Notation
@@ -193,12 +170,9 @@ BETA1 supports the original λProlog fixity declarations:
 
 Rules:
 
-  - Precedence is a natural number; *higher* binds *tighter* (matching the
-    table currently used by `Hol/ALPHA2/TermNode.hs::checkOper`).
-  - Operator tokens are either symbolic (`[!@#$%^&*+\-=<>?/|~:]+`) or a
-    backtick-quoted lowercase identifier (TBD; see Q2).
-  - Mixing different associativities at the same precedence is a parse
-    error.
+  - Precedence is a natural number; *higher* binds *tighter* (matching the table currently used by `Hol/ALPHA2/TermNode.hs::checkOper`).
+  - Operator tokens are either symbolic (`[!@#$%^&*+\-=<>?/|~:]+`) or a backtick-quoted lowercase identifier (TBD; see Q2).
+  - Mixing different associativities at the same precedence is a parse error.
   - Declarations are one-pass and take effect on the lines that *follow* them.
 
 The built-in fixity table (the BETA1 defaults, user-redefinable):
@@ -223,9 +197,8 @@ The built-in fixity table (the BETA1 defaults, user-redefinable):
   infix   *      7
   infix   /      7
 
-This table is identical to `checkOper` in `src/Hol/ALPHA2/TermNode.hs`; the
-difference is that BETA1 carries it as data (`NotationEnv`) rather than
-hard-coded in the pretty printer.
+This table is identical to `checkOper` in `src/Hol/ALPHA2/TermNode.hs`;
+the difference is that BETA1 carries it as data (`NotationEnv`) rather than hard-coded in the pretty printer.
 
 
 1.6 Abbreviations
@@ -249,15 +222,13 @@ BETA1 introduces a Coq-style abbreviation mechanism. Two forms are provided.
 
 Semantics:
 
-  - At *parse time*, an occurrence of the abbreviation is expanded to its
-    right-hand side. The resulting term/type is what the elaborator sees;
+  - At *parse time*, an occurrence of the abbreviation is expanded to its right-hand side.
+    The resulting term/type is what the elaborator sees;
     abbreviations are *not* part of the kernel.
-  - At *display time*, the pretty printer attempts to fold the right-hand
-    side back to the abbreviation (most-specific-first). This is the
-    distinguishing feature: `list char` is shown as `string` rather than
-    as `list char`.
-  - Folding is purely syntactic and stops at the first match; users can
-    introduce ambiguous folds, and the order of declaration breaks ties.
+  - At *display time*, the pretty printer attempts to fold the right-hand side back to the abbreviation (most-specific-first).
+    This is the distinguishing feature: `list char` is shown as `string` rather than as `list char`.
+  - Folding is purely syntactic and stops at the first match;
+    users can introduce ambiguous folds, and the order of declaration breaks ties.
 
 Built-in abbreviations seeded at startup:
 
@@ -267,10 +238,9 @@ Built-in abbreviations seeded at startup:
 1.7 Modules
 --------------------------------------------------------------------------------
 
-One file is one module. The module name is the file path with `/` replaced
-by `.` (unchanged from ALPHA2). An optional `module <name>.` header may
-appear as the first declaration. A proper `import` system is *not* part of
-BETA1 (see Q5).
+One file is one module. The module name is the file path with `/` replaced by `.` (unchanged from ALPHA2).
+An optional `module <name>.` header may appear as the first declaration.
+A proper `import` system is *not* part of BETA1 (see Q5).
 
 
 ================================================================================
@@ -280,11 +250,9 @@ Chapter 2. Semantics
 2.1 Term Rewriting
 --------------------------------------------------------------------------------
 
-The internal term representation (`TermNode`) uses de Bruijn indices with
-explicit suspensions (the same machinery as `Hol/ALPHA2/TermNode.hs`).
-Each `NLam` additionally carries a `NameHint :: Maybe SmallId`, set by the
-desugarer and consumed by the pretty printer; it is ignored by reduction
-and unification.
+The internal term representation (`TermNode`) uses de Bruijn indices with explicit suspensions (the same machinery as `Hol/ALPHA2/TermNode.hs`).
+Each `NLam` additionally carries a `NameHint :: Maybe SmallId`, set by the desugarer and consumed by the pretty printer;
+it is ignored by reduction and unification.
 
 Reduction modes:
 
@@ -331,9 +299,9 @@ is provable, leaving residual constraint set C".
            ──────────────────────────────────────
            Δ;Ψ ⊢ A | C′ ⊎ C″
 
-(BACK) uses *higher-order pattern unification* (HOPU). Unification candidates
-outside the pattern fragment are not solved on the spot; they are deferred as
-`DisagreementConstraint`s and re-tried at each binding event.
+(BACK) uses *higher-order pattern unification* (HOPU).
+Unification candidates outside the pattern fragment are not solved on the spot;
+they are deferred as `DisagreementConstraint`s and re-tried at each binding event.
 
 
 2.3 Arithmetic Constraints and the `presburger` Predicate
@@ -345,40 +313,34 @@ A branch's constraint multiset C is partitioned into:
               | EvaluationConstraint    ⟨t, u⟩    -- from `t is u`
               | ArithmeticConstraint    φ          -- Presburger atom
 
-ALPHA2 already accumulates `EvaluationConstraint` and a degenerate form of
-`ArithmeticConstraint`. BETA1 *makes them queryable*.
+ALPHA2 already accumulates `EvaluationConstraint` and a degenerate form of `ArithmeticConstraint`.
+BETA1 *makes them queryable*.
 
   presburger : string -> o.
 
 Operationally:
 
-  1. The string argument must reduce to a ground string literal.
-     Otherwise the goal fails with a `bad-presburger` runtime error.
-  2. The literal is parsed as a Presburger formula φ using the grammar of
-     `Calc.Presburger.Internal.PresburgerTermRep` /
-     `PresburgerFormula PresburgerTermRep`.
+  1. The string argument must reduce to a ground string literal. Otherwise the goal fails with a `bad-presburger` runtime error.
+  2. The literal is parsed as a Presburger formula φ using the grammar of `Calc.Presburger.Internal.PresburgerTermRep` / `PresburgerFormula PresburgerTermRep`.
   3. Let Φ be the conjunction of all `ArithmeticConstraint`s currently in C.
-     The goal succeeds iff
+  The goal succeeds iff
 
-         Φ  ⊨  φ        (i.e.  Φ ∧ ¬φ  is unsatisfiable),
+    Φ  ⊨  φ        (i.e.  Φ ∧ ¬φ  is unsatisfiable),
 
-     decided by the procedure exported from
-     `src/Calc/Presburger/Internal.hs`.
+  decided by the procedure exported from `src/Calc/Presburger/Internal.hs`.
   4. The check produces no substitution and adds no new constraints.
 
-Implicit consistency pruning. At every BACK / AND step, BETA1 conceptually
-inserts the goal
+Implicit consistency pruning. At every BACK / AND step, BETA1 conceptually inserts the goal
 
-        presburger "_|_", !, fail
+    presburger "_|_", !, fail
 
-before evaluating the original goal. In words: "if ⊥ is entailed by the
-current Φ, then commit and fail this branch". This recovers the eager
-consistency-check behaviour suggested in earlier drafts, but as a derived
-notion expressed in terms of the user-visible predicate.
+before evaluating the original goal.
+In words: "if ⊥ is entailed by the current Φ, then commit and fail this branch".
+This recovers the eager consistency-check behaviour suggested in earlier drafts,
+but as a derived notion expressed in terms of the user-visible predicate.
 
-Implementations are free to omit the implicit check when the constraint
-store has not changed since the previous check; equivalence is up to branch
-pruning behaviour, not to answer correctness.
+Implementations are free to omit the implicit check when the constraint store has not changed since the previous check;
+equivalence is up to branch pruning behaviour, not to answer correctness.
 
 Examples.
 
@@ -401,12 +363,10 @@ Examples.
 `t₁ is t₂` is evaluated as follows.
 
   - Normalise `t₂` to NF.
-  - If NF(`t₂`) is a closed arithmetic term, evaluate it to a natural-number
-    literal `n` and unify `t₁` with `n`.
+  - If NF(`t₂`) is a closed arithmetic term, evaluate it to a natural-number literal `n` and unify `t₁` with `n`.
   - Otherwise, add `EvaluationConstraint t₁ t₂` to C.
-  - Whenever both sides of a pending `EvaluationConstraint` become closed
-    arithmetic terms, it is promoted to an `ArithmeticConstraint` of the
-    form `EqnF t₁ t₂`.
+  - Whenever both sides of a pending `EvaluationConstraint` become closed arithmetic terms,
+  it is promoted to an `ArithmeticConstraint` of the form `EqnF t₁ t₂`.
 
 This is the same behaviour as ALPHA2; the only change is that the resulting
 `ArithmeticConstraint`s are now observable to user code via `presburger`.
@@ -449,18 +409,15 @@ in terms of the configured `NotationEnv`.
 2.7 Abbreviation Folding
 --------------------------------------------------------------------------------
 
-Display-time folding is a separate pass that runs *after* notation pretty-
-printing has produced a `ViewNode`. For each registered abbreviation
+Display-time folding is a separate pass that runs *after* notation pretty-printing has produced a `ViewNode`.
+For each registered abbreviation
 
-        abbrev S := E
+    abbrev S := E
 
-the viewer tries to rewrite occurrences of (the view of) `E` back to `S`,
-most-specific-first. Folding is purely textual on the `ViewNode` AST; it
-never changes the underlying term.
+the viewer tries to rewrite occurrences of (the view of) `E` back to `S`, most-specific-first.
+Folding is purely textual on the `ViewNode` AST; it never changes the underlying term.
 
-Term-level `notation` definitions fold analogously: their right-hand sides
-are interpreted as `ViewNode` patterns with the declared formal parameters
-acting as metavariables.
+Term-level `notation` definitions fold analogously: their right-hand sides are interpreted as `ViewNode` patterns with the declared formal parameters acting as metavariables.
 
 
 2.8 Names vs. de Bruijn (Hybrid Representation)
@@ -473,20 +430,13 @@ For binders, BETA1 attaches an optional name hint to each `NLam`:
       | NLam { _hint :: Maybe SmallId, _body :: TermNode }
       | ...
 
-Hints flow through the desugarer and through suspensions, but they do not
-affect α-equivalence, unification, or reduction. They serve three purposes.
+Hints flow through the desugarer and through suspensions, but they do not affect α-equivalence, unification, or reduction. They serve three purposes.
 
-  1. *Pretty printing*: instead of `W_3\ W_2\ ...`, the viewer can render
-     `X\ Y\ ...` whenever the original hints are non-clashing and
-     non-shadowing. When a clash would arise, the viewer suffixes a digit.
-  2. *Diagnostics*: HOPU disagreement reports cite the original names where
-     possible.
-  3. *Future tactic UI* (`LoL` integration): a debugger session that asks
-     "instantiate ?V to what?" can present the variable in the user's own
-     vocabulary.
+  1. *Pretty printing*: instead of `W_3\ W_2\ ...`, the viewer can render `X\ Y\ ...` whenever the original hints are non-clashing and non-shadowing. When a clash would arise, the viewer suffixes a digit.
+  2. *Diagnostics*: HOPU disagreement reports cite the original names where possible.
+  3. *Future tactic UI* (`LoL` integration): a debugger session that asks "instantiate ?V to what?" can present the variable in the user's own vocabulary.
 
-Hints are deliberately *advisory* — the runtime is correct iff it would be
-correct after erasing every `_hint`.
+Hints are deliberately *advisory* — the runtime is correct iff it would be correct after erasing every `_hint`.
 
 
 ================================================================================
@@ -499,8 +449,7 @@ Chapter 3. Runtime and Debugger
 Same as ALPHA2 plus the following additions.
 
   :d                 toggle debug mode (unchanged)
-  :assign ?V := t.   instantiate a flexible variable to a user-supplied term
-                     at the current breakpoint (debug mode only)
+  :assign ?V := t.   instantiate a flexible variable to a user-supplied term at the current breakpoint (debug mode only)
   :show ?V           show the current value (or "unbound") of ?V
   :constraints       dump the current constraint multiset C
   :q                 quit (unchanged)
@@ -511,8 +460,8 @@ Same as ALPHA2 plus the following additions.
   - The named variable is currently flexible (a `LVar`).
   - The supplied term type-checks against ?V's expected type.
 
-On success, the assignment is committed as a normal HOPU substitution; on
-failure, the debugger reports the error and stays at the same breakpoint.
+On success, the assignment is committed as a normal HOPU substitution;
+on failure, the debugger reports the error and stays at the same breakpoint.
 
 
 3.2 Debug Output
@@ -521,8 +470,7 @@ failure, the debugger reports the error and stays at the same breakpoint.
 In debug mode the interpreter prints, before each transition:
 
   - the goal under consideration,
-  - the constraint multiset C (with arithmetic constraints rendered in
-    `Calc.Presburger` form),
+  - the constraint multiset C (with arithmetic constraints rendered in `Calc.Presburger` form),
   - the current `NotationEnv` and abbreviation table (compact form),
   - the binding substitution restricted to user-visible names.
 
@@ -537,19 +485,15 @@ Chapter 4. Implementation Notes (informative)
   src/Hol/BETA1/
     Header.hs        -- ALPHA2/Header + NotationEnv, Fixity, NameHint
     Constant.hs      -- essentially unchanged
-    TermNode.hs      -- NLam carries a name hint; ViewNode/printer take
-                        NotationEnv as input
-    PlanHolLexer.hs  -- + `infixl`/`infixr`/`infix`/`prefix`
-                        + `abbrev`/`notation`/`presburger` keywords
+    TermNode.hs      -- NLam carries a name hint; ViewNode/printer take NotationEnv as input
+    PlanHolLexer.hs  -- + `infixl`/`infixr`/`infix`/`prefix`/`abbrev`/`notation`/`presburger` keywords
     PlanHolParser.hs -- dynamic operator table; abbreviation declarations
     Desugarer.hs     -- abbreviation expansion (type & term level)
     TypeChecker.hs   -- mostly unchanged; sees expanded forms
     HOPU.hs          -- mostly unchanged
-    Runtime.hs       -- + `presburger` predicate dispatch
-                        + interactive LVar instantiation
+    Runtime.hs       -- `presburger` predicate dispatch; interactive LVar instantiation
     Compiler.hs      -- mostly unchanged
-    Arith.hs         -- ★ new: bridge between TermNode strings and
-                        Calc.Presburger.Internal formulas
+    Arith.hs         -- ★ new: bridge between TermNode strings and Calc.Presburger.Internal formulas
     Notation.hs      -- ★ new: NotationEnv + abbreviation folding
     Main.hs          -- replaces ALPHA2's main; same external behaviour
 
@@ -562,69 +506,61 @@ Chapter 4. Implementation Notes (informative)
   parsePresburger :: String -> Either ErrMsg MyPresburgerFormulaRep
   entails         :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
 
-`entails Φ φ` is implemented as the unsatisfiability check on
-`Φ ∧ ¬φ` provided by `Calc.Presburger.Internal`. BETA1 makes no assumption
-about the solver's internals beyond decidability.
+`entails Φ φ` is implemented as the unsatisfiability check on `Φ ∧ ¬φ` provided by `Calc.Presburger.Internal`.
+BETA1 makes no assumption about the solver's internals beyond decidability.
 
-Lifting of `ArithmeticConstraint`s currently in C to `MyPresburgerFormula`
-is best-effort: a term outside the linear-integer fragment (e.g. a product
-of two variables) is *omitted* from Φ. This is sound for entailment in the
-direction we use it: dropping conjuncts from Φ can only make fewer formulas
-entailed, never more, so `entails` never erroneously reports success.
+Lifting of `ArithmeticConstraint`s currently in C to `MyPresburgerFormula` is best-effort:
+a term outside the linear-integer fragment (e.g. a product of two variables) is *omitted* from Φ.
+This is sound for entailment in the direction we use it:
+dropping conjuncts from Φ can only make fewer formulas entailed, never more, so `entails` never erroneously reports success.
 
 
 4.3 Named-Binder Display
 --------------------------------------------------------------------------------
 
-The hybrid representation has one subtle invariant: the name hint must
-either be (i) unique among enclosing binders or (ii) absent. Whenever the
-desugarer introduces a binder whose hint would shadow an enclosing one, it
-either silently α-renames the *fresh* binder's hint (preferred) or drops it
-to `Nothing`. The runtime never has to consult hints for correctness, so a
-missing hint is always safe.
+The hybrid representation has one subtle invariant: the name hint must either be (i) unique among enclosing binders or (ii) absent.
+Whenever the desugarer introduces a binder whose hint would shadow an enclosing one,
+it either silently α-renames the *fresh* binder's hint (preferred) or drops it to `Nothing`.
+The runtime never has to consult hints for correctness, so a missing hint is always safe.
 
 
 4.4 Test Compatibility
 --------------------------------------------------------------------------------
 
-  - For every file in `Example/*.hol` the answer set produced by BETA1 must
-    be identical to the answer set produced by ALPHA2. Differences in
-    pretty-printed form are tolerated only insofar as they reflect the
-    user's notation/abbreviation declarations (§2.6, §2.7).
-  - `einstein.sh`, `fi.sh`, `lbeta.sh` must exit 0 with byte-identical
-    answer strings modulo whitespace and notation folding.
+  - For every file in `Example/*.hol` the answer set produced by BETA1 must be identical to the answer set produced by ALPHA2.
+  Differences in pretty-printed form are tolerated only insofar as they reflect the user's notation/abbreviation declarations (§2.6, §2.7).
+  - `einstein.sh`, `fi.sh`, `lbeta.sh` must exit 0 with byte-identical answer strings modulo whitespace and notation folding.
 
 
 ================================================================================
-Appendix D. Open Questions
+Appendix A. Open Questions
 ================================================================================
 
   [Q1] Should block comments `/* ... */` be allowed to nest?
+  [A] Yes. We need to one-to-one-match `/*` with `*/`.
+  // claude's feedback here.
 
-  [Q2] Should operator declarations accept identifier operators (backtick
-       form), or only symbolic ones?
+  [Q2] Should operator declarations accept identifier operators (backtick form), or only symbolic ones?
+  [A] The former; like Haskell.
+  // claude's feedback here.
 
-  [Q3] What is the exact display-time policy when a term has multiple
-       valid abbreviation foldings? "Most-specific-first" is under-specified
-       for incomparable abbreviations.
+  [Q3] What is the exact display-time policy when a term has multiple valid abbreviation foldings?
+  "Most-specific-first" is under-specified for incomparable abbreviations.
+  [A] Use the last declared one.
+  // claude's feedback here.
 
-  [Q4] When `presburger` is called with a non-ground string, should we (i)
-       fail immediately, (ii) raise a runtime error, or (iii) suspend until
-       the string becomes ground? Option (iii) is interesting but expensive.
+  [Q4] When `presburger` is called with a non-ground string, should we (i) fail immediately, (ii) raise a runtime error, or (iii) suspend until the string becomes ground?
+  Option (iii) is interesting but expensive.
+  [A] (ii) Moreover, every input string will be compiled in internal AST. Some kind of special magic.
+  // claude's feedback here.
 
-  [Q5] Module / `import` system — not in BETA1, but it should be designed
-       in a way that abbreviation tables and notation tables can be
-       re-exported coherently.
+  [Q5] Module / `import` system — not in BETA1, but it should be designed in a way that abbreviation tables and notation tables can be re-exported coherently.
+  [A] If imported modules are inconsistent, then raise a compile error.
 
-  [Q6] How does `:assign` interact with cut (`!`) when the assignment
-       creates new disagreements? Should we re-run the constraint-promotion
-       pass before resuming, or only at the next natural step boundary?
+  [Q6] How does `:assign` interact with cut (`!`) when the assignment creates new disagreements? Should we re-run the constraint-promotion pass before resuming, or only at the next natural step boundary?
+  [A] Why is it a problem? I couldn't find any problem; would you explain more?
+  // claude's feedback here.
 
-  [Q7] Native pretty-printing of mixed name-hint / de Bruijn terms in the
-       presence of capture-avoiding substitution: do we need on-demand
-       α-renaming in the viewer, or can the desugarer enforce a global
-       uniqueness invariant?
-
-================================================================================
-EOF
-================================================================================
+  [Q7] Native pretty-printing of mixed name-hint / de Bruijn terms in the presence of capture-avoiding substitution: do we need on-demand α-renaming in the viewer, or can the desugarer enforce a global uniqueness invariant?
+  [A] The former sounds good. Is there any problem related to the former?
+  // claude's feedback here.
