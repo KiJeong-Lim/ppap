@@ -1,178 +1,207 @@
 ================================================================================
-Hol BETA1 명세서 (초안)
+Hol BETA1 — Language Specification (Draft)
 ================================================================================
 
-본 문서는 람다 프롤로그(λProlog)의 방언인 `Hol BETA1`의 구문론과 의미론을
-명세한다. `Hol BETA1`은 `Hol ALPHA2`의 상위호환으로서, 다음을 추가로 지원한다.
+This document specifies the syntax and semantics of `Hol BETA1`, a dialect of
+λProlog that supersedes `Hol ALPHA2`. BETA1 keeps every program accepted by
+ALPHA2 working and additionally provides:
 
-  (A) Presburger 산술에 기반한 산술 제약의 무모순성 검사
-  (B) 원조 람다 프롤로그식 사용자 정의 노테이션 (전위/중위, 우선순위)
-  (C) 런타임에서 사용자 정의 노테이션을 그대로 보존하여 출력
+  (A) Original λProlog-style user-defined notation
+      (`infixl`/`infixr`/`infix`/`prefix` with precedences),
+      with runtime pretty-printing that preserves the user's notation.
+  (B) An abbreviation mechanism, modelled after Coq's `Notation`/abbreviation
+      facility (e.g. `string` as a display-time abbreviation for `list char`).
+  (C) A `presburger : string -> o` predicate that parses its argument as a
+      Presburger formula and decides entailment from the arithmetic constraints
+      accumulated by the current proof branch. The solver is the one in
+      `src/Calc/Presburger/Internal.hs`.
+  (D) (Open / experimental) A hybrid representation that stores de Bruijn
+      indices internally while retaining user-supplied binder names, à la Coq.
+  (E) (Open / experimental) Interactive instantiation of flexible (logic)
+      variables during a debugging session — the foundational primitive for
+      tactic-style proof construction in the future `LoL` project.
 
-다음 테스트들을 통과하는 것을 호환성의 최소 조건으로 한다.
+Compatibility minimum: the test scripts
 
-  - `einstein.sh` : Example/einstein.hol
-  - `fi.sh`       : Example/fibonacci.hol
-  - `lbeta.sh`    : Example/test.hol
+    einstein.sh   ( Example/einstein.hol )
+    fi.sh         ( Example/fibonacci.hol )
+    lbeta.sh      ( Example/test.hol )
 
-
-================================================================================
-0장. 개요
-================================================================================
-
-0.1 설계 목표
---------------------------------------------------------------------------------
-
-`Hol BETA1`은 다음 세 가지를 동시에 달성하는 것을 목표로 한다.
-
-  1. **표현력**: 고차 술어 논리(higher-order Horn clauses)에 산술 제약을
-     자연스럽게 결합한다.
-  2. **충실성**: Teyjus / λProlog 원조의 표면 구문 (특히 `infixl/infixr/prefix`
-     선언과 우선순위 시스템) 을 가능한 한 그대로 받아들인다.
-  3. **검증 가능성**: 실행 도중 누적되는 산술 제약의 무모순성을 결정
-     알고리즘으로 확인하여, "잠재적으로 거짓일 수도 있는" 답이 사용자에게
-     노출되지 않도록 한다.
-
-
-0.2 ALPHA2와의 차이 요약
---------------------------------------------------------------------------------
-
-  +------------------+--------------------+--------------------------+
-  | 항목             | ALPHA2             | BETA1                    |
-  +------------------+--------------------+--------------------------+
-  | 산술 제약        | 수집만 함          | Presburger 솔버로 검사   |
-  | 노테이션 선언    | 불가               | infixl/infixr/prefix     |
-  | 출력 형식        | 내부 표현 우선     | 사용자 노테이션 보존     |
-  | `is` 구문        | 평가 제약          | (동) + 산술 통합         |
-  | 모듈 분리        | 단일 파일          | TBD                      |
-  +------------------+--------------------+--------------------------+
-
-
-0.3 표기 약속
---------------------------------------------------------------------------------
-
-본 문서에서 사용하는 메타 변수.
-
-  - `c`, `d`     : 상수 (소문자로 시작)
-  - `X`, `Y`     : 논리 변수 (대문자로 시작)
-  - `t`, `u`     : 항
-  - `A`, `B`     : 타입
-  - `κ`          : 종류 (kind)
-  - `Γ`          : 타입/종류 환경
-  - `Δ`          : 사실의 집합 (program)
-  - `C`          : 제약(constraint)들의 집합
+must continue to pass with the same answer set.
 
 
 ================================================================================
-1장. 구문론
+Chapter 0. Overview
 ================================================================================
 
-1.1 어휘 (Lexical Structure)
+0.1 Design Goals
 --------------------------------------------------------------------------------
 
-토큰의 종류:
+BETA1 simultaneously pursues three goals.
 
-  - 식별자(소): `[a-z][A-Za-z0-9_]*`        — 상수, 술어 이름
-  - 식별자(대): `[A-Z_][A-Za-z0-9_]*`       — 논리 변수
-  - 자연수 리터럴: `0 | [1-9][0-9]*`
-  - 문자 리터럴: `'c'` (이스케이프 포함)
-  - 문자열 리터럴: `"..."`
-  - 구두점: `(  )  [  ]  ,  .  |  \  :-  =>  ;`
-  - 예약 키워드:
-        `kind`, `type`, `module`,
-        `infixl`, `infixr`, `infix`, `prefix`,
-        `pi`, `sigma`, `is`, `true`, `fail`, `!`, `debug`
-  - 주석: `% ...` (한 줄), `/* ... */` (블록, 중첩 허용 여부 TBD)
-
-레이아웃 규칙: 없음. 모든 선언과 절은 `.` 으로 종결한다.
+  1. *Expressiveness* — higher-order Horn clauses with first-class arithmetic
+     reasoning available on demand via the `presburger` predicate.
+  2. *Surface fidelity* — accept the original λProlog/Teyjus surface syntax,
+     in particular fixity declarations and precedence levels, and replay them
+     verbatim in answer output.
+  3. *Forward compatibility with LoL* — design choices that make this
+     interpreter a usable host for an interactive proof assistant kernel
+     (named binders kept for display; debugger as proto-tactic engine).
 
 
-1.2 종류와 타입 (Kinds & Types)
+0.2 Differences from ALPHA2
 --------------------------------------------------------------------------------
 
-  종류 :  κ ::= type | κ -> κ
-  타입 :  A ::= a              -- 타입 상수 (kind 선언으로 도입)
-              | A -> A
-              | A B            -- 타입 적용
-              | X              -- 타입 변수 (전체화 변수)
+  +-----------------------+-------------------------+--------------------------+
+  | Aspect                | ALPHA2                  | BETA1                    |
+  +-----------------------+-------------------------+--------------------------+
+  | Notation declaration  | none                    | infixl/infixr/infix/prefix
+  | Answer pretty-print   | built-in fixity table   | user notation preserved  |
+  | Abbreviation          | none                    | `abbrev`/`notation`      |
+  | Arithmetic            | collected only          | + `presburger : str->o`  |
+  | Inconsistency pruning | n/a                     | implicit `presburger ⊥`  |
+  | Binder representation | de Bruijn               | de Bruijn + name hints   |
+  | Interactive debug     | step / continue         | + `:assign ?V := t`      |
+  +-----------------------+-------------------------+--------------------------+
 
-내장 타입 상수와 그 종류:
 
-  o      : type           -- 명제 (목표)
-  nat    : type           -- 자연수
-  char   : type           -- 문자
-  string : type   ≡ list char
-  list   : type -> type   -- 다형 리스트
+0.3 Notational Conventions
+--------------------------------------------------------------------------------
+
+Throughout this document we use the following meta-variables.
+
+  - `c`, `d`     : data constants (lowercase head)
+  - `X`, `Y`     : logic variables (uppercase head)
+  - `t`, `u`     : terms
+  - `A`, `B`     : types
+  - `κ`          : kinds
+  - `Γ`          : type / kind environments
+  - `Δ`          : the program (a set of facts/clauses)
+  - `Ψ`          : the set of hypotheses introduced by `=>`
+  - `C`          : a multiset of constraints attached to a branch
+  - `θ`          : a substitution
+  - `φ`          : a Presburger formula
+
+
+================================================================================
+Chapter 1. Syntax
+================================================================================
+
+1.1 Lexical Structure
+--------------------------------------------------------------------------------
+
+Token classes:
+
+  - lowercase ident : `[a-z][A-Za-z0-9_]*`     — constants, predicate names
+  - uppercase ident : `[A-Z_][A-Za-z0-9_]*`    — logic variables
+  - natural literal : `0 | [1-9][0-9]*`
+  - character lit   : `'c'` (with the usual escapes)
+  - string lit      : `"..."`
+  - punctuation     : `( ) [ ] { } , . | \ :- => ;`
+  - reserved words  : `kind`, `type`, `module`,
+                      `infixl`, `infixr`, `infix`, `prefix`,
+                      `abbrev`, `notation`,
+                      `pi`, `sigma`, `is`, `true`, `fail`, `!`, `debug`,
+                      `presburger`
+  - line comment    : `% ...`
+  - block comment   : `/* ... */`        (nested — see Q1)
+
+There is no layout rule; every declaration and clause is terminated by `.`.
+
+
+1.2 Kinds and Types
+--------------------------------------------------------------------------------
+
+  kinds  κ ::= type | κ -> κ
+  types  A ::= a            -- type constant (introduced by `kind`)
+             | A -> A
+             | A B          -- type application
+             | X            -- type variable (implicitly generalised)
+
+Built-in type constants:
+
+  o      : type           -- the type of goals/propositions
+  nat    : type           -- natural numbers
+  char   : type
+  string : type           -- abbreviation for `list char` (see §1.6)
+  list   : type -> type
   (->)   : type -> type -> type
 
-선언 구문:
+Declarations:
 
-  kind <소문자_이름> <κ>.
-  type <소문자_이름> <A>.
+  kind <lowercase> <κ>.
+  type <lowercase> <A>.
 
-다형성은 외부에서 자동 일반화된다 (Hindley–Milner 류). 타입 변수는 절 안에서는
-대문자 식별자로 표기하되, 항의 논리 변수와는 문맥(타입 자리 vs 항 자리)으로
-구분한다.
+Polymorphism is Hindley–Milner with implicit prenex generalisation at type
+declarations. Type variables appearing free in a `type` declaration are
+universally quantified at the outermost level.
 
 
-1.3 항 (Terms)
+1.3 Terms
 --------------------------------------------------------------------------------
 
-  t ::= c                 -- 데이터 상수
-      | X                 -- 논리 변수
-      | t t               -- 적용
-      | X \ t             -- 람다 추상화 (이름 바인딩)
-      | <리터럴>
-      | [ t, ..., t ]     -- 리스트 (sugar for ::)
-      | t :: t            -- cons
-      | []                -- nil
+  t ::= c                   -- data constant
+      | X                   -- logic variable
+      | t t                 -- application
+      | x \ t               -- λ-abstraction (`x` is a name hint)
+      | <literal>
+      | [ t, ..., t ]       -- list sugar
+      | t :: t              -- cons
+      | []                  -- nil
 
-내부 표현은 de Bruijn 인덱스 + 명시적 치환(suspension)을 사용하며, 자세한
-정규화 규칙은 §2.1 을 참조.
+Internally each `x \ t` is stored as a de Bruijn index together with the
+name hint `x`. The name hint is used only for display and for diagnostic
+messages; α-equivalence is decided on the de Bruijn form. See §3.3 for the
+hybrid representation and §D (Open Questions) for issues around capture-free
+display.
 
 
-1.4 사실과 절 (Facts & Clauses)
+1.4 Facts and Clauses
 --------------------------------------------------------------------------------
 
-프로그램은 사실(fact)들의 순서 있는 목록이다. 사실은 다음 형태 중 하나.
+A program is an ordered list of declarations and clauses. A clause is one of
 
-  <atom>.                          -- 단순 사실
-  <atom> :- <body>.                -- 절 (조건부 사실)
+  <atom>.                                   -- a unit fact
+  <atom> :- <body>.                         -- a Horn clause
 
-본문(body)의 구성:
+The body grammar:
 
   body ::= <atom>
-         | body , body              -- 곱(and)
-         | body ; body              -- 합(or)
-         | body => body             -- 함의(추가된 가설 하에서의 증명)
-         | pi    X \ body           -- 보편 양화
-         | sigma X \ body           -- 존재 양화
+         | body , body                       -- conjunction
+         | body ; body                       -- disjunction
+         | body => body                      -- hypothetical implication
+         | pi    x \ body                    -- universal
+         | sigma x \ body                    -- existential
          | true | fail | !
-         | t is <arith>             -- 산술 평가
+         | t is <arith>                      -- arithmetic evaluation
+         | presburger <string-literal>       -- Presburger entailment query
          | debug "..."
 
-`=>`, `pi`, `sigma`는 람다 프롤로그의 핵심 결합자다 (§2.2).
+`=>`, `pi`, and `sigma` form the core of λProlog's intuitionistic
+proof-search calculus (see §2.2).
 
 
-1.5 사용자 정의 노테이션 (Custom Notation)
+1.5 User-Defined Notation
 --------------------------------------------------------------------------------
 
-원조 람다 프롤로그식 선언을 지원한다.
+BETA1 supports the original λProlog fixity declarations:
 
-  infixl  <연산자>  <우선순위>.
-  infixr  <연산자>  <우선순위>.
-  infix   <연산자>  <우선순위>.   -- 비결합 (InfixN)
-  prefix  <연산자>  <우선순위>.
+  infixl  <op>  <precedence>.
+  infixr  <op>  <precedence>.
+  infix   <op>  <precedence>.     -- non-associative
+  prefix  <op>  <precedence>.
 
-  - 우선순위는 자연수. 큰 값일수록 강하게 결합 (`Hol/ALPHA2/TermNode.hs`의
-    `checkOper`와 같은 규약).
-  - 연산자 토큰은 기호열(`[!@#$%^&*+\-=<>?/|~:]+`)이거나, 백틱으로 감싼
-    소문자 식별자.
-  - 동일 우선순위에서 결합성이 다른 연산자의 혼용은 파싱 오류.
-  - 선언은 파일의 어느 위치에서도 가능하나, 그 선언 *이후* 줄부터 효력을
-    가진다 (one-pass parser 가정).
+Rules:
 
-내장 연산자의 기본 우선순위/결합성 (BETA1 디폴트, 사용자가 재정의 가능):
+  - Precedence is a natural number; *higher* binds *tighter* (matching the
+    table currently used by `Hol/ALPHA2/TermNode.hs::checkOper`).
+  - Operator tokens are either symbolic (`[!@#$%^&*+\-=<>?/|~:]+`) or a
+    backtick-quoted lowercase identifier (TBD; see Q2).
+  - Mixing different associativities at the same precedence is a parse
+    error.
+  - Declarations are one-pass and take effect on the lines that *follow* them.
+
+The built-in fixity table (the BETA1 defaults, user-redefinable):
 
   prefix  Lambda 0
   infixr  :-     0
@@ -194,231 +223,407 @@ Hol BETA1 명세서 (초안)
   infix   *      7
   infix   /      7
 
-본 표는 `Hol ALPHA2`의 `checkOper`(`src/Hol/ALPHA2/TermNode.hs`)와 일치한다.
+This table is identical to `checkOper` in `src/Hol/ALPHA2/TermNode.hs`; the
+difference is that BETA1 carries it as data (`NotationEnv`) rather than
+hard-coded in the pretty printer.
 
 
-1.6 모듈 (Module)
+1.6 Abbreviations
 --------------------------------------------------------------------------------
 
-파일 1개 = 모듈 1개. 모듈 이름은 디렉터리 경로를 `.`으로 변환한 것
-(현행 ALPHA2와 동일). `module <이름>.` 헤더는 선택이며, 생략 시 파일 경로에서
-유추한다.
+BETA1 introduces a Coq-style abbreviation mechanism. Two forms are provided.
 
-`import` 시스템은 BETA1 범위 밖이며, ALPHA2와 같이 단일 파일로 충분히
-표현 가능한 예제만 다룬다.
+  (a) Type-level:
+
+        abbrev <name> := <type>.
+
+      Example:
+        abbrev string := list char.
+
+  (b) Term-level (a constant-headed pattern that elaborates to a term):
+
+        notation <name> <pat-args> := <term>.
+
+      Example:
+        notation single X := X :: [].
+
+Semantics:
+
+  - At *parse time*, an occurrence of the abbreviation is expanded to its
+    right-hand side. The resulting term/type is what the elaborator sees;
+    abbreviations are *not* part of the kernel.
+  - At *display time*, the pretty printer attempts to fold the right-hand
+    side back to the abbreviation (most-specific-first). This is the
+    distinguishing feature: `list char` is shown as `string` rather than
+    as `list char`.
+  - Folding is purely syntactic and stops at the first match; users can
+    introduce ambiguous folds, and the order of declaration breaks ties.
+
+Built-in abbreviations seeded at startup:
+
+  abbrev string := list char.
+
+
+1.7 Modules
+--------------------------------------------------------------------------------
+
+One file is one module. The module name is the file path with `/` replaced
+by `.` (unchanged from ALPHA2). An optional `module <name>.` header may
+appear as the first declaration. A proper `import` system is *not* part of
+BETA1 (see Q5).
 
 
 ================================================================================
-2장. 의미론
+Chapter 2. Semantics
 ================================================================================
 
-2.1 항 재작성 (Term Rewriting)
+2.1 Term Rewriting
 --------------------------------------------------------------------------------
 
-내부 표현 `TermNode`는 de Bruijn + suspension 캘큘러스를 사용한다
-(`src/Hol/ALPHA2/TermNode.hs` 참조).
+The internal term representation (`TermNode`) uses de Bruijn indices with
+explicit suspensions (the same machinery as `Hol/ALPHA2/TermNode.hs`).
+Each `NLam` additionally carries a `NameHint :: Maybe SmallId`, set by the
+desugarer and consumed by the pretty printer; it is ignored by reduction
+and unification.
 
-정규화 옵션:
+Reduction modes:
 
-  - `WHNF` : 약한 머리부 정규형
-  - `HNF`  : 머리부 정규형 (인자는 미평가)
-  - `NF`   : 완전 정규형
+  - `WHNF` : weak head normal form
+  - `HNF`  : head normal form
+  - `NF`   : full normal form
 
-베타 축약은 `NApp (NLam t1) t2 ⇒ subst t1 t2` 로 환원되며, suspension
-환경을 통해 게으르게 푼다. 에타는 명시적으로 적용하지 않는다 (HOPU 내부에서만
-고려).
+β-reduction: `(λ.t) u ⟶ t[u/0]`, threaded through suspensions for laziness.
+η is *not* applied eagerly; it is only considered inside HOPU.
 
 
-2.2 증명 탐색 (Proof Search)
+2.2 Proof Search
 --------------------------------------------------------------------------------
 
-골(`goal`)에 대한 단계적 분해 규칙. `Δ; Γ ⊢ G` 를 "사실 집합 Δ, 가설 집합 Γ
-하에서 골 G가 증명됨"으로 읽는다.
+Write `Δ; Ψ ⊢ G | C` for "under program Δ and hypothesis set Ψ, the goal G
+is provable, leaving residual constraint set C".
 
-  (TRUE)   ─────────────────
-           Δ; Γ ⊢ true
+  (TRUE)   ──────────────────
+           Δ; Ψ ⊢ true | ∅
 
-  (AND)    Δ;Γ ⊢ G1   Δ;Γ ⊢ G2
-           ────────────────────
-           Δ;Γ ⊢ G1, G2
+  (AND)    Δ;Ψ ⊢ G₁ | C₁     Δ;Ψ ⊢ G₂ | C₂
+           ─────────────────────────────────
+           Δ;Ψ ⊢ G₁, G₂ | C₁ ⊎ C₂
 
-  (OR-L)   Δ;Γ ⊢ G1                        (OR-R)   Δ;Γ ⊢ G2
-           ────────────                              ────────────
-           Δ;Γ ⊢ G1; G2                              Δ;Γ ⊢ G1; G2
+  (OR-i)   Δ;Ψ ⊢ Gᵢ | C
+           ─────────────────────
+           Δ;Ψ ⊢ G₁; G₂ | C        (i ∈ {1,2})
 
-  (IMP)    Δ; Γ, D ⊢ G
-           ─────────────
-           Δ;Γ ⊢ D => G
+  (IMP)    Δ; Ψ ∪ {D} ⊢ G | C
+           ───────────────────
+           Δ;Ψ ⊢ D => G | C
 
-  (ALL)    Δ;Γ ⊢ G[c/x]   (c는 새 상수)
-           ──────────────────────────────
-           Δ;Γ ⊢ pi x\ G
+  (ALL)    Δ;Ψ ⊢ G[c/x] | C        (c fresh constant)
+           ──────────────────────────────────────────
+           Δ;Ψ ⊢ pi x\ G | C
 
-  (EXS)    Δ;Γ ⊢ G[?X/x]  (?X는 새 논리 변수)
-           ───────────────────────────────────
-           Δ;Γ ⊢ sigma x\ G
+  (EXS)    Δ;Ψ ⊢ G[?X/x] | C       (?X fresh logic variable)
+           ────────────────────────────────────────────────
+           Δ;Ψ ⊢ sigma x\ G | C
 
-  (BACK)   D ∈ Δ ∪ Γ      D = ∀.(B :- A1,...,An)   θ ∈ HOPU(A, head(D))
-           ───────────────────────────────────────────────────────────────
-           Δ;Γ ⊢ A         (이어서 Δ;Γ ⊢ θ(A1),...,θ(An) 증명)
+  (BACK)   D ∈ Δ ∪ Ψ      D = ∀.(B :- A₁,…,Aₙ)
+           θ ∈ HOPU(A, head(D)) with residual C′
+           Δ;Ψ ⊢ θ(A₁),…,θ(Aₙ) | C″
+           ──────────────────────────────────────
+           Δ;Ψ ⊢ A | C′ ⊎ C″
 
-(BACK)에서의 단일화 `θ`는 **고차 패턴 단일화(HOPU)**이며, 일반 고차
-단일화는 결정 불가능하므로 패턴 단편(pattern fragment) 밖의 단일화 후보는
-`DisagreementConstraint`로 보류한다.
+(BACK) uses *higher-order pattern unification* (HOPU). Unification candidates
+outside the pattern fragment are not solved on the spot; they are deferred as
+`DisagreementConstraint`s and re-tried at each binding event.
 
 
-2.3 산술 제약과 Presburger 솔버
+2.3 Arithmetic Constraints and the `presburger` Predicate
 --------------------------------------------------------------------------------
 
-런타임 컨텍스트는 다음 제약 컬렉션을 유지한다 (`Hol/ALPHA2/Runtime.hs`).
+A branch's constraint multiset C is partitioned into:
 
-  Constraint ::= DisagreementConstraint <pair>     -- HOPU 보류분
-              | EvalutionConstraint t1 t2          -- `t1 is t2`
-              | ArithmeticConstraint b             -- 산술 명제
+  Constraint ::= DisagreementConstraint  ⟨t, u⟩    -- HOPU residual
+              | EvaluationConstraint    ⟨t, u⟩    -- from `t is u`
+              | ArithmeticConstraint    φ          -- Presburger atom
 
-`Hol BETA1`은 이 중 `ArithmeticConstraint`의 누적분을 Presburger 형식
-(`Calc.Presburger.Internal.PresburgerFormula`)으로 번역하고, 매 분기점마다
-**무모순성(satisfiability)**을 결정한다.
+ALPHA2 already accumulates `EvaluationConstraint` and a degenerate form of
+`ArithmeticConstraint`. BETA1 *makes them queryable*.
 
-번역 규약 (스케치):
+  presburger : string -> o.
 
-  nat 항       --->  PresburgerTermRep
-    0          --->  Zero
-    s t        --->  Succ <t의 번역>
-    t1 + t2    --->  Plus <t1> <t2>
-    n (≥0)     --->  iterate Succ Zero n번
-    (논리변수) --->  IVar <고유번호>
+Operationally:
 
-  비교/등호    --->  PresburgerFormula
-    t1 = t2    --->  EqnF
-    t1 < t2    --->  LtnF
-    t1 =< t2   --->  LeqF
-    t1 > t2    --->  GtnF
-    t1 >= t2   --->  NegF (LtnF ...)
+  1. The string argument must reduce to a ground string literal.
+     Otherwise the goal fails with a `bad-presburger` runtime error.
+  2. The literal is parsed as a Presburger formula φ using the grammar of
+     `Calc.Presburger.Internal.PresburgerTermRep` /
+     `PresburgerFormula PresburgerTermRep`.
+  3. Let Φ be the conjunction of all `ArithmeticConstraint`s currently in C.
+     The goal succeeds iff
 
-번역 불가능한 항(예: 곱셈에 두 변수가 모두 등장)은 `KlassEtc`로 떨어뜨리되,
-**보수적으로** 만족 가능하다고 간주한다 (안전 측 오버앱). 단, 완전한 Presburger
-단편으로 들어오는 부분에 대해서는 결정 알고리즘으로 처리한다.
+         Φ  ⊨  φ        (i.e.  Φ ∧ ¬φ  is unsatisfiable),
 
-검사 시점:
+     decided by the procedure exported from
+     `src/Calc/Presburger/Internal.hs`.
+  4. The check produces no substitution and adds no new constraints.
 
-  (a) `LO_is` 처리 직후
-  (b) (BACK) 규칙으로 새 절을 펼친 직후의 zonk 시점
-  (c) `printAnswer` 직전 (사용자에게 답을 보이기 전 최종 일관성 검사)
+Implicit consistency pruning. At every BACK / AND step, BETA1 conceptually
+inserts the goal
 
-검사 결과가 `False`(불가능)인 분기는 즉시 실패시키고 백트랙한다.
+        presburger "_|_", !, fail
 
-  *예시*:
-    ?- X is 3, X > 5.
-    --- ArithmeticConstraint: (X = 3) ∧ (X > 5) --- UNSAT --- fail.
+before evaluating the original goal. In words: "if ⊥ is entailed by the
+current Φ, then commit and fail this branch". This recovers the eager
+consistency-check behaviour suggested in earlier drafts, but as a derived
+notion expressed in terms of the user-visible predicate.
+
+Implementations are free to omit the implicit check when the constraint
+store has not changed since the previous check; equivalence is up to branch
+pruning behaviour, not to answer correctness.
+
+Examples.
+
+  ?- X is 3, presburger "X > 5".
+  no.
+
+  ?- X is 3, presburger "X = 3".
+  yes.
+
+  ?- presburger "exists Y. Y + Y = X", X is 4.
+  yes.
+
+  ?- X > 5, X < 3.        % implicitly `presburger "_|_"` succeeds → fail
+  no.
 
 
-2.4 평가 의미론 (`is`)
+2.4 The `is` Predicate
 --------------------------------------------------------------------------------
 
-`t1 is t2`는 다음 의미를 가진다.
+`t₁ is t₂` is evaluated as follows.
 
-  - `t2`를 NF로 환원한다.
-  - `t2`가 닫힌 산술 항이면 결과를 자연수 리터럴로 평가하여 `t1`과 단일화.
-  - 그렇지 않으면 `EvalutionConstraint t1 t2`로 보류.
-  - 보류된 `EvalutionConstraint`는 두 변이 모두 결정되는 순간 `EqnF`로
-    승격되어 §2.3의 산술 제약에 합류한다.
+  - Normalise `t₂` to NF.
+  - If NF(`t₂`) is a closed arithmetic term, evaluate it to a natural-number
+    literal `n` and unify `t₁` with `n`.
+  - Otherwise, add `EvaluationConstraint t₁ t₂` to C.
+  - Whenever both sides of a pending `EvaluationConstraint` become closed
+    arithmetic terms, it is promoted to an `ArithmeticConstraint` of the
+    form `EqnF t₁ t₂`.
+
+This is the same behaviour as ALPHA2; the only change is that the resulting
+`ArithmeticConstraint`s are now observable to user code via `presburger`.
 
 
-2.5 답 치환과 출력 (Answer Substitution)
+2.5 Answer Substitution
 --------------------------------------------------------------------------------
 
-`printAnswer`(현재 ALPHA2의 동명 함수에 대응)는 다음을 수행한다.
+When the proof search reaches success on a query Q, the interpreter:
 
-  1. 쿼리에 명시된 자유 변수 `nms`와 그 의존 클로저만 보존한다
-     (이미 ALPHA2가 하던 방식).
-  2. 남은 제약 컬렉션에 대해 §2.3의 무모순성 검사를 수행한다.
-     - 일관: 답 치환과 (필요 시) 남은 제약을 출력.
-     - 불일치: `fail`로 간주, 다음 선택지로 백트랙.
-  3. 항의 출력은 §2.6의 노테이션 보존 규약에 따른다.
+  1. Restricts the substitution to the free variables of Q and their
+     transitive dependencies (as ALPHA2 already does).
+  2. Reports the residual constraint set, *with the syntactic concession*
+     that any `ArithmeticConstraint` whose negation is implied by Φ is
+     dropped (it is trivially true and uninformative).
+  3. Pretty-prints the bindings using the rules of §2.6 and §2.7.
 
 
-2.6 노테이션 보존 (Pretty Printing)
+2.6 Notation-Preserving Pretty Printing
 --------------------------------------------------------------------------------
 
-원칙: 사용자가 `infixl`/`infixr`/`infix`/`prefix`로 선언한 연산자는,
-런타임 출력에서도 그 형태와 우선순위로 다시 인쇄되어야 한다.
+Principle. Any operator the user introduced with `infixl`/`infixr`/`infix`/
+`prefix` is rendered in that form, at that precedence, on output. The
+printer must never silently expose internal de Bruijn indices, `NApp`
+chains, or built-in head symbols where a user-facing notation exists.
 
-  - 파서는 각 데이터 상수에 대해 옵션 필드 `_Fixity :: Maybe (Fixity, Precedence)`
-    를 부착한다.
-  - `constructViewer`(현재 `Hol/ALPHA2/TermNode.hs`)는 내장 표(`checkOper`) 대신
-    `KindEnv`/`TypeEnv`와 함께 흐르는 `NotationEnv :: Map Constant (Fixity, Precedence)`
-    를 참조한다.
-  - 내장 노테이션은 `theInitialNotationDecls`로 시드된다 (§1.5 표와 동일).
+Mechanism.
 
-이 변경으로 ALPHA2의 `Show TermNode` 인스턴스 시그니처는 유지하되, 내부적으로
-`Reader NotationEnv`를 깔게 된다 (구현 노트: §3 참조).
+  - The parser attaches `Maybe (Fixity, Precedence)` to every data constant
+    it introduces.
+  - `constructViewer` (currently in `Hol/ALPHA2/TermNode.hs`) is rewritten
+    to consult a `NotationEnv :: Map Constant (Fixity, Precedence)` carried
+    alongside `KindEnv`/`TypeEnv`, instead of the hard-coded `checkOper`.
+  - Built-ins are seeded into `NotationEnv` at startup (the table of §1.5).
+
+The public `Show TermNode` instance keeps its signature but is now defined
+in terms of the configured `NotationEnv`.
+
+
+2.7 Abbreviation Folding
+--------------------------------------------------------------------------------
+
+Display-time folding is a separate pass that runs *after* notation pretty-
+printing has produced a `ViewNode`. For each registered abbreviation
+
+        abbrev S := E
+
+the viewer tries to rewrite occurrences of (the view of) `E` back to `S`,
+most-specific-first. Folding is purely textual on the `ViewNode` AST; it
+never changes the underlying term.
+
+Term-level `notation` definitions fold analogously: their right-hand sides
+are interpreted as `ViewNode` patterns with the declared formal parameters
+acting as metavariables.
+
+
+2.8 Names vs. de Bruijn (Hybrid Representation)
+--------------------------------------------------------------------------------
+
+For binders, BETA1 attaches an optional name hint to each `NLam`:
+
+  data TermNode
+      = ...
+      | NLam { _hint :: Maybe SmallId, _body :: TermNode }
+      | ...
+
+Hints flow through the desugarer and through suspensions, but they do not
+affect α-equivalence, unification, or reduction. They serve three purposes.
+
+  1. *Pretty printing*: instead of `W_3\ W_2\ ...`, the viewer can render
+     `X\ Y\ ...` whenever the original hints are non-clashing and
+     non-shadowing. When a clash would arise, the viewer suffixes a digit.
+  2. *Diagnostics*: HOPU disagreement reports cite the original names where
+     possible.
+  3. *Future tactic UI* (`LoL` integration): a debugger session that asks
+     "instantiate ?V to what?" can present the variable in the user's own
+     vocabulary.
+
+Hints are deliberately *advisory* — the runtime is correct iff it would be
+correct after erasing every `_hint`.
 
 
 ================================================================================
-3장. 구현 노트 (비규범 / Informative)
+Chapter 3. Runtime and Debugger
 ================================================================================
 
-3.1 모듈 구성 제안
+3.1 REPL Commands
+--------------------------------------------------------------------------------
+
+Same as ALPHA2 plus the following additions.
+
+  :d                 toggle debug mode (unchanged)
+  :assign ?V := t.   instantiate a flexible variable to a user-supplied term
+                     at the current breakpoint (debug mode only)
+  :show ?V           show the current value (or "unbound") of ?V
+  :constraints       dump the current constraint multiset C
+  :q                 quit (unchanged)
+
+`:assign` is the seed of an interactive tactic engine. Its preconditions:
+
+  - The session is in debug mode and at a step boundary.
+  - The named variable is currently flexible (a `LVar`).
+  - The supplied term type-checks against ?V's expected type.
+
+On success, the assignment is committed as a normal HOPU substitution; on
+failure, the debugger reports the error and stays at the same breakpoint.
+
+
+3.2 Debug Output
+--------------------------------------------------------------------------------
+
+In debug mode the interpreter prints, before each transition:
+
+  - the goal under consideration,
+  - the constraint multiset C (with arithmetic constraints rendered in
+    `Calc.Presburger` form),
+  - the current `NotationEnv` and abbreviation table (compact form),
+  - the binding substitution restricted to user-visible names.
+
+
+================================================================================
+Chapter 4. Implementation Notes (informative)
+================================================================================
+
+4.1 Module Layout
 --------------------------------------------------------------------------------
 
   src/Hol/BETA1/
-    Header.hs        -- ALPHA2/Header + NotationEnv, Fixity 확장
-    Constant.hs      -- (거의 동일)
-    TermNode.hs      -- ViewNode/구문 표시기, NotationEnv를 받게 수정
-    PlanHolLexer.hs  -- infixl/infixr/infix/prefix 키워드 추가
-    PlanHolParser.hs -- 사용자 노테이션 선언 처리, 동적 연산자 테이블
-    Desugarer.hs     -- (거의 동일)
-    TypeChecker.hs   -- (거의 동일)
-    HOPU.hs          -- (거의 동일)
-    Runtime.hs       -- 매 분기점에서 Presburger 검사 호출
-    Compiler.hs      -- (거의 동일)
-    Arith.hs         -- ★신규: TermNode <-> PresburgerFormula 번역
-    Main.hs          -- ALPHA2의 main에서 위 모듈들로 갈아끼움
+    Header.hs        -- ALPHA2/Header + NotationEnv, Fixity, NameHint
+    Constant.hs      -- essentially unchanged
+    TermNode.hs      -- NLam carries a name hint; ViewNode/printer take
+                        NotationEnv as input
+    PlanHolLexer.hs  -- + `infixl`/`infixr`/`infix`/`prefix`
+                        + `abbrev`/`notation`/`presburger` keywords
+    PlanHolParser.hs -- dynamic operator table; abbreviation declarations
+    Desugarer.hs     -- abbreviation expansion (type & term level)
+    TypeChecker.hs   -- mostly unchanged; sees expanded forms
+    HOPU.hs          -- mostly unchanged
+    Runtime.hs       -- + `presburger` predicate dispatch
+                        + interactive LVar instantiation
+    Compiler.hs      -- mostly unchanged
+    Arith.hs         -- ★ new: bridge between TermNode strings and
+                        Calc.Presburger.Internal formulas
+    Notation.hs      -- ★ new: NotationEnv + abbreviation folding
+    Main.hs          -- replaces ALPHA2's main; same external behaviour
 
 
-3.2 Presburger 인용
+4.2 Presburger Bridge
 --------------------------------------------------------------------------------
 
-`Calc.Presburger.Internal`이 노출하는 결정 절차(이름 TBD, e.g.
-`isSatisfiable :: MyPresburgerFormula -> Bool`)를 `Arith.hs`에서 인용한다.
-`Hol BETA1`은 Presburger 솔버의 구현 디테일에 대해 어떤 가정도 하지 않는다.
+`Arith.hs` exposes:
+
+  parsePresburger :: String -> Either ErrMsg MyPresburgerFormulaRep
+  entails         :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
+
+`entails Φ φ` is implemented as the unsatisfiability check on
+`Φ ∧ ¬φ` provided by `Calc.Presburger.Internal`. BETA1 makes no assumption
+about the solver's internals beyond decidability.
+
+Lifting of `ArithmeticConstraint`s currently in C to `MyPresburgerFormula`
+is best-effort: a term outside the linear-integer fragment (e.g. a product
+of two variables) is *omitted* from Φ. This is sound for entailment in the
+direction we use it: dropping conjuncts from Φ can only make fewer formulas
+entailed, never more, so `entails` never erroneously reports success.
 
 
-3.3 점진적 검사 vs 일괄 검사
+4.3 Named-Binder Display
 --------------------------------------------------------------------------------
 
-매 분기마다 솔버를 호출하면 결정 절차의 비용이 누적된다. 다음 두 전략을
-비교 측정한 뒤 채택을 정한다.
-
-  (i)  점진적: 새 제약이 추가될 때마다 즉시 검사.
-  (ii) 일괄 : `printAnswer` 진입 직전에 한 번만 검사. 분기 가지치기 효과는
-       포기.
-
-기본 권장은 (i). 단, einstein 류의 거대 분기 트리에서는 가지치기 이득이
-크다고 가정한다.
+The hybrid representation has one subtle invariant: the name hint must
+either be (i) unique among enclosing binders or (ii) absent. Whenever the
+desugarer introduces a binder whose hint would shadow an enclosing one, it
+either silently α-renames the *fresh* binder's hint (preferred) or drops it
+to `Nothing`. The runtime never has to consult hints for correctness, so a
+missing hint is always safe.
 
 
-3.4 호환성 보증
+4.4 Test Compatibility
 --------------------------------------------------------------------------------
 
-  - `Hol BETA1` 인터프리터로 `Example/*.hol` 의 모든 기존 파일이 동일한
-    답 집합을 산출해야 한다 (출력 형식 차이는 §2.6에 한해 허용).
-  - `einstein.sh`, `fi.sh`, `lbeta.sh` 가 동일한 종료 상태(0)와 동일한 답
-    문자열을 산출해야 한다 (공백/노테이션 정렬 차이 제외).
+  - For every file in `Example/*.hol` the answer set produced by BETA1 must
+    be identical to the answer set produced by ALPHA2. Differences in
+    pretty-printed form are tolerated only insofar as they reflect the
+    user's notation/abbreviation declarations (§2.6, §2.7).
+  - `einstein.sh`, `fi.sh`, `lbeta.sh` must exit 0 with byte-identical
+    answer strings modulo whitespace and notation folding.
 
 
 ================================================================================
-부록 A. 예약된 미결 사항 (Open Questions)
+Appendix D. Open Questions
 ================================================================================
 
-  - [Q1] 블록 주석 `/* */`의 중첩 허용 여부.
-  - [Q2] 사용자 정의 연산자에서 곱셈 같은 비-Presburger 표현이 산술 제약으로
-        들어왔을 때의 거절/보류 정책.
-  - [Q3] `Lambda` 키워드(타입 수준 람다) 노출 범위. ALPHA2는 표시기에서만
-        쓰며 사용자가 직접 입력할 수 없다.
-  - [Q4] 모듈 시스템(import) 의 도입 시점.
-  - [Q5] 부정적 자연수 산술의 처리 (현재는 `error`).
+  [Q1] Should block comments `/* ... */` be allowed to nest?
+
+  [Q2] Should operator declarations accept identifier operators (backtick
+       form), or only symbolic ones?
+
+  [Q3] What is the exact display-time policy when a term has multiple
+       valid abbreviation foldings? "Most-specific-first" is under-specified
+       for incomparable abbreviations.
+
+  [Q4] When `presburger` is called with a non-ground string, should we (i)
+       fail immediately, (ii) raise a runtime error, or (iii) suspend until
+       the string becomes ground? Option (iii) is interesting but expensive.
+
+  [Q5] Module / `import` system — not in BETA1, but it should be designed
+       in a way that abbreviation tables and notation tables can be
+       re-exported coherently.
+
+  [Q6] How does `:assign` interact with cut (`!`) when the assignment
+       creates new disagreements? Should we re-run the constraint-promotion
+       pass before resuming, or only at the next natural step boundary?
+
+  [Q7] Native pretty-printing of mixed name-hint / de Bruijn terms in the
+       presence of capture-avoiding substitution: do we need on-demand
+       α-renaming in the viewer, or can the desugarer enforce a global
+       uniqueness invariant?
 
 ================================================================================
 EOF
