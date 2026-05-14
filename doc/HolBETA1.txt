@@ -377,33 +377,24 @@ This is the same behaviour as ALPHA2; the only change is that the resulting
 
 When the proof search reaches success on a query Q, the interpreter:
 
-  1. Restricts the substitution to the free variables of Q and their
-     transitive dependencies (as ALPHA2 already does).
-  2. Reports the residual constraint set, *with the syntactic concession*
-     that any `ArithmeticConstraint` whose negation is implied by Φ is
-     dropped (it is trivially true and uninformative).
+  1. Restricts the substitution to the free variables of Q and their transitive dependencies (as ALPHA2 already does).
+  2. Reports the residual constraint set, *with the syntactic concession* that any `ArithmeticConstraint` whose negation is implied by Φ is dropped (it is trivially true and uninformative).
   3. Pretty-prints the bindings using the rules of §2.6 and §2.7.
 
 
 2.6 Notation-Preserving Pretty Printing
 --------------------------------------------------------------------------------
 
-Principle. Any operator the user introduced with `infixl`/`infixr`/`infix`/
-`prefix` is rendered in that form, at that precedence, on output. The
-printer must never silently expose internal de Bruijn indices, `NApp`
-chains, or built-in head symbols where a user-facing notation exists.
+Principle. Any operator the user introduced with `infixl`/`infixr`/`infix`/ `prefix` is rendered in that form, at that precedence, on output.
+The printer must never silently expose internal de Bruijn indices, `NApp` chains, or built-in head symbols where a user-facing notation exists.
 
 Mechanism.
 
-  - The parser attaches `Maybe (Fixity, Precedence)` to every data constant
-    it introduces.
-  - `constructViewer` (currently in `Hol/ALPHA2/TermNode.hs`) is rewritten
-    to consult a `NotationEnv :: Map Constant (Fixity, Precedence)` carried
-    alongside `KindEnv`/`TypeEnv`, instead of the hard-coded `checkOper`.
+  - The parser attaches `Maybe (Fixity, Precedence)` to every data constant it introduces.
+  - `constructViewer` (currently in `Hol/ALPHA2/TermNode.hs`) is rewritten to consult a `NotationEnv :: Map Constant (Fixity, Precedence)` carried alongside `KindEnv`/`TypeEnv`, instead of the hard-coded `checkOper`.
   - Built-ins are seeded into `NotationEnv` at startup (the table of §1.5).
 
-The public `Show TermNode` instance keeps its signature but is now defined
-in terms of the configured `NotationEnv`.
+The public `Show TermNode` instance keeps its signature but is now defined in terms of the configured `NotationEnv`.
 
 
 2.7 Abbreviation Folding
@@ -538,30 +529,91 @@ Appendix A. Open Questions
 
   [Q1] Should block comments `/* ... */` be allowed to nest?
   [A] Yes. We need to one-to-one-match `/*` with `*/`.
-  // claude's feedback here.
+  [Feedback / Claude]
+    Agreed. One corner case to nail down: `/*` and `*/` occurring inside string or character literals must NOT count toward the nesting depth. Otherwise `/* "*/" */` lexes as a single unterminated comment.
+    Implementation note: the lexer's comment state machine must still recognise string/char literal openings while inside a comment, and skip past their closers without altering the comment depth.
 
   [Q2] Should operator declarations accept identifier operators (backtick form), or only symbolic ones?
   [A] The former; like Haskell.
-  // claude's feedback here.
+  [Feedback / Claude]
+    Reasonable. One clarification belongs in §1.5: a backtick declaration such as `infixl `plus` 6.` does NOT introduce a new constant — it only attaches fixity metadata to the *existing* constant `plus`, which must already have a `type` declaration in scope.
+    This matches ALPHA2's existing model where `=`, `+`, etc. are bound to specific `DataConstructor`s; a backtick-quoted user operator maps to `DC_Named name` rather than to a fresh constructor.
 
   [Q3] What is the exact display-time policy when a term has multiple valid abbreviation foldings?
   "Most-specific-first" is under-specified for incomparable abbreviations.
   [A] Use the last declared one.
-  // claude's feedback here.
+  [Feedback / Claude]
+    Clean rule. One consequence to document explicitly: the built-in `abbrev string := list char` is declared *first*, so any user `abbrev mystring := list char` declared later will shadow `string`.
+    Recommend stating in §1.6 that built-in abbreviations are "overridable, not privileged";
+    this avoids surprising users who expect `list char` to always print as `string`.
+    If we want certain built-ins to be sticky (e.g., the system never wants users to lose the `string` rendering),
+    we should introduce a separate `sealed abbrev` form — but I'd defer that to GAMMA1.
 
   [Q4] When `presburger` is called with a non-ground string, should we (i) fail immediately, (ii) raise a runtime error, or (iii) suspend until the string becomes ground?
   Option (iii) is interesting but expensive.
   [A] (ii) Moreover, every input string will be compiled in internal AST. Some kind of special magic.
-  // claude's feedback here.
+  [Feedback / Claude]
+    This is a major design decision worth flagging: `presburger` is no
+    longer a predicate, it is a *special form*. Three follow-on items.
+
+    (a) §1.4 already lists `presburger <string-literal>` as a body form, which is correct.
+        §2.3 should reframe the line "presburger : string -> o" as a user-facing type signature that the elaborator compiles away, not as a real predicate.
+        Compare to Haskell's `seq :: a -> b -> b` — its surface type lies; the kernel treats it specially.
+
+    (b) Compilation timing: at the desugaring step the literal is parsed via `Arith.hs::parsePresburger`.
+        The result becomes a new AST node, e.g.
+
+            PresburgerCheckBody :: PresburgerFormulaRep -> Body
+
+        The string itself never reaches the runtime.
+        A non-literal argument (e.g., a variable) is caught at this stage and reported as a *compile* error, not a runtime error — strengthening (ii).
+
+    (c) Variable binding inside the literal — this needs an explicit ruling.
+        In `?- X is 3, presburger "X > 5".`, does the `X` inside the string refer to the surrounding `X`?
+
+        Strongly recommend YES (same `LVar`). Concretely: when `parsePresburger` encounters an identifier, it emits `LV_Named "X"`, the same identity the surrounding clause uses. Without this, the §2.3 examples are meaningless.
+
+        Side effect: identifiers inside the literal participate in ordinary HOPU zonking, scope rules, etc.
+        The lexical convention (upper-case = logic var, lower-case = constant) inside the string mirrors the convention outside.
 
   [Q5] Module / `import` system — not in BETA1, but it should be designed in a way that abbreviation tables and notation tables can be re-exported coherently.
   [A] If imported modules are inconsistent, then raise a compile error.
-  // claude's feedback here.
+  [Feedback / Claude]
+    Agreed. The definition of "inconsistent" should be pinned down:
+
+      - two imports disagree on `(fixity, precedence)` for the same operator, or
+      - two imports disagree on the right-hand side of an abbreviation with the same name.
+
+    A separate policy question: can a user module shadow a *built-in* table entry without it counting as "inconsistency"?
+    Recommended answer: yes, built-ins are always overridable; only inter-import disagreements are errors.
+    This keeps the system extensible without making users fight the standard library.
 
   [Q6] How does `:assign` interact with cut (`!`) when the assignment creates new disagreements? Should we re-run the constraint-promotion pass before resuming, or only at the next natural step boundary?
   [A] Why is it a problem? I couldn't find any problem; would you explain more?
-  // claude's feedback here.
+  [Feedback / Claude]
+    On reflection, you are right — there is no fundamental issue.
+    `:assign θ` commits a substitution; the runtime zonks all pending constraints with θ and either promotes/falsifies them or leaves them in C. Cut commits a *branch choice*, not a *constraint state*, so the two are orthogonal.
+
+    The only subtle UX case is hypothetical: if BETA1 later adds an `:undo` command, undoing across a cut boundary must be illegal (the cut has already discarded alternative branches).
+    For BETA1 with no `:undo`, this is moot, so I'm closing Q6 and moving the `:undo` interaction to a new Q8 if we ever revisit.
 
   [Q7] Native pretty-printing of mixed name-hint / de Bruijn terms in the presence of capture-avoiding substitution: do we need on-demand α-renaming in the viewer, or can the desugarer enforce a global uniqueness invariant?
   [A] The former sounds good. Is there any problem related to the former?
-  // claude's feedback here.
+  [Feedback / Claude]
+    Mostly fine; two UX caveats, both manageable.
+
+    (i) *Round-tripping*:
+      If the viewer renames a binder for display (e.g., shows `X1` instead of `X` to avoid shadowing), and the user then types `:assign X1 := t` based on the displayed name, the runtime must map `X1` back to the original `LVar`.
+      Solution: cache the (display-name ↔ internal-id) map for the current breakpoint, and consult it inside `:assign`. Without this, the UI is lying to the user.
+
+    (ii) *Stability across prompts*:
+      The same logic variable should display as the same name within one debugging session, not just within a single print pass.
+      Otherwise the user sees `X1` in one prompt and `X2` in the next for the same variable.
+      Solution: carry the display-naming cache for the lifetime of the REPL, not per-print.
+
+    Neither affects correctness; both belong in §3.2 once we finalise
+    the debugger UI.
+
+================================================================================
+Appendix B. Other feedbacks to claude
+================================================================================
