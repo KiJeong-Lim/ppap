@@ -1,3 +1,7 @@
+# ppap
+
+- Project Putting All Power!
+
 ## Quick Start
 
 ```
@@ -17,7 +21,3 @@ Example.einstein> no.
 Example.einstein> :q
 Hol >>= quit
 ```
-
-# ppap
-
-- Project Putting All Power!
