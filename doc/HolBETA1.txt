@@ -31,7 +31,7 @@ BETA1 simultaneously pursues four goals.
   1. *Expressiveness* — higher-order Horn clauses with first-class arithmetic reasoning available on demand via the `presburger` predicate.
   2. *Surface fidelity* — accept the original λProlog/Teyjus surface syntax, in particular fixity declarations and precedence levels, and replay them verbatim in answer output.
   3. *Forward compatibility with LoL* — design choices that make this interpreter a usable host for an interactive proof assistant kernel (named binders kept for display; debugger as proto-tactic engine).
-  4. *Coq-on-λProlog ergonomics* — a guiding motto: BETA1 should feel like Coq reimplemented for a Haskell-flavoured λProlog. This is the deciding consideration whenever a design choice in abbreviation/notation (§1.6, §2.7), debugger (§3.1), or named-binder display (§2.8) admits multiple reasonable readings: pick the one that matches Coq.
+  4. *Coq-on-λProlog ergonomics* — a guiding motto: BETA1 should feel like Coq reimplemented for a Haskell-flavoured λProlog. This is the deciding consideration whenever a design choice in abbreviation/notation (§1.6, §2.7), debugger (§3), or named-binder display (§2.8) admits multiple reasonable readings: pick the one that matches Coq.
 
 
 0.2 Differences from ALPHA2
@@ -1406,6 +1406,15 @@ an enclosing one, it either silently α-renames the *fresh* binder's
 hint (preferred) or drops it to `Nothing`. The runtime never has to
 consult hints for correctness, so a missing hint is always safe.
 
+Division of responsibility with §2.8. The desugarer described here
+handles *intra-term* shadowing — two binders inside the same closed
+term competing for the same hint. The viewer of §2.8 handles only
+the residual case where a free logic variable already in scope at
+print time collides with a local hint; the digit-suffix rule of §2.8
+is applied only to those cases. By the desugarer's invariant above,
+the viewer never sees two enclosing binders with the same non-empty
+hint, so its rename rule is unambiguous.
+
 
 4.6 Test Compatibility and the `Test/` Directory
 --------------------------------------------------------------------------------
@@ -1578,7 +1587,7 @@ Appendix A. Open Questions
       Otherwise the user sees `X1` in one prompt and `X2` in the next for the same variable.
       Solution: carry the display-naming cache for the lifetime of the REPL, not per-print.
 
-    Neither affects correctness; both belong in §3.2 once we finalise the debugger UI.
+    Neither affects correctness; both belong in §3.5 once we finalise the debugger UI.
 
 ================================================================================
 Appendix B. Other feedbacks to claude
