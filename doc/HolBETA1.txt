@@ -6,7 +6,7 @@ This document specifies the syntax and semantics of `Hol BETA1`, a dialect of λ
 
   (A) Original λProlog-style user-defined notation (`infixl`/`infixr`/`infix`/`prefix` with precedences), with runtime pretty-printing that preserves the user's notation.
   (B) An abbreviation mechanism, modelled after Coq's `Notation`/abbreviation facility (e.g. `string` as a display-time abbreviation for `list char`).
-  (C) A `presburger : string -> o` predicate that parses its argument as a Presburger formula and decides entailment from the arithmetic constraints accumulated by the current proof branch. The solver is the one in `src/Calc/Presburger/Internal.hs`.
+  (C) A `presburger <string-literal>` special form, presented to users as the predicate `presburger : string -> o`, that parses its argument at compile time as a Presburger formula and at runtime decides entailment from the arithmetic constraints accumulated on the current proof branch. The solver is the one in `src/Calc/Presburger/Internal.hs`.
   (D) (Open / experimental) A hybrid representation that stores de Bruijn indices internally while retaining user-supplied binder names, à la Coq.
   (E) (Open / experimental) Interactive instantiation of flexible (logic) variables during a debugging session — the foundational primitive for tactic-style proof construction in the future `LoL` project.
 
@@ -92,12 +92,40 @@ There is no layout rule; every declaration and clause is terminated by `.`.
 1.2 Kinds and Types
 --------------------------------------------------------------------------------
 
-  kinds  κ ::= type | κ -> κ -- however, must be `order κ ≤ 1` 
+  kinds  κ ::= type | κ -> κ              -- with side condition `order κ ≤ 1`
   types  A ::=
     | a             -- type constant (introduced by `kind`)
     | A -> A
     | A B           -- type application
     | X             -- type variable (implicitly generalised)
+
+Side condition: `order κ ≤ 1`.
+
+  The function `order` (called `getRank` in the implementation) is
+  defined by
+
+    order(type)       = 0
+    order(κ₁ -> κ₂)   = max(order(κ₁) + 1, order(κ₂))
+
+  Every kind appearing in a `kind` declaration must satisfy
+  `order κ ≤ 1`. Equivalently, κ must be of the form
+
+    type -> type -> ... -> type
+
+  (zero or more `type` arguments, all yielding `type`). The check is
+  performed at the *desugaring* stage of compilation; BETA1 inherits
+  the implementation already present in ALPHA2's
+  `makeKindEnv` and reports violations as
+
+    *** desugaring-error[<loc>]:
+          ? the higher-order kind expression is not allowed.
+
+  Accepted:    `type`, `type -> type`, `type -> type -> type`, ...
+  Rejected:    `(type -> type) -> type`, `((type -> type) -> type) -> type`, ...
+
+  Note that `->` is right-associative in the surface, so
+  `type -> type -> type` parses as `type -> (type -> type)`, which has
+  order `max(0 + 1, max(0 + 1, 0)) = 1` — accepted, as intended.
 
 Built-in type constants:
 
@@ -113,8 +141,22 @@ Declarations:
   kind <lowercase> <κ>.
   type <lowercase> <A>.
 
-Polymorphism is Hindley–Milner with implicit prenex generalisation at type declarations.
-Type variables appearing free in a `type` declaration are universally quantified at the outermost level.
+Polymorphism is Hindley–Milner with implicit prenex generalisation at
+type declarations. Type variables appearing free in a `type`
+declaration are universally quantified at the outermost level.
+
+Corollary of `order κ ≤ 1`. Type variables can only stand for *types*,
+never for type constructors. That is, every implicitly-generalised
+type variable `X` in a `type` declaration is of kind `type`. Higher-
+kinded polymorphism such as
+
+  type apply (M A -> A -> M B).   -- M would have to be `type -> type`
+
+is *not* expressible: there is no surface syntax that lets the user
+constrain a type variable to a non-`type` kind, and the kind inference
+defaults every free type variable to `type`. This is a deliberate
+simplification: it keeps the type checker first-order at the type
+level, mirroring standard λProlog practice.
 
 
 1.3 Terms
@@ -346,6 +388,52 @@ A non-literal argument (e.g. `presburger S` where `S` is a logic
 variable or a partially-unfolded `list char` term) is a *compile-time*
 error reported at the source location of the offending body item.
 
+The grammar of the literal is a Coq-flavoured surface for
+`Calc.Presburger.Internal.PresburgerFormula PresburgerTermRep`,
+reverse-engineered from that module's `Show` instances:
+
+  arith ::=
+    | <uppercase ident>            -- variable
+    | <decimal natural>            -- 0, 1, 2, ...   (desugars to S(S(...O)))
+    | arith + arith                -- addition
+    | ( arith )
+
+  φ ::=
+    | _|_                          -- false
+    | ~ φ                          -- negation
+    | arith = arith                -- equality                  (EqnF)
+    | arith < arith                -- strict less               (LtnF)
+    | arith =< arith               -- less or equal             (LeqF)
+    | arith > arith                -- strict greater            (GtnF)
+    | arith ==_{<decimal>} arith   -- congruence mod n          (ModF)
+    | φ /\ φ                       -- conjunction               (ConF)
+    | φ \/ φ                       -- disjunction               (DisF)
+    | φ -> φ                       -- implication               (ImpF)
+    | φ <-> φ                      -- biconditional             (IffF)
+    | forall <uppercase ident>, φ  -- universal                 (AllF)
+    | exists <uppercase ident>, φ  -- existential               (ExsF)
+    | ( φ )
+
+The grammar mirrors the `Show` syntax of the underlying solver IR
+*except* in two places:
+
+  (i)  Variables are *named* (uppercase identifiers), not numbered
+       (`v1`, `v2`, ...). Each identifier is mapped to a `MyVar` by the
+       parser; see §2.3.4 for outer-scope sharing.
+  (ii) Naturals are written in *decimal*; the parser desugars `n` into
+       `Succ (... Succ Zero)` with `n` applications of `Succ`. (Direct
+       use of the Show-level constants `O` / `S` is forbidden inside
+       the literal — `O` would clash with the uppercase-identifier
+       lexical class.)
+
+Precedence and associativity follow the `Show` instance:
+
+  `~` binds tighter than `/\`, which binds tighter than `\/`, which
+  binds tighter than `->` and `<->`. `forall`, `exists`, and `~`
+  extend as far to the right as syntactically possible. Atoms (`=`,
+  `<`, etc.) are non-associative. Inside `arith`, `+` is left-
+  associative; variables and decimal literals are atomic.
+
 2.3.3 Compilation pipeline
 
 The pipeline transforms the surface form into an internal goal node.
@@ -368,14 +456,28 @@ Stage 3 (Desugarer)
     Call `Arith.parsePresburger sloc src env`, where `env` is the
     identifier→`LogicVar` map already being threaded for the
     surrounding clause (see §2.3.4). The call returns either a parse
-    error (reported with `sloc`) or a pair `(rep, env')` of the parsed
-    formula and the extended map. Wrap `rep` in the new constructor
+    error (reported with `sloc`) or a triple
 
-      NPresburgerCheck :: PresburgerFormulaRep -> TermNode
+      (rep      :: PresburgerFormulaRep,
+       freeOf   :: Map MyVar LogicVar,
+       env'     :: Map LargeId LogicVar)
+
+    consisting of the parsed formula, a map from the solver-internal
+    `MyVar`s appearing free in `rep` to the surrounding `LogicVar`s,
+    and the updated clause-level map. Wrap into the new constructor
+
+      NPresburgerCheck
+        :: PresburgerFormulaRep
+        -> Map MyVar LogicVar
+        -> TermNode
+
+    Bound `MyVar`s (those introduced by `AllF`/`ExsF`) do not appear
+    in `freeOf` — they are scoped to `rep` itself and are dense with
+    fresh integers.
 
 Stage 4 (TypeChecker)
-    `NPresburgerCheck rep` has type `o`. No type constraint is emitted
-    for `rep` itself.
+    `NPresburgerCheck rep freeOf` has type `o`. No type constraint is
+    emitted for `rep` itself.
 
 Stage 5 (Runtime)
     See §2.3.5.
@@ -419,27 +521,51 @@ do not introduce or shadow logic variables outside.
 
 2.3.5 Runtime evaluation
 
-When the runtime reaches a goal `NPresburgerCheck rep`:
+When the runtime reaches a goal `NPresburgerCheck rep freeOf`:
 
-  1. Apply the current substitution θ to `rep`. Any `LV_Named v` whose
-  θ(v) is a closed natural-number literal is replaced by that
-  literal (i.e. `Succ (Succ ... Zero)`). Other shapes of θ(v) leave
-  the identifier as a free variable. See §4.2 for the safety
-  argument.
+  1. Apply the current substitution θ via
+     `zonkPresburger θ freeOf rep`. For every `IVar v` in `rep` with
+     `freeOf(v) = Just lv`: if θ(lv) is a closed natural-number
+     literal `n`, replace `IVar v` by the decimal-`n` encoding
+     (`Succ` applied `n` times to `Zero`); otherwise leave `IVar v`
+     in place. Bound `IVar`s are untouched.
 
-  2. Build Φ from the current `ArithmeticConstraint`s in C, dropping
-  any conjunct that does not lift into the Presburger fragment
-  (best-effort lifting — §4.2).
+  2. Build a candidate Φ from the current `ArithmeticConstraint`s in
+     C by applying `liftConstraint` to each conjunct. Conjuncts that
+     do not lift into the Presburger fragment are dropped (best-
+     effort lifting — see §4.2 for the soundness argument).
 
-  3. Call
+  3. Renumber Φ and `rep` to share a single `Map LogicVar MyVar`
+     allocation (`renumberFormula` in §4.2), so that the same outer
+     `LogicVar` is represented by the same `MyVar` everywhere the
+     solver sees it.
 
-      entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
+  4. Call
 
-  from `Arith`. The check produces no substitution and adds no
-  constraint.
+       entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
 
-  4. The goal succeeds iff `entails Φ φ` returns `True`; otherwise it
-  fails and the runtime backtracks.
+     from `Arith`. The check produces no substitution and adds no
+     constraint.
+
+  5. The goal succeeds iff `entails Φ φ` returns `True`; otherwise it
+     fails and the runtime backtracks.
+
+Remark (zonk depth).
+    Step 1 substitutes only *closed natural-number literals*. It does
+    not recurse into arithmetic structure (e.g., a binding `Y := X + 1`
+    leaves the `IVar` for `Y` untouched), and it does not try to
+    recognise `Plus`/`Succ` chains that happen to be closed.
+
+    This is deliberate. Deep zonking would duplicate the work of
+    `liftConstraint` (§4.2): both passes would have to recognise
+    arithmetic structure inside `TermNode`s and translate it. Keeping
+    `zonkPresburger` *structural* (cheap, syntactic) and
+    `liftConstraint` *semantic* (recognises arithmetic shape) leaves a
+    single source of truth for "what counts as Presburger" — the
+    lifting pass. A variable bound to a non-literal closed shape is
+    invariably tied to an `EvaluationConstraint` that has already been
+    promoted to an `ArithmeticConstraint` in C; the solver therefore
+    sees that information through Φ, not through the formula `φ`.
 
 2.3.6 Implicit consistency pruning
 
@@ -608,42 +734,120 @@ Chapter 4. Implementation Notes (informative)
 4.2 Presburger Bridge
 --------------------------------------------------------------------------------
 
+4.2.1 Variable identity across two worlds
+
+`Calc.Presburger.Internal` indexes variables by `MyVar` (a positive
+integer). `Hol.BETA1` indexes variables by `LogicVar`. Every BETA1
+formula therefore carries a side map that records which outer
+`LogicVar` each free `MyVar` stands for; bound `MyVar`s (under
+`AllF`/`ExsF`) are not in the map.
+
+  - Inside one parsed literal, the parser allocates `MyVar`s densely
+    starting from `theMinNumOfMyVar` and emits a `Map MyVar LogicVar`
+    for the free ones.
+  - Inside one `liftConstraint` call on an `ArithmeticConstraint`
+    from C, the lifter does the same — but its `MyVar`s are
+    *unrelated* to those of any other formula.
+  - At evaluation time (§2.3.5, Step 3), the runtime allocates a
+    *shared* `Map LogicVar MyVar`, and renumbers every formula it
+    plans to hand to the solver via this shared map. After
+    renumbering, the solver sees a single coherent variable space.
+
+This indirection is the price of keeping `Calc.Presburger.Internal`
+LogicVar-agnostic.
+
+4.2.2 Module interface
+
 `Arith.hs` exposes the following surface.
 
-  parsePresburger :: SLoc -> String -> Map LargeId LogicVar -> Either ErrMsg (PresburgerFormulaRep, Map LargeId LogicVar)
+  parsePresburger
+    :: SLoc
+    -> String
+    -> Map LargeId LogicVar
+    -> Either ErrMsg ParseResult
 
-  zonkPresburger :: (LogicVar -> Maybe TermNode) -> PresburgerFormulaRep -> PresburgerFormulaRep
+  data ParseResult = ParseResult
+    { _formula       :: PresburgerFormulaRep
+    , _freeOfFormula :: Map MyVar LogicVar
+    , _updatedEnv    :: Map LargeId LogicVar
+    }
 
-  liftConstraint :: TermNode -> Maybe MyPresburgerFormula
+  zonkPresburger
+    :: (LogicVar -> Maybe TermNode)
+    -> Map MyVar LogicVar
+    -> PresburgerFormulaRep
+    -> PresburgerFormulaRep
 
-  entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
+  liftConstraint
+    :: TermNode
+    -> Maybe LiftResult
 
-Roles.
+  data LiftResult = LiftResult
+    { _liftedFormula :: PresburgerFormulaRep
+    , _freeOfLifted  :: Map MyVar LogicVar
+    }
+
+  renumberFormula
+    :: Map LogicVar MyVar
+    -> Map MyVar LogicVar
+    -> PresburgerFormulaRep
+    -> PresburgerFormulaRep
+
+  entails
+    :: [MyPresburgerFormula]
+    -> MyPresburgerFormula
+    -> Bool
+
+4.2.3 Roles
 
   parsePresburger sloc src env
-      Reads `src` (carrying `sloc` for error location) and produces the parsed formula together with the *updated* identifier→`LogicVar` map.
-      Any free identifier missing from `env` is added as a fresh `LV_Named`. Used at desugaring (§2.3.3, Stage 3).
+      Reads `src` (carrying `sloc` for error location) using the
+      grammar of §2.3.2. Produces the parsed formula, the
+      MyVar→LogicVar map for its free variables, and the *updated*
+      `LargeId`→`LogicVar` map (any free name not already in `env` is
+      added as a fresh `LV_Named`). Used at desugaring
+      (§2.3.3, Stage 3).
 
-  zonkPresburger θ rep
-      Applies the substitution-as-function θ to every free identifier in `rep`, replacing closed-naturals with the corresponding `Zero`/`Succ` chain and leaving everything else unchanged.
-      Used at runtime (§2.3.5, Step 1).
+  zonkPresburger θ freeOf rep
+      Walks `rep`. For each `IVar v` such that `freeOf(v) = Just lv`
+      and `θ(lv)` reduces to a closed natural-number literal `n`,
+      replaces `IVar v` by `Succ`-applied-`n`-times-to-`Zero`. All
+      other `IVar`s (bound, or unbound-but-non-literal) are left as
+      they are. Used at runtime (§2.3.5, Step 1). See the Remark in
+      §2.3.5 for why zonking is intentionally shallow.
 
   liftConstraint t
-      Attempts to lift a `TermNode`-shaped arithmetic constraint (e.g. `EqnF t1 t2`) into `MyPresburgerFormula`.
-      Returns `Nothing` for constraints outside the Presburger fragment (e.g., a product of two unbound variables).
-      Used at runtime (§2.3.5, Step 2).
+      Tries to interpret an `ArithmeticConstraint`-shaped `TermNode`
+      as a `PresburgerFormulaRep`. Returns `Nothing` for constraints
+      outside the linear-integer fragment (e.g., a product of two
+      unbound variables). On `Just`, returns the formula along with
+      its own `Map MyVar LogicVar`. Used at runtime (§2.3.5, Step 2).
+
+  renumberFormula shared local rep
+      Translates `rep` from its local `MyVar` numbering into the
+      shared numbering recorded in `shared`, using `local` to recover
+      the source `LogicVar` of each free `MyVar`. Bound `MyVar`s
+      under `AllF`/`ExsF` are α-renamed to be fresh and disjoint from
+      the shared range. Used at runtime (§2.3.5, Step 3).
 
   entails Φ φ
-      Implemented as the unsatisfiability check on `Φ ∧ ¬φ` provided by `Calc.Presburger.Internal`. BETA1 makes no assumption about the solver's internals beyond decidability.
+      The arguments are `MyPresburgerFormula`s (`PresburgerFormula
+      PresburgerTerm`) over a *shared* `MyVar` numbering — i.e., the
+      caller has already run them through `renumberFormula` and
+      `compilePresburgerTerm`. Implemented as the unsatisfiability
+      check on `Φ ∧ ¬φ` provided by `Calc.Presburger.Internal`.
+      BETA1 makes no assumption about the solver's internals beyond
+      decidability.
 
-Soundness of best-effort lifting.
-    Dropping a conjunct from Φ can only weaken the antecedent of
-    `Φ ⊨ φ`. A weaker antecedent makes fewer formulas entailed, never
-    more, so `entails` never erroneously returns `True`. For the
-    implicit consistency check (`entails Φ False`) this means: if
-    BETA1 says "Φ is unsat", it really is unsat; if BETA1 says "Φ is
-    consistent", we only know that the *lifted portion* is consistent,
-    but that is sufficient to keep proof search sound.
+4.2.4 Soundness of best-effort lifting
+
+Dropping a conjunct from Φ can only weaken the antecedent of
+`Φ ⊨ φ`. A weaker antecedent makes fewer formulas entailed, never
+more, so `entails` never erroneously returns `True`. For the implicit
+consistency check (`entails Φ False`) this means: if BETA1 says "Φ
+is unsat", it really is unsat; if BETA1 says "Φ is consistent", we
+only know that the *lifted portion* is consistent, but that is
+sufficient to keep proof search sound.
 
 
 4.3 Named-Binder Display
