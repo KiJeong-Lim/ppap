@@ -1019,6 +1019,17 @@ and for pretty printing.
 3.5 Display-Name Cache
 --------------------------------------------------------------------------------
 
+Rationale.
+    A simpler alternative was considered: always print logic
+    variables under their raw internal identity (e.g. `?V_42`) and
+    require the user to type `:assign ?V_42 := ...`. This needs no
+    cache but trades human readability for implementation simplicity.
+    BETA1 rejects this in favour of friendly names because the
+    `LoL` integration of §0.1.3 will surface variables to users as
+    tactic-style hypothesis names (`H1`, `H2`, `Goal`, etc.), and
+    `LoL` needs the debugger primitive to support that naming
+    convention from day one.
+
 The hybrid name-hint representation of §2.8 means a logic variable
 may be *shown* as `X1` while internally identified as some `LV_Unique
 n`. The debugger maintains a bidirectional cache
@@ -1055,20 +1066,72 @@ Chapter 4. Implementation Notes (informative)
 4.1 Module Layout
 --------------------------------------------------------------------------------
 
+4.1.1 Source organisation: BETA1 is a *fork*, not a layer.
+
+`Hol.BETA1` does NOT import any module from `Hol.ALPHA2`. The
+contents of `src/Hol/ALPHA2/` are copied verbatim into
+`src/Hol/BETA1/` and then modified in place. This is a deliberate
+choice — it freezes ALPHA2 against further drift, lets BETA1 evolve
+without negotiating with ALPHA2's invariants, and makes the diff
+between the two versions trivially inspectable with `diff -r`.
+
+The cost is duplication. Once BETA1 stabilises, the user may decide
+to retire ALPHA2; until then, both live side-by-side.
+
+4.1.2 The modules
+
   src/Hol/BETA1/
-    Header.hs        -- ALPHA2/Header + NotationEnv, Fixity, NameHint
-    Constant.hs      -- essentially unchanged
-    TermNode.hs      -- NLam carries a name hint; ViewNode/printer take NotationEnv as input
-    PlanHolLexer.hs  -- + `infixl`/`infixr`/`infix`/`prefix`/`abbrev`/`notation`/`presburger` keywords
-    PlanHolParser.hs -- dynamic operator table; abbreviation declarations
-    Desugarer.hs     -- abbreviation expansion (type & term level)
-    TypeChecker.hs   -- mostly unchanged; sees expanded forms
-    HOPU.hs          -- mostly unchanged
-    Runtime.hs       -- `presburger` predicate dispatch; interactive LVar instantiation
-    Compiler.hs      -- mostly unchanged
-    Arith.hs         -- ★ new: bridge between TermNode strings and Calc.Presburger.Internal formulas
-    Notation.hs      -- ★ new: NotationEnv + abbreviation folding
-    Main.hs          -- replaces ALPHA2's main; same external behaviour
+    Header.hs        -- copied from ALPHA2/Header.hs; extended with
+                        NotationEnv, Fixity, NameHint, FoldEntry, and
+                        the new constructor NPresburgerCheck on
+                        TermNode (§2.3.3).
+    Constant.hs      -- copied from ALPHA2/Constant.hs; unchanged.
+    TermNode.hs      -- copied; NLam now carries a `Maybe SmallId`
+                        name hint (§2.8). ViewNode and the pretty
+                        printer take a NotationDB as input rather
+                        than consulting a hard-coded table (§2.6).
+    PlanHolLexer.hs  -- copied; reserved words extended with
+                        `infixl`/`infixr`/`infix`/`prefix`/`abbrev`/
+                        `notation`/`presburger`. Block-comment
+                        nesting per Q1.
+    PlanHolParser.hs -- copied; supports dynamic operator table,
+                        abbreviation declarations (§1.6), and the
+                        `presburger <string-literal>` body form
+                        (§2.3.2). Emits a raw `RPresburger` node.
+    Desugarer.hs     -- copied; expands abbreviations/notations
+                        (§1.6.3), parses the Presburger literal
+                        through `Arith.parsePresburger`, threads the
+                        clause-level `Map LargeId LogicVar` through
+                        every site that may introduce a logic
+                        variable.
+    TypeChecker.hs   -- copied; sees only post-expansion forms;
+                        wires through `Arith` and `Notation` for
+                        error-message folding (§2.7.1 (T)).
+    HOPU.hs          -- copied; unchanged. Pattern fragment rules
+                        also used by §2.7.3.
+    Runtime.hs       -- copied; implements the `presburger` special
+                        form (§2.3.5), the new consistency-check
+                        sites (T1)-(T4) (§2.3.6), and the snapshot/
+                        restore + debugger command API (§4.4).
+    Compiler.hs      -- copied; unchanged structurally.
+    Main.hs          -- copied; the REPL is now a thin wrapper over
+                        the `cmd*` functions in `Runtime.hs`.
+    Arith.hs         -- ★ new module (no ALPHA2 counterpart);
+                        bridges `TermNode` and
+                        `Calc.Presburger.Internal`. See §4.2.
+    Notation.hs      -- ★ new module; holds the unified notation/
+                        fixity/abbrev database. See §4.3.
+    Debugger.hs      -- ★ new module; holds the display-name cache
+                        and the `:assign`/`:show`/`:constraints`
+                        command implementations. See §4.5 (and
+                        §3.5 for the cache itself).
+
+The "copied" modules above start as byte-for-byte copies of their
+ALPHA2 counterparts at the point where BETA1 work begins; commit
+history then diverges. *Where the user's directive in §0.1.4 (Coq
+on λProlog) conflicts with the inherited ALPHA2 pattern, the
+inherited code is discarded* — copy provides a starting point, not
+a constraint.
 
 
 4.2 Presburger Bridge
@@ -1190,21 +1253,240 @@ only know that the *lifted portion* is consistent, but that is
 sufficient to keep proof search sound.
 
 
-4.3 Named-Binder Display
+4.3 Notation and Abbreviation Module
 --------------------------------------------------------------------------------
 
-The hybrid representation has one subtle invariant: the name hint must either be (i) unique among enclosing binders or (ii) absent.
-Whenever the desugarer introduces a binder whose hint would shadow an enclosing one,
-it either silently α-renames the *fresh* binder's hint (preferred) or drops it to `Nothing`.
-The runtime never has to consult hints for correctness, so a missing hint is always safe.
+`Notation.hs` is BETA1-original (no ALPHA2 counterpart). The design
+follows §0.1.4 — Coq is the model — and consults ALPHA2's existing
+patterns (e.g., the `checkOper` precedence table) only where they
+happen to suit.
+
+4.3.1 Public surface
+
+  data NotationDB                            -- opaque
+
+  initial      :: NotationDB
+      -- Empty + seeded with §1.5's fixity defaults and §1.6.5's
+      -- built-in abbreviations.
+
+  addFixity    :: Constant -> Fixity -> Precedence -> NotationDB -> NotationDB
+  addAbbrev    :: SmallId  -> [LargeId] -> MonoType -> NotationDB -> NotationDB
+  addNotation  :: SmallId  -> [LargeId] -> TermNode -> NotationDB -> NotationDB
+      -- All three append at the *end* of the declaration order, so
+      -- they win under the "last declared wins" rule of §2.7.4.
+
+  lookupFixity :: Constant -> NotationDB -> Maybe (Fixity, Precedence)
+      -- Used by the parser (§1.5) and pretty printer (§2.6).
+
+  foldType     :: NotationDB -> MonoType  -> ViewNode
+  foldTerm     :: NotationDB -> TermNode  -> ViewNode
+      -- Folding pass of §2.7. Walks bottom-up, tries each entry in
+      -- reverse declaration order.
+
+4.3.2 Internal layout
+
+Internally the module holds:
+
+  - `Map Constant (Fixity, Precedence)` for fixity (O(log n) lookup).
+  - Two `[FoldEntry]`s (one Type-level, one Term-level), each ordered
+    by `_seq` decreasing, for fold attempts.
+
+This split is not a public commitment; a future BETA may switch to a
+trie or term-index keyed by RHS head if folding becomes a hot path.
+
+4.3.3 Why one module rather than two
+
+The parser needs `Fixity`/`Precedence`; the pretty printer needs the
+fold entries. Coq keeps a single global notation database for the
+same reason — splitting forces two synchronised tables. BETA1
+follows.
 
 
-4.4 Test Compatibility
+4.4 Runtime Transaction and Debugger API
 --------------------------------------------------------------------------------
 
-  - For every file in `Example/*.hol` the answer set produced by BETA1 must be identical to the answer set produced by ALPHA2.
-  Differences in pretty-printed form are tolerated only insofar as they reflect the user's notation/abbreviation declarations (§2.6, §2.7).
-  - `einstein.sh`, `fi.sh`, `lbeta.sh` must exit 0 with byte-identical answer strings modulo whitespace and notation folding.
+`Runtime.hs` exposes a public Haskell API. Every REPL command
+corresponds to one callable function; the REPL is glue.
+
+4.4.1 The transaction primitive
+
+  data Snapshot                              -- opaque
+
+  snapshot :: Runtime Snapshot
+  restore  :: Snapshot -> Runtime ()
+
+A `Snapshot` captures everything `:assign`'s transactional guarantee
+(§3.2.3) needs: the substitution θ, the constraint multiset C, the
+goal stack, the HOPU disagreement set, and the display-name cache
+(§3.5). It lives only in the Haskell heap — there is no
+serialisation format.
+
+`snapshot` reads state without modifying it; `restore` overwrites
+the current state. The pair is the transaction primitive used
+internally by `cmdAssign`.
+
+4.4.2 The command API
+
+Every interactive command of §3 corresponds to one Haskell-callable
+function in `Runtime.hs`.
+
+  cmdDebugToggle  :: Runtime ()
+      -- §3.1: toggles the debug-mode bit.
+
+  cmdAssign       :: SmallId          -- display name of the target
+                  -> TermNode         -- already-parsed RHS
+                  -> Runtime (Either ErrMsg ())
+      -- §3.2: takes a snapshot, runs the five preconditions of
+      -- §3.2.2 in order, restores on failure, commits on success.
+
+  cmdShow         :: SmallId
+                  -> Runtime String
+      -- §3.3: formats and returns the value of one variable.
+
+  cmdConstraints  :: Runtime [Constraint]
+      -- §3.3: returns C; the REPL formats it for stdout.
+
+  cmdQuit         :: Runtime ()
+      -- §3.1: clears the runtime state.
+
+Notes.
+
+  - `cmdAssign` accepts a *parsed* `TermNode`, not a raw string. The
+    REPL parses first; library callers (notably the future `LoL`
+    proof assistant) may construct `TermNode`s directly without
+    round-tripping through surface syntax.
+  - `cmdShow` and `cmdConstraints` are read-only.
+  - `cmdAssign` is the only command that takes a snapshot. The
+    others either are read-only or change only the debug-mode bit.
+
+4.4.3 Why every command is exposed
+
+`LoL` will drive proof search programmatically — construct tactics,
+explore branches, undo failures. A CLI-only wrapper would force
+`LoL` to fork-exec the REPL and scrape its stdout, which is fragile
+and slow. Exposing each command as a Haskell function makes `LoL` a
+*library client*, not a process client.
+
+4.4.4 Where the display-name cache lives
+
+The cache of §3.5 is held in `Debugger.hs`, not in `Runtime.hs`. The
+runtime kernel is correct without any awareness of display naming;
+the cache is concerned only with UX continuity for an interactive
+session. Keeping it in a separate module preserves the property
+that `Runtime.hs` can be re-used (by `LoL` or by future versions)
+without dragging in any string-naming policy.
+
+`Debugger.hs` exports:
+
+  data NameCache                             -- opaque
+
+  initialCache  :: NameCache
+  recordRename  :: LogicVar -> SmallId -> NameCache -> NameCache
+  toDisplay     :: LogicVar -> NameCache -> Maybe SmallId
+  fromDisplay   :: SmallId  -> NameCache -> Maybe LogicVar
+
+The viewer (in `TermNode.hs`'s `ViewNode` construction) calls
+`recordRename` whenever it commits a display name; `cmdAssign` and
+`cmdShow` use `fromDisplay` to resolve user-typed identifiers back
+to `LogicVar`s. The cache is part of `Snapshot` (§4.4.1) so that
+`:assign`'s rollback restores it along with the rest of the state
+— with the policy override noted in §3.5: even on rollback, *new*
+cache entries added during the failed attempt are kept, so that the
+user does not see names jitter between two consecutive prompts.
+
+
+4.5 Named-Binder Display
+--------------------------------------------------------------------------------
+
+The hybrid representation has one subtle invariant: the name hint
+must either be (i) unique among enclosing binders or (ii) absent.
+Whenever the desugarer introduces a binder whose hint would shadow
+an enclosing one, it either silently α-renames the *fresh* binder's
+hint (preferred) or drops it to `Nothing`. The runtime never has to
+consult hints for correctness, so a missing hint is always safe.
+
+
+4.6 Test Compatibility and the `Test/` Directory
+--------------------------------------------------------------------------------
+
+4.6.1 ALPHA2 parity
+
+  - For every file in `Example/*.hol` the answer set produced by
+    BETA1 must be identical to the answer set produced by ALPHA2.
+    Differences in pretty-printed form are tolerated only insofar as
+    they reflect the user's notation/abbreviation declarations
+    (§2.6, §2.7).
+  - `einstein.sh`, `fi.sh`, `lbeta.sh` must exit 0 with byte-
+    identical answer strings modulo whitespace and notation folding.
+
+4.6.2 BETA1-only tests
+
+A new top-level directory `Test/` (sibling to `Example/`) holds
+test programs that exercise BETA1's additions and are not expected
+to run under ALPHA2.
+
+  Test/
+    presburger/
+      basic.hol           -- `presburger "X > 5"`, `X is 3, ...`,
+                             `?- X > 5, X < 3.` (T2 firing)
+      quantified.hol      -- `presburger "exists Y. Y + Y = X"`
+      consistency.hol     -- implicit `presburger "_|_"` pruning
+                             through a multi-clause search
+    notation/
+      fixity.hol          -- user-declared infixl/infixr/infix/prefix
+      abbrev.hol          -- type-level abbrev + display folding
+      notation.hol        -- term-level notation with metavars
+      override.hol        -- shadowing the built-in `string`
+    debug/
+      assign_ok.hol       -- successful :assign followed by `:q`
+      assign_fail.hol     -- :assign that violates each of (1)-(5);
+                             confirms transactional rollback
+      show_constraints.hol-- :show, :constraints output stability
+    kind/
+      higher_order_kind_rejected.hol  -- `kind foo ((type -> type) -> type).`
+                                          must be rejected at desugar
+    smoke.sh              -- runs every `Test/**/*.hol` through
+                             BETA1 with a scripted answer-set
+                             expectation file alongside.
+
+Each `*.hol` file has a sibling `*.expected.txt` documenting the
+exact expected output. The smoke runner diffs runtime output against
+the expected file; any mismatch fails the suite.
+
+4.6.3 No changes to `Example/`
+
+The existing `Example/*.hol` files are *not* touched. ALPHA2 keeps
+them as its acceptance set; BETA1 inherits that obligation through
+the parity rule of §4.6.1.
+
+
+4.7 Cabal File Notes (out of edit scope)
+--------------------------------------------------------------------------------
+
+`ppap.cabal` is outside the per-document edit scope. The following
+changes are intended; the user applies them manually.
+
+  (1) Register every `Hol.BETA1.*` module from §4.1.2 in the library
+      component's module list.
+  (2) Choose one of two activation modes.
+
+      (a) *Separate executable.* Add a new executable `ppap-beta1`
+          whose `main-is` resolves to `Hol.BETA1.Main.main`. The
+          existing `ppap` executable continues to run ALPHA2.
+          *Recommended* — matches the copy-paste model (§4.1.1)
+          with no cross-version branches at runtime.
+
+      (b) *Single executable with a flag.* Keep one `ppap`
+          executable; have `Hol.Main.main` switch on a command-line
+          flag (e.g., `--beta1`) or an environment variable
+          (`HOL_VERSION=BETA1`). Useful if the user wants to keep
+          one binary, accepting one branch at startup.
+
+  (3) Add a `test-suite` stanza for the `Test/` tree of §4.6.2, if
+      the test runner is to be cabal-driven. Otherwise the bash
+      script `Test/smoke.sh` runs independently.
+
+The user retains the choice.
 
 
 ================================================================================
