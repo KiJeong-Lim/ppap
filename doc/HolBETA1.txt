@@ -7,8 +7,8 @@ This document specifies the syntax and semantics of `Hol BETA1`, a dialect of λ
   (A) Original λProlog-style user-defined notation (`infixl`/`infixr`/`infix`/`prefix` with precedences), with runtime pretty-printing that preserves the user's notation.
   (B) An abbreviation mechanism, modelled after Coq's `Notation`/abbreviation facility (e.g. `string` as a display-time abbreviation for `list char`).
   (C) A `presburger <string-literal>` special form, presented to users as the predicate `presburger : string -> o`, that parses its argument at compile time as a Presburger formula and at runtime decides entailment from the arithmetic constraints accumulated on the current proof branch. The solver is the one in `src/Calc/Presburger/Internal.hs`.
-  (D) (Open / experimental) A hybrid representation that stores de Bruijn indices internally while retaining user-supplied binder names, à la Coq.
-  (E) (Open / experimental) Interactive instantiation of flexible (logic) variables during a debugging session — the foundational primitive for tactic-style proof construction in the future `LoL` project.
+  (D) A hybrid representation that stores de Bruijn indices internally while retaining user-supplied binder names, à la Coq.
+  (E) Interactive instantiation of flexible (logic) variables during a debugging session — the foundational primitive for tactic-style proof construction in the future `LoL` project.
 
 Compatibility minimum: the test scripts
 
@@ -826,6 +826,8 @@ underlying `TermNode` stored in the runtime state. Two consequences:
 2.8 Names vs. de Bruijn (Hybrid Representation)
 --------------------------------------------------------------------------------
 
+2.8.1 Storage
+
 For binders, BETA1 attaches an optional name hint to each `NLam`:
 
   data TermNode
@@ -833,13 +835,57 @@ For binders, BETA1 attaches an optional name hint to each `NLam`:
       | NLam { _hint :: Maybe SmallId, _body :: TermNode }
       | ...
 
-Hints flow through the desugarer and through suspensions, but they do not affect α-equivalence, unification, or reduction. They serve three purposes.
+Two `TermNode`s that agree on every constructor except the `_hint`
+fields of one or more `NLam`s are equal under every kernel operation
+(α-equivalence, β-reduction, unification, HOPU). Hints flow through
+the desugarer and through suspensions; the runtime never reads them.
 
-  1. *Pretty printing*: instead of `W_3\ W_2\ ...`, the viewer can render `X\ Y\ ...` whenever the original hints are non-clashing and non-shadowing. When a clash would arise, the viewer suffixes a digit.
-  2. *Diagnostics*: HOPU disagreement reports cite the original names where possible.
-  3. *Future tactic UI* (`LoL` integration): a debugger session that asks "instantiate ?V to what?" can present the variable in the user's own vocabulary.
+2.8.2 Where hints come from
 
-Hints are deliberately *advisory* — the runtime is correct iff it would be correct after erasing every `_hint`.
+Hints are introduced at three sites.
+
+  (S1) Surface binders. Every `x \ t`, `pi x \ t`, and `sigma x \ t`
+       in the source becomes an `NLam { _hint = Just x, ... }` under
+       the desugarer's standard λ-translation. The quantifier
+       wrappers (`LO_pi`, `LO_sigma`) are applied on top of the
+       resulting `NLam`. If `x` would shadow an enclosing binder's
+       stored hint, the desugarer freshens `x` via §4.5.2 before
+       storing.
+
+  (S2) Notation/abbreviation expansion (§1.6.3). Templates may
+       themselves contain binders; an expansion copies the template's
+       binders' hints verbatim, subject to the same shadowing rule
+       as (S1). No new hint identity is invented at this stage.
+
+  (S3) HOPU pattern instantiation. The HOPU module (inherited from
+       ALPHA2 unchanged, §4.1.2) does not propagate hints: binders
+       it introduces carry `_hint = Nothing`. The viewer's
+       freshening algorithm (§4.5.2) assigns a display name at print
+       time. A future revision may inherit hints from the applicand
+       list to improve debugger UX; that is out of scope for BETA1.
+
+2.8.3 Where hints are consumed
+
+  1. *Pretty printing* (§2.6, §4.5). Instead of `W_3\ W_2\ ...`, the
+     viewer renders `X\ Y\ ...` whenever the stored hints can be
+     shown without clash; otherwise the viewer applies the
+     freshening rule of §4.5.2.
+  2. *Diagnostics*. HOPU disagreement reports cite the original
+     hint where one exists.
+  3. *Debugger UI* (§3, §3.5). The hint forms the starting display
+     name of a binder; if the viewer is forced to rename, the
+     `NameCache` records the rename for `:assign`/`:show` round-
+     tripping (but only for *logic variables* — see §4.5.4).
+
+2.8.4 Hints are advisory (formal)
+
+Let `eraseHints :: TermNode -> TermNode` replace every `NLam {_hint
+= h, _body = b}` by `NLam {_hint = Nothing, _body = b}`. Then for
+every kernel function `f` whose codomain lies outside the display
+path (`Bool`, `TermNode`, `[Constraint]`, `Substitution`, or any
+composition thereof), `f t = f (eraseHints t)`. The display path
+(§2.6 + §2.7 folding + §4.5 freshening) is the only consumer of
+hint identity.
 
 
 ================================================================================
@@ -1399,21 +1445,101 @@ user does not see names jitter between two consecutive prompts.
 4.5 Named-Binder Display
 --------------------------------------------------------------------------------
 
-The hybrid representation has one subtle invariant: the name hint
-must either be (i) unique among enclosing binders or (ii) absent.
-Whenever the desugarer introduces a binder whose hint would shadow
-an enclosing one, it either silently α-renames the *fresh* binder's
-hint (preferred) or drops it to `Nothing`. The runtime never has to
-consult hints for correctness, so a missing hint is always safe.
+4.5.1 The desugarer's invariant
 
-Division of responsibility with §2.8. The desugarer described here
-handles *intra-term* shadowing — two binders inside the same closed
-term competing for the same hint. The viewer of §2.8 handles only
-the residual case where a free logic variable already in scope at
-print time collides with a local hint; the digit-suffix rule of §2.8
-is applied only to those cases. By the desugarer's invariant above,
-the viewer never sees two enclosing binders with the same non-empty
-hint, so its rename rule is unambiguous.
+At every binder inside a closed (top-level) term, the stored name
+hint must either be
+
+  (i)  unique among the hints of binders enclosing it at that
+       position, or
+  (ii) absent (`Nothing`).
+
+The desugarer enforces this on every `NLam` it constructs from a
+surface `x \ t`, sketched below.
+
+  desugarLam :: SmallId -> [SmallId] -> SurfaceTerm -> TermNode
+  desugarLam sourceHint live body =
+    let h' = if sourceHint `notElem` live
+             then sourceHint
+             else freshen sourceHint live
+        body' = desugarTerm (sourceHint : live) body
+                           -- the *source* name binds inside `body`;
+                           -- only the stored hint changes
+    in NLam (Just h') body'
+
+The `freshen` rule of §4.5.2 always returns a fresh name (the digit
+pool is infinite), so the case analysis is total. As a defensive
+fallback the implementation may store `Nothing`; a missing hint is
+always safe.
+
+Notation/abbreviation expansion (§1.6.3) reuses `desugarLam` when
+materialising an `NLam` from a template body. HOPU-introduced
+binders (§2.8.2 (S3)) bypass this stage entirely and rely on the
+viewer.
+
+4.5.2 Unique-suffix policy
+
+The desugarer (§4.5.1) and the viewer (§4.5.3 (a)/(b)) share the
+freshening algorithm:
+
+  freshen :: SmallId -> [SmallId] -> SmallId
+  freshen h live =
+    let base = stripTrailingDigits h
+    in head [ candidate
+            | i <- [1 ..]
+            , let candidate = base ++ show i
+            , candidate `notElem` live
+            ]
+
+That is: strip any trailing digit run from `h` so that
+`freshen "X1" ["X1"]` returns `"X2"`, not `"X11"`; then try
+`base1`, `base2`, ... in order, returning the first one not in
+`live`. If `h` had no trailing digit, the first attempt is
+`h ++ "1"`. The function is total and deterministic.
+
+This matches Coq's `Namegen.next_ident_away` policy.
+
+4.5.3 The viewer's residual cases
+
+By the desugarer's invariant of §4.5.1, the viewer never observes
+two enclosing binders with the same non-empty stored hint inside
+one closed term. Two residual cases remain.
+
+  (a) `NLam` with `_hint = Nothing`. Typically an HOPU-introduced
+      binder (§2.8.2 (S3)). The viewer invents a display name via
+      `freshen base live` where `base` is an implementation-chosen
+      default (recommended: `"x"`).
+
+  (b) A stored hint that, while unique among the binders, collides
+      with a *free logic variable's* display name already in scope
+      at print time (read out of `NameCache`, §3.5). The viewer
+      freshens against the union
+
+         live = enclosingBinderDisplayNames
+              ∪ freeLogicVarDisplayNames
+
+      and prints the freshened name.
+
+Case (b) is the *only* situation in which the viewer's chosen
+display name differs from the stored hint. Logging this rename is
+unnecessary because the rename is for a binder, not for a logic
+variable; binder names are scope-local and do not need round-
+tripping (see §4.5.4).
+
+4.5.4 Interaction with the NameCache
+
+The `NameCache` of §3.5 indexes *logic variables*, not lambda
+binders. Lambda-binder display names are scope-local and have no
+global identity; they are recomputed on every print pass and may
+differ from prompt to prompt when the surrounding term changes
+shape. Logic-variable display names, in contrast, are persisted in
+the cache so that the same `LogicVar` shows under the same
+`SmallId` across stepping and `:assign` rounds.
+
+Consequence for `:assign`: the displayed name on the left-hand side
+of `:assign d := t` is always a *logic-variable* display name (a
+key of `NameCache._fromDisplay`); it is never a lambda-binder
+display name. Lambda binders are not addressable by `:assign`.
 
 
 4.6 Test Compatibility and the `Test/` Directory
