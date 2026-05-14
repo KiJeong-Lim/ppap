@@ -175,7 +175,7 @@ level, mirroring standard λProlog practice.
 
 Internally each `x \ t` is stored as a de Bruijn index together with the name hint `x`.
 The name hint is used only for display and for diagnostic messages; α-equivalence is decided on the de Bruijn form.
-See §3.3 for the hybrid representation and §D (Open Questions) for issues around capture-free display.
+See §2.8 for the hybrid representation and Appendix A (Open Questions) for issues around capture-free display.
 
 
 1.4 Facts and Clauses
@@ -244,7 +244,7 @@ The built-in fixity table (the BETA1 defaults, user-redefinable):
   infix   /      7
 
 This table is identical to `checkOper` in `src/Hol/ALPHA2/TermNode.hs`;
-the difference is that BETA1 carries it as data (`NotationEnv`) rather than hard-coded in the pretty printer.
+the difference is that BETA1 carries it as data (inside the `NotationDB` of §4.3) rather than hard-coded in the pretty printer.
 
 
 1.6 Abbreviations and Notations
@@ -629,9 +629,11 @@ expressed in terms of the user-visible primitive.
 
 ALPHA2 already performs a degenerate version of this check (lines 295
 and 322 of `Hol/ALPHA2/Runtime.hs`) using `evaluateB` on fully-closed
-arithmetic atoms. BETA1 replaces the `evaluateB`-based predicate by
-`entails Φ False` from §4.2, and reuses the same insertion sites with
-two additions.
+arithmetic atoms. BETA1 keeps `evaluateB` as a cheap pre-filter (see
+the "Two-tier evaluation" note below) and *supplements* it with
+`entails Φ False` from §4.2 to cover atoms that `evaluateB` cannot
+decide. The pruning decision is the disjunction of the two; the same
+insertion sites are reused with the two additions below.
 
 The check fires at the following four points, and no others.
 
@@ -736,10 +738,10 @@ The printer must never silently expose internal de Bruijn indices, `NApp` chains
 Mechanism.
 
   - The parser attaches `Maybe (Fixity, Precedence)` to every data constant it introduces.
-  - `constructViewer` (currently in `Hol/ALPHA2/TermNode.hs`) is rewritten to consult a `NotationEnv :: Map Constant (Fixity, Precedence)` carried alongside `KindEnv`/`TypeEnv`, instead of the hard-coded `checkOper`.
-  - Built-ins are seeded into `NotationEnv` at startup (the table of §1.5).
+  - `constructViewer` (currently in `Hol/ALPHA2/TermNode.hs`) is rewritten to consult the `NotationDB` of §4.3 carried alongside `KindEnv`/`TypeEnv`, instead of the hard-coded `checkOper`. `NotationDB` exposes a `lookupFixity :: Constant -> Maybe (Fixity, Precedence)` view that subsumes what would otherwise be a standalone fixity map.
+  - Built-ins are seeded into the `NotationDB` at startup (the table of §1.5).
 
-The public `Show TermNode` instance keeps its signature but is now defined in terms of the configured `NotationEnv`.
+The public `Show TermNode` instance keeps its signature but is now defined in terms of the configured `NotationDB`.
 
 
 2.7 Abbreviation and Notation Folding
@@ -869,10 +871,10 @@ The right-hand side `t` is parsed by *the same parser as ordinary
 clause bodies*. There is no debugger-specific sub-language: every
 construct accepted in clause position — including custom-notation
 operators, abbreviations, `pi`/`sigma`, list sugar, and so on — is
-accepted here. The parser uses the live `NotationEnv` and abbreviation
-table active at the *main file's* evaluation point (see §3.4 for the
-notion of "main file"; this is also forward-compatible with the
-import system of Q5).
+accepted here. The parser uses the live `NotationDB` (§4.3) active at
+the *main file's* evaluation point (see §3.4 for the notion of
+"main file"; this is also forward-compatible with the import system
+of Q5).
 
 The variable name on the left is the *display name* shown by the
 debugger at the current breakpoint, i.e., the name that came out of
@@ -999,9 +1001,8 @@ In debug mode the interpreter prints, before each transition:
   - the binding substitution restricted to user-visible names,
   - the source location (SLoc) of the goal, where known.
 
-The `NotationEnv` and abbreviation table are *not* re-dumped each
-step (they would be noise); `:constraints` and `:show` use them
-silently.
+The `NotationDB` is *not* re-dumped each step (it would be noise);
+`:constraints` and `:show` consult it silently.
 
 Environment notion: "the main file". The Hol REPL is launched with a
 file path:
@@ -1082,7 +1083,7 @@ to retire ALPHA2; until then, both live side-by-side.
 
   src/Hol/BETA1/
     Header.hs        -- copied from ALPHA2/Header.hs; extended with
-                        NotationEnv, Fixity, NameHint, FoldEntry, and
+                        NotationDB, Fixity, NameHint, FoldEntry, and
                         the new constructor NPresburgerCheck on
                         TermNode (§2.3.3).
     Constant.hs      -- copied from ALPHA2/Constant.hs; unchanged.
@@ -1123,7 +1124,7 @@ to retire ALPHA2; until then, both live side-by-side.
                         fixity/abbrev database. See §4.3.
     Debugger.hs      -- ★ new module; holds the display-name cache
                         and the `:assign`/`:show`/`:constraints`
-                        command implementations. See §4.5 (and
+                        command implementations. See §4.4.4 (and
                         §3.5 for the cache itself).
 
 The "copied" modules above start as byte-for-byte copies of their
@@ -1441,7 +1442,7 @@ to run under ALPHA2.
       assign_ok.hol       -- successful :assign followed by `:q`
       assign_fail.hol     -- :assign that violates each of (1)-(5);
                              confirms transactional rollback
-      show_constraints.hol-- :show, :constraints output stability
+      show_constraints.hol  -- :show, :constraints output stability
     kind/
       higher_order_kind_rejected.hol  -- `kind foo ((type -> type) -> type).`
                                           must be rejected at desugar
