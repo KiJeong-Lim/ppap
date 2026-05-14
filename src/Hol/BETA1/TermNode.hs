@@ -1,5 +1,6 @@
 module Hol.BETA1.TermNode where
 
+import Calc.Presburger.Internal (MyPresburgerFormulaRep, MyVar)
 import Hol.BETA1.Constant
 import Hol.BETA1.Header
 import Control.Monad
@@ -28,14 +29,51 @@ data TermNode
     | NCon !Constant
     | NIdx {-# UNPACK #-} !DeBruijn
     | NApp !TermNode !TermNode
-    | NLam !TermNode
+    | NLam !(Maybe SmallId) !TermNode
     | Susp
         { getSuspBody :: !TermNode
         , getSuspOL :: {-# UNPACK #-} !Int
         , getSuspNL :: {-# UNPACK #-} !Int
         , getSuspEnv :: !SuspEnv
         }
-    deriving (Eq, Ord)
+    | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar)
+
+-- §2.8.1: kernel operations are insensitive to the `_hint` field of
+-- `NLam`. The `Eq` and `Ord` instances therefore compare the bodies
+-- of two `NLam`s but ignore their hints, so that α-equivalent terms
+-- stay equal regardless of which surface name happened to flow in.
+instance Eq TermNode where
+    LVar v1 == LVar v2 = v1 == v2
+    NCon c1 == NCon c2 = c1 == c2
+    NIdx i == NIdx j = i == j
+    NApp a1 b1 == NApp a2 b2 = a1 == a2 && b1 == b2
+    NLam _ b1 == NLam _ b2 = b1 == b2
+    Susp b1 ol1 nl1 e1 == Susp b2 ol2 nl2 e2 = b1 == b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
+    NPresburgerCheck f1 m1 == NPresburgerCheck f2 m2 = f1 == f2 && m1 == m2
+    _ == _ = False
+
+instance Ord TermNode where
+    compare = cmpTerm
+      where
+        ctorIdx :: TermNode -> Int
+        ctorIdx (LVar _) = 0
+        ctorIdx (NCon _) = 1
+        ctorIdx (NIdx _) = 2
+        ctorIdx (NApp _ _) = 3
+        ctorIdx (NLam _ _) = 4
+        ctorIdx (Susp {}) = 5
+        ctorIdx (NPresburgerCheck _ _) = 6
+        cmpTerm :: TermNode -> TermNode -> Ordering
+        cmpTerm (LVar v1) (LVar v2) = compare v1 v2
+        cmpTerm (NCon c1) (NCon c2) = compare c1 c2
+        cmpTerm (NIdx i) (NIdx j) = compare i j
+        cmpTerm (NApp a1 b1) (NApp a2 b2) = compare a1 a2 <> compare b1 b2
+        cmpTerm (NLam _ b1) (NLam _ b2) = compare b1 b2
+        cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
+            compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
+        cmpTerm (NPresburgerCheck f1 m1) (NPresburgerCheck f2 m2) =
+            compare f1 f2 <> compare m1 m2
+        cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
 
 data SuspItem
     = Dummy {-# UNPACK #-} !Int
@@ -56,11 +94,11 @@ data Fixity extra
     deriving ()
 
 data ViewNode
-    = ViewIVar Int
+    = ViewIVar SmallId
     | ViewLVar LargeId
     | ViewDCon SmallId
     | ViewIApp ViewNode ViewNode
-    | ViewIAbs Int ViewNode
+    | ViewIAbs SmallId ViewNode
     | ViewTVar LargeId
     | ViewTCon SmallId
     | ViewTApp ViewNode ViewNode
@@ -81,11 +119,11 @@ instance Outputable ViewNode where
             | prec > prec' = strstr "(" . delta . strstr ")"
             | otherwise = delta
         go :: ViewNode -> String -> String
-        go (ViewIVar var) = strstr "W_" . showsPrec 0 var
+        go (ViewIVar var) = strstr var
         go (ViewLVar var) = strstr var
         go (ViewDCon con) = strstr con
         go (ViewIApp viewer1 viewer2) = parenthesize 6 (pprint 6 viewer1 . strstr " " . pprint 7 viewer2)
-        go (ViewIAbs var viewer1) = parenthesize 0 (strstr "W_" . showsPrec 0 var . strstr "\\ " . pprint 0 viewer1)
+        go (ViewIAbs var viewer1) = parenthesize 0 (strstr var . strstr "\\ " . pprint 0 viewer1)
         go (ViewTVar var) = strstr var
         go (ViewTCon con) = strstr con
         go (ViewTApp viewer1 viewer2) = parenthesize 6 (pprint 6 viewer1 . strstr " " . pprint 7 viewer2)
@@ -124,7 +162,11 @@ mkNApp t1 t2 = NApp t1 t2
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
-mkNLam t = NLam t
+mkNLam t = NLam Nothing t
+
+{-# INLINE mkNLamHint #-}
+mkNLamHint :: Maybe SmallId -> TermNode -> TermNode
+mkNLamHint h t = NLam h t
 
 {-# INLINE mkSusp #-}
 mkSusp :: TermNode -> Int -> Int -> SuspEnv -> TermNode
@@ -153,7 +195,7 @@ rewriteWithSusp t ol nl env option = dispatch t where
     dispatch (NCon {})
         = t
     dispatch (NApp t1 t2)
-        | NLam t11 <- t1' = beta t11
+        | NLam _ t11 <- t1' = beta t11
         | option == WHNF = mkNApp t1' (mkSusp t2 ol nl env)
         | option == HNF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (mkSusp t2 ol nl env)
         | option == NF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
@@ -164,13 +206,15 @@ rewriteWithSusp t ol nl env option = dispatch t where
             beta (Susp t' ol' nl' (Dummy l' : env'))
                 | nl' == l' = rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
             beta t' = rewriteWithSusp t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
-    dispatch (NLam t1)
-        | option == WHNF = mkNLam (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
-        | otherwise = mkNLam (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
+    dispatch (NLam h t1)
+        | option == WHNF = mkNLamHint h (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
+        | otherwise = mkNLamHint h (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
     dispatch (Susp t' ol' nl' env')
         | ol' == 0 && nl' == 0 = rewriteWithSusp t' ol nl env option
         | ol == 0 = rewriteWithSusp t' ol' (nl + nl') env' option
         | otherwise = rewriteWithSusp (rewriteWithSusp t' ol' nl' env' WHNF) ol nl env option
+    dispatch (NPresburgerCheck {})
+        = t
 
 {-# INLINE rewrite #-}
 rewrite :: ReduceOption -> TermNode -> TermNode
@@ -178,6 +222,7 @@ rewrite option t = case t of
     LVar {} -> t
     NCon {} -> t
     NIdx {} -> t
+    NPresburgerCheck {} -> t
     _ -> rewriteWithSusp t 0 0 [] option
 
 unfoldlNApp :: TermNode -> (TermNode, [TermNode])
@@ -205,10 +250,27 @@ makeNestedNLam n
     | n > 0 = makeNestedNLam (n - 1) . mkNLam
     | otherwise = undefined
 
+-- §4.5.2: choose a display name not already in `live`. If `h`
+-- has a trailing digit run, that suffix is stripped first so that
+-- `freshenName "X1" ["X1"]` returns `"X2"` (not `"X11"`). The
+-- function is total — the digit pool is infinite.
+freshenName :: SmallId -> [SmallId] -> SmallId
+freshenName h live
+    | h `notElem` live = h
+    | otherwise = pickFresh
+  where
+    isDigitChar c = c >= '0' && c <= '9'
+    rev_rest = dropWhile isDigitChar (reverse h)
+    base = if null rev_rest then h else reverse rev_rest
+    pickFresh = go (1 :: Int)
+    go i =
+        let cand = base ++ show i
+        in if cand `notElem` live then cand else go (i + 1)
+
 viewNestedNLam :: TermNode -> (Int, TermNode)
 viewNestedNLam = go 0 where
     go :: Int -> TermNode -> (Int, TermNode)
-    go n (NLam t) = go (n + 1) t
+    go n (NLam _ t) = go (n + 1) t
     go n t = (n, t)
 
 constructViewer :: TermNode -> ViewNode
@@ -218,7 +280,7 @@ constructViewer = fst . runIdentity . uncurry (runStateT . formatView . eraseTyp
     isType (ViewTCon _) = True
     isType (ViewTApp _ _) = True
     isType _ = False
-    makeView :: [Int] -> TermNode -> StateT Int Identity ViewNode
+    makeView :: [SmallId] -> TermNode -> StateT Int Identity ViewNode
     makeView vars (LVar var) = case var of
         LV_ty_var v -> return (ViewTVar ("?TV_" ++ show v))
         LV_Unique v -> return (ViewLVar ("?V_" ++ show v))
@@ -252,12 +314,18 @@ constructViewer = fst . runIdentity . uncurry (runStateT . formatView . eraseTyp
         t1_rep <- makeView vars t1
         t2_rep <- makeView vars t2
         return (if isType t1_rep then ViewTApp t1_rep t2_rep else ViewIApp t1_rep t2_rep)
-    makeView vars (NLam t) = do
-        var <- get
-        let var' = var + 1
-        put var'
-        t_rep <- makeView (var : vars) t
-        return (ViewIAbs var t_rep)
+    makeView vars (NLam mhint t) = do
+        counter <- get
+        put (counter + 1)
+        let preferred = case mhint of
+                Just s -> s
+                Nothing -> "W_" ++ show counter
+            chosen = freshenName preferred vars
+        t_rep <- makeView (chosen : vars) t
+        return (ViewIAbs chosen t_rep)
+    makeView vars (NPresburgerCheck rep _) =
+        return (ViewDCon ("presburger \"" ++ shows rep "\""))
+    makeView vars (Susp body _ _ _) = makeView vars body
     eraseType :: ViewNode -> ViewNode
     eraseType (ViewIApp (ViewDCon "[]") (ViewTCon "__char")) = ViewStrL ""
     eraseType (ViewTCon c) = ViewTCon c
@@ -334,41 +402,51 @@ constructViewer = fst . runIdentity . uncurry (runStateT . formatView . eraseTyp
                 v2 <- get
                 let v2' = v2 + 1
                 v2' `seq` put v2'
-                return (ViewIAbs v2 (ViewOper (InfixL t1' str (ViewIVar v2), prec)))
+                let n2 = "W_" ++ show v2
+                return (ViewIAbs n2 (ViewOper (InfixL t1' str (ViewIVar n2), prec)))
             InfixR _ str _ -> do
                 t1' <- formatView t1
                 v2 <- get
                 let v2' = v2 + 1
                 v2' `seq` put v2'
-                return (ViewIAbs v2 (ViewOper (InfixR t1' str (ViewIVar v2), prec)))
+                let n2 = "W_" ++ show v2
+                return (ViewIAbs n2 (ViewOper (InfixR t1' str (ViewIVar n2), prec)))
             InfixN _ str _ -> do
                 t1' <- formatView t1
                 v2 <- get
                 let v2' = v2 + 1
                 v2' `seq` put v2'
-                return (ViewIAbs v2 (ViewOper (InfixN t1' str (ViewIVar v2), prec)))
+                let n2 = "W_" ++ show v2
+                return (ViewIAbs n2 (ViewOper (InfixN t1' str (ViewIVar n2), prec)))
     formatView (ViewDCon con)
         | Just (oper, prec) <- checkOper con
         = case oper of
             Prefix str _ -> do
                 v1 <- get
                 put (v1 + 1)
-                return (ViewIAbs v1 (ViewOper (Prefix str (ViewIVar v1), prec)))
+                let n1 = "W_" ++ show v1
+                return (ViewIAbs n1 (ViewOper (Prefix str (ViewIVar n1), prec)))
             InfixL _ str _ -> do
                 v1 <- get
                 let v2 = v1 + 1
                 put (v2 + 1)
-                return (ViewIAbs v1 (ViewIAbs v2 (ViewOper (InfixL (ViewIVar v1) str (ViewIVar v2), prec))))
+                let n1 = "W_" ++ show v1
+                    n2 = "W_" ++ show v2
+                return (ViewIAbs n1 (ViewIAbs n2 (ViewOper (InfixL (ViewIVar n1) str (ViewIVar n2), prec))))
             InfixR _ str _ -> do
                 v1 <- get
                 let v2 = v1 + 1
                 put (v2 + 1)
-                return (ViewIAbs v1 (ViewIAbs v2 (ViewOper (InfixR (ViewIVar v1) str (ViewIVar v2), prec))))
+                let n1 = "W_" ++ show v1
+                    n2 = "W_" ++ show v2
+                return (ViewIAbs n1 (ViewIAbs n2 (ViewOper (InfixR (ViewIVar n1) str (ViewIVar n2), prec))))
             InfixN _ str _ -> do
                 v1 <- get
                 let v2 = v1 + 1
                 put (v2 + 1)
-                return (ViewIAbs v1 (ViewIAbs v2 (ViewIAbs v2 (ViewOper (InfixN (ViewIVar v1) str (ViewIVar v2), prec)))))
+                let n1 = "W_" ++ show v1
+                    n2 = "W_" ++ show v2
+                return (ViewIAbs n1 (ViewIAbs n2 (ViewIAbs n2 (ViewOper (InfixN (ViewIVar n1) str (ViewIVar n2), prec)))))
     formatView (ViewTApp (ViewTApp (ViewTCon "->") t1) t2) = do
         t1' <- formatView t1
         t2' <- formatView t2

@@ -118,8 +118,9 @@ accLVarsTerm (LVar v) = Set.insert v
 accLVarsTerm (NCon _) = id
 accLVarsTerm (NIdx _) = id
 accLVarsTerm (NApp t1 t2) = accLVarsTerm t1 . accLVarsTerm t2
-accLVarsTerm (NLam t) = accLVarsTerm t
+accLVarsTerm (NLam _ t) = accLVarsTerm t
 accLVarsTerm (Susp t _ _ env) = accLVarsTerm t . accLVarsSuspEnv env
+accLVarsTerm (NPresburgerCheck _ freeOf) = Set.union (Set.fromList (Map.elems freeOf))
 
 accLVarsSuspEnv :: SuspEnv -> Set.Set LogicVar -> Set.Set LogicVar
 accLVarsSuspEnv [] = id
@@ -333,7 +334,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
     canView :: Labeling -> TermNode -> Bool
     canView labeling = go where
         go :: TermNode -> Bool
-        go (NLam t1) = go t1
+        go (NLam _ t1) = go t1
         go (NApp t1 t2) = go t1 && go t2
         go (NCon c) = lookupLabel var labeling >= lookupLabel c labeling
         go (LVar x) = lookupLabel var labeling >= lookupLabel x labeling
@@ -432,7 +433,7 @@ flatten (VarBinding mapsto)
         go t@(NCon _) = t
         go t@(NIdx _) = t
         go (NApp t1 t2) = mkNApp (go t1) (go t2)
-        go (NLam t) = mkNLam (go t)
+        go (NLam h t) = mkNLamHint h (go t)
         go t = t
 
 (+->) :: Monad m => LogicVar -> TermNode -> ExceptT HopuFail m VarBinding
@@ -459,18 +460,18 @@ etaReduce = go . rewrite NF where
     isFreeIn :: DeBruijn -> TermNode -> Bool
     isFreeIn i (NIdx j) = i == j
     isFreeIn i (NApp t1 t2) = isFreeIn i t1 || isFreeIn i t2
-    isFreeIn i (NLam t1) = isFreeIn (i + 1) t1
+    isFreeIn i (NLam _ t1) = isFreeIn (i + 1) t1
     isFreeIn i _ = False
     decr :: TermNode -> TermNode
     decr (LVar x) = mkLVar x
     decr (NIdx i) = if i > 0 then mkNIdx (i - 1) else error "etaReduce.decr: unreachable..."
     decr (NCon c) = mkNCon c
     decr (NApp t1 t2) = mkNApp (decr t1) (decr t2)
-    decr (NLam t1) = mkNLam (decr t1)
+    decr (NLam h t1) = mkNLamHint h (decr t1)
     go :: TermNode -> TermNode
     go (NApp t1 t2) = mkNApp (go t1) (go t2)
-    go (NLam t1) = case go t1 of
+    go (NLam h t1) = case go t1 of
         NApp t1' (NIdx 0)
             | not (isFreeIn 0 t1') -> decr t1'
-        t1' -> mkNLam t1'
+        t1' -> mkNLamHint h t1'
     go t = t

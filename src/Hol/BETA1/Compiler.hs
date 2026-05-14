@@ -40,7 +40,7 @@ convertWithoutChecking var_name_env = go where
     loop env (Var loc var) = convertVar var_name_env env var
     loop env (Con loc (data_constructor, tapps)) = convertCon var_name_env env data_constructor tapps
     loop env (App loc term1 term2) = mkNApp (loop env term1) (loop env term2)
-    loop env (Lam loc var1 term2) = mkNLam (loop (var1 : env) term2)
+    loop env (Lam loc var1 hint term2) = mkNLamHint hint (loop (var1 : env) term2)
     go :: MonadUnique m => DeBruijnIndicesEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
     go env = return . loop env . reduceTermExpr
 
@@ -54,7 +54,7 @@ convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithou
 replaceWildcards :: MonadUnique m => TermNode -> m TermNode
 replaceWildcards (NCon (DC DC_wc)) = fmap (mkLVar . LV_Unique) getUnique
 replaceWildcards (NApp t1 t2) = liftM2 mkNApp (replaceWildcards t1) (replaceWildcards t2)
-replaceWildcards (NLam t) = fmap mkNLam (replaceWildcards t)
+replaceWildcards (NLam h t) = fmap (mkNLamHint h) (replaceWildcards t)
 replaceWildcards t = return t
 
 convertQuery :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> FreeVariableEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
@@ -74,7 +74,7 @@ convertQuery used_mtvs assumptions var_name_env query = do
 viewLam :: TermExpr dcon annot -> ([IVar], TermExpr dcon annot)
 viewLam = go [] where
     go :: [IVar] -> TermExpr dcon annot -> ([IVar], TermExpr dcon annot)
-    go vars (Lam annot var term) = go (var : vars) term
+    go vars (Lam annot var _h term) = go (var : vars) term
     go vars term = (vars, term)
 
 unFoldApp :: TermExpr dcon annot -> (TermExpr dcon annot, [TermExpr dcon annot])
@@ -91,7 +91,7 @@ isPredicate _ = False
 reduceTermExpr :: TermExpr dcon annot -> TermExpr dcon annot
 reduceTermExpr = go Map.empty where
     go :: Map.Map IVar (TermExpr tapp annot) -> TermExpr tapp annot -> TermExpr tapp annot
-    go mapsto (App annot1 (Lam annot2 var term1) term2)
+    go mapsto (App annot1 (Lam annot2 var _h term1) term2)
         = go mapsto (go (Map.singleton var term2) term1)
     go mapsto (Var annot var)
         = case Map.lookup var mapsto of
@@ -101,5 +101,5 @@ reduceTermExpr = go Map.empty where
         = Con annot con
     go mapsto (App annot term1 term2)
         = App annot (go mapsto term1) (go mapsto term2)
-    go mapsto (Lam annot var term)
-        = Lam annot var (go mapsto term)
+    go mapsto (Lam annot var h term)
+        = Lam annot var h (go mapsto term)

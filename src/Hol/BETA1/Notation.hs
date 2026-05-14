@@ -191,9 +191,13 @@ renderTerm _ (LVar (LV_Unique u)) = ViewLVar ("?V_" ++ show u)
 renderTerm _ (LVar (LV_Named v)) = ViewLVar v
 renderTerm _ (NCon (DC d)) = ViewDCon (show d)
 renderTerm _ (NCon (TC t)) = ViewTCon (show t)
-renderTerm _ (NIdx i) = ViewIVar i
+renderTerm _ (NIdx i) = ViewIVar ("W_" ++ show i)
 renderTerm db (NApp t1 t2) = ViewIApp (foldTerm db t1) (foldTerm db t2)
-renderTerm db (NLam t) = ViewIAbs 0 (foldTerm db t)
+renderTerm db (NLam mhint t) =
+    let name = case mhint of
+            Just s -> s
+            Nothing -> "x"
+    in ViewIAbs name (foldTerm db t)
 renderTerm db (Susp body _ _ _) = foldTerm db body
 
 tryMatch
@@ -235,7 +239,7 @@ matchTerm params tmpl cand = go tmpl cand Map.empty
     go (NApp a1 a2) (NApp b1 b2) env = do
         env1 <- go a1 b1 env
         go a2 b2 env1
-    go (NLam t1) (NLam t2) env = go t1 t2 env
+    go (NLam _ t1) (NLam _ t2) env = go t1 t2 env
     go _ _ _ = Nothing
 
 -- =============================================================

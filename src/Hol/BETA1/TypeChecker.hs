@@ -218,7 +218,7 @@ zonkMTV theta = go where
     go (Var (loc, typ) var) = Var (loc, substMTVars theta typ) var
     go (Con (loc, typ) (con, tapps)) = Con (loc, substMTVars theta typ) (con, substMTVars theta tapps)
     go (App (loc, typ) term1 term2) = App (loc, substMTVars theta typ) (go term1) (go term2)
-    go (Lam (loc, typ) var term) = Lam (loc, substMTVars theta typ) var (go term)
+    go (Lam (loc, typ) var h term) = Lam (loc, substMTVars theta typ) var h (go term)
 
 mkTyErr :: Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
 mkTyErr used_mtvs loc ((actual_typ, expected_typ), typ_error) = case typ_error of
@@ -271,13 +271,13 @@ inferType type_env = flip runStateT Map.empty . infer where
             assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
         put used_mtvs'
         return (zonkMTV theta (App (loc, TyMTV mtv) term1' term2'), assumptions')
-    infer (Lam loc var term) = do
+    infer (Lam loc var h term) = do
         (term', assumptions) <- infer term
         case Map.lookup var assumptions of
             Nothing -> do
                 mtv <- getNewMTV "A"
-                return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var term', assumptions)
-            Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var term', Map.delete var assumptions)
+                return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var h term', assumptions)
+            Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
 
 checkType :: MonadUnique m => TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
 checkType type_env term expected_typ = do

@@ -20,11 +20,11 @@ type MyCoefficientEnvironmentOfMyVar = Map.Map MyVar MyCoefficient
 type MyProp = Bool
 
 data PresburgerTerm
-    = PresburgerTerm 
+    = PresburgerTerm
         { getConstantTerm :: !(MyNat)
         , getCoefficients :: !(MyCoefficientEnvironmentOfMyVar)
         }
-    deriving (Eq)
+    deriving (Eq, Ord)
 
 data PresburgerFormula term
     = ValF (MyProp)
@@ -40,7 +40,7 @@ data PresburgerFormula term
     | IffF (PresburgerFormula term) (PresburgerFormula term)
     | AllF (MyVar) (PresburgerFormula term)
     | ExsF (MyVar) (PresburgerFormula term)
-    deriving (Eq)
+    deriving (Eq, Ord)
 
 data PresburgerKlass
     = KlassEqn !(MyCoefficient) !(PresburgerTerm) !(PresburgerTerm)
@@ -55,7 +55,7 @@ data PresburgerTermRep
     | Zero
     | Succ (PresburgerTermRep)
     | Plus (PresburgerTermRep) (PresburgerTermRep)
-    deriving (Eq)
+    deriving (Eq, Ord)
 
 data CollectionOfProperKlasses
     = CollectionOfProperKlasses

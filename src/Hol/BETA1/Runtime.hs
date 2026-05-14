@@ -1,5 +1,7 @@
 module Hol.BETA1.Runtime where
 
+import Calc.Presburger.Internal
+import Hol.BETA1.Arith
 import Hol.BETA1.TermNode
 import Hol.BETA1.HOPU
 import Hol.BETA1.Constant
@@ -188,7 +190,7 @@ runLogicalOperator logical_operator args ctx facts hyps level call_id cells stac
 
 execIs :: MonadUnique m => Context -> [Cell] -> Stack -> m Stack
 execIs ctx cells stack
-    | List.any (\res -> evaluateB res == Right False || evaluateB res == Left "ill") new_arithmetic_constraints = return stack
+    | isInconsistent new_arithmetic_constraints = return stack
     | otherwise = return ((ctx { _LeftConstraints = map DisagreementConstraint new_disagreements ++ map (uncurry EvalutionConstraint) new_evaluation_constraints ++ [ ArithmeticConstraint arith | arith <- new_arithmetic_constraints, evaluateB arith == Left "non" ] }, cells) : stack)
     where
         new_disagreements = [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ]
@@ -248,6 +250,78 @@ runDebugger loc_str ctx facts hyps level call_id cells stack = do
     liftIO $ putStrLn ("*** debugger called with " ++ shows loc_str "")
     return ((ctx, cells) : stack)
 
+-- Decide a `presburger "..."` goal (§2.3.5). Walks current
+-- arithmetic constraints, lifts them, renumbers everything onto a
+-- shared MyVar space, and asks the solver. Succeeds by pushing the
+-- continuation cells; fails by returning the bare stack.
+runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar LogicVar -> Context -> [Cell] -> Stack -> Stack
+runPresburger rep freeOf ctx cells stack =
+    if entails compiledHyps compiledPhi
+        then (ctx, cells) : stack
+        else stack
+  where
+    theta :: LogicVar -> Maybe TermNode
+    theta lv = case bindVars (_TotalVarBinding ctx) (LVar lv) of
+        LVar lv' | lv == lv' -> Nothing
+        t -> Just t
+    repZonked :: MyPresburgerFormulaRep
+    repZonked = zonkPresburger theta freeOf rep
+    arithTerms :: [TermNode]
+    arithTerms =
+        [ bindVars (_TotalVarBinding ctx) t
+        | ArithmeticConstraint t <- _LeftConstraints ctx
+        ]
+    liftedResults :: [LiftResult]
+    liftedResults = mapMaybe liftConstraint arithTerms
+    allLVs :: [LogicVar]
+    allLVs = Set.toAscList $ Set.union
+        (Set.fromList (Map.elems freeOf))
+        (Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ])
+    shared :: Map.Map LogicVar MyVar
+    shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+    phiRep :: MyPresburgerFormulaRep
+    phiRep = renumberFormula shared freeOf repZonked
+    hypReps :: [MyPresburgerFormulaRep]
+    hypReps =
+        [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
+        | lr <- liftedResults
+        ]
+    compiledPhi :: MyPresburgerFormula
+    compiledPhi = fmap compilePresburgerTerm phiRep
+    compiledHyps :: [MyPresburgerFormula]
+    compiledHyps = map (fmap compilePresburgerTerm) hypReps
+
+-- §2.3.6: True iff the given (zonked) arithmetic constraints are
+-- unsatisfiable. Two-tier evaluation: the cheap `evaluateB`
+-- pre-filter is consulted first; only if it cannot decide does the
+-- Presburger solver get called with `entails Φ ⊥`. Conjuncts that
+-- fail to lift into the linear-integer fragment are dropped — by
+-- soundness (§4.2.4) dropping can only weaken the antecedent,
+-- never declare false consistency.
+isInconsistent :: [TermNode] -> Bool
+isInconsistent arithTerms
+    | cheapKill = True
+    | otherwise = entails compiledHyps (ValF False)
+  where
+    cheapKill :: Bool
+    cheapKill = List.any
+        (\t -> evaluateB t == Right False || evaluateB t == Left "ill")
+        arithTerms
+    liftedResults :: [LiftResult]
+    liftedResults = mapMaybe liftConstraint arithTerms
+    allLVs :: [LogicVar]
+    allLVs = Set.toAscList $ Set.unions
+        [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ]
+    shared :: Map.Map LogicVar MyVar
+    shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+    hypReps :: [MyPresburgerFormulaRep]
+    hypReps =
+        [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
+        | lr <- liftedResults
+        ]
+    compiledHyps :: [MyPresburgerFormula]
+    compiledHyps = map (fmap compilePresburgerTerm) hypReps
+
 runTransition :: RuntimeEnv -> Set.Set LogicVar -> Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
 runTransition env free_lvars = go where
     failure :: ExceptT KernelErr (UniqueT IO) Stack
@@ -257,16 +331,19 @@ runTransition env free_lvars = go where
     arithOpCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr (UniqueT IO) Stack
     arithOpCheck call_id ctx cells predicate args op
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
-            Left "non" -> success
-                ( Context
-                    { _TotalVarBinding = _TotalVarBinding ctx
-                    , _CurrentLabeling = _CurrentLabeling ctx
-                    , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
-                    , _ContextThreadId = call_id
-                    , _debuggindModeOn = _debuggindModeOn ctx
-                    }
-                , cells
-                )
+            Left "non" ->
+                let newCtx = Context
+                        { _TotalVarBinding = _TotalVarBinding ctx
+                        , _CurrentLabeling = _CurrentLabeling ctx
+                        , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
+                        , _ContextThreadId = call_id
+                        , _debuggindModeOn = _debuggindModeOn ctx
+                        }
+                    arithTerms =
+                        [ bindVars (_TotalVarBinding newCtx) t
+                        | ArithmeticConstraint t <- _LeftConstraints newCtx
+                        ]
+                in if isInconsistent arithTerms then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
     search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
@@ -292,7 +369,7 @@ runTransition env free_lvars = go where
                             Just (new_disagreements, HopuSol new_labeling subst) -> do
                                 let new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- zonkLVar subst (_LeftConstraints ctx) ]
                                     new_arithmetic_constraints = [ rewrite NF arith | ArithmeticConstraint arith <- zonkLVar subst (_LeftConstraints ctx) ]
-                                if List.any (\res -> evaluateB res == Right False || evaluateB res == Left "ill") new_arithmetic_constraints then
+                                if isInconsistent new_arithmetic_constraints then
                                     failure
                                 else
                                     success
@@ -319,7 +396,7 @@ runTransition env free_lvars = go where
                             Just (new_disagreements, HopuSol new_labeling subst) -> do
                                 let new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- zonkLVar subst (_LeftConstraints ctx) ]
                                     new_arithmetic_constraints = [ rewrite NF arith | ArithmeticConstraint arith <- zonkLVar subst (_LeftConstraints ctx) ]
-                                if List.any (\res -> evaluateB res == Right False || evaluateB res == Left "ill") new_arithmetic_constraints then
+                                if isInconsistent new_arithmetic_constraints then
                                     failure
                                 else
                                     success
@@ -344,6 +421,8 @@ runTransition env free_lvars = go where
         = do
             stack' <- search facts hyps level predicate args ctx cells
             go (stack' ++ stack)
+    dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf, []) _call_id cells stack
+        = go (runPresburger rep freeOf ctx cells stack)
     dispatch ctx facts hyps level (t, ts) call_id cells stack = throwE (BadGoalGiven (foldlNApp t ts))
     go :: Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
     go [] = return False

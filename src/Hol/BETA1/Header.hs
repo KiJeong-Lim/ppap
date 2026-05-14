@@ -105,7 +105,7 @@ data TermExpr dcon annot
     = Var annot IVar
     | Con annot dcon 
     | App annot (TermExpr dcon annot) (TermExpr dcon annot)
-    | Lam annot IVar (TermExpr dcon annot)
+    | Lam annot IVar (Maybe SmallId) (TermExpr dcon annot)
     deriving ()
 
 data Program term
@@ -196,11 +196,11 @@ instance HasAnnot (TermExpr dcon) where
     getAnnot (Var annot _) = annot
     getAnnot (Con annot _) = annot
     getAnnot (App annot _ _) = annot
-    getAnnot (Lam annot _ _) = annot
+    getAnnot (Lam annot _ _ _) = annot
     setAnnot annot (Var _ x) = Var annot x
     setAnnot annot (Con _ c) = Con annot c
     setAnnot annot (App _ t1 t2) = App annot t1 t2
-    setAnnot annot (Lam _ x t1) = Lam annot x t1
+    setAnnot annot (Lam _ x h t1) = Lam annot x h t1
 
 mkTyList :: MonoType tvar -> MonoType tvar
 mkTyList typ1 = TyApp (TyCon (TCon (TC_Named "list") (read "* -> *"))) typ1

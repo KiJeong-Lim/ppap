@@ -134,12 +134,12 @@ desugarTerm (RAbs loc1 var_rep term_rep) = do
             put (Map.insert var_rep var env)
             term <- desugarTerm term_rep
             modify (Map.delete var_rep)
-            return (Lam loc1 var term)
+            return (Lam loc1 var (Just var_rep) term)
         Just var' -> do
             put (Map.insert var_rep var (Map.delete var_rep env))
             term <- desugarTerm term_rep
             modify (Map.insert var_rep var' . Map.delete var_rep)
-            return (Lam loc1 var term)
+            return (Lam loc1 var (Just var_rep) term)
 desugarTerm (RPrn loc1 term_rep) = desugarTerm term_rep
 
 desugarProgram :: MonadUnique m => KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc))

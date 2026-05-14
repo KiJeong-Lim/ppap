@@ -1,5 +1,6 @@
 module Hol.BETA1.Main where
 
+import Hol.BETA1.Arith (installPresburger)
 import Hol.BETA1.Compiler
 import Hol.BETA1.Constant
 import Hol.BETA1.Desugarer
@@ -45,7 +46,7 @@ addIndex :: [Fact] -> Map.Map Constant [Fact]
 addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, let f' = rewrite NF f ] where
     hd :: Fact -> Constant
     hd t = case unfoldlNApp t of
-        (NLam t, _) -> hd t
+        (NLam _ t, _) -> hd t
         (NCon (DC (DC_LO LO_ty_pi)), [t]) -> hd t
         (NCon (DC (DC_LO LO_pi)), [t]) -> hd t
         (NCon (DC (DC_LO LO_if)), [t, _]) -> hd t
@@ -191,7 +192,8 @@ runREPL program = lift (newIORef False) >>= go where
                         result <- runExceptT $ do
                             (query2, free_vars) <- desugarQuery query1
                             (query3, (used_mtvs, assumptions)) <- checkType (_TypeDecls program) query2 mkTyO
-                            convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
+                            query4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
+                            either throwE return (installPresburger query4)
                         case result of
                             Left err_msg -> do
                                 lift $ putStrLn err_msg
@@ -246,6 +248,7 @@ theInitialTypeDecls = Map.fromList
     , (DC_minus, Forall [] (mkTyNat `mkTyArrow` (mkTyNat `mkTyArrow` mkTyNat)))
     , (DC_mul, Forall [] (mkTyNat `mkTyArrow` (mkTyNat `mkTyArrow` mkTyNat)))
     , (DC_div, Forall [] (mkTyNat `mkTyArrow` (mkTyNat `mkTyArrow` mkTyNat)))
+    , (DC_Named "presburger", Forall [] (mkTyList mkTyChr `mkTyArrow` mkTyO))
     ]
 
 theInitialFactDecls :: [TermNode]
@@ -292,7 +295,8 @@ runHol = do
                                 module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
                                 facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
                                 facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
-                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = myModuleName })
+                                facts4 <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
+                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts4, moduleName = myModuleName })
                             case result of
                                 Left err_msg -> do
                                     lift $ putStrLn err_msg

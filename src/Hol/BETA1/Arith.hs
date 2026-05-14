@@ -6,6 +6,7 @@ module Hol.BETA1.Arith
     , liftConstraint
     , renumberFormula
     , entails
+    , installPresburger
     ) where
 
 import Calc.Presburger.Internal
@@ -644,3 +645,62 @@ freeMyVarsF (ExsF y f1) = Set.delete y (freeMyVarsF f1)
 freeMyVarsT :: PresburgerTerm -> Set.Set MyVar
 freeMyVarsT (PresburgerTerm _ coeffs) =
     Map.keysSet (Map.filter (/= 0) coeffs)
+
+-- =============================================================
+-- installPresburger
+-- =============================================================
+--
+-- Post-compilation pass: walks a TermNode and replaces every
+-- `NApp (NCon (DC (DC_Named "presburger"))) <closed-string-literal>`
+-- with `NPresburgerCheck rep freeOf`. A non-literal argument is a
+-- compile-time error (§2.3.2). Other subterms are left structural.
+
+installPresburger :: TermNode -> Either ErrMsg TermNode
+installPresburger = go
+  where
+    placeholderSLoc :: SLoc
+    placeholderSLoc = SLoc (0, 0) (0, 0)
+
+    go :: TermNode -> Either ErrMsg TermNode
+    go (NApp (NCon (DC (DC_Named "presburger"))) arg) =
+        case extractString arg of
+            Just src -> do
+                r <- parsePresburger placeholderSLoc src Map.empty
+                return (NPresburgerCheck (_formula r) (_freeOfFormula r))
+            Nothing -> Left
+                "*** presburger: the argument must be a closed string literal."
+    go (NApp t1 t2) = do
+        t1' <- go t1
+        t2' <- go t2
+        return (NApp t1' t2')
+    go (NLam h t) = do
+        t' <- go t
+        return (NLam h t')
+    go (Susp body ol nl env) = do
+        body' <- go body
+        env' <- traverse goSuspItem env
+        return (Susp body' ol nl env')
+    go t = return t
+
+    goSuspItem :: SuspItem -> Either ErrMsg SuspItem
+    goSuspItem (Dummy l) = return (Dummy l)
+    goSuspItem (Binds t l) = do
+        t' <- go t
+        return (Binds t' l)
+
+    -- Data constructors carry their type instantiation as the first
+    -- argument (Compiler.convertCon). So `[]` over `char` arrives as
+    --   NApp (NCon DC_Nil) <type-arg>
+    -- and `c :: rest` arrives as
+    --   NApp (NApp (NApp (NCon DC_Cons) <type-arg>) (NCon (DC_ChrL c))) rest
+    extractString :: TermNode -> Maybe String
+    extractString (NApp (NCon (DC DC_Nil)) _) = Just ""
+    extractString
+        (NApp
+            (NApp
+                (NApp (NCon (DC DC_Cons)) _typeArg)
+                (NCon (DC (DC_ChrL c))))
+            rest) = do
+                cs <- extractString rest
+                return (c : cs)
+    extractString _ = Nothing
