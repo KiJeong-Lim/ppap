@@ -614,8 +614,7 @@ Appendix A. Open Questions
       Otherwise the user sees `X1` in one prompt and `X2` in the next for the same variable.
       Solution: carry the display-naming cache for the lifetime of the REPL, not per-print.
 
-    Neither affects correctness; both belong in §3.2 once we finalise
-    the debugger UI.
+    Neither affects correctness; both belong in §3.2 once we finalise the debugger UI.
 
 ================================================================================
 Appendix B. Other feedbacks to claude
