@@ -293,7 +293,16 @@ viewNestedNLamH = go [] where
     go hs t = (reverse hs, t)
 
 constructViewer :: TermNode -> ViewNode
-constructViewer = fst . runIdentity . uncurry (runStateT . formatView . eraseType) . runIdentity . flip runStateT 1 . makeView [] . rewrite NF where
+constructViewer = constructViewerWith (const Nothing)
+
+-- Like `constructViewer`, but consults `lookupName` first when rendering
+-- a `LogicVar`. Used by the debugger (`Debugger.NameCache`) to pin down
+-- user-chosen display names — e.g. after a `:assign ?V_5 Z` the next
+-- printout shows `Z` instead of `?V_5`. The callback is read-only; the
+-- viewer never mutates the cache. If `lookupName lv == Nothing`, falls
+-- back to the original policy: hint if present, otherwise `?V_<unique>`.
+constructViewerWith :: (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
+constructViewerWith lookupName = fst . runIdentity . uncurry (runStateT . formatView . eraseType) . runIdentity . flip runStateT 1 . makeView [] . rewrite NF where
     isType :: ViewNode -> Bool
     isType (ViewTVar _) = True
     isType (ViewTCon _) = True
@@ -302,8 +311,14 @@ constructViewer = fst . runIdentity . uncurry (runStateT . formatView . eraseTyp
     makeView :: [SmallId] -> TermNode -> StateT Int Identity ViewNode
     makeView vars (LVar var) = case var of
         LV_ty_var v -> return (ViewTVar ("?TV_" ++ show v))
-        LV_Unique v (DispHint mhint) -> return (ViewLVar (case mhint of Just s -> s; Nothing -> "?V_" ++ show v))
-        LV_Named v -> return (ViewLVar v)
+        LV_Unique v (DispHint mhint) -> return (ViewLVar (case lookupName var of
+            Just cached -> cached
+            Nothing -> case mhint of
+                Just s -> s
+                Nothing -> "?V_" ++ show v))
+        LV_Named v -> return (ViewLVar (case lookupName var of
+            Just cached -> cached
+            Nothing -> v))
     makeView vars (NCon con) = case con of
         DC data_constructor -> case data_constructor of
             DC_LO logical_operator -> return (ViewDCon (show logical_operator))

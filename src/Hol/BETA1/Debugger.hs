@@ -4,6 +4,7 @@ module Hol.BETA1.Debugger
     , recordRename
     , toDisplay
     , fromDisplay
+    , viewerLookup
     ) where
 
 import qualified Data.Map.Strict as Map
@@ -62,3 +63,9 @@ toDisplay lv = Map.lookup lv . _toDisplay
 
 fromDisplay :: SmallId -> NameCache -> Maybe LogicVar
 fromDisplay name = Map.lookup name . _fromDisplay
+
+-- Argument shape required by `TermNode.constructViewerWith`. The viewer
+-- needs a pure `LogicVar -> Maybe SmallId` lookup; this is just `toDisplay`
+-- with the arguments flipped to match.
+viewerLookup :: NameCache -> LogicVar -> Maybe SmallId
+viewerLookup nc lv = toDisplay lv nc

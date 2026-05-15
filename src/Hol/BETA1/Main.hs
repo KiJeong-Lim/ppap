@@ -3,6 +3,7 @@ module Hol.BETA1.Main where
 import Hol.BETA1.Arith (installPresburger)
 import Hol.BETA1.Compiler
 import Hol.BETA1.Constant
+import Hol.BETA1.Debugger
 import Hol.BETA1.Desugarer
 import Hol.BETA1.Header
 import Hol.BETA1.HOPU
@@ -59,13 +60,22 @@ execRuntime env isDebugging facts query = do
     runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
 runREPL :: Program TermNode -> UniqueT IO ()
-runREPL program = lift (newIORef False) >>= go where
+runREPL program = do
+    isDebugging <- lift (newIORef False)
+    nameCache <- lift (newIORef initialCache)
+    go isDebugging nameCache
+  where
     myTabs :: String
     myTabs = ""
     promptify :: String -> IO String
     promptify str = shelly (moduleName program ++ "> " ++ str)
-    mkRuntimeEnv :: IORef Debugging -> TermNode -> IO RuntimeEnv
-    mkRuntimeEnv isDebugging query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer }) where
+    -- Render a TermNode through the cache-aware viewer. The cache is
+    -- consulted on every call so that user-driven renames (e.g. via a
+    -- future `:assign`) take effect from the next printout onwards.
+    prettyTerm :: NameCache -> TermNode -> ShowS
+    prettyTerm cache t = pprint 0 (constructViewerWith (viewerLookup cache) t)
+    mkRuntimeEnv :: IORef Debugging -> IORef NameCache -> TermNode -> IO RuntimeEnv
+    mkRuntimeEnv isDebugging nameCache query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer }) where
         runInteraction :: Context -> String -> IO ()
         runInteraction ctx str = do
             isDebugging <- readIORef (_debuggindModeOn ctx)
@@ -84,9 +94,11 @@ runREPL program = lift (newIORef False) >>= go where
             | isShort && isClear = return False
             | isClear && List.null theAnswerSubst = return False
             | isClear = do
+                cache <- readIORef nameCache
+                let pp = prettyTerm cache
                 promptify "The answer substitution is:"
                 sequence_
-                    [ promptify (myTabs ++ v ++ " := " ++ shows t ".")
+                    [ promptify (myTabs ++ v ++ " := " ++ pp t ".")
                     | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
@@ -141,6 +153,8 @@ runREPL program = lift (newIORef False) >>= go where
                     if List.null str then askToRunMore else return (isYES str)
                 printDisagreements :: IO ()
                 printDisagreements = do
+                    cache <- readIORef nameCache
+                    let pp = prettyTerm cache
                     promptify "The remaining constraints are:"
                     sequence_
                         [ promptify (myTabs ++ shows constraint "")
@@ -148,7 +162,7 @@ runREPL program = lift (newIORef False) >>= go where
                         ]
                     promptify "The binding is:"
                     sequence_
-                        [ promptify (myTabs ++ shows (mkLVar v) (" := " ++ shows t "."))
+                        [ promptify (myTabs ++ pp (mkLVar v) (" := " ++ pp t "."))
                         | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
                         ]
                 evalokay :: Bool
@@ -167,8 +181,8 @@ runREPL program = lift (newIORef False) >>= go where
                     ]
                 consistent :: Bool
                 consistent = evalokay && arithokay 
-    go :: IORef Debugging -> UniqueT IO ()
-    go isDebugging = do
+    go :: IORef Debugging -> IORef NameCache -> UniqueT IO ()
+    go isDebugging nameCache = do
         query <- lift $ promptify ""
         case query of
             "" -> do
@@ -182,11 +196,11 @@ runREPL program = lift (newIORef False) >>= go where
                     modifyIORef isDebugging not
                     debugging <- readIORef isDebugging
                     promptify ("Debugging mode " ++ (if debugging then "on" else "off") ++ ".")
-                go isDebugging
+                go isDebugging nameCache
             query0 -> case runAnalyzer query0 of
                 Left err_msg -> do
                     lift $ putStrLn err_msg
-                    go isDebugging
+                    go isDebugging nameCache
                 Right output -> case output of
                     Left query1 -> do
                         result <- runExceptT $ do
@@ -197,9 +211,9 @@ runREPL program = lift (newIORef False) >>= go where
                         case result of
                             Left err_msg -> do
                                 lift $ putStrLn err_msg
-                                go isDebugging
+                                go isDebugging nameCache
                             Right query4 -> do
-                                runtime_env <- lift $ mkRuntimeEnv isDebugging query4
+                                runtime_env <- lift $ mkRuntimeEnv isDebugging nameCache query4
                                 answer <- runExceptT (execRuntime runtime_env isDebugging (_FactDecls program) query4)
                                 case answer of
                                     Left runtime_err -> case runtime_err of
@@ -208,10 +222,10 @@ runREPL program = lift (newIORef False) >>= go where
                                     Right sat -> do
                                         lift $ promptify (if sat then "yes." else "no.")
                                         return ()
-                                go isDebugging
+                                go isDebugging nameCache
                     Right src1 -> do
                         lift $ putStrLn "*** parsing-error: it is not a query."
-                        go isDebugging
+                        go isDebugging nameCache
 
 theInitialKindDecls :: KindEnv
 theInitialKindDecls = Map.fromList
