@@ -270,7 +270,7 @@ bind var = go . rewrite HNF where
                 lhs_outer <- common_arguments `down` lhs_arguments
                 rhs_outer <- common_arguments `down` rhs_arguments
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLamH (map paramHint rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
+                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint []) rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (lhs_inner ++ lhs_outer))
             else if cmp_res /= LT && all isRigidAtom rhs_arguments && and [ lookupLabel c labeling > lookupLabel var' labeling | NCon c <- rhs_arguments ] then do
@@ -281,7 +281,7 @@ bind var = go . rewrite HNF where
                         | lookupLabel c labeling <= lookupLabel var labeling = True
                     isBetaPattern z = z `elem` common_arguments
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLamH (map paramHint rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
+                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint []) rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (rhs_arguments >>= mkBetaPattern))
             else lift (throwE NotAPattern)
@@ -290,23 +290,32 @@ bind var = go . rewrite HNF where
 
 -- Pull a display hint out of a rigid parameter, so that lambdas
 -- synthesized by `mksubst` can recover source names from pi/sigma
--- instantiations. Returns `Nothing` for parameters that have no hint
--- (e.g. anonymous logic variables, type variables, applied terms).
-paramHint :: TermNode -> Maybe SmallId
-paramHint (NCon (DC (DC_Unique _ (DispHint mh)))) = mh
-paramHint (LVar (LV_Unique _ (DispHint mh))) = mh
-paramHint _ = Nothing
+-- instantiations and from outer lambdas peeled by `simplify`.
+-- `outerHints` is the in-scope lambda hints (outermost first); a
+-- `NIdx i` parameter refers to outerHints[length - 1 - i] when in
+-- range. Returns `Nothing` for parameters that have no hint (e.g.
+-- anonymous logic variables, type variables, applied terms, or
+-- NIdx whose binder is out of `outerHints` reach).
+paramHint :: [Maybe SmallId] -> TermNode -> Maybe SmallId
+paramHint _ (NCon (DC (DC_Unique _ (DispHint mh)))) = mh
+paramHint _ (LVar (LV_Unique _ (DispHint mh))) = mh
+paramHint outerHints (NIdx i)
+    | i >= 0 && i < n = outerHints !! (n - 1 - i)
+    where
+        n = length outerHints
+paramHint _ _ = Nothing
 
-mksubst :: LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
-mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr where
+mksubst :: [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
+mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr where
     dispatch :: TermNode -> [TermNode] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) LogicVarSubst
     dispatch rhs parameters
-        | (lambda, rhs') <- viewNestedNLam rhs
+        | (rhsLamHints, rhs') <- viewNestedNLamH rhs
         , (LVar var', rhs_tail) <- unfoldlNApp rhs'
         , var == var'
         = do
             labeling <- get
-            let n = length parameters + lambda
+            let lambda = length rhsLamHints
+                n = length parameters + lambda
                 lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
                 rhs_arguments = map (rewrite NF) rhs_tail
                 common_arguments = [ mkNIdx (n - i - 1) | i <- [0, 1 .. n - 1], lhs_arguments !! i == rhs_arguments !! i ]
@@ -315,7 +324,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
             else do
                 unless (isPatternRespectTo var' rhs_arguments labeling) $ lift (throwE NotAPattern)
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLamH (map paramHint parameters ++ replicate lambda Nothing) (List.foldl' mkNApp common_head common_arguments)
+                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint outerHints) parameters ++ rhsLamHints) (List.foldl' mkNApp common_head common_arguments)
                 modify (zonkLVar theta)
                 return theta
 {-
@@ -332,7 +341,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
                 lhs_arguments = map (rewrite NF) parameters
             unless (isPatternRespectTo var lhs_arguments labeling) $ lift (throwE NotAPattern)
             (subst, lhs) <- bind var rhs parameters 0
-            theta <- lift $ var +-> makeNestedNLamH (map paramHint parameters) lhs
+            theta <- lift $ var +-> makeNestedNLamH (map (paramHint outerHints) parameters) lhs
             modify (zonkLVar theta)
             return (theta <> subst)
     handleErr :: HopuFail -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
@@ -385,7 +394,7 @@ simplify = flip loop mempty . zip (repeat []) where
             | (LVar var, parameters) <- unfoldlNApp lhs
             , isPatternRespectTo var parameters labeling
             = do
-                output <- lift (mksubst var rhs parameters labeling)
+                output <- lift (mksubst l var rhs parameters labeling)
                 case output of
                     Nothing -> solveNext
                     Just (HopuSol labeling' subst') -> do
@@ -394,7 +403,7 @@ simplify = flip loop mempty . zip (repeat []) where
             | (LVar var, parameters) <- unfoldlNApp rhs
             , isPatternRespectTo var parameters labeling
             = do
-                output <- lift (mksubst var lhs parameters labeling)
+                output <- lift (mksubst l var lhs parameters labeling)
                 case output of
                     Nothing -> solveNext
                     Just (HopuSol labeling' subst') -> do
