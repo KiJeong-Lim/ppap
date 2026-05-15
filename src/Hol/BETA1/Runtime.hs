@@ -67,6 +67,21 @@ data RuntimeEnv
     = RuntimeEnv
         { _PutStr :: Context -> String -> IO ()
         , _Answer :: Context -> IO RunMore
+        -- §3.4: the debugger lists each user-visible flexible variable
+        -- with its inferred `MonoType`. The map is keyed by `LogicVar`
+        -- so the runtime can resolve a name shown at a breakpoint back
+        -- to its type without dragging the type-check pipeline into
+        -- `Runtime.hs`. It is set once per query (in `Main.mkRuntimeEnv`)
+        -- and is read-only for the duration of the search.
+        , _TypeInfo :: Map.Map LogicVar (MonoType Int)
+        -- §3.2 `:assign`: the substitution accumulated by `:assign` between
+        -- step boundaries. The REPL callback (`_PutStr`) writes a single
+        -- `?V := t` binding into this IORef; the next entry to `go` reads
+        -- it, applies `zonkLVar` to the entire stack (current `ctx`/cells
+        -- plus every saved frame), and clears it. This decouples the IO
+        -- callback (which has no `Stack` in scope) from the kernel loop
+        -- that does. The IORef is created once per query in `Main`.
+        , _PendingSubst :: IORef LogicVarSubst
         }
     deriving ()
 
@@ -106,26 +121,48 @@ showsvdash space [] goal = strstr "|- " . shows goal
 showsvdash space [hyp] goal = shows hyp . strstr " |- " . shows goal
 showsvdash space (hyp : hyps) goal = shows hyp . strstr ", " . showsvdash space hyps goal
 
-showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> ShowS
-showStackItem fvs space (ctx, cells) = strcat
+-- §3.4: render a `MonoType Int` in a form the user can read at a
+-- breakpoint. Free type variables (`TyVar i`) are printed as `a_i`;
+-- TyMTV is shown as `?t<unique>`; `TC_Arrow` is treated as a
+-- right-associative infix `->`. Precedences mirror those used by
+-- `Outputable KindExpr` so the output is consistent.
+showsMonoType :: Int -> MonoType Int -> ShowS
+showsMonoType _ (TyVar i) = strstr "a_" . shows i
+showsMonoType _ (TyMTV mtv) = strstr "?t" . shows mtv
+showsMonoType _ (TyCon (TCon tc _)) = shows tc
+showsMonoType prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2) =
+    let inner = showsMonoType 5 t1 . strstr " -> " . showsMonoType 4 t2
+    in if prec > 4 then strstr "(" . inner . strstr ")" else inner
+showsMonoType prec (TyApp t1 t2) =
+    let inner = showsMonoType 6 t1 . strstr " " . showsMonoType 7 t2
+    in if prec > 6 then strstr "(" . inner . strstr ")" else inner
+
+showStackItem :: Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
+showStackItem fvs typeMap space (ctx, cells) = strcat
     [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- [ " . showsvdash (space + 8) hyps goal . strstr " ] # call_id = " . shows call_id | Cell facts hyps level goal call_id <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
+    -- §3.4 typing context: each flexible variable in scope with its
+    -- inferred type. The set comes from `_TypeInfo` (built in
+    -- `Main.mkRuntimeEnv` from the type-checker's `assumptions`).
+    -- We restrict to `fvs` so the same filter as `_substitution`
+    -- applies, keeping the listing relevant to what the user can see.
+    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) [ shows (LVar v) . strstr " : " . showsMonoType 0 typ | (v, typ) <- Map.toList typeMap, v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
     , pindent (space + 4) . strstr "}" . nl
     ]
 
-showsCurrentState :: Set.Set LogicVar -> Context -> [Cell] -> Stack -> ShowS
-showsCurrentState fvs ctx cells stack = strcat
+showsCurrentState :: Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
+showsCurrentState fvs typeMap ctx cells stack = strcat
     [ strstr "--------------------------------" . nl
     , strstr "* The top of the current stack is:" . nl
-    , showStackItem fvs 4 (ctx, cells) . nl
+    , showStackItem fvs typeMap 4 (ctx, cells) . nl
     , strstr "* The rest of the current stack is:" . nl
     , strcat
         [ strcat
             [ pindent 0 . strstr "- (#" . shows i . strstr ")" . nl
-            , showStackItem fvs 4 item . nl
+            , showStackItem fvs typeMap 4 item . nl
             ]
         | (i, item) <- zip [1, 2 .. length stack] stack
         ]
@@ -433,17 +470,45 @@ runTransition env free_lvars = go where
     dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf, []) _call_id cells stack
         = go (runPresburger rep freeOf ctx cells stack)
     dispatch ctx facts hyps level (t, ts) call_id cells stack = throwE (BadGoalGiven (foldlNApp t ts))
+    -- §3.2.4: drain any `:assign` substitution before each step. The
+    -- map is keyed by `LogicVar`, so applying `zonkLVar` to `ctx`,
+    -- the active cells, and every saved frame is sufficient to
+    -- propagate `?V := t` everywhere a term currently lives —
+    -- including `_TotalVarBinding`, `_LeftConstraints`, every cell's
+    -- `_WantedGoal` / `_GivenHypos`, and the labelling map (via the
+    -- `Context` instance). The IORef is reset to `mempty` once
+    -- consumed so subsequent steps see no further mutation.
+    applyPending :: Stack -> ExceptT KernelErr (UniqueT IO) Stack
+    applyPending [] = return []
+    applyPending st@((ctx, cells) : rest) = liftIO $ do
+        pending <- readIORef (_PendingSubst env)
+        if Map.null (unVarBinding pending)
+            then return st
+            else do
+                writeIORef (_PendingSubst env) (VarBinding Map.empty)
+                let zonkFrame (c, cs) = (zonkLVar pending c, map (zonkLVar pending) cs)
+                return (zonkFrame (ctx, cells) : map zonkFrame rest)
     go :: Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
-    go [] = return False
-    go ((ctx, cells) : stack) = do
-        liftIO $ do
-            dbg <- readIORef (_debuggindModeOn ctx)
-            when dbg $ _PutStr env ctx (showsCurrentState free_lvars ctx cells stack "")
-        case cells of
-            [] -> do
-                want_more <- liftIO (_Answer env ctx)
-                if want_more then go stack else return True
-            Cell facts hyps level goal call_id : cells -> dispatch ctx facts hyps level (unfoldlNApp (rewrite HNF goal)) call_id cells stack
+    go raw_stack = do
+        stack0 <- applyPending raw_stack
+        case stack0 of
+            [] -> return False
+            (ctx, cells) : stack -> do
+                liftIO $ do
+                    dbg <- readIORef (_debuggindModeOn ctx)
+                    when dbg $ _PutStr env ctx (showsCurrentState free_lvars (_TypeInfo env) ctx cells stack "")
+                -- The user's `:assign` (entered via `_PutStr`) may have
+                -- arrived during the debug prompt. Re-drain so the very
+                -- next dispatch sees the propagated substitution.
+                stack1 <- applyPending ((ctx, cells) : stack)
+                case stack1 of
+                    [] -> return False
+                    (ctx', cells') : stack' -> case cells' of
+                        [] -> do
+                            want_more <- liftIO (_Answer env ctx')
+                            if want_more then go stack' else return True
+                        Cell facts hyps level goal call_id : rest_cells ->
+                            dispatch ctx' facts hyps level (unfoldlNApp (rewrite HNF goal)) call_id rest_cells stack'
 
 eraseTrivialBinding :: LogicVarSubst -> LogicVarSubst
 eraseTrivialBinding = VarBinding . loop . unVarBinding where

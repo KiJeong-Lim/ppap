@@ -74,8 +74,8 @@ runREPL program = do
     -- future `:assign`) take effect from the next printout onwards.
     prettyTerm :: NameCache -> TermNode -> ShowS
     prettyTerm cache t = pprint 0 (constructViewerWith (viewerLookup cache) t)
-    mkRuntimeEnv :: IORef Debugging -> IORef NameCache -> TermNode -> IO RuntimeEnv
-    mkRuntimeEnv isDebugging nameCache query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer }) where
+    mkRuntimeEnv :: IORef Debugging -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
+    mkRuntimeEnv isDebugging nameCache pendingSubst typeMap query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst }) where
         runInteraction :: Context -> String -> IO ()
         runInteraction ctx str = do
             isDebugging <- readIORef (_debuggindModeOn ctx)
@@ -88,7 +88,163 @@ runREPL program = do
                         debugging <- readIORef (_debuggindModeOn ctx)
                         promptify "Debugging mode off."
                         return ()
+                    _ | (":assign " `List.isPrefixOf` response) ->
+                        handleAssign ctx (drop (length (":assign " :: String)) response)
                     _ -> return ()
+        -- §3.2 `:assign ?V := t.` parsing: strip the literal `?` from the
+        -- variable name and split on ` := `. The body is re-assembled as
+        -- the ordinary query `?- V = t.` so the existing lex+parse+desugar
+        -- +typecheck+convert pipeline does the heavy lifting (including
+        -- type-coherence: `DC_eq : forall A. A -> A -> o` forces `V`'s
+        -- inferred type and `t`'s inferred type to unify).
+        parseAssign :: String -> Maybe (String, String)
+        parseAssign body0 =
+            let body = dropWhile (== ' ') body0
+            in case body of
+                '?' : rest -> findSep rest ""
+                _ -> Nothing
+          where
+            findSep :: String -> String -> Maybe (String, String)
+            findSep [] _ = Nothing
+            findSep (' ' : ':' : '=' : ' ' : rs) acc =
+                Just (reverse (dropWhile (== ' ') acc), dropWhile (== ' ') rs)
+            findSep (c : cs) acc = findSep cs (c : acc)
+        handleAssign :: Context -> String -> IO ()
+        handleAssign ctx body = case parseAssign body of
+            Nothing -> do
+                _ <- promptify "*** :assign error: expected ':assign ?X := t.'"
+                return ()
+            Just (varName, tBody) -> do
+                -- §3.2.2: the user may reference other flexible variables
+                -- inside `t` (e.g. `:assign ?F := ?V_17.`). Both the
+                -- viewer's `?V_<n>` display and `LV_Named` user variables
+                -- carry a literal `?` only in front of the *single*
+                -- variable name. We strip every `?` that immediately
+                -- precedes an identifier character so that the synthetic
+                -- query `?- X = ...` lexes cleanly; `nameSwap` below
+                -- restores the resolved LogicVar for each such name.
+                let stripQuests :: String -> String
+                    stripQuests [] = []
+                    stripQuests ('?' : cs) = stripQuests cs
+                    stripQuests (c : cs) = c : stripQuests cs
+                    queryStr = "?- " ++ varName ++ " = " ++ stripQuests tBody
+                cache <- readIORef nameCache
+                result <- execUniqueT $ runExceptT (compileAssign varName queryStr)
+                case result of
+                    Left err -> do
+                        _ <- promptify err
+                        return ()
+                    Right (compiledLV, t_compiled, inferredTy) -> do
+                        -- §3.5: resolve user-input display names back to the
+                        -- real LogicVar each refers to. If a name is in
+                        -- `NameCache.fromDisplay`, the user *meant* that
+                        -- anonymous variable (LV_Unique/LV_ty_var); the
+                        -- compiler had to produce a fresh `LV_Named` because
+                        -- it has no knowledge of the cache. We patch this up
+                        -- on both sides:
+                        --   • `targetLV` — the LHS the user typed
+                        --   • `nameSwap` — every other LV_Named appearing in
+                        --     `t_compiled` whose name happens to be a cached
+                        --     display name (the user can refer to anonymous
+                        --     variables anywhere inside `t`).
+                        let resolveDisplayName :: String -> Maybe LogicVar
+                            resolveDisplayName nm = case fromDisplay nm cache of
+                                Just r -> Just r
+                                Nothing -> parseAnonymousLV nm
+                            targetLV = case resolveDisplayName varName of
+                                Just resolved -> resolved
+                                Nothing -> compiledLV
+                            nameSwap = VarBinding $ Map.fromList
+                                [ (lv, mkLVar resolved)
+                                | lv@(LV_Named nm) <- Set.toList (getLVars t_compiled)
+                                , Just resolved <- [resolveDisplayName nm]
+                                , resolved /= lv
+                                ]
+                            t_resolved = bindVars nameSwap t_compiled
+                            mexpectedTy = Map.lookup targetLV typeMap
+                            badType = case mexpectedTy of
+                                Just expectedTy -> not (typeCompatible expectedTy inferredTy)
+                                Nothing -> False  -- anonymous targets: fall back to HOPU/kernel
+                        if badType
+                            then case mexpectedTy of
+                                Just expectedTy -> do
+                                    _ <- promptify ("*** :assign error: type mismatch for '" ++ varName ++ "' — expected " ++ showsMonoType 0 expectedTy (", got " ++ showsMonoType 0 inferredTy ""))
+                                    return ()
+                                Nothing -> return ()  -- unreachable
+                            else do
+                                existingPending <- readIORef pendingSubst
+                                let composed_subst = existingPending <> _TotalVarBinding ctx
+                                    t_zonked = bindVars composed_subst t_resolved
+                                if targetLV `Set.member` getLVars t_zonked
+                                    then do
+                                        _ <- promptify ("*** :assign error: occurs check failed for '" ++ varName ++ "'")
+                                        return ()
+                                    else do
+                                        let new_binding = VarBinding (Map.singleton targetLV t_zonked)
+                                        writeIORef pendingSubst (new_binding <> existingPending)
+                                        let pp = prettyTerm cache
+                                        _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
+                                        return ()
+        -- §3.5: a fallback for when the user types a display name that
+        -- the `NameCache` has no entry for. The viewer renders anonymous
+        -- LogicVars with a fixed convention (TermNode.constructViewerWith):
+        --     `LV_Unique uni (DispHint Nothing)` ↦ `?V_<uni>`
+        --     `LV_Unique uni (DispHint Nothing)` (Show)  ↦ `?LV_<uni>`
+        --     `LV_ty_var uni`                  ↦ `?TV_<uni>`
+        -- After `parseAssign` has stripped the leading `?`, we recognise
+        -- the remaining `V_<n>` / `LV_<n>` / `TV_<n>` shapes and rebuild
+        -- the LogicVar by hand. This lets a user `:assign` an anonymous
+        -- variable they can see in the debugger output without having to
+        -- rename it first.
+        parseAnonymousLV :: String -> Maybe LogicVar
+        parseAnonymousLV nm = case nm of
+            'T' : 'V' : '_' : rest -> mkAnon LV_ty_var rest
+            'L' : 'V' : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
+            'V'       : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
+            _ -> Nothing
+          where
+            mkAnon ctor digits = case reads digits of
+                [(n, "")] -> Just (ctor (Unique n))
+                _ -> Nothing
+        -- Structural compatibility: `TyMTV` (unresolved metatype variable)
+        -- and `TyVar` (rigid type parameter introduced by `Forall`) are
+        -- treated as wildcards on either side; everything else must agree
+        -- pointwise. This is conservative — it admits anything the real
+        -- HOPU layer would have accepted, and rejects obviously
+        -- incompatible shapes (function vs. nat) before the propagation
+        -- so the user gets a focused error rather than a silent failure.
+        typeCompatible :: MonoType Int -> MonoType Int -> Bool
+        typeCompatible (TyMTV _) _ = True
+        typeCompatible _ (TyMTV _) = True
+        typeCompatible (TyVar _) _ = True
+        typeCompatible _ (TyVar _) = True
+        typeCompatible (TyCon (TCon tc1 _)) (TyCon (TCon tc2 _)) = tc1 == tc2
+        typeCompatible (TyApp f1 a1) (TyApp f2 a2) = typeCompatible f1 f2 && typeCompatible a1 a2
+        typeCompatible _ _ = False
+        compileAssign :: MonadUnique m => String -> String -> ExceptT ErrMsg m (LogicVar, TermNode, MonoType Int)
+        compileAssign varName queryStr = case runHolLexer queryStr of
+            Left _ -> throwE "*** :assign error: lex failed"
+            Right tokens -> case runHolParser tokens of
+                Left _ -> throwE "*** :assign error: parse failed"
+                Right (Right _) -> throwE "*** :assign error: expected a query, not a declaration"
+                Right (Left termRep) -> do
+                    (term2, free_vars) <- desugarQuery termRep
+                    (term3, (used_mtvs, assumptions)) <- checkType (_TypeDecls program) term2 mkTyO
+                    term4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) term3
+                    term5 <- either throwE return (installPresburger term4)
+                    -- The inferred type of `X` inside the synthetic query
+                    -- `?- X = t.` is recovered via `free_vars[varName] -> IVar`
+                    -- then `assumptions[IVar] -> MonoType Int`. `DC_eq`
+                    -- forces both sides to share that type, so this is
+                    -- also the inferred type of `t`.
+                    inferredTy <- case Map.lookup varName free_vars >>= \ivar -> Map.lookup ivar assumptions of
+                        Just typ -> return typ
+                        Nothing -> throwE "*** :assign error: could not infer type for the binding"
+                    case unfoldlNApp (rewrite NF term5) of
+                        (NCon (DC DC_eq), [_typeArg, lhs, rhs]) -> case rewrite NF lhs of
+                            LVar lv -> return (lv, rhs, inferredTy)
+                            _ -> throwE "*** :assign error: LHS did not resolve to a logic variable"
+                        _ -> throwE "*** :assign error: did not compile to an equality"
         printAnswer :: Context -> IO RunMore
         printAnswer ctx
             | isShort && isClear = return False
@@ -142,7 +298,13 @@ runREPL program = do
                     , _debuggindModeOn = _debuggindModeOn ctx
                     }
                 theAnswerSubst :: [(LargeId, TermNode)]
-                theAnswerSubst = [ (v, t) | (LV_Named v, t) <- Map.toList (unVarBinding (eraseTrivialBinding (_TotalVarBinding final_ctx))) ]
+                -- §3.2.4: after `:assign ?V_n := t.`, the kernel ctx holds
+                -- both `?V_n := t` and any HOPU-derived `F := ?V_n`. The
+                -- naive `eraseTrivialBinding` only normalises *trivial*
+                -- LV-to-LV pairs and won't follow `F → ?V_n → t`. We zonk
+                -- each RHS through the full ctx binding once so the user
+                -- sees the resolved value rather than the indirected one.
+                theAnswerSubst = [ (v, bindVars (_TotalVarBinding final_ctx) t) | (LV_Named v, t) <- Map.toList (unVarBinding (eraseTrivialBinding (_TotalVarBinding final_ctx))) ]
                 isShort :: Bool
                 isShort = Set.null (getLVars query)
                 isClear :: Bool
@@ -207,13 +369,29 @@ runREPL program = do
                             (query2, free_vars) <- desugarQuery query1
                             (query3, (used_mtvs, assumptions)) <- checkType (_TypeDecls program) query2 mkTyO
                             query4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
-                            either throwE return (installPresburger query4)
+                            query5 <- either throwE return (installPresburger query4)
+                            -- §3.4: the debugger lists every visible flexible
+                            -- variable with its inferred type. The query
+                            -- type-checker is the only point in the pipeline
+                            -- that *knows* these types — `assumptions` carries
+                            -- (IVar -> MonoType Int) and `free_vars` maps each
+                            -- user-visible `LargeId` to its IVar. We lift both
+                            -- to `LogicVar`-keyed form so the runtime can hand
+                            -- the data to `showsCurrentState` without ever
+                            -- looking back through compilation state.
+                            let typeMap = Map.fromList
+                                    [ (LV_Named name, typ)
+                                    | (name, ivar) <- Map.toList free_vars
+                                    , Just typ <- [Map.lookup ivar assumptions]
+                                    ]
+                            return (query5, typeMap)
                         case result of
                             Left err_msg -> do
                                 lift $ putStrLn err_msg
                                 go isDebugging nameCache
-                            Right query4 -> do
-                                runtime_env <- lift $ mkRuntimeEnv isDebugging nameCache query4
+                            Right (query4, typeMap) -> do
+                                pendingSubst <- lift $ newIORef (VarBinding Map.empty)
+                                runtime_env <- lift $ mkRuntimeEnv isDebugging nameCache pendingSubst typeMap query4
                                 answer <- runExceptT (execRuntime runtime_env isDebugging (_FactDecls program) query4)
                                 case answer of
                                     Left runtime_err -> case runtime_err of
