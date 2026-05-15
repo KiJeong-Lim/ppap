@@ -283,6 +283,15 @@ viewNestedNLam = go 0 where
     go n (NLam _ t) = go (n + 1) t
     go n t = (n, t)
 
+-- Like `viewNestedNLam`, but also returns the hint of each peeled
+-- binder. Outermost binder is the head of the list, matching
+-- `makeNestedNLamH`'s input convention.
+viewNestedNLamH :: TermNode -> ([Maybe SmallId], TermNode)
+viewNestedNLamH = go [] where
+    go :: [Maybe SmallId] -> TermNode -> ([Maybe SmallId], TermNode)
+    go hs (NLam h t) = go (h : hs) t
+    go hs t = (reverse hs, t)
+
 constructViewer :: TermNode -> ViewNode
 constructViewer = fst . runIdentity . uncurry (runStateT . formatView . eraseType) . runIdentity . flip runStateT 1 . makeView [] . rewrite NF where
     isType :: ViewNode -> Bool

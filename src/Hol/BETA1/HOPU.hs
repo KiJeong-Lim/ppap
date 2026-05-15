@@ -347,24 +347,31 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
         go (LVar x) = lookupLabel var labeling >= lookupLabel x labeling
 
 simplify :: [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
-simplify = flip loop mempty . zip (repeat 0) where
-    loop :: [(Int, Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+simplify = flip loop mempty . zip (repeat []) where
+    loop :: [([Maybe SmallId], Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
     loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
-        dispatch :: Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+        dispatch :: [Maybe SmallId] -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
         dispatch l lhs rhs
-            | (lambda1, lhs') <- viewNestedNLam lhs
-            , (lambda2, rhs') <- viewNestedNLam rhs
-            , lambda1 > 0 && lambda2 > 0
-            = (\lambda -> dispatch (l + lambda) (makeNestedNLam (lambda1 - lambda) lhs') (makeNestedNLam (lambda2 - lambda) rhs')) $! min lambda1 lambda2
-            | (lambda1, lhs') <- viewNestedNLam lhs
+            | (lhsHints, lhs') <- viewNestedNLamH lhs
+            , (rhsHints, rhs') <- viewNestedNLamH rhs
+            , not (null lhsHints) && not (null rhsHints)
+            = let lambda1 = length lhsHints
+                  lambda2 = length rhsHints
+                  lambda = min lambda1 lambda2
+              in dispatch (l ++ take lambda lhsHints) (makeNestedNLamH (drop lambda lhsHints) lhs') (makeNestedNLamH (drop lambda rhsHints) rhs')
+            | (lhsHints, lhs') <- viewNestedNLamH lhs
+            , not (null lhsHints)
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
-            , lambda1 > 0 && isRigidAtom rhs_head
-            = dispatch (l + lambda1) lhs' (List.foldl' mkNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1 - 1, lambda1 - 2 .. 0]))
+            , isRigidAtom rhs_head
+            = let lambda1 = length lhsHints
+              in dispatch (l ++ lhsHints) lhs' (List.foldl' mkNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1 - 1, lambda1 - 2 .. 0]))
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
-            , (lambda2, rhs') <- viewNestedNLam rhs
-            , isRigidAtom lhs_head && lambda2 > 0
-            = dispatch (l + lambda2) (List.foldl' mkNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2 - 1, lambda2 - 2 .. 0])) rhs'
+            , (rhsHints, rhs') <- viewNestedNLamH rhs
+            , isRigidAtom lhs_head
+            , not (null rhsHints)
+            = let lambda2 = length rhsHints
+              in dispatch (l ++ rhsHints) (List.foldl' mkNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2 - 1, lambda2 - 2 .. 0])) rhs'
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , isRigidAtom lhs_head && isRigidAtom rhs_head
@@ -406,7 +413,7 @@ simplify = flip loop mempty . zip (repeat 0) where
         solveNext :: StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
         solveNext = do
             (disagreements', HopuSol labeling' subst') <- loop disagreements mempty labeling
-            return (bindVars subst' (makeNestedNLam l lhs :=?=: makeNestedNLam l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
+            return (bindVars subst' (makeNestedNLamH l lhs :=?=: makeNestedNLamH l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
 
 runHOPU :: Labeling -> [Disagreement] -> UniqueT IO (Maybe ([Disagreement], HopuSol))
 runHOPU = go where
