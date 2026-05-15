@@ -217,13 +217,13 @@ ts `up` y = if upable then fmap findVisibles get else lift (throwE UpFail) where
     findVisibles :: Labeling -> [TermNode]
     findVisibles labeling = [ mkNCon c | NCon c <- ts, lookupLabel c labeling <= lookupLabel y labeling ]
 
-bind :: LogicVar -> TermNode -> [TermNode] -> Int -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
-bind var = go . rewrite HNF where
-    go :: TermNode -> [TermNode] -> Int -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
-    go (NLam mhint rhs') parameters lambda = do
-        (subst, lhs') <- go rhs' parameters (lambda + 1)
+bind :: [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
+bind outerHints var = go . rewrite HNF where
+    go :: TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
+    go (NLam mhint rhs') parameters bindHints = do
+        (subst, lhs') <- go rhs' parameters (bindHints ++ [mhint])
         return (subst, mkNLamHint mhint lhs')
-    go rhs parameters lambda
+    go rhs parameters bindHints
         | (NCon (DC DC_wc), _) <- unfoldlNApp rhs
         = do
             labeling <- get
@@ -233,9 +233,10 @@ bind var = go . rewrite HNF where
         , isRigidAtom rhs_head
         = do
             labeling <- get
-            let foldbind [] = return (mempty, [])
+            let lambda = length bindHints
+                foldbind [] = return (mempty, [])
                 foldbind (rhs_tail_elements : rhs_tail) = do
-                    (subst, lhs_tail_elements) <- go (rewrite HNF rhs_tail_elements) parameters lambda
+                    (subst, lhs_tail_elements) <- go (rewrite HNF rhs_tail_elements) parameters bindHints
                     (theta, lhs_tail) <- foldbind (bindVars subst rhs_tail)
                     return (theta <> subst, bindVars theta lhs_tail_elements : lhs_tail)
                 getLhsHead lhs_arguments
@@ -253,7 +254,9 @@ bind var = go . rewrite HNF where
         = do
             when (var == var') $ lift (throwE OccursCheckFail)
             labeling <- get
-            let lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
+            let lambda = length bindHints
+                hints = outerHints ++ bindHints
+                lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
                 rhs_arguments = map (rewrite NF) rhs_tail
                 common_arguments = Set.toList (Set.fromList lhs_arguments `Set.intersection` Set.fromList rhs_arguments)
                 cmp_res = lookupLabel var labeling `compare` lookupLabel var' labeling
@@ -270,7 +273,7 @@ bind var = go . rewrite HNF where
                 lhs_outer <- common_arguments `down` lhs_arguments
                 rhs_outer <- common_arguments `down` rhs_arguments
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint []) rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
+                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint hints) rhs_arguments) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (lhs_inner ++ lhs_outer))
             else if cmp_res /= LT && all isRigidAtom rhs_arguments && and [ lookupLabel c labeling > lookupLabel var' labeling | NCon c <- rhs_arguments ] then do
@@ -281,7 +284,7 @@ bind var = go . rewrite HNF where
                         | lookupLabel c labeling <= lookupLabel var labeling = True
                     isBetaPattern z = z `elem` common_arguments
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint []) rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
+                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint hints) rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (rhs_arguments >>= mkBetaPattern))
             else lift (throwE NotAPattern)
@@ -316,7 +319,8 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
             labeling <- get
             let lambda = length rhsLamHints
                 n = length parameters + lambda
-                lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
+                normalizedParams = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ]
+                lhs_arguments = normalizedParams ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
                 rhs_arguments = map (rewrite NF) rhs_tail
                 common_arguments = [ mkNIdx (n - i - 1) | i <- [0, 1 .. n - 1], lhs_arguments !! i == rhs_arguments !! i ]
             if lhs_arguments == rhs_arguments then
@@ -324,7 +328,7 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
             else do
                 unless (isPatternRespectTo var' rhs_arguments labeling) $ lift (throwE NotAPattern)
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint outerHints) parameters ++ rhsLamHints) (List.foldl' mkNApp common_head common_arguments)
+                theta <- lift $ var' +-> makeNestedNLamH (map (paramHint outerHints) normalizedParams ++ rhsLamHints) (List.foldl' mkNApp common_head common_arguments)
                 modify (zonkLVar theta)
                 return theta
 {-
@@ -340,8 +344,8 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
             let n = length parameters
                 lhs_arguments = map (rewrite NF) parameters
             unless (isPatternRespectTo var lhs_arguments labeling) $ lift (throwE NotAPattern)
-            (subst, lhs) <- bind var rhs parameters 0
-            theta <- lift $ var +-> makeNestedNLamH (map (paramHint outerHints) parameters) lhs
+            (subst, lhs) <- bind outerHints var rhs parameters []
+            theta <- lift $ var +-> makeNestedNLamH (map (paramHint outerHints) lhs_arguments) lhs
             modify (zonkLVar theta)
             return (theta <> subst)
     handleErr :: HopuFail -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
