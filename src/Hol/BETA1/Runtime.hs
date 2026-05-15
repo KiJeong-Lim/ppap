@@ -142,7 +142,10 @@ instantiateFact fact level
             instantiateFact (mkNApp fact1 (mkLVar var)) level
         (NCon (DC (DC_LO LO_pi)), [fact1]) -> do
             uni <- getUnique
-            let var = LV_Unique uni
+            let mhint = case rewrite HNF fact1 of
+                    NLam h _ -> h
+                    _ -> Nothing
+                var = LV_Unique uni (mkHint mhint)
             modify (enrollLabel var level)
             instantiateFact (mkNApp fact1 (mkLVar var)) level
         (NCon (DC (DC_LO LO_if)), [conclusion, premise]) -> return (conclusion, premise)
@@ -167,12 +170,18 @@ runLogicalOperator LO_imply [fact1, goal2] ctx facts hyps level call_id cells st
 runLogicalOperator LO_sigma [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
-        let var = LV_Unique uni
+        let mhint = case rewrite HNF goal1 of
+                NLam h _ -> h
+                _ -> Nothing
+            var = LV_Unique uni (mkHint mhint)
         return ((ctx { _CurrentLabeling = enrollLabel var level (_CurrentLabeling ctx) }, mkCell facts hyps level (mkNApp goal1 (mkLVar var)) call_id : cells) : stack)
 runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
-        let con = DC (DC_Unique uni)
+        let mhint = case rewrite HNF goal1 of
+                NLam h _ -> h
+                _ -> Nothing
+            con = DC (DC_Unique uni (mkHint mhint))
         return ((ctx { _CurrentLabeling = enrollLabel con (level + 1) (_CurrentLabeling ctx) }, mkCell facts hyps (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
 runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     | Left "ill" == evaluateA (rewrite NF rhs)

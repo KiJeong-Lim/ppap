@@ -20,7 +20,7 @@ type IsTypeLevel = Bool
 
 data LogicVar
     = LV_ty_var Unique
-    | LV_Unique Unique
+    | LV_Unique Unique DispHint
     | LV_Named LargeId
     deriving (Eq, Ord)
 
@@ -139,7 +139,9 @@ instance Outputable ViewNode where
 
 instance Show LogicVar where
     showsPrec prec (LV_ty_var uni) = strstr "?TV_" . showsPrec prec (unUnique uni)
-    showsPrec prec (LV_Unique uni) = strstr "?LV_" . showsPrec prec (unUnique uni)
+    showsPrec prec (LV_Unique uni (DispHint mhint)) = case mhint of
+        Just s -> strstr s
+        Nothing -> strstr "?LV_" . showsPrec prec (unUnique uni)
     showsPrec prec (LV_Named name) = strstr name
 
 {-# INLINE mkLVar #-}
@@ -250,6 +252,14 @@ makeNestedNLam n
     | n > 0 = makeNestedNLam (n - 1) . mkNLam
     | otherwise = undefined
 
+-- Like `makeNestedNLam`, but each binder carries its hint from the list.
+-- Outermost binder is the head of the list. Used by HOPU's `mksubst` to
+-- propagate display names from rigid parameters (e.g. DC_Unique from
+-- pi-elimination) into the lambdas it synthesizes.
+makeNestedNLamH :: [Maybe SmallId] -> TermNode -> TermNode
+makeNestedNLamH [] t = t
+makeNestedNLamH (h : hs) t = mkNLamHint h (makeNestedNLamH hs t)
+
 -- §4.5.2: choose a display name not already in `live`. If `h`
 -- has a trailing digit run, that suffix is stripped first so that
 -- `freshenName "X1" ["X1"]` returns `"X2"` (not `"X11"`). The
@@ -283,13 +293,13 @@ constructViewer = fst . runIdentity . uncurry (runStateT . formatView . eraseTyp
     makeView :: [SmallId] -> TermNode -> StateT Int Identity ViewNode
     makeView vars (LVar var) = case var of
         LV_ty_var v -> return (ViewTVar ("?TV_" ++ show v))
-        LV_Unique v -> return (ViewLVar ("?V_" ++ show v))
+        LV_Unique v (DispHint mhint) -> return (ViewLVar (case mhint of Just s -> s; Nothing -> "?V_" ++ show v))
         LV_Named v -> return (ViewLVar v)
     makeView vars (NCon con) = case con of
         DC data_constructor -> case data_constructor of
             DC_LO logical_operator -> return (ViewDCon (show logical_operator))
             DC_Named name -> return (ViewDCon ("__" ++ name))
-            DC_Unique uni -> return (ViewDCon ("c_" ++ show uni))
+            DC_Unique uni (DispHint mhint) -> return (ViewDCon (case mhint of Just s -> s; Nothing -> "c_" ++ show uni))
             DC_Nil -> return (ViewDCon "[]")
             DC_Cons -> return (ViewDCon "::")
             DC_ChrL chr -> return (ViewChrL chr)

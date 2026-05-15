@@ -52,7 +52,7 @@ convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithou
     makeUniversalClosure = flip (foldr (\_ -> \term -> (mkNApp (mkNCon LO_ty_pi)) (mkNLam term))) [1, 2 .. Map.size used_mtvs] . flip (foldr (\_ -> \term -> mkNApp (mkNCon LO_pi) (mkNLam term))) [1, 2 .. Map.size assumptions]
 
 replaceWildcards :: MonadUnique m => TermNode -> m TermNode
-replaceWildcards (NCon (DC DC_wc)) = fmap (mkLVar . LV_Unique) getUnique
+replaceWildcards (NCon (DC DC_wc)) = fmap (\u -> mkLVar (LV_Unique u noHint)) getUnique
 replaceWildcards (NApp t1 t2) = liftM2 mkNApp (replaceWildcards t1) (replaceWildcards t2)
 replaceWildcards (NLam h t) = fmap (mkNLamHint h) (replaceWildcards t)
 replaceWildcards t = return t

@@ -187,7 +187,7 @@ foldTerm db t = case tryMatch (_entries db) t of
 -- §2.7 (T) error-message folding and matcher tests.
 renderTerm :: NotationDB -> TermNode -> ViewNode
 renderTerm _ (LVar (LV_ty_var u)) = ViewTVar ("?TV_" ++ show u)
-renderTerm _ (LVar (LV_Unique u)) = ViewLVar ("?V_" ++ show u)
+renderTerm _ (LVar (LV_Unique u (DispHint mhint))) = ViewLVar (case mhint of Just s -> s; Nothing -> "?V_" ++ show u)
 renderTerm _ (LVar (LV_Named v)) = ViewLVar v
 renderTerm _ (NCon (DC d)) = ViewDCon (show d)
 renderTerm _ (NCon (TC t)) = ViewTCon (show t)

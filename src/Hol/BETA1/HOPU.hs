@@ -74,13 +74,13 @@ class ZonkLVar expr where
 
 instance Labelable Constant where
     {-# INLINE enrollLabel #-}
-    enrollLabel (DC (DC_Unique uni)) level labeling = labeling { _ConLabel = IntMap.insert (unUnique uni) level (_ConLabel labeling) }
+    enrollLabel (DC (DC_Unique uni _)) level labeling = labeling { _ConLabel = IntMap.insert (unUnique uni) level (_ConLabel labeling) }
     enrollLabel _ _ labeling = labeling
     {-# INLINE updateLabel #-}
-    updateLabel (DC (DC_Unique uni)) level labeling = labeling { _ConLabel = IntMap.update (const (Just level)) (unUnique uni) (_ConLabel labeling) }
+    updateLabel (DC (DC_Unique uni _)) level labeling = labeling { _ConLabel = IntMap.update (const (Just level)) (unUnique uni) (_ConLabel labeling) }
     updateLabel _ _ labeling = labeling
     {-# INLINE lookupLabel #-}
-    lookupLabel (DC (DC_Unique uni)) labeling = IntMap.findWithDefault maxBound (unUnique uni) (_ConLabel labeling)
+    lookupLabel (DC (DC_Unique uni _)) labeling = IntMap.findWithDefault maxBound (unUnique uni) (_ConLabel labeling)
     lookupLabel _ _ = 0
 
 instance Labelable LogicVar where
@@ -96,7 +96,7 @@ instance Labelable LogicVar where
 
 {-# INLINE lvKey #-}
 lvKey :: LogicVar -> Int
-lvKey (LV_Unique u) = unUnique u
+lvKey (LV_Unique u _) = unUnique u
 lvKey (LV_ty_var u) = unUnique u
 lvKey (LV_Named _) = error "lvKey: LV_Named has no Int key"
 
@@ -220,12 +220,10 @@ ts `up` y = if upable then fmap findVisibles get else lift (throwE UpFail) where
 bind :: LogicVar -> TermNode -> [TermNode] -> Int -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
 bind var = go . rewrite HNF where
     go :: TermNode -> [TermNode] -> Int -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
+    go (NLam mhint rhs') parameters lambda = do
+        (subst, lhs') <- go rhs' parameters (lambda + 1)
+        return (subst, mkNLamHint mhint lhs')
     go rhs parameters lambda
-        | (lambda', rhs') <- viewNestedNLam rhs
-        , lambda' > 0
-        = do
-            (subst, lhs') <- go rhs' parameters (lambda + lambda')
-            return (subst, makeNestedNLam lambda' lhs')
         | (NCon (DC DC_wc), _) <- unfoldlNApp rhs
         = do
             labeling <- get
@@ -272,7 +270,7 @@ bind var = go . rewrite HNF where
                 lhs_outer <- common_arguments `down` lhs_arguments
                 rhs_outer <- common_arguments `down` rhs_arguments
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLam (length rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
+                theta <- lift $ var' +-> makeNestedNLamH (map paramHint rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (lhs_inner ++ lhs_outer))
             else if cmp_res /= LT && all isRigidAtom rhs_arguments && and [ lookupLabel c labeling > lookupLabel var' labeling | NCon c <- rhs_arguments ] then do
@@ -283,12 +281,21 @@ bind var = go . rewrite HNF where
                         | lookupLabel c labeling <= lookupLabel var labeling = True
                     isBetaPattern z = z `elem` common_arguments
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLam (length rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
+                theta <- lift $ var' +-> makeNestedNLamH (map paramHint rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (rhs_arguments >>= mkBetaPattern))
             else lift (throwE NotAPattern)
         | otherwise
         = lift (throwE BindFail)
+
+-- Pull a display hint out of a rigid parameter, so that lambdas
+-- synthesized by `mksubst` can recover source names from pi/sigma
+-- instantiations. Returns `Nothing` for parameters that have no hint
+-- (e.g. anonymous logic variables, type variables, applied terms).
+paramHint :: TermNode -> Maybe SmallId
+paramHint (NCon (DC (DC_Unique _ (DispHint mh)))) = mh
+paramHint (LVar (LV_Unique _ (DispHint mh))) = mh
+paramHint _ = Nothing
 
 mksubst :: LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
 mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr where
@@ -308,7 +315,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
             else do
                 unless (isPatternRespectTo var' rhs_arguments labeling) $ lift (throwE NotAPattern)
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLam n (List.foldl' mkNApp common_head common_arguments)
+                theta <- lift $ var' +-> makeNestedNLamH (map paramHint parameters ++ replicate lambda Nothing) (List.foldl' mkNApp common_head common_arguments)
                 modify (zonkLVar theta)
                 return theta
 {-
@@ -325,7 +332,7 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
                 lhs_arguments = map (rewrite NF) parameters
             unless (isPatternRespectTo var lhs_arguments labeling) $ lift (throwE NotAPattern)
             (subst, lhs) <- bind var rhs parameters 0
-            theta <- lift $ var +-> makeNestedNLam n lhs
+            theta <- lift $ var +-> makeNestedNLamH (map paramHint parameters) lhs
             modify (zonkLVar theta)
             return (theta <> subst)
     handleErr :: HopuFail -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
@@ -451,7 +458,7 @@ v +-> t
 getNewLVar :: MonadUnique m => IsTypeLevel -> ScopeLevel -> StateT Labeling m TermNode
 getNewLVar is_ty label = do
     u <- getUnique
-    let sym = if is_ty then LV_ty_var $! u else LV_Unique $! u
+    let sym = if is_ty then LV_ty_var u else LV_Unique u noHint
     sym `seq` modify (enrollLabel sym label)
     return (mkLVar sym)
 

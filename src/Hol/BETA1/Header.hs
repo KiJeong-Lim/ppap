@@ -54,10 +54,28 @@ data LogicalOperator
     | LO_is
     deriving (Eq, Ord)
 
+-- Display-only name hint for fresh binders introduced by pi-elimination
+-- (LO_pi / LO_sigma) or by HOPU eta-expansion. Eq and Ord are TRIVIAL
+-- so derived instances on DC_Unique / LV_Unique automatically ignore
+-- the hint, keeping α-equivalence and substitution kernels intact.
+newtype DispHint = DispHint { unDispHint :: Maybe SmallId }
+
+instance Eq DispHint where
+    _ == _ = True
+
+instance Ord DispHint where
+    compare _ _ = EQ
+
+noHint :: DispHint
+noHint = DispHint Nothing
+
+mkHint :: Maybe SmallId -> DispHint
+mkHint = DispHint
+
 data DataConstructor
     = DC_LO LogicalOperator
     | DC_Named SmallId
-    | DC_Unique Unique
+    | DC_Unique Unique DispHint
     | DC_Nil
     | DC_Cons
     | DC_ChrL Char
@@ -156,7 +174,9 @@ instance Show DataConstructor where
     showsPrec _ data_constructor = case data_constructor of
         DC_LO logical_operator -> showsPrec 0 logical_operator
         DC_Named name -> strstr name
-        DC_Unique unique -> showsPrec 0 (unUnique unique)
+        DC_Unique unique (DispHint mhint) -> case mhint of
+            Just s -> strstr s
+            Nothing -> showsPrec 0 (unUnique unique)
         DC_Nil -> strstr "[]"
         DC_Cons -> strstr "::"
         DC_ChrL chr -> showsPrec 0 chr
