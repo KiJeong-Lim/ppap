@@ -909,7 +909,22 @@ Same as ALPHA2 plus the following additions.
 --------------------------------------------------------------------------------
 
 `:assign ?V := t.` is the seed of an interactive tactic engine for the
-future `LoL` project.
+future `LoL` project. Two properties are central and must hold
+unconditionally:
+
+  (i)  Debug-mode only. The command is recognised *only* while debug
+       mode is on (§3.1: `:d`) and the engine is paused at a step
+       boundary. Outside debug mode it is rejected by the REPL with
+       a "command not available" message; the runtime never sees it.
+  (ii) Plain binding. `:assign ?V := t.` is *the* binding `?V := t`
+       and nothing more. Once the preconditions of §3.2.2 are met,
+       the substitution is applied to *every term in the current
+       state* — the substitution θ, the constraint multiset C, the
+       goal stack (current cell and all frames below it), and the
+       HOPU disagreement set. There is no display-only mode, no
+       deferred application, no per-frame selection: a single
+       `LogicVar`-keyed substitution propagates everywhere a term
+       lives.
 
 3.2.1 Surface syntax
 
@@ -958,12 +973,20 @@ Before committing, the runtime checks in this order:
      variable).
   3. *Typing*: the parsed `t` type-checks against `?V`'s expected
      type under the current type environment. Hindley–Milner
-     unification is run; an `MGU` failure rejects the command.
-  4. *Pattern fragment*: the resulting candidate substitution
+     unification is run; an `MGU` failure rejects the command. The
+     type of `?V`, of every other visible flexible variable, and of
+     every rigid runtime constant (introduced by enclosing `pi` /
+     `ty_pi` eliminations) is part of the state displayed by §3.4 so
+     that the user can construct a well-typed `t` without guessing.
+  4. *Occurs-check*: after the substitution `?V := t` is normalised
+     under the current θ, `?V` must not occur in `t`. The cyclic
+     binding `?V := ... ?V ...` is rejected; the engine will not
+     create infinite terms even at the user's request.
+  5. *Pattern fragment*: the resulting candidate substitution
      `?V := t` lies in HOPU's pattern fragment, with the binding of
      `?V` respecting the current local scope (de Bruijn shifts,
      captured variables, etc.).
-  5. *Consistency*: with the candidate substitution applied, the
+  6. *Consistency*: with the candidate substitution applied, the
      constraint store C remains satisfiable. Concretely, all
      `EvaluationConstraint`s are re-promoted as in §2.4, all
      `ArithmeticConstraint`s are checked against §2.3.6's implicit
@@ -1000,6 +1023,21 @@ When all preconditions pass:
 
   - The candidate substitution `?V := t` is absorbed into the global
     substitution via the normal HOPU machinery (no new code path).
+  - The substitution is then *propagated to every term in the
+    current state*. Concretely:
+      * the substitution map θ (the `_TotalVarBinding` of the
+        current `Context`),
+      * the constraint multiset C (every `Constraint` in
+        `_LeftConstraints`),
+      * the current cell's `_WantedGoal` and `_GivenHypos`,
+      * the goals and hypotheses of every frame deeper in the
+        goal stack (the `Stack` returned by `runTransition`),
+      * the HOPU disagreement set,
+      * the labelled-variable scope map.
+    This guarantees that after `:assign` returns, no surviving term
+    anywhere in the runtime still mentions `?V` unsubstituted. The
+    propagation is mechanical zonking under the singleton binding
+    `{?V := t}` — no per-frame heuristics, no display-only paths.
   - All pending `EvaluationConstraint`s are zonked and possibly
     promoted to `ArithmeticConstraint`s.
   - The implicit consistency check (§2.3.6) runs once.
@@ -1045,6 +1083,15 @@ In debug mode the interpreter prints, before each transition:
   - the constraint multiset C (arithmetic constraints rendered as in
     `Calc.Presburger`),
   - the binding substitution restricted to user-visible names,
+  - the *typing context*: every flexible variable in scope (the
+    `LogicVar`s that may appear in the current goal, hypotheses, or
+    θ) is listed with its inferred type, and every rigid runtime
+    constant introduced by an enclosing `pi` / `ty_pi` elimination
+    is listed with the type its eliminator gave it. This is exactly
+    the data the user needs to build a well-typed `t` for
+    `:assign ?V := t.` (§3.2.2.3); without it the user would have
+    to guess the type discipline and would routinely trigger the
+    §3.2.2.3 rejection.
   - the source location (SLoc) of the goal, where known.
 
 The `NotationDB` is *not* re-dumped each step (it would be noise);
