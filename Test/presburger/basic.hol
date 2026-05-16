@@ -1,0 +1,8 @@
+% Basic presburger entailment test (BETA1 spec section 2.3.4).
+% A `presburger "phi"` goal succeeds iff phi is entailed by the
+% current arithmetic constraints. Outer-scope sharing maps a free
+% identifier inside the literal to the LV_Named of the same spelling.
+%
+% Expected:
+%   ?- X is 7, presburger "X > 5".   => yes.
+%   ?- X is 3, presburger "X > 5".   => no.

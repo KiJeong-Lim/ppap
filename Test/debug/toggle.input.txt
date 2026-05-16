@@ -1,0 +1,8 @@
+Hol
+Test/debug/toggle.hol
+:d
+:d
+:verbose
+:short
+:q
+

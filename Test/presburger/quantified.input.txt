@@ -1,0 +1,6 @@
+Hol
+Test/presburger/quantified.hol
+?- presburger "exists Y, Y + Y = 6".
+?- presburger "forall Y, Y > 0".
+:q
+

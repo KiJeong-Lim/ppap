@@ -1,0 +1,5 @@
+% Top-level toggle commands (BETA1 spec section 3.1).
+%   :d        - flip debugging mode
+%   :short    - typing display: short (default)
+%   :verbose  - typing display: verbose
+% Each command echoes a one-line confirmation.

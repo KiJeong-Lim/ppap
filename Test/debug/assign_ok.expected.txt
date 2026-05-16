@@ -1,0 +1,68 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.debug.assign_ok ( Test/debug/assign_ok.hol, interpreted )
+Test.debug.assign_ok> Ok, one module loaded.
+Test.debug.assign_ok> Test.debug.assign_ok> Debugging mode on.
+Test.debug.assign_ok> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- X = X ] # call_id = 7
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            ]
+        , _thread_id = 7
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_ok> Press the enter key to go to next state: Test.debug.assign_ok> *** :assign: X := 7.
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 8
+        ]
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := 7
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            ]
+        , _thread_id = 8
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_ok> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := 7
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            ]
+        , _thread_id = 8
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_ok> Press the enter key to go to next state: Test.debug.assign_ok> The answer substitution is:
+Test.debug.assign_ok> X := 7.
+Test.debug.assign_ok> Find more solutions? [Y/n] Test.debug.assign_ok> yes.
+Test.debug.assign_ok> Hol >>= quit

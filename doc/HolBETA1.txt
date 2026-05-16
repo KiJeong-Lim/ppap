@@ -1663,31 +1663,41 @@ to run under ALPHA2.
 
   Test/
     presburger/
-      basic.hol           -- `presburger "X > 5"`, `X is 3, ...`,
-                             `?- X > 5, X < 3.` (T2 firing)
-      quantified.hol      -- `presburger "exists Y. Y + Y = X"`
-      consistency.hol     -- implicit `presburger "_|_"` pruning
-                             through a multi-clause search
-    notation/
-      fixity.hol          -- user-declared infixl/infixr/infix/prefix
-      abbrev.hol          -- type-level abbrev + display folding
-      notation.hol        -- term-level notation with metavars
-      override.hol        -- shadowing the built-in `string`
+      basic.hol           -- `?- X is 7, presburger "X > 5".` (yes) +
+                             same with `X is 3` (no): closed-formula
+                             entailment via outer-scope sharing (2.3.4)
+      quantified.hol      -- `presburger "exists Y, Y + Y = 6"` and
+                             `presburger "forall Y, Y > 0"`: bound
+                             names scoped to the formula
+      consistency.hol     -- `?- X > 5, X < 3.` (T2 firing 2.3.6)
     debug/
-      assign_ok.hol       -- successful :assign followed by `:q`
-      assign_fail.hol     -- :assign that violates each of (1)-(5);
-                             confirms transactional rollback
-      show.hol              -- :show output stability
+      toggle.hol          -- `:d` (twice), `:verbose`, `:short`
+                             confirmation lines
+      assign_ok.hol       -- `:assign ?X := 7.` at a debug prompt
+                             then resume to the final answer
+      show.hol            -- `:show ?X` at debug prompts
     kind/
       higher_order_kind_rejected.hol  -- `kind foo ((type -> type) -> type).`
-                                          must be rejected at desugar
+                                          rejected by `makeKindEnv`
     smoke.sh              -- runs every `Test/**/*.hol` through
-                             BETA1 with a scripted answer-set
-                             expectation file alongside.
+                             BETA1 with a scripted REPL transcript
+                             alongside.
 
-Each `*.hol` file has a sibling `*.expected.txt` documenting the
-exact expected output. The smoke runner diffs runtime output against
-the expected file; any mismatch fails the suite.
+Each `*.hol` file has two siblings: `*.input.txt` is the REPL input
+to feed on stdin (starting from the top-level `ppap` menu, i.e. the
+first line is `Hol` and the second line is the `.hol` path), and
+`*.expected.txt` is the captured stdout+stderr. The runner diffs
+byte-for-byte; any mismatch fails the suite. Re-record after an
+intentional change with `./Test/smoke.sh --update`.
+
+Status (2026-05-17): seven cases authored — three presburger, three
+debug, one kind. The notation sub-tree (`fixity.hol`, `abbrev.hol`,
+`notation.hol`, `override.hol`) is intentionally deferred: §1.5
+semantics is unwired (RFixityDecl is silently filtered by
+`desugarProgram`), §1.6 abbrev/notation has no parser production
+(reserved keywords only), and §2.6/§2.7 viewer folding is dead
+code in `Notation.hs`. Those cases will be authored together with
+the implementation work tracked in the BETA1 unimplemented memo.
 
 4.6.3 No changes to `Example/`
 

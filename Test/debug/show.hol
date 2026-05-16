@@ -1,0 +1,10 @@
+% Debugger `:show` command (BETA1 spec section 3.3).
+% With debugging mode enabled, `:show V` may be entered at any
+% "Press the enter key..." prompt; the debugger prints the current
+% binding of `?V` and then resumes single-stepping.
+%
+% Expected (abridged): two state dumps for `?- X is 3.`; at the
+% first prompt `:show X` prints "*** :show: ?X = X" (unbound) and
+% control returns to the same prompt? Actually the runtime advances
+% one step after each prompt regardless of the command, so the second
+% prompt shows X bound, after which Enter resumes to the answer.

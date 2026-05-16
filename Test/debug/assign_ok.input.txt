@@ -1,0 +1,9 @@
+Hol
+Test/debug/assign_ok.hol
+:d
+?- X = X.
+:assign ?X := 7.
+
+n
+:q
+

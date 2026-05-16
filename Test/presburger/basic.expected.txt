@@ -1,0 +1,10 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.presburger.basic ( Test/presburger/basic.hol, interpreted )
+Test.presburger.basic> Ok, one module loaded.
+Test.presburger.basic> Test.presburger.basic> The answer substitution is:
+Test.presburger.basic> X := 7.
+Test.presburger.basic> Find more solutions? [Y/n] Test.presburger.basic> yes.
+Test.presburger.basic> Test.presburger.basic> no.
+Test.presburger.basic> Hol >>= quit
