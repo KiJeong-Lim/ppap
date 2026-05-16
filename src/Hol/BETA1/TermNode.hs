@@ -207,6 +207,36 @@ mkDummy l = Dummy l
 mkBinds :: TermNode -> Int -> SuspItem
 mkBinds t l = Binds t l
 
+-- §3.4 CMTT: walk `t` and rewrite every `TyMTV mtv` inside any NLam
+-- LamType annotation to `TyCon (TCon (TC_Unique uni) Star)`. Used by
+-- both `Runtime.instantiateFact LO_ty_pi` (fact side, after a fresh
+-- `LV_ty_var uni` is minted to instantiate the ty_pi binder) and
+-- `Compiler.convertQuery` (query side, when `used_mtvs` is non-empty
+-- so each MTV gets bound to a fresh `LV_ty_var uni`). Both call sites
+-- guarantee that after substitution the visible D/G carry concrete
+-- TC_Unique references — no `TyMTV` reaches the debugger.
+substTyMTV :: MetaTVar -> Unique -> TermNode -> TermNode
+substTyMTV mtv uni = go where
+    refTy :: MonoType Int
+    refTy = TyCon (TCon (TC_Unique uni) Star)
+    go :: TermNode -> TermNode
+    go (NApp t1 t2) = mkNApp (go t1) (go t2)
+    go (NLam h ty t) = mkNLamHintTy h (goLamType ty) (go t)
+    go (Susp t ol nl env) = mkSusp (go t) ol nl (map goItem env)
+    go t = t
+    goItem :: SuspItem -> SuspItem
+    goItem (Dummy n) = Dummy n
+    goItem (Binds t n) = Binds (go t) n
+    goLamType :: LamType -> LamType
+    goLamType (LamType (Just ty)) = LamType (Just (goMono ty))
+    goLamType x = x
+    goMono :: MonoType Int -> MonoType Int
+    goMono (TyMTV m)
+        | m == mtv = refTy
+        | otherwise = TyMTV m
+    goMono (TyApp a b) = TyApp (goMono a) (goMono b)
+    goMono t = t
+
 rewriteWithSusp :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
 rewriteWithSusp t ol nl env option = dispatch t where
     dispatch :: TermNode -> TermNode

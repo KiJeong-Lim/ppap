@@ -130,10 +130,14 @@ showsvdash space (hyp : hyps) goal = shows hyp . strstr ", " . showsvdash space 
 -- breakpoint. Free type variables (`TyVar i`) are printed as `a_i`;
 -- TyMTV is shown as `?t<unique>`; `TC_Arrow` is treated as a
 -- right-associative infix `->`. Precedences mirror those used by
--- `Outputable KindExpr` so the output is consistent.
+-- `Outputable KindExpr` so the output is consistent. `TC_Unique uni`
+-- is reserved for runtime-introduced ty_var references (produced by
+-- `instantiateFact LO_ty_pi`'s `substTyMTV` pass) and renders as
+-- `?TV_<n>` so it lines up with the CMTT context's bare-name form.
 showsMonoType :: Int -> MonoType Int -> ShowS
 showsMonoType _ (TyVar i) = strstr "a_" . shows i
 showsMonoType _ (TyMTV mtv) = strstr "?t" . shows mtv
+showsMonoType _ (TyCon (TCon (TC_Unique uni) _)) = strstr "?TV_" . shows (unUnique uni)
 showsMonoType _ (TyCon (TCon tc _)) = shows tc
 showsMonoType prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2) =
     let inner = showsMonoType 5 t1 . strstr " -> " . showsMonoType 4 t2
@@ -268,13 +272,21 @@ instantiateFact fact level
         (NCon (DC (DC_LO LO_ty_pi)), [fact1]) -> do
             uni <- getUnique
             let var = LV_ty_var uni
+                -- The `LO_ty_pi` binder's LamType slot carries the MTV
+                -- key (see `Compiler.makeUniversalClosure.wrapTyVar` and
+                -- `Main.eqFact`). Recovering it lets us rewrite every
+                -- `TyMTV mtv` in the body to point at `uni`.
+                mtvKey = case rewrite HNF fact1 of
+                    NLam _ (LamType (Just (TyMTV mtv))) _ -> Just mtv
+                    _ -> Nothing
+                fact1' = case mtvKey of
+                    Just mtv -> substTyMTV mtv uni fact1
+                    Nothing -> fact1
             modify (enrollLabel var level)
-            -- §3.4: ty_pi binders live at the kind level (Star); they
-            -- have no MonoType, so nothing to register in `_VarTypes`.
-            -- But we mark them in `_TyVarKeys` so the debugger picks
-            -- `?TV_<n>` instead of `?V_<n>` when rendering.
+            -- `_TyVarKeys` flags this Unique as kind-level so the
+            -- debugger picks `?TV_<n>` over `?V_<n>`.
             modify (\lbl -> lbl { _TyVarKeys = IntMap.insert (unUnique uni) () (_TyVarKeys lbl) })
-            instantiateFact (mkNApp fact1 (mkLVar var)) level
+            instantiateFact (mkNApp fact1' (mkLVar var)) level
         (NCon (DC (DC_LO LO_pi)), [fact1]) -> do
             uni <- getUnique
             let (mhint, mty) = case rewrite HNF fact1 of

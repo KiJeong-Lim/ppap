@@ -583,13 +583,17 @@ theInitialTypeDecls = Map.fromList
 
 theInitialFactDecls :: [TermNode]
 theInitialFactDecls = [eqFact] where
-    -- §3.4 CMTT: the inner `pi (x : A)` binder is annotated with
-    -- `TyVar 0` so that runtime `instantiateFact LO_pi` records a
-    -- (polymorphic) type for the freshly created `LV_Unique`. The
-    -- `TyVar 0` refers to the outer `ty_pi` binder by deBruijn-style
-    -- index; the renderer shows it as `a_0`.
+    -- §3.4 CMTT: the outer `ty_pi` binder carries `TyMTV mtv_eq` in
+    -- its LamType marker slot (matching `Compiler.makeUniversalClosure`'s
+    -- convention for compiled facts). The inner `pi (x : A)` reuses the
+    -- same MTV key so `Runtime.instantiateFact` rewrites both occurrences
+    -- to the same fresh `LV_ty_var` when peeling the outer binder.
+    -- A negative `Unique` is safe: `getUnique` only mints non-negative
+    -- IDs, so this key never collides with a runtime-allocated MTV.
+    mtv_eq :: MetaTVar
+    mtv_eq = Unique (-1)
     eqFact :: TermNode
-    eqFact = mkNApp (mkNCon LO_ty_pi) (mkNLam (mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType (TyVar 0)) (mkNApp (mkNApp (mkNApp (mkNCon DC_eq) (mkNIdx 1)) (mkNIdx 0)) (mkNIdx 0)))))
+    eqFact = mkNApp (mkNCon LO_ty_pi) (mkNLamHintTy Nothing (mkLamType (TyMTV mtv_eq)) (mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType (TyMTV mtv_eq)) (mkNApp (mkNApp (mkNApp (mkNCon DC_eq) (mkNIdx 1)) (mkNIdx 0)) (mkNIdx 0)))))
 
 theDefaultModuleName :: String
 theDefaultModuleName = "Hol"

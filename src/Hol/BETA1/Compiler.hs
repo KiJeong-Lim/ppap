@@ -58,15 +58,18 @@ convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithou
     initialEnv = Set.toList (Map.keysSet assumptions `Set.union` Map.keysSet used_mtvs)
     -- §3.4 CMTT: wrap `body` in n `LO_pi` lambdas (one per assumption)
     -- with the assumption's type, then m `LO_ty_pi` lambdas (one per
-    -- used_mtv) without a MonoType (ty_var binders live at the kind
-    -- level, not the type level). Innermost lambda binds the smallest
-    -- IVar so de Bruijn indices line up with `initialEnv`'s ascending
-    -- key order. `foldr` over `toDescList` puts the smallest key last,
-    -- which becomes the innermost binder.
+    -- used_mtv). Innermost lambda binds the smallest IVar so de Bruijn
+    -- indices line up with `initialEnv`'s ascending key order. `foldr`
+    -- over `toDescList` puts the smallest key last, which becomes the
+    -- innermost binder. Each `LO_ty_pi` binder carries `TyMTV mtv` in
+    -- its LamType slot as a marker — `Runtime.instantiateFact` reads
+    -- this key when peeling the binder and rewrites every `TyMTV mtv`
+    -- reference in the body to point at the freshly minted `LV_ty_var`.
+    -- The marker means runtime D/G are monotyped (no `TyMTV` left).
     makeUniversalClosure :: TermNode -> TermNode
     makeUniversalClosure body =
         let wrapAssumption (_, ty) acc = mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType ty) acc)
-            wrapTyVar (_, _) acc = mkNApp (mkNCon LO_ty_pi) (mkNLam acc)
+            wrapTyVar (mtv, _) acc = mkNApp (mkNCon LO_ty_pi) (mkNLamHintTy Nothing (mkLamType (TyMTV mtv)) acc)
             afterAssumed = foldr wrapAssumption body (Map.toDescList assumptions)
         in foldr wrapTyVar afterAssumed (Map.toDescList used_mtvs)
 
@@ -81,13 +84,23 @@ convertQuery used_mtvs assumptions var_name_env query = do
     node <- if Map.null used_mtvs then
             convertWithoutChecking var_name_env [] query
         else do
+            -- §3.4 CMTT: each unsolved meta is bound to a fresh
+            -- `LV_ty_var uni` so type-level occurrences in the query
+            -- get reified through `convertType`. The same `(mtv, uni)`
+            -- pairs also drive `substTyMTV` over the converted body
+            -- so polymorphic pi/sigma binders' LamType annotations
+            -- carry monotyped `TC_Unique uni` instead of `TyMTV mtv`.
+            -- This mirrors the fact side's `instantiateFact LO_ty_pi`
+            -- treatment — both paths produce monotyped runtime terms.
             extra_env <- sequence
                 [ do
                     uni <- getUnique
-                    return (mtv, LVar (LV_ty_var uni))
+                    return (mtv, uni)
                 | (mtv, small_id) <- Map.toDescList used_mtvs
                 ]
-            convertWithoutChecking (foldr (uncurry Map.insert) var_name_env extra_env) [] query
+            let var_name_env' = foldr (\(mtv, uni) env -> Map.insert mtv (LVar (LV_ty_var uni)) env) var_name_env extra_env
+            node0 <- convertWithoutChecking var_name_env' [] query
+            return (foldr (uncurry substTyMTV) node0 extra_env)
     lift (replaceWildcards node)
 
 viewLam :: TermExpr dcon annot -> ([IVar], TermExpr dcon annot)
