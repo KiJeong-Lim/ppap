@@ -224,6 +224,13 @@ Rules:
   - Mixing different associativities at the same precedence is a parse error.
   - Declarations are one-pass and take effect on the lines that *follow* them.
 
+Implementation status (2026-05-17):
+
+  - The lexer reserves all four keywords (`infixl`/`infixr`/`infix`/`prefix`) plus `abbrev`/`notation` (§1.6). `presburger` remains intentionally non-reserved (§2.3.3).
+  - The parser accepts the four fixity-declaration forms above and produces a `RFixityDecl SLoc FixityForm SmallId Integer` constructor on `DeclRep`.
+  - **Restriction (first cut)**: the `<op>` slot is currently parsed as `T_id` only. Built-in symbolic operators (`+`, `=`, `::`, ...) cannot yet be re-declared because the parser does not yet enumerate alternatives for the corresponding token classes. This restriction is mechanical, not semantic — extending the grammar is straightforward but was deferred to keep the first cut small.
+  - **Semantics are not yet wired**: the desugarer silently filters `RFixityDecl` out (via the list-comprehension pattern in `desugarProgram`). Building a per-program `NotationDB` from collected declarations, threading it through the runtime, and consuming it in the viewer (§2.6) is the next step — see [[project-beta1-unimplemented]].
+
 The built-in fixity table (the BETA1 defaults, user-redefinable):
 
   prefix  Lambda 0
