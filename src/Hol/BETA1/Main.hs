@@ -47,7 +47,7 @@ addIndex :: [Fact] -> Map.Map Constant [Fact]
 addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, let f' = rewrite NF f ] where
     hd :: Fact -> Constant
     hd t = case unfoldlNApp t of
-        (NLam _ t, _) -> hd t
+        (NLam _ _ t, _) -> hd t
         (NCon (DC (DC_LO LO_ty_pi)), [t]) -> hd t
         (NCon (DC (DC_LO LO_pi)), [t]) -> hd t
         (NCon (DC (DC_LO LO_if)), [t, _]) -> hd t
@@ -56,7 +56,22 @@ addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <
 execRuntime :: RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr (UniqueT IO) Satisfied
 execRuntime env isDebugging facts query = do
     call_id <- getUnique
-    let initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = Labeling { _ConLabel = IntMap.empty, _VarLabel = IntMap.empty }, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
+    -- §3.4 CMTT: seed `_NamedTypes` with the typechecker's inferences
+    -- for `LV_Named` query variables so HOPU's `lookupLVarType` covers
+    -- them uniformly with `_VarTypes`. `_TypeEnv` stashes the program's
+    -- declared-constant types so HOPU's `typeOfTerm` resolves DC_Named
+    -- (and DC_LO/arithmetic) constants without re-plumbing TypeEnv.
+    let namedTypes = Map.fromList [ (nm, ty) | (LV_Named nm, ty) <- Map.toList (_TypeInfo env) ]
+        initialLabeling = Labeling
+            { _ConLabel = IntMap.empty
+            , _VarLabel = IntMap.empty
+            , _ConTypes = IntMap.empty
+            , _VarTypes = IntMap.empty
+            , _NamedTypes = namedTypes
+            , _TyVarKeys = IntMap.empty
+            , _TypeEnv = _ProgramTypeEnv env
+            }
+        initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = initialLabeling, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
     runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
 runREPL :: Program TermNode -> UniqueT IO ()
@@ -75,7 +90,7 @@ runREPL program = do
     prettyTerm :: NameCache -> TermNode -> ShowS
     prettyTerm cache t = pprint 0 (constructViewerWith (viewerLookup cache) t)
     mkRuntimeEnv :: IORef Debugging -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
-    mkRuntimeEnv isDebugging nameCache pendingSubst typeMap query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst }) where
+    mkRuntimeEnv isDebugging nameCache pendingSubst typeMap query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program }) where
         runInteraction :: Context -> String -> IO ()
         runInteraction ctx str = do
             isDebugging <- readIORef (_debuggindModeOn ctx)
@@ -127,14 +142,22 @@ runREPL program = do
                     stripQuests [] = []
                     stripQuests ('?' : cs) = stripQuests cs
                     stripQuests (c : cs) = c : stripQuests cs
-                    queryStr = "?- " ++ varName ++ " = " ++ stripQuests tBody
+                    -- §3.4 CMTT: rigid constants introduced by pi/sigma
+                    -- have viewer name `c_<n>`. The lexer treats `c_<n>`
+                    -- as a `DC_Named` constant (lowercase head), and the
+                    -- typechecker rejects unknown names. We pre-rename
+                    -- `c_<n>` → `XCON_<n>` so it parses as an LV_Named
+                    -- (uppercase head), then post-substitute the actual
+                    -- DC_Unique back in. `XCON_` is unlikely to collide
+                    -- with real user variable names.
+                    queryStr = "?- " ++ varName ++ " = " ++ mapConToLVar (stripQuests tBody)
                 cache <- readIORef nameCache
                 result <- execUniqueT $ runExceptT (compileAssign varName queryStr)
                 case result of
                     Left err -> do
                         _ <- promptify err
                         return ()
-                    Right (compiledLV, t_compiled, inferredTy) -> do
+                    Right (compiledLV, t_compiled, inferredTy, nameToType) -> do
                         -- §3.5: resolve user-input display names back to the
                         -- real LogicVar each refers to. If a name is in
                         -- `NameCache.fromDisplay`, the user *meant* that
@@ -154,18 +177,51 @@ runREPL program = do
                             targetLV = case resolveDisplayName varName of
                                 Just resolved -> resolved
                                 Nothing -> compiledLV
-                            nameSwap = VarBinding $ Map.fromList
+                            labelingForCheck = _CurrentLabeling ctx
+                            xconNames =
+                                [ (nm, uni)
+                                | LV_Named nm <- Set.toList (getLVars t_compiled)
+                                , Just uni <- [parseXcon nm]
+                                ]
+                            -- Validate each `XCON_<n>` placeholder: the
+                            -- referenced rigid constant must (i) exist in
+                            -- the current `_ConTypes` and (ii) carry a
+                            -- type compatible with what the typechecker
+                            -- inferred for that position.
+                            xconErrors = concat
+                                [ case IntMap.lookup uni (_ConTypes labelingForCheck) of
+                                    Nothing -> ["'c_" ++ show uni ++ "' is not a known rigid constant in this state"]
+                                    Just actual -> case Map.lookup nm nameToType of
+                                        Nothing -> []  -- typechecker didn't constrain it; trust the runtime type
+                                        Just inferred
+                                            | typeCompatible actual inferred -> []
+                                            | otherwise -> ["type mismatch for 'c_" ++ show uni
+                                                    ++ "' — runtime type is " ++ showsMonoType 0 actual
+                                                        (", but context requires " ++ showsMonoType 0 inferred "")]
+                                | (nm, uni) <- xconNames
+                                ]
+                            xconSwap = Map.fromList
+                                [ (LV_Named nm, mkNCon (DC_Unique (Unique uni) noHint))
+                                | (nm, uni) <- xconNames
+                                ]
+                            lvarSwap = Map.fromList
                                 [ (lv, mkLVar resolved)
                                 | lv@(LV_Named nm) <- Set.toList (getLVars t_compiled)
+                                , Nothing <- [parseXcon nm]
                                 , Just resolved <- [resolveDisplayName nm]
                                 , resolved /= lv
                                 ]
+                            nameSwap = VarBinding (xconSwap `Map.union` lvarSwap)
                             t_resolved = bindVars nameSwap t_compiled
                             mexpectedTy = Map.lookup targetLV typeMap
                             badType = case mexpectedTy of
                                 Just expectedTy -> not (typeCompatible expectedTy inferredTy)
                                 Nothing -> False  -- anonymous targets: fall back to HOPU/kernel
-                        if badType
+                        if not (null xconErrors)
+                            then do
+                                _ <- promptify ("*** :assign error: " ++ List.intercalate "; " xconErrors)
+                                return ()
+                          else if badType
                             then case mexpectedTy of
                                 Just expectedTy -> do
                                     _ <- promptify ("*** :assign error: type mismatch for '" ++ varName ++ "' — expected " ++ showsMonoType 0 expectedTy (", got " ++ showsMonoType 0 inferredTy ""))
@@ -180,11 +236,57 @@ runREPL program = do
                                         _ <- promptify ("*** :assign error: occurs check failed for '" ++ varName ++ "'")
                                         return ()
                                     else do
-                                        let new_binding = VarBinding (Map.singleton targetLV t_zonked)
-                                        writeIORef pendingSubst (new_binding <> existingPending)
-                                        let pp = prettyTerm cache
-                                        _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
-                                        return ()
+                                        -- §3.4 CMTT scope check: every rigid constant and flexible
+                                        -- variable inside `t_zonked` must be visible to `targetLV`,
+                                        -- i.e. its scope level must be ≤ that of `targetLV`. This
+                                        -- is the CMTT-context constraint that HOPU normally enforces
+                                        -- automatically (`isPatternRespectTo`, the `up`/`down` rules);
+                                        -- we replicate it here so `:assign` rejects bindings that
+                                        -- escape the contextual type before they pollute the kernel.
+                                        let labeling = _CurrentLabeling ctx
+                                            scope_target = case targetLV of
+                                                LV_Named _ -> 0
+                                                _ -> lookupLabel targetLV labeling
+                                            (escapedCons, escapedVars) = scopeEscaping labeling scope_target targetLV t_zonked
+                                        if not (null escapedCons) || not (null escapedVars)
+                                            then do
+                                                let renderCon c = shows c ""
+                                                    renderVar v = case v of
+                                                        LV_Unique u (DispHint (Just s)) -> s
+                                                        LV_Unique u (DispHint Nothing) -> "?V_" ++ show (unUnique u)
+                                                        LV_ty_var u -> "?TV_" ++ show (unUnique u)
+                                                        LV_Named n -> n
+                                                    items = map renderCon escapedCons ++ map renderVar escapedVars
+                                                _ <- promptify ("*** :assign error: scope violation for '" ++ varName ++ "' — out-of-scope: " ++ List.intercalate ", " items)
+                                                return ()
+                                            else do
+                                                let new_binding = VarBinding (Map.singleton targetLV t_zonked)
+                                                writeIORef pendingSubst (new_binding <> existingPending)
+                                                let pp = prettyTerm cache
+                                                _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
+                                                return ()
+        -- §3.4 CMTT scope check: walk `t` and collect every rigid
+        -- constant and every flexible LV (other than the target itself)
+        -- whose scope level strictly exceeds `targetScope`. If the
+        -- result is empty, the assignment respects the target's CMTT
+        -- context; otherwise these symbols cannot legally appear and
+        -- the assignment is rejected.
+        scopeEscaping :: Labeling -> ScopeLevel -> LogicVar -> TermNode -> ([Constant], [LogicVar])
+        scopeEscaping labeling targetScope targetLV = walk where
+            walk :: TermNode -> ([Constant], [LogicVar])
+            walk (LVar v)
+                | v == targetLV = ([], [])
+                | lookupLabel v labeling > targetScope = ([], [v])
+                | otherwise = ([], [])
+            walk (NCon c)
+                | lookupLabel c labeling > targetScope = ([c], [])
+                | otherwise = ([], [])
+            walk (NApp t1 t2) = combine (walk t1) (walk t2)
+            walk (NLam _ _ t) = walk t
+            walk (Susp body _ _ _) = walk body
+            walk _ = ([], [])
+            combine :: ([Constant], [LogicVar]) -> ([Constant], [LogicVar]) -> ([Constant], [LogicVar])
+            combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
         -- §3.5: a fallback for when the user types a display name that
         -- the `NameCache` has no entry for. The viewer renders anonymous
         -- LogicVars with a fixed convention (TermNode.constructViewerWith):
@@ -206,6 +308,33 @@ runREPL program = do
             mkAnon ctor digits = case reads digits of
                 [(n, "")] -> Just (ctor (Unique n))
                 _ -> Nothing
+        -- §3.4 CMTT: rewrite each `c_<digits>` identifier in a `:assign`
+        -- input string to `XCON_<digits>` so the lexer/parser treats it
+        -- as an LV_Named placeholder (uppercase head). After compilation
+        -- those placeholders are swapped for the actual `DC_Unique`.
+        -- Identifier boundaries are detected by `isIdChar` so we don't
+        -- mangle the middle of unrelated tokens.
+        mapConToLVar :: String -> String
+        mapConToLVar = go where
+            isIdChar c = c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "_")
+            isDigitC c = c `elem` ['0' .. '9']
+            go [] = []
+            go str@(c : rest0)
+                | not (isIdChar c) = c : go rest0
+                | otherwise = case span isIdChar str of
+                    (ident, rest) -> rewrite ident ++ go rest
+            rewrite ident = case ident of
+                'c' : '_' : ds | not (null ds) && all isDigitC ds -> "XCON_" ++ ds
+                _ -> ident
+        -- Inverse of `mapConToLVar`'s renaming: a `LargeId` of the form
+        -- `XCON_<digits>` is a placeholder for `DC_Unique (Unique n)`.
+        -- Returns `Just n` on match, `Nothing` otherwise.
+        parseXcon :: LargeId -> Maybe Int
+        parseXcon nm = case nm of
+            'X' : 'C' : 'O' : 'N' : '_' : rest -> case reads rest of
+                [(n, "")] -> Just n
+                _ -> Nothing
+            _ -> Nothing
         -- Structural compatibility: `TyMTV` (unresolved metatype variable)
         -- and `TyVar` (rigid type parameter introduced by `Forall`) are
         -- treated as wildcards on either side; everything else must agree
@@ -221,7 +350,7 @@ runREPL program = do
         typeCompatible (TyCon (TCon tc1 _)) (TyCon (TCon tc2 _)) = tc1 == tc2
         typeCompatible (TyApp f1 a1) (TyApp f2 a2) = typeCompatible f1 f2 && typeCompatible a1 a2
         typeCompatible _ _ = False
-        compileAssign :: MonadUnique m => String -> String -> ExceptT ErrMsg m (LogicVar, TermNode, MonoType Int)
+        compileAssign :: MonadUnique m => String -> String -> ExceptT ErrMsg m (LogicVar, TermNode, MonoType Int, Map.Map LargeId (MonoType Int))
         compileAssign varName queryStr = case runHolLexer queryStr of
             Left _ -> throwE "*** :assign error: lex failed"
             Right tokens -> case runHolParser tokens of
@@ -240,9 +369,18 @@ runREPL program = do
                     inferredTy <- case Map.lookup varName free_vars >>= \ivar -> Map.lookup ivar assumptions of
                         Just typ -> return typ
                         Nothing -> throwE "*** :assign error: could not infer type for the binding"
+                    -- The same lookup, but flipped to a (LargeId -> MonoType)
+                    -- map covering every free name in the synthetic query.
+                    -- Used by `handleAssign` to type-check `XCON_<n>`
+                    -- placeholders against the runtime's `_ConTypes`.
+                    let nameToType = Map.fromList
+                            [ (nm, ty)
+                            | (nm, ivar) <- Map.toList free_vars
+                            , Just ty <- [Map.lookup ivar assumptions]
+                            ]
                     case unfoldlNApp (rewrite NF term5) of
                         (NCon (DC DC_eq), [_typeArg, lhs, rhs]) -> case rewrite NF lhs of
-                            LVar lv -> return (lv, rhs, inferredTy)
+                            LVar lv -> return (lv, rhs, inferredTy, nameToType)
                             _ -> throwE "*** :assign error: LHS did not resolve to a logic variable"
                         _ -> throwE "*** :assign error: did not compile to an equality"
         printAnswer :: Context -> IO RunMore
@@ -445,8 +583,13 @@ theInitialTypeDecls = Map.fromList
 
 theInitialFactDecls :: [TermNode]
 theInitialFactDecls = [eqFact] where
+    -- §3.4 CMTT: the inner `pi (x : A)` binder is annotated with
+    -- `TyVar 0` so that runtime `instantiateFact LO_pi` records a
+    -- (polymorphic) type for the freshly created `LV_Unique`. The
+    -- `TyVar 0` refers to the outer `ty_pi` binder by deBruijn-style
+    -- index; the renderer shows it as `a_0`.
     eqFact :: TermNode
-    eqFact = mkNApp (mkNCon LO_ty_pi) (mkNLam (mkNApp (mkNCon LO_pi) (mkNLam (mkNApp (mkNApp (mkNApp (mkNCon DC_eq) (mkNIdx 1)) (mkNIdx 0)) (mkNIdx 0)))))
+    eqFact = mkNApp (mkNCon LO_ty_pi) (mkNLam (mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType (TyVar 0)) (mkNApp (mkNApp (mkNApp (mkNCon DC_eq) (mkNIdx 1)) (mkNIdx 0)) (mkNIdx 0)))))
 
 theDefaultModuleName :: String
 theDefaultModuleName = "Hol"

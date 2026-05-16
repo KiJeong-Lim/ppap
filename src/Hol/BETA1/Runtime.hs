@@ -13,6 +13,7 @@ import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Data.IORef
 import Data.Maybe
+import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -82,6 +83,10 @@ data RuntimeEnv
         -- callback (which has no `Stack` in scope) from the kernel loop
         -- that does. The IORef is created once per query in `Main`.
         , _PendingSubst :: IORef LogicVarSubst
+        -- §3.4 CMTT: the program's declared-constant types, passed
+        -- through to `Labeling._TypeEnv` at `execRuntime` start so
+        -- HOPU's `typeOfTerm` can resolve `DC_Named`/`DC_LO`/etc.
+        , _ProgramTypeEnv :: TypeEnv
         }
     deriving ()
 
@@ -137,18 +142,106 @@ showsMonoType prec (TyApp t1 t2) =
     let inner = showsMonoType 6 t1 . strstr " " . showsMonoType 7 t2
     in if prec > 6 then strstr "(" . inner . strstr ")" else inner
 
+-- Render a `LogicVar` using the same convention as `TermNode`'s viewer
+-- (`?V_n` for anonymous term-level, `?TV_n` for type-level, hint when
+-- available, name when LV_Named). Diverges from the raw `Show LogicVar`
+-- on `LV_Unique` (raw uses `?LV_<n>`), so the debugger output stays
+-- consistent across `_substitution`, `_typing`, and the current goal.
+showLVarVN :: LogicVar -> ShowS
+showLVarVN (LV_ty_var uni) = strstr "?TV_" . shows (unUnique uni)
+showLVarVN (LV_Unique uni (DispHint (Just s))) = strstr s
+showLVarVN (LV_Unique uni (DispHint Nothing)) = strstr "?V_" . shows (unUnique uni)
+showLVarVN (LV_Named name) = strstr name
+
+-- §3.4 CMTT: render `lv : t` with `lv`'s typing context inlined as
+-- `(c_i : ti, ?V_j : tj, ... |- t)`. The context is everything visible
+-- to `lv` (i.e. scope ≤ scope(lv)) found in the runtime's `Labeling`:
+--   • rigid constants from `_ConTypes` — atomic, no further unfolding;
+--   • flexible variables from `_VarTypes` with strictly smaller
+--     `Unique` than `lv` itself, recursively rendered the same way.
+-- The `Unique <` guard guarantees termination (Unique IDs form a strict
+-- partial order matching introduction time, so a context cannot loop
+-- back into a younger variable). Empty contexts still render as
+-- `(|- t)` so the CMTT shape is uniform across all LVs (including
+-- `LV_Named` query variables at scope 0).
+showsMonoTypeIn :: Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
+showsMonoTypeIn labeling = render where
+    render :: LogicVar -> Maybe (MonoType Int) -> ShowS
+    render lv mtyp =
+        let (scope_v, myK) = case lv of
+                LV_Named _ -> (-1, -1)
+                _ -> (lookupLabel lv labeling, lvKey lv)
+            cons = [ renderCon uni cTyp
+                   | (uni, cTyp) <- IntMap.toAscList (_ConTypes labeling)
+                   , IntMap.findWithDefault maxBound uni (_ConLabel labeling) <= scope_v
+                   ]
+            -- Iterate `_VarLabel` (not `_VarTypes`) so HOPU-introduced
+            -- LVs without a recorded type still appear in the context.
+            -- Their type renders as `?`. `?TV_<n>` (kind-level ty-vars)
+            -- appear here as bare names — they are part of the typing
+            -- environment a `?V` can refer to, but they have no MonoType
+            -- so no `: τ` annotation is shown for them.
+            vars = [ renderVar uni
+                   | (uni, scp) <- IntMap.toAscList (_VarLabel labeling)
+                   , uni < myK
+                   , scp <= scope_v
+                   ]
+            entries = cons ++ vars
+            prefix = case entries of
+                [] -> strstr "("
+                _ -> strstr "(" . sepBy (strstr ", ") entries . strstr " "
+            renderedTy = case mtyp of
+                Just t -> showsMonoType 0 t
+                Nothing -> strstr "?"
+        in prefix . strstr "|- " . renderedTy . strstr ")"
+    renderCon :: Int -> MonoType Int -> ShowS
+    renderCon uni cTyp = strstr "c_" . shows uni . strstr " : " . showsMonoType 0 cTyp
+    -- `?TV_<n>` (LV_ty_var, kind-level) appears as a bare name —
+    -- no `: τ` since its sort lives one level up (Star/kind), which
+    -- the MonoType-based renderer can't express. `?V_<n>` is rendered
+    -- with its CMTT type, recursing through `render`.
+    renderVar :: Int -> ShowS
+    renderVar uni
+        | IntMap.member uni (_TyVarKeys labeling) = strstr "?TV_" . shows uni
+        | otherwise =
+            let innerLV = LV_Unique (Unique uni) noHint
+                mInnerTy = IntMap.lookup uni (_VarTypes labeling)
+            in strstr "?V_" . shows uni . strstr " : " . render innerLV mInnerTy
+    sepBy :: ShowS -> [ShowS] -> ShowS
+    sepBy _ [] = id
+    sepBy _ [x] = x
+    sepBy sep (x : xs) = x . sep . sepBy sep xs
+
 showStackItem :: Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
 showStackItem fvs typeMap space (ctx, cells) = strcat
     [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- [ " . showsvdash (space + 8) hyps goal . strstr " ] # call_id = " . shows call_id | Cell facts hyps level goal call_id <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
-    -- §3.4 typing context: each flexible variable in scope with its
-    -- inferred type. The set comes from `_TypeInfo` (built in
-    -- `Main.mkRuntimeEnv` from the type-checker's `assumptions`).
-    -- We restrict to `fvs` so the same filter as `_substitution`
-    -- applies, keeping the listing relevant to what the user can see.
-    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) [ shows (LVar v) . strstr " : " . showsMonoType 0 typ | (v, typ) <- Map.toList typeMap, v `Set.member` fvs ] . nl
+    -- §3.4 typing judgments: each flexible variable in scope with its
+    -- inferred type, rendered in CMTT form `?V : (Γ |- τ)` where Γ
+    -- lists every visible rigid constant and flexible variable. The
+    -- set comes from `_TypeInfo` (built in `Main.mkRuntimeEnv` from
+    -- the type-checker's `assumptions`) for `LV_Named` query vars,
+    -- and from `_VarTypes` in the runtime `Labeling` for runtime-
+    -- introduced anonymous vars; both are merged here.
+    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) (
+        [ showLVarVN v . strstr " : " . showsMonoTypeIn (_CurrentLabeling ctx) v (Just typ)
+        | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
+        ]
+        ++
+        -- §3.4 CMTT: iterate `_VarLabel` (not `_VarTypes`) so HOPU-
+        -- introduced LVs without a recorded type still appear.
+        -- `lookupLVarType` returns `Nothing` for them; the renderer
+        -- shows `?` in that case. Skip `_TyVarKeys` entries — their
+        -- "type" is kind-level (`*`), not a `MonoType`, so the line
+        -- would carry no useful information.
+        [ showLVarVN v . strstr " : " . showsMonoTypeIn (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
+        | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
+        , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
+        , let v = LV_Unique (Unique uni) noHint
+        ]
+      ) . nl
     , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
     , pindent (space + 4) . strstr "}" . nl
     ]
@@ -176,14 +269,22 @@ instantiateFact fact level
             uni <- getUnique
             let var = LV_ty_var uni
             modify (enrollLabel var level)
+            -- §3.4: ty_pi binders live at the kind level (Star); they
+            -- have no MonoType, so nothing to register in `_VarTypes`.
+            -- But we mark them in `_TyVarKeys` so the debugger picks
+            -- `?TV_<n>` instead of `?V_<n>` when rendering.
+            modify (\lbl -> lbl { _TyVarKeys = IntMap.insert (unUnique uni) () (_TyVarKeys lbl) })
             instantiateFact (mkNApp fact1 (mkLVar var)) level
         (NCon (DC (DC_LO LO_pi)), [fact1]) -> do
             uni <- getUnique
-            let mhint = case rewrite HNF fact1 of
-                    NLam h _ -> h
-                    _ -> Nothing
+            let (mhint, mty) = case rewrite HNF fact1 of
+                    NLam h ty _ -> (h, unLamType ty)
+                    _ -> (Nothing, Nothing)
                 var = LV_Unique uni (mkHint mhint)
             modify (enrollLabel var level)
+            case mty of
+                Just ty -> modify (\lbl -> lbl { _VarTypes = IntMap.insert (unUnique uni) ty (_VarTypes lbl) })
+                Nothing -> return ()
             instantiateFact (mkNApp fact1 (mkLVar var)) level
         (NCon (DC (DC_LO LO_if)), [conclusion, premise]) -> return (conclusion, premise)
         (NCon (DC (DC_LO logical_operator)), args) -> lift (throwE (BadFactGiven (foldlNApp (mkNCon logical_operator) args)))
@@ -207,19 +308,27 @@ runLogicalOperator LO_imply [fact1, goal2] ctx facts hyps level call_id cells st
 runLogicalOperator LO_sigma [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
-        let mhint = case rewrite HNF goal1 of
-                NLam h _ -> h
-                _ -> Nothing
+        let (mhint, mty) = case rewrite HNF goal1 of
+                NLam h ty _ -> (h, unLamType ty)
+                _ -> (Nothing, Nothing)
             var = LV_Unique uni (mkHint mhint)
-        return ((ctx { _CurrentLabeling = enrollLabel var level (_CurrentLabeling ctx) }, mkCell facts hyps level (mkNApp goal1 (mkLVar var)) call_id : cells) : stack)
+            labeling0 = enrollLabel var level (_CurrentLabeling ctx)
+            labeling1 = case mty of
+                Just ty -> labeling0 { _VarTypes = IntMap.insert (unUnique uni) ty (_VarTypes labeling0) }
+                Nothing -> labeling0
+        return ((ctx { _CurrentLabeling = labeling1 }, mkCell facts hyps level (mkNApp goal1 (mkLVar var)) call_id : cells) : stack)
 runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
-        let mhint = case rewrite HNF goal1 of
-                NLam h _ -> h
-                _ -> Nothing
+        let (mhint, mty) = case rewrite HNF goal1 of
+                NLam h ty _ -> (h, unLamType ty)
+                _ -> (Nothing, Nothing)
             con = DC (DC_Unique uni (mkHint mhint))
-        return ((ctx { _CurrentLabeling = enrollLabel con (level + 1) (_CurrentLabeling ctx) }, mkCell facts hyps (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
+            labeling0 = enrollLabel con (level + 1) (_CurrentLabeling ctx)
+            labeling1 = case mty of
+                Just ty -> labeling0 { _ConTypes = IntMap.insert (unUnique uni) ty (_ConTypes labeling0) }
+                Nothing -> labeling0
+        return ((ctx { _CurrentLabeling = labeling1 }, mkCell facts hyps (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
 runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     | Left "ill" == evaluateA (rewrite NF rhs)
     = return stack

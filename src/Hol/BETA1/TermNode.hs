@@ -29,7 +29,7 @@ data TermNode
     | NCon !Constant
     | NIdx {-# UNPACK #-} !DeBruijn
     | NApp !TermNode !TermNode
-    | NLam !(Maybe SmallId) !TermNode
+    | NLam !(Maybe SmallId) !LamType !TermNode
     | Susp
         { getSuspBody :: !TermNode
         , getSuspOL :: {-# UNPACK #-} !Int
@@ -37,6 +37,26 @@ data TermNode
         , getSuspEnv :: !SuspEnv
         }
     | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar)
+
+-- §3.4 CMTT: the type of the bound variable of a lambda, as inferred by
+-- the type checker. Carried only so that the runtime can recover the
+-- type of a freshly introduced LV/DC at `pi`/`sigma`/`ty_pi` elimination.
+-- `Nothing` means "unknown" — the kernel never relies on this field for
+-- correctness. Eq/Ord are trivial so α-equivalence (which already
+-- ignores `_hint`) stays insensitive to the type annotation.
+newtype LamType = LamType { unLamType :: Maybe (MonoType Int) }
+
+instance Eq LamType where
+    _ == _ = True
+
+instance Ord LamType where
+    compare _ _ = EQ
+
+noLamType :: LamType
+noLamType = LamType Nothing
+
+mkLamType :: MonoType Int -> LamType
+mkLamType = LamType . Just
 
 -- §2.8.1: kernel operations are insensitive to the `_hint` field of
 -- `NLam`. The `Eq` and `Ord` instances therefore compare the bodies
@@ -47,7 +67,7 @@ instance Eq TermNode where
     NCon c1 == NCon c2 = c1 == c2
     NIdx i == NIdx j = i == j
     NApp a1 b1 == NApp a2 b2 = a1 == a2 && b1 == b2
-    NLam _ b1 == NLam _ b2 = b1 == b2
+    NLam _ _ b1 == NLam _ _ b2 = b1 == b2
     Susp b1 ol1 nl1 e1 == Susp b2 ol2 nl2 e2 = b1 == b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
     NPresburgerCheck f1 m1 == NPresburgerCheck f2 m2 = f1 == f2 && m1 == m2
     _ == _ = False
@@ -60,7 +80,7 @@ instance Ord TermNode where
         ctorIdx (NCon _) = 1
         ctorIdx (NIdx _) = 2
         ctorIdx (NApp _ _) = 3
-        ctorIdx (NLam _ _) = 4
+        ctorIdx (NLam _ _ _) = 4
         ctorIdx (Susp {}) = 5
         ctorIdx (NPresburgerCheck _ _) = 6
         cmpTerm :: TermNode -> TermNode -> Ordering
@@ -68,7 +88,7 @@ instance Ord TermNode where
         cmpTerm (NCon c1) (NCon c2) = compare c1 c2
         cmpTerm (NIdx i) (NIdx j) = compare i j
         cmpTerm (NApp a1 b1) (NApp a2 b2) = compare a1 a2 <> compare b1 b2
-        cmpTerm (NLam _ b1) (NLam _ b2) = compare b1 b2
+        cmpTerm (NLam _ _ b1) (NLam _ _ b2) = compare b1 b2
         cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
             compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
         cmpTerm (NPresburgerCheck f1 m1) (NPresburgerCheck f2 m2) =
@@ -141,7 +161,7 @@ instance Show LogicVar where
     showsPrec prec (LV_ty_var uni) = strstr "?TV_" . showsPrec prec (unUnique uni)
     showsPrec prec (LV_Unique uni (DispHint mhint)) = case mhint of
         Just s -> strstr s
-        Nothing -> strstr "?LV_" . showsPrec prec (unUnique uni)
+        Nothing -> strstr "?V_" . showsPrec prec (unUnique uni)
     showsPrec prec (LV_Named name) = strstr name
 
 {-# INLINE mkLVar #-}
@@ -164,11 +184,15 @@ mkNApp t1 t2 = NApp t1 t2
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
-mkNLam t = NLam Nothing t
+mkNLam t = NLam Nothing noLamType t
 
 {-# INLINE mkNLamHint #-}
 mkNLamHint :: Maybe SmallId -> TermNode -> TermNode
-mkNLamHint h t = NLam h t
+mkNLamHint h t = NLam h noLamType t
+
+{-# INLINE mkNLamHintTy #-}
+mkNLamHintTy :: Maybe SmallId -> LamType -> TermNode -> TermNode
+mkNLamHintTy h ty t = NLam h ty t
 
 {-# INLINE mkSusp #-}
 mkSusp :: TermNode -> Int -> Int -> SuspEnv -> TermNode
@@ -197,7 +221,7 @@ rewriteWithSusp t ol nl env option = dispatch t where
     dispatch (NCon {})
         = t
     dispatch (NApp t1 t2)
-        | NLam _ t11 <- t1' = beta t11
+        | NLam _ _ t11 <- t1' = beta t11
         | option == WHNF = mkNApp t1' (mkSusp t2 ol nl env)
         | option == HNF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (mkSusp t2 ol nl env)
         | option == NF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
@@ -208,9 +232,9 @@ rewriteWithSusp t ol nl env option = dispatch t where
             beta (Susp t' ol' nl' (Dummy l' : env'))
                 | nl' == l' = rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
             beta t' = rewriteWithSusp t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
-    dispatch (NLam h t1)
-        | option == WHNF = mkNLamHint h (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
-        | otherwise = mkNLamHint h (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
+    dispatch (NLam h ty t1)
+        | option == WHNF = mkNLamHintTy h ty (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
+        | otherwise = mkNLamHintTy h ty (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
     dispatch (Susp t' ol' nl' env')
         | ol' == 0 && nl' == 0 = rewriteWithSusp t' ol nl env option
         | ol == 0 = rewriteWithSusp t' ol' (nl + nl') env' option
@@ -280,7 +304,7 @@ freshenName h live
 viewNestedNLam :: TermNode -> (Int, TermNode)
 viewNestedNLam = go 0 where
     go :: Int -> TermNode -> (Int, TermNode)
-    go n (NLam _ t) = go (n + 1) t
+    go n (NLam _ _ t) = go (n + 1) t
     go n t = (n, t)
 
 -- Like `viewNestedNLam`, but also returns the hint of each peeled
@@ -289,7 +313,7 @@ viewNestedNLam = go 0 where
 viewNestedNLamH :: TermNode -> ([Maybe SmallId], TermNode)
 viewNestedNLamH = go [] where
     go :: [Maybe SmallId] -> TermNode -> ([Maybe SmallId], TermNode)
-    go hs (NLam h t) = go (h : hs) t
+    go hs (NLam h _ t) = go (h : hs) t
     go hs t = (reverse hs, t)
 
 constructViewer :: TermNode -> ViewNode
@@ -348,7 +372,7 @@ constructViewerWith lookupName = fst . runIdentity . uncurry (runStateT . format
         t1_rep <- makeView vars t1
         t2_rep <- makeView vars t2
         return (if isType t1_rep then ViewTApp t1_rep t2_rep else ViewIApp t1_rep t2_rep)
-    makeView vars (NLam mhint t) = do
+    makeView vars (NLam mhint _ t) = do
         counter <- get
         put (counter + 1)
         let preferred = case mhint of

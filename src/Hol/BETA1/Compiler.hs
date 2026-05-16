@@ -40,7 +40,15 @@ convertWithoutChecking var_name_env = go where
     loop env (Var loc var) = convertVar var_name_env env var
     loop env (Con loc (data_constructor, tapps)) = convertCon var_name_env env data_constructor tapps
     loop env (App loc term1 term2) = mkNApp (loop env term1) (loop env term2)
-    loop env (Lam loc var1 hint term2) = mkNLamHint hint (loop (var1 : env) term2)
+    -- §3.4 CMTT: the typechecker annotates each `Lam` with the lambda's
+    -- full type (`T1 -> T2`). The bound variable's type is the domain
+    -- `T1`. We thread it through so the runtime can recover the type
+    -- of any LV/DC introduced by `pi`/`sigma`/`ty_pi` elimination.
+    loop env (Lam (_, lamTy) var1 hint term2) =
+        let domTy = case lamTy of
+                TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) _ -> LamType (Just t1)
+                _ -> noLamType
+        in mkNLamHintTy hint domTy (loop (var1 : env) term2)
     go :: MonadUnique m => DeBruijnIndicesEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
     go env = return . loop env . reduceTermExpr
 
@@ -48,13 +56,24 @@ convertProgram :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (Mon
 convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithoutChecking Map.empty initialEnv where
     initialEnv :: DeBruijnIndicesEnv
     initialEnv = Set.toList (Map.keysSet assumptions `Set.union` Map.keysSet used_mtvs)
+    -- §3.4 CMTT: wrap `body` in n `LO_pi` lambdas (one per assumption)
+    -- with the assumption's type, then m `LO_ty_pi` lambdas (one per
+    -- used_mtv) without a MonoType (ty_var binders live at the kind
+    -- level, not the type level). Innermost lambda binds the smallest
+    -- IVar so de Bruijn indices line up with `initialEnv`'s ascending
+    -- key order. `foldr` over `toDescList` puts the smallest key last,
+    -- which becomes the innermost binder.
     makeUniversalClosure :: TermNode -> TermNode
-    makeUniversalClosure = flip (foldr (\_ -> \term -> (mkNApp (mkNCon LO_ty_pi)) (mkNLam term))) [1, 2 .. Map.size used_mtvs] . flip (foldr (\_ -> \term -> mkNApp (mkNCon LO_pi) (mkNLam term))) [1, 2 .. Map.size assumptions]
+    makeUniversalClosure body =
+        let wrapAssumption (_, ty) acc = mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType ty) acc)
+            wrapTyVar (_, _) acc = mkNApp (mkNCon LO_ty_pi) (mkNLam acc)
+            afterAssumed = foldr wrapAssumption body (Map.toDescList assumptions)
+        in foldr wrapTyVar afterAssumed (Map.toDescList used_mtvs)
 
 replaceWildcards :: MonadUnique m => TermNode -> m TermNode
 replaceWildcards (NCon (DC DC_wc)) = fmap (\u -> mkLVar (LV_Unique u noHint)) getUnique
 replaceWildcards (NApp t1 t2) = liftM2 mkNApp (replaceWildcards t1) (replaceWildcards t2)
-replaceWildcards (NLam h t) = fmap (mkNLamHint h) (replaceWildcards t)
+replaceWildcards (NLam h ty t) = fmap (mkNLamHintTy h ty) (replaceWildcards t)
 replaceWildcards t = return t
 
 convertQuery :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> FreeVariableEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode

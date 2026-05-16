@@ -673,9 +673,9 @@ installPresburger = go
         t1' <- go t1
         t2' <- go t2
         return (NApp t1' t2')
-    go (NLam h t) = do
+    go (NLam h ty t) = do
         t' <- go t
-        return (NLam h t')
+        return (NLam h ty t')
     go (Susp body ol nl env) = do
         body' <- go body
         env' <- traverse goSuspItem env
