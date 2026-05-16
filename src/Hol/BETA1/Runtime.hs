@@ -87,6 +87,12 @@ data RuntimeEnv
         -- through to `Labeling._TypeEnv` at `execRuntime` start so
         -- HOPU's `typeOfTerm` can resolve `DC_Named`/`DC_LO`/etc.
         , _ProgramTypeEnv :: TypeEnv
+        -- §3.4 CMTT: when `True`, `_typing` entries render with the full
+        -- recursive CMTT context `(Γ |- τ)`. When `False` (default), only
+        -- the type itself is shown. Toggled by `:verbose` at the debug
+        -- prompt; the IORef is shared with the REPL so the next step
+        -- reflects the new mode.
+        , _VerboseTyping :: IORef Bool
         }
     deriving ()
 
@@ -168,8 +174,11 @@ showLVarVN (LV_Named name) = strstr name
 -- back into a younger variable). Empty contexts still render as
 -- `(|- t)` so the CMTT shape is uniform across all LVs (including
 -- `LV_Named` query variables at scope 0).
-showsMonoTypeIn :: Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
-showsMonoTypeIn labeling = render where
+showsMonoTypeIn :: Bool -> Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
+showsMonoTypeIn False _ _ mtyp = case mtyp of
+    Just t -> showsMonoType 0 t
+    Nothing -> strstr "?"
+showsMonoTypeIn True labeling lv mtyp = render lv mtyp where
     render :: LogicVar -> Maybe (MonoType Int) -> ShowS
     render lv mtyp =
         let (scope_v, myK) = case lv of
@@ -216,8 +225,8 @@ showsMonoTypeIn labeling = render where
     sepBy _ [x] = x
     sepBy sep (x : xs) = x . sep . sepBy sep xs
 
-showStackItem :: Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
-showStackItem fvs typeMap space (ctx, cells) = strcat
+showStackItem :: Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
+showStackItem verbose fvs typeMap space (ctx, cells) = strcat
     [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- [ " . showsvdash (space + 8) hyps goal . strstr " ] # call_id = " . shows call_id | Cell facts hyps level goal call_id <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
@@ -230,7 +239,7 @@ showStackItem fvs typeMap space (ctx, cells) = strcat
     -- and from `_VarTypes` in the runtime `Labeling` for runtime-
     -- introduced anonymous vars; both are merged here.
     , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) (
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn (_CurrentLabeling ctx) v (Just typ)
+        [ showLVarVN v . strstr " : " . showsMonoTypeIn verbose (_CurrentLabeling ctx) v (Just typ)
         | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
         ]
         ++
@@ -240,7 +249,7 @@ showStackItem fvs typeMap space (ctx, cells) = strcat
         -- shows `?` in that case. Skip `_TyVarKeys` entries — their
         -- "type" is kind-level (`*`), not a `MonoType`, so the line
         -- would carry no useful information.
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
+        [ showLVarVN v . strstr " : " . showsMonoTypeIn verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
         | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
         , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
         , let v = LV_Unique (Unique uni) noHint
@@ -250,16 +259,16 @@ showStackItem fvs typeMap space (ctx, cells) = strcat
     , pindent (space + 4) . strstr "}" . nl
     ]
 
-showsCurrentState :: Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
-showsCurrentState fvs typeMap ctx cells stack = strcat
+showsCurrentState :: Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
+showsCurrentState verbose fvs typeMap ctx cells stack = strcat
     [ strstr "--------------------------------" . nl
     , strstr "* The top of the current stack is:" . nl
-    , showStackItem fvs typeMap 4 (ctx, cells) . nl
+    , showStackItem verbose fvs typeMap 4 (ctx, cells) . nl
     , strstr "* The rest of the current stack is:" . nl
     , strcat
         [ strcat
             [ pindent 0 . strstr "- (#" . shows i . strstr ")" . nl
-            , showStackItem fvs typeMap 4 item . nl
+            , showStackItem verbose fvs typeMap 4 item . nl
             ]
         | (i, item) <- zip [1, 2 .. length stack] stack
         ]
@@ -617,7 +626,8 @@ runTransition env free_lvars = go where
             (ctx, cells) : stack -> do
                 liftIO $ do
                     dbg <- readIORef (_debuggindModeOn ctx)
-                    when dbg $ _PutStr env ctx (showsCurrentState free_lvars (_TypeInfo env) ctx cells stack "")
+                    verbose <- readIORef (_VerboseTyping env)
+                    when dbg $ _PutStr env ctx (showsCurrentState verbose free_lvars (_TypeInfo env) ctx cells stack "")
                 -- The user's `:assign` (entered via `_PutStr`) may have
                 -- arrived during the debug prompt. Re-drain so the very
                 -- next dispatch sees the propagated substitution.

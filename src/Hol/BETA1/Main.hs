@@ -77,8 +77,9 @@ execRuntime env isDebugging facts query = do
 runREPL :: Program TermNode -> UniqueT IO ()
 runREPL program = do
     isDebugging <- lift (newIORef False)
+    verboseTyping <- lift (newIORef False)
     nameCache <- lift (newIORef initialCache)
-    go isDebugging nameCache
+    go isDebugging verboseTyping nameCache
   where
     myTabs :: String
     myTabs = ""
@@ -89,8 +90,8 @@ runREPL program = do
     -- future `:assign`) take effect from the next printout onwards.
     prettyTerm :: NameCache -> TermNode -> ShowS
     prettyTerm cache t = pprint 0 (constructViewerWith (viewerLookup cache) t)
-    mkRuntimeEnv :: IORef Debugging -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
-    mkRuntimeEnv isDebugging nameCache pendingSubst typeMap query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program }) where
+    mkRuntimeEnv :: IORef Debugging -> IORef Bool -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
+    mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping }) where
         runInteraction :: Context -> String -> IO ()
         runInteraction ctx str = do
             isDebugging <- readIORef (_debuggindModeOn ctx)
@@ -102,6 +103,14 @@ runREPL program = do
                         modifyIORef (_debuggindModeOn ctx) not
                         debugging <- readIORef (_debuggindModeOn ctx)
                         promptify "Debugging mode off."
+                        return ()
+                    ":short" -> do
+                        writeIORef verboseTyping False
+                        promptify "Typing display: short."
+                        return ()
+                    ":verbose" -> do
+                        writeIORef verboseTyping True
+                        promptify "Typing display: verbose."
                         return ()
                     _ | (":assign " `List.isPrefixOf` response) ->
                         handleAssign ctx (drop (length (":assign " :: String)) response)
@@ -481,8 +490,8 @@ runREPL program = do
                     ]
                 consistent :: Bool
                 consistent = evalokay && arithokay 
-    go :: IORef Debugging -> IORef NameCache -> UniqueT IO ()
-    go isDebugging nameCache = do
+    go :: IORef Debugging -> IORef Bool -> IORef NameCache -> UniqueT IO ()
+    go isDebugging verboseTyping nameCache = do
         query <- lift $ promptify ""
         case query of
             "" -> do
@@ -496,11 +505,21 @@ runREPL program = do
                     modifyIORef isDebugging not
                     debugging <- readIORef isDebugging
                     promptify ("Debugging mode " ++ (if debugging then "on" else "off") ++ ".")
-                go isDebugging nameCache
+                go isDebugging verboseTyping nameCache
+            ":short" -> do
+                lift $ do
+                    writeIORef verboseTyping False
+                    promptify "Typing display: short."
+                go isDebugging verboseTyping nameCache
+            ":verbose" -> do
+                lift $ do
+                    writeIORef verboseTyping True
+                    promptify "Typing display: verbose."
+                go isDebugging verboseTyping nameCache
             query0 -> case runAnalyzer query0 of
                 Left err_msg -> do
                     lift $ putStrLn err_msg
-                    go isDebugging nameCache
+                    go isDebugging verboseTyping nameCache
                 Right output -> case output of
                     Left query1 -> do
                         result <- runExceptT $ do
@@ -526,10 +545,10 @@ runREPL program = do
                         case result of
                             Left err_msg -> do
                                 lift $ putStrLn err_msg
-                                go isDebugging nameCache
+                                go isDebugging verboseTyping nameCache
                             Right (query4, typeMap) -> do
                                 pendingSubst <- lift $ newIORef (VarBinding Map.empty)
-                                runtime_env <- lift $ mkRuntimeEnv isDebugging nameCache pendingSubst typeMap query4
+                                runtime_env <- lift $ mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query4
                                 answer <- runExceptT (execRuntime runtime_env isDebugging (_FactDecls program) query4)
                                 case answer of
                                     Left runtime_err -> case runtime_err of
@@ -538,10 +557,10 @@ runREPL program = do
                                     Right sat -> do
                                         lift $ promptify (if sat then "yes." else "no.")
                                         return ()
-                                go isDebugging nameCache
+                                go isDebugging verboseTyping nameCache
                     Right src1 -> do
                         lift $ putStrLn "*** parsing-error: it is not a query."
-                        go isDebugging nameCache
+                        go isDebugging verboseTyping nameCache
 
 theInitialKindDecls :: KindEnv
 theInitialKindDecls = Map.fromList
