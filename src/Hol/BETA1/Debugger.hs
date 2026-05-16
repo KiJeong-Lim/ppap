@@ -5,11 +5,15 @@ module Hol.BETA1.Debugger
     , toDisplay
     , fromDisplay
     , viewerLookup
+    , mergeKeepingNewEntries
+    , parseAnonymousLV
+    , prettyTerm
     ) where
 
 import qualified Data.Map.Strict as Map
 import Hol.BETA1.Header
 import Hol.BETA1.TermNode
+import Z.Utils
 
 -- =============================================================
 -- §3.5 / §4.4.4 — Display-name cache
@@ -69,3 +73,36 @@ fromDisplay name = Map.lookup name . _fromDisplay
 -- with the arguments flipped to match.
 viewerLookup :: NameCache -> LogicVar -> Maybe SmallId
 viewerLookup nc lv = toDisplay lv nc
+
+-- §3.5 / §4.4.4 rollback policy: when `:assign` aborts, the rollback
+-- must restore θ/C/stack/pending-substitution, but cache entries
+-- accumulated *during* the failed attempt are kept so that display
+-- names do not jitter between consecutive prompts. This merge takes
+-- the snapshot's cache as the baseline and overlays every entry from
+-- the current cache on top, so newer entries always win on collision.
+mergeKeepingNewEntries :: NameCache -> NameCache -> NameCache
+mergeKeepingNewEntries old new = NameCache
+    { _toDisplay = Map.union (_toDisplay new) (_toDisplay old)
+    , _fromDisplay = Map.union (_fromDisplay new) (_fromDisplay old)
+    }
+
+-- §3.5: reverse the viewer's anonymous-LV display convention. When
+-- a user types `?V_17` / `?LV_17` / `?TV_17` for a variable that has
+-- no cache entry, we rebuild the LogicVar by hand. `?` has already
+-- been stripped by the caller.
+parseAnonymousLV :: String -> Maybe LogicVar
+parseAnonymousLV nm = case nm of
+    'T' : 'V' : '_' : rest -> mkAnon LV_ty_var rest
+    'L' : 'V' : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
+    'V'       : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
+    _ -> Nothing
+  where
+    mkAnon ctor digits = case reads digits of
+        [(n, "")] -> Just (ctor (Unique n))
+        _ -> Nothing
+
+-- §2.6: render a TermNode through the cache-aware viewer. The cache
+-- governs which LogicVars get short display names and which fall
+-- back to the viewer's anonymous convention.
+prettyTerm :: NameCache -> TermNode -> ShowS
+prettyTerm cache t = pprint 0 (constructViewerWith (viewerLookup cache) t)

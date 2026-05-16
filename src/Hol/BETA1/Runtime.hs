@@ -2,6 +2,7 @@ module Hol.BETA1.Runtime where
 
 import Calc.Presburger.Internal
 import Hol.BETA1.Arith
+import Hol.BETA1.Debugger
 import Hol.BETA1.TermNode
 import Hol.BETA1.HOPU
 import Hol.BETA1.Constant
@@ -10,6 +11,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
+import Control.Monad.Trans.Reader
 import Control.Monad.Trans.State.Strict
 import Data.IORef
 import Data.Maybe
@@ -66,7 +68,7 @@ data Context
 
 data RuntimeEnv
     = RuntimeEnv
-        { _PutStr :: Context -> String -> IO ()
+        { _PutStr :: RuntimeEnv -> Context -> String -> IO ()
         , _Answer :: Context -> IO RunMore
         -- §3.4: the debugger lists each user-visible flexible variable
         -- with its inferred `MonoType`. The map is keyed by `LogicVar`
@@ -93,8 +95,215 @@ data RuntimeEnv
         -- prompt; the IORef is shared with the REPL so the next step
         -- reflects the new mode.
         , _VerboseTyping :: IORef Bool
+        -- §4.4: the kernel's `go` loop publishes the live stack here
+        -- before invoking the debug callback. `cmd*` functions read it
+        -- to inspect the current state, and may write it to mutate the
+        -- search frontier (e.g. `cmdQuit` empties it). The very next
+        -- iteration of `go` reads back from this IORef.
+        , _StackRef :: IORef Stack
+        -- §4.4.4: the REPL's display-name cache. Lives in RuntimeEnv so
+        -- that `cmd*` functions in the `Runtime` monad can update it
+        -- (e.g. `cmdAssign` may introduce a new display name) without
+        -- the REPL having to thread it manually.
+        , _NameCacheRef :: IORef NameCache
+        -- §4.4: a sibling reference to the same IORef stored as
+        -- `Context._debuggindModeOn` in every Context. Kept on the env
+        -- so that `cmdDebugToggle` works even when the goal stack is
+        -- empty (post-`cmdQuit`, post-search-completion).
+        , _DebuggingRef :: IORef Debugging
         }
     deriving ()
+
+-- §4.4: Public Haskell API surface. Library callers (notably the
+-- future `LoL`) invoke `cmd*` functions inside this monad rather
+-- than fork-execing the REPL and scraping stdout. The single
+-- reader environment carries every IORef the commands may touch.
+newtype Runtime a = Runtime { unRuntime :: ReaderT RuntimeEnv IO a }
+
+instance Functor Runtime where
+    fmap f (Runtime m) = Runtime (fmap f m)
+
+instance Applicative Runtime where
+    pure = Runtime . pure
+    Runtime f <*> Runtime x = Runtime (f <*> x)
+
+instance Monad Runtime where
+    return = pure
+    Runtime m >>= k = Runtime (m >>= unRuntime . k)
+
+instance MonadIO Runtime where
+    liftIO = Runtime . liftIO
+
+runRuntime :: Runtime a -> RuntimeEnv -> IO a
+runRuntime (Runtime m) = runReaderT m
+
+askRuntimeEnv :: Runtime RuntimeEnv
+askRuntimeEnv = Runtime ask
+
+-- §4.4.1: opaque transaction handle. Captures every piece of mutable
+-- state the kernel uses to decide success/failure: the full goal
+-- stack (which carries θ, C, the HOPU disagreement set as a subset
+-- of C, and every saved frame), the pending substitution staged for
+-- the next iteration, and the display-name cache at the moment of
+-- the snapshot. `cmdAssign` calls `snapshot` before applying its
+-- preconditions and `restore` if any of them fails.
+data Snapshot
+    = Snapshot
+        { _SnapStack :: Stack
+        , _SnapPendingSubst :: LogicVarSubst
+        , _SnapNameCache :: NameCache
+        }
+
+snapshot :: Runtime Snapshot
+snapshot = do
+    env <- askRuntimeEnv
+    liftIO $ do
+        st <- readIORef (_StackRef env)
+        ps <- readIORef (_PendingSubst env)
+        nc <- readIORef (_NameCacheRef env)
+        return (Snapshot { _SnapStack = st, _SnapPendingSubst = ps, _SnapNameCache = nc })
+
+-- §3.5 / §4.4.4 policy override: rollback restores the saved θ, C,
+-- stack, and pending substitution, but does *not* discard cache
+-- entries introduced *after* the snapshot was taken. The user's
+-- display names should not jitter between two consecutive prompts
+-- merely because the assignment that revealed a name failed.
+restore :: Snapshot -> Runtime ()
+restore snap = do
+    env <- askRuntimeEnv
+    liftIO $ do
+        writeIORef (_StackRef env) (_SnapStack snap)
+        writeIORef (_PendingSubst env) (_SnapPendingSubst snap)
+        currentCache <- readIORef (_NameCacheRef env)
+        writeIORef (_NameCacheRef env) (mergeKeepingNewEntries (_SnapNameCache snap) currentCache)
+
+-- §3.1, §4.4.2: flip the debug-mode bit. Idempotent across two calls.
+-- Works whether or not a goal is currently on the stack — the IORef
+-- itself lives on the env, not on a Context.
+cmdDebugToggle :: Runtime ()
+cmdDebugToggle = do
+    env <- askRuntimeEnv
+    liftIO $ modifyIORef (_DebuggingRef env) not
+
+-- §3.1, §4.4.2: drop the goal stack and any pending substitution so
+-- the next iteration of the kernel loop sees no more work. The REPL
+-- typically follows up by exiting its own loop, but the runtime
+-- state is self-consistent on its own — a subsequent call to e.g.
+-- `cmdShow` on a cleared state will simply see an empty stack.
+cmdQuit :: Runtime ()
+cmdQuit = do
+    env <- askRuntimeEnv
+    liftIO $ do
+        writeIORef (_StackRef env) []
+        writeIORef (_PendingSubst env) (VarBinding Map.empty)
+
+-- §3.3, §4.4.2: format and return the current value of the variable
+-- named `name`. Read-only — no snapshot needed. The name is taken
+-- without a leading `?` (the REPL is responsible for stripping it).
+-- Resolution tries the display-name cache first, then falls back to
+-- the viewer's anonymous-LV convention (`V_n`/`LV_n`/`TV_n`). The
+-- returned string is the formatted value (or `unbound`); the message
+-- prefix is the REPL's responsibility.
+cmdShow :: SmallId -> Runtime String
+cmdShow name = do
+    env <- askRuntimeEnv
+    liftIO $ do
+        st <- readIORef (_StackRef env)
+        cache <- readIORef (_NameCacheRef env)
+        let resolved = case fromDisplay name cache of
+                Just lv -> Just lv
+                Nothing -> parseAnonymousLV name
+        case (st, resolved) of
+            (_, Nothing) -> return ("unknown variable '?" ++ name ++ "'")
+            ([], _) -> return "no active goal"
+            ((ctx, _) : _, Just lv) ->
+                case Map.lookup lv (unVarBinding (_TotalVarBinding ctx)) of
+                    Nothing -> return "unbound"
+                    Just t -> return (prettyTerm cache t "")
+
+-- §3.4 CMTT scope check: a binding `?V := t` respects the contextual
+-- type iff every rigid constant and every other flexible variable
+-- inside `t` is visible at `?V`'s scope level (i.e. its scope level
+-- is ≤ `targetScope`). HOPU normally enforces this through
+-- `isPatternRespectTo` and the up/down rules; we replicate the check
+-- here so `cmdAssign` rejects out-of-scope bindings before they
+-- pollute the kernel.
+scopeEscaping :: Labeling -> ScopeLevel -> LogicVar -> TermNode -> ([Constant], [LogicVar])
+scopeEscaping labeling targetScope targetLV = walk where
+    walk :: TermNode -> ([Constant], [LogicVar])
+    walk (LVar v)
+        | v == targetLV = ([], [])
+        | lookupLabel v labeling > targetScope = ([], [v])
+        | otherwise = ([], [])
+    walk (NCon c)
+        | lookupLabel c labeling > targetScope = ([c], [])
+        | otherwise = ([], [])
+    walk (NApp t1 t2) = combine (walk t1) (walk t2)
+    walk (NLam _ _ t) = walk t
+    walk (Susp body _ _ _) = walk body
+    walk _ = ([], [])
+    combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
+
+-- §3.2, §4.4.2: the binding-commit step of `:assign`. The TermNode
+-- argument is already lexed/parsed/desugared/type-checked by the
+-- caller (the REPL, or a library client that builds TermNodes
+-- directly). cmdAssign takes a snapshot, runs the runtime-side
+-- preconditions of §3.2.2 — occurs (4), pattern/scope (5),
+-- consistency (6) — and either commits the binding by staging it
+-- into _PendingSubst or restores the snapshot on failure. Session
+-- (1), flexibility (2), and typing (3) are caller responsibilities.
+cmdAssign :: SmallId -> TermNode -> Runtime (Either ErrMsg ())
+cmdAssign name term = do
+    snap <- snapshot
+    env <- askRuntimeEnv
+    outcome <- liftIO $ do
+        st <- readIORef (_StackRef env)
+        cache <- readIORef (_NameCacheRef env)
+        case st of
+            [] -> return (Left "no active goal")
+            (ctx, _) : _ -> do
+                let targetLV = case fromDisplay name cache of
+                        Just lv -> lv
+                        Nothing -> fromMaybe (LV_Named name) (parseAnonymousLV name)
+                existingPending <- readIORef (_PendingSubst env)
+                let composed_subst = existingPending <> _TotalVarBinding ctx
+                    t_zonked = bindVars composed_subst term
+                if targetLV `Set.member` getLVars t_zonked
+                    then return (Left ("occurs check failed for '" ++ name ++ "'"))
+                    else do
+                        let labeling = _CurrentLabeling ctx
+                            scope_target = case targetLV of
+                                LV_Named _ -> 0
+                                _ -> lookupLabel targetLV labeling
+                            (escapedCons, escapedVars) = scopeEscaping labeling scope_target targetLV t_zonked
+                        if not (null escapedCons) || not (null escapedVars)
+                            then do
+                                let renderCon c = shows c ""
+                                    renderVar v = case v of
+                                        LV_Unique _ (DispHint (Just s)) -> s
+                                        LV_Unique u (DispHint Nothing) -> "?V_" ++ show (unUnique u)
+                                        LV_ty_var u -> "?TV_" ++ show (unUnique u)
+                                        LV_Named n -> n
+                                    items = map renderCon escapedCons ++ map renderVar escapedVars
+                                return (Left ("scope violation for '" ++ name ++ "' — out-of-scope: " ++ List.intercalate ", " items))
+                            else do
+                                -- §2.3.6 (T4): consistency under the candidate substitution.
+                                let new_binding = VarBinding (Map.singleton targetLV t_zonked)
+                                    composedAfter = new_binding <> existingPending <> _TotalVarBinding ctx
+                                    arithTermsAfter =
+                                        [ bindVars composedAfter t
+                                        | ArithmeticConstraint t <- _LeftConstraints ctx
+                                        ]
+                                if isInconsistent arithTermsAfter
+                                    then return (Left ("inconsistent with arithmetic constraints for '" ++ name ++ "'"))
+                                    else do
+                                        writeIORef (_PendingSubst env) (new_binding <> existingPending)
+                                        return (Right ())
+    case outcome of
+        Left err -> do
+            restore snap
+            return (Left err)
+        Right () -> return (Right ())
 
 instance ZonkLVar Context where
     zonkLVar theta ctx = Context
@@ -624,14 +833,20 @@ runTransition env free_lvars = go where
         case stack0 of
             [] -> return False
             (ctx, cells) : stack -> do
+                -- §4.4: publish the live stack so the debug callback (and
+                -- any `cmd*` function it invokes) can observe and mutate
+                -- it. We re-read it after the callback returns so that
+                -- e.g. `cmdQuit` (which empties `_StackRef`) takes effect.
+                liftIO $ writeIORef (_StackRef env) ((ctx, cells) : stack)
                 liftIO $ do
                     dbg <- readIORef (_debuggindModeOn ctx)
                     verbose <- readIORef (_VerboseTyping env)
-                    when dbg $ _PutStr env ctx (showsCurrentState verbose free_lvars (_TypeInfo env) ctx cells stack "")
+                    when dbg $ _PutStr env env ctx (showsCurrentState verbose free_lvars (_TypeInfo env) ctx cells stack "")
+                stackAfterCb <- liftIO (readIORef (_StackRef env))
                 -- The user's `:assign` (entered via `_PutStr`) may have
                 -- arrived during the debug prompt. Re-drain so the very
                 -- next dispatch sees the propagated substitution.
-                stack1 <- applyPending ((ctx, cells) : stack)
+                stack1 <- applyPending stackAfterCb
                 case stack1 of
                     [] -> return False
                     (ctx', cells') : stack' -> case cells' of

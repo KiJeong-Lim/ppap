@@ -85,24 +85,22 @@ runREPL program = do
     myTabs = ""
     promptify :: String -> IO String
     promptify str = shelly (moduleName program ++ "> " ++ str)
-    -- Render a TermNode through the cache-aware viewer. The cache is
-    -- consulted on every call so that user-driven renames (e.g. via a
-    -- future `:assign`) take effect from the next printout onwards.
-    prettyTerm :: NameCache -> TermNode -> ShowS
-    prettyTerm cache t = pprint 0 (constructViewerWith (viewerLookup cache) t)
     mkRuntimeEnv :: IORef Debugging -> IORef Bool -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
-    mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query = return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping }) where
-        runInteraction :: Context -> String -> IO ()
-        runInteraction ctx str = do
+    mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query = do
+        stackRef <- newIORef []
+        return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging })
+      where
+        runInteraction :: RuntimeEnv -> Context -> String -> IO ()
+        runInteraction env ctx str = do
             isDebugging <- readIORef (_debuggindModeOn ctx)
             when isDebugging $ do
                 putStrLn str
                 response <- promptify "Press the enter key to go to next state: "
                 case response of
                     ":d" -> do
-                        modifyIORef (_debuggindModeOn ctx) not
-                        debugging <- readIORef (_debuggindModeOn ctx)
-                        promptify "Debugging mode off."
+                        runRuntime cmdDebugToggle env
+                        debugging <- readIORef (_DebuggingRef env)
+                        _ <- promptify (if debugging then "Debugging mode on." else "Debugging mode off.")
                         return ()
                     ":short" -> do
                         writeIORef verboseTyping False
@@ -113,9 +111,16 @@ runREPL program = do
                         promptify "Typing display: verbose."
                         return ()
                     _ | (":assign " `List.isPrefixOf` response) ->
-                        handleAssign ctx (drop (length (":assign " :: String)) response)
-                    _ | (":show " `List.isPrefixOf` response) ->
-                        handleShow ctx (drop (length (":show " :: String)) response)
+                        handleAssign env ctx (drop (length (":assign " :: String)) response)
+                    _ | (":show " `List.isPrefixOf` response) -> do
+                        let body = drop (length (":show " :: String)) response
+                            trimmed = dropWhile (== ' ') body
+                            varName = case trimmed of
+                                '?' : rest -> rest
+                                _ -> trimmed
+                        result <- runRuntime (cmdShow varName) env
+                        _ <- promptify ("*** :show: ?" ++ varName ++ " = " ++ result)
+                        return ()
                     _ -> return ()
         -- §3.2 `:assign ?V := t.` parsing: strip the literal `?` from the
         -- variable name and split on ` := `. The body is re-assembled as
@@ -135,35 +140,8 @@ runREPL program = do
             findSep (' ' : ':' : '=' : ' ' : rs) acc =
                 Just (reverse (dropWhile (== ' ') acc), dropWhile (== ' ') rs)
             findSep (c : cs) acc = findSep cs (c : acc)
-        -- §3.3 `:show ?V` — read-only lookup. Strip the optional leading
-        -- `?` (matching how `:assign` accepts the displayed name), then
-        -- resolve via the NameCache (or the anonymous-LV fallback used
-        -- by `:assign`). Print the current binding pretty-printed through
-        -- the cache, or the literal `unbound` if no binding exists. No
-        -- snapshot, no propagation — purely observational.
-        handleShow :: Context -> String -> IO ()
-        handleShow ctx body = do
-            let trimmed = dropWhile (== ' ') body
-                varName = case trimmed of
-                    '?' : rest -> rest
-                    _ -> trimmed
-            cache <- readIORef nameCache
-            let resolved = case fromDisplay varName cache of
-                    Just lv -> Just lv
-                    Nothing -> parseAnonymousLV varName
-            case resolved of
-                Nothing -> do
-                    _ <- promptify ("*** :show error: unknown variable '?" ++ varName ++ "'")
-                    return ()
-                Just lv -> case Map.lookup lv (unVarBinding (_TotalVarBinding ctx)) of
-                    Nothing -> do
-                        _ <- promptify ("*** :show: ?" ++ varName ++ " = unbound")
-                        return ()
-                    Just t -> do
-                        _ <- promptify ("*** :show: ?" ++ varName ++ " = " ++ prettyTerm cache t "")
-                        return ()
-        handleAssign :: Context -> String -> IO ()
-        handleAssign ctx body = case parseAssign body of
+        handleAssign :: RuntimeEnv -> Context -> String -> IO ()
+        handleAssign env ctx body = case parseAssign body of
             Nothing -> do
                 _ <- promptify "*** :assign error: expected ':assign ?X := t.'"
                 return ()
@@ -266,102 +244,26 @@ runREPL program = do
                                     return ()
                                 Nothing -> return ()  -- unreachable
                             else do
-                                existingPending <- readIORef pendingSubst
-                                let composed_subst = existingPending <> _TotalVarBinding ctx
-                                    t_zonked = bindVars composed_subst t_resolved
-                                if targetLV `Set.member` getLVars t_zonked
-                                    then do
-                                        _ <- promptify ("*** :assign error: occurs check failed for '" ++ varName ++ "'")
+                                -- §4.4.2: hand off to the library API. cmdAssign owns
+                                -- the snapshot/restore, occurs check, scope check,
+                                -- and the (T4) consistency check. We retain the
+                                -- caller-side type check above (since cmdAssign's
+                                -- signature deliberately takes an already-checked
+                                -- TermNode), and render the success message here
+                                -- because cmdAssign returns just `Right ()`.
+                                result <- runRuntime (cmdAssign varName t_resolved) env
+                                case result of
+                                    Left err -> do
+                                        _ <- promptify ("*** :assign error: " ++ err)
                                         return ()
-                                    else do
-                                        -- §3.4 CMTT scope check: every rigid constant and flexible
-                                        -- variable inside `t_zonked` must be visible to `targetLV`,
-                                        -- i.e. its scope level must be ≤ that of `targetLV`. This
-                                        -- is the CMTT-context constraint that HOPU normally enforces
-                                        -- automatically (`isPatternRespectTo`, the `up`/`down` rules);
-                                        -- we replicate it here so `:assign` rejects bindings that
-                                        -- escape the contextual type before they pollute the kernel.
-                                        let labeling = _CurrentLabeling ctx
-                                            scope_target = case targetLV of
-                                                LV_Named _ -> 0
-                                                _ -> lookupLabel targetLV labeling
-                                            (escapedCons, escapedVars) = scopeEscaping labeling scope_target targetLV t_zonked
-                                        if not (null escapedCons) || not (null escapedVars)
-                                            then do
-                                                let renderCon c = shows c ""
-                                                    renderVar v = case v of
-                                                        LV_Unique u (DispHint (Just s)) -> s
-                                                        LV_Unique u (DispHint Nothing) -> "?V_" ++ show (unUnique u)
-                                                        LV_ty_var u -> "?TV_" ++ show (unUnique u)
-                                                        LV_Named n -> n
-                                                    items = map renderCon escapedCons ++ map renderVar escapedVars
-                                                _ <- promptify ("*** :assign error: scope violation for '" ++ varName ++ "' — out-of-scope: " ++ List.intercalate ", " items)
-                                                return ()
-                                            else do
-                                                -- §2.3.6 (T4): re-run the consistency check with the
-                                                -- proposed binding spliced into the active substitution.
-                                                -- If the new substitution makes any ArithmeticConstraint
-                                                -- in C unsatisfiable, refuse the assignment instead of
-                                                -- committing — otherwise the debugger would redraw a
-                                                -- prompt for a branch the runtime would immediately kill.
-                                                let new_binding = VarBinding (Map.singleton targetLV t_zonked)
-                                                    composedAfter = new_binding <> existingPending <> _TotalVarBinding ctx
-                                                    arithTermsAfter =
-                                                        [ bindVars composedAfter t
-                                                        | ArithmeticConstraint t <- _LeftConstraints ctx
-                                                        ]
-                                                if isInconsistent arithTermsAfter
-                                                    then do
-                                                        _ <- promptify ("*** :assign error: inconsistent with arithmetic constraints for '" ++ varName ++ "'")
-                                                        return ()
-                                                    else do
-                                                        writeIORef pendingSubst (new_binding <> existingPending)
-                                                        let pp = prettyTerm cache
-                                                        _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
-                                                        return ()
-        -- §3.4 CMTT scope check: walk `t` and collect every rigid
-        -- constant and every flexible LV (other than the target itself)
-        -- whose scope level strictly exceeds `targetScope`. If the
-        -- result is empty, the assignment respects the target's CMTT
-        -- context; otherwise these symbols cannot legally appear and
-        -- the assignment is rejected.
-        scopeEscaping :: Labeling -> ScopeLevel -> LogicVar -> TermNode -> ([Constant], [LogicVar])
-        scopeEscaping labeling targetScope targetLV = walk where
-            walk :: TermNode -> ([Constant], [LogicVar])
-            walk (LVar v)
-                | v == targetLV = ([], [])
-                | lookupLabel v labeling > targetScope = ([], [v])
-                | otherwise = ([], [])
-            walk (NCon c)
-                | lookupLabel c labeling > targetScope = ([c], [])
-                | otherwise = ([], [])
-            walk (NApp t1 t2) = combine (walk t1) (walk t2)
-            walk (NLam _ _ t) = walk t
-            walk (Susp body _ _ _) = walk body
-            walk _ = ([], [])
-            combine :: ([Constant], [LogicVar]) -> ([Constant], [LogicVar]) -> ([Constant], [LogicVar])
-            combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
-        -- §3.5: a fallback for when the user types a display name that
-        -- the `NameCache` has no entry for. The viewer renders anonymous
-        -- LogicVars with a fixed convention (TermNode.constructViewerWith):
-        --     `LV_Unique uni (DispHint Nothing)` ↦ `?V_<uni>`
-        --     `LV_Unique uni (DispHint Nothing)` (Show)  ↦ `?LV_<uni>`
-        --     `LV_ty_var uni`                  ↦ `?TV_<uni>`
-        -- After `parseAssign` has stripped the leading `?`, we recognise
-        -- the remaining `V_<n>` / `LV_<n>` / `TV_<n>` shapes and rebuild
-        -- the LogicVar by hand. This lets a user `:assign` an anonymous
-        -- variable they can see in the debugger output without having to
-        -- rename it first.
-        parseAnonymousLV :: String -> Maybe LogicVar
-        parseAnonymousLV nm = case nm of
-            'T' : 'V' : '_' : rest -> mkAnon LV_ty_var rest
-            'L' : 'V' : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
-            'V'       : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
-            _ -> Nothing
-          where
-            mkAnon ctor digits = case reads digits of
-                [(n, "")] -> Just (ctor (Unique n))
-                _ -> Nothing
+                                    Right () -> do
+                                        composed_subst <- do
+                                            ep <- readIORef pendingSubst
+                                            return (ep <> _TotalVarBinding ctx)
+                                        let t_zonked = bindVars composed_subst t_resolved
+                                            pp = prettyTerm cache
+                                        _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
+                                        return ()
         -- §3.4 CMTT: rewrite each `c_<digits>` identifier in a `:assign`
         -- input string to `XCON_<digits>` so the lexer/parser treats it
         -- as an LV_Named placeholder (uppercase head). After compilation

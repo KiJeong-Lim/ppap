@@ -2,6 +2,7 @@ module Hol.BETA1.Desugarer where
 
 import Hol.BETA1.Header
 import Hol.BETA1.PlanHolLexer
+import Hol.BETA1.TermNode (freshenName)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
@@ -105,10 +106,17 @@ makeTypeEnv kind_env = go where
                     Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? couldn't solve `" ++ pprint 0 kin "\' ~ `type\'."))
             _ -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? it is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "\'."))
 
-desugarTerm :: MonadUnique m => TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
-desugarTerm (R_wc loc1) = do
+-- §4.5.1: the `live` argument tracks the *stored hints* of every
+-- enclosing binder at the current desugaring position. A fresh
+-- binder may reuse its source name only when that name does not
+-- collide with `live`; otherwise the stored hint is freshened via
+-- `freshenName` (§4.5.2). Source-name resolution still binds the
+-- original spelling — only the stored hint changes — so the
+-- name-resolution `Map.Map LargeId IVar` keeps using `var_rep`.
+desugarTerm :: MonadUnique m => [SmallId] -> TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
+desugarTerm _    (R_wc loc1) = do
     return (Con loc1 DC_wc)
-desugarTerm (RVar loc1 var_rep) = do
+desugarTerm _    (RVar loc1 var_rep) = do
     env <- get
     case Map.lookup var_rep env of
         Nothing -> do
@@ -116,31 +124,32 @@ desugarTerm (RVar loc1 var_rep) = do
             put (Map.insert var_rep var env)
             return (Var loc1 var)
         Just var -> return (Var loc1 var)
-desugarTerm (RCon loc1 (DC_Named con)) = do
+desugarTerm _    (RCon loc1 (DC_Named con)) = do
     env <- get
     case Map.lookup con env of
         Nothing -> return (Con loc1 (DC_Named con))
         Just var -> return (Var loc1 var)
-desugarTerm (RCon loc1 con) = return (Con loc1 con)
-desugarTerm (RApp loc1 term_rep_1 term_rep_2) = do
-    term_1 <- desugarTerm term_rep_1
-    term_2 <- desugarTerm term_rep_2
+desugarTerm _    (RCon loc1 con) = return (Con loc1 con)
+desugarTerm live (RApp loc1 term_rep_1 term_rep_2) = do
+    term_1 <- desugarTerm live term_rep_1
+    term_2 <- desugarTerm live term_rep_2
     return (App loc1 term_1 term_2)
-desugarTerm (RAbs loc1 var_rep term_rep) = do
+desugarTerm live (RAbs loc1 var_rep term_rep) = do
+    let storedHint = if var_rep `notElem` live then var_rep else freshenName var_rep live
     var <- getUnique
     env <- get
     case Map.lookup var_rep env of
         Nothing -> do
             put (Map.insert var_rep var env)
-            term <- desugarTerm term_rep
+            term <- desugarTerm (storedHint : live) term_rep
             modify (Map.delete var_rep)
-            return (Lam loc1 var (Just var_rep) term)
+            return (Lam loc1 var (Just storedHint) term)
         Just var' -> do
             put (Map.insert var_rep var (Map.delete var_rep env))
-            term <- desugarTerm term_rep
+            term <- desugarTerm (storedHint : live) term_rep
             modify (Map.insert var_rep var' . Map.delete var_rep)
-            return (Lam loc1 var (Just var_rep) term)
-desugarTerm (RPrn loc1 term_rep) = desugarTerm term_rep
+            return (Lam loc1 var (Just storedHint) term)
+desugarTerm live (RPrn loc1 term_rep) = desugarTerm live term_rep
 
 desugarProgram :: MonadUnique m => KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc))
 desugarProgram kind_env type_env file_name program
@@ -149,8 +158,8 @@ desugarProgram kind_env type_env file_name program
         Right kind_env' -> case makeTypeEnv kind_env' [ (loc, (con, trep)) | RTypeDecl loc con trep <- program ] type_env of
             Left err_msg -> throwE err_msg
             Right type_env' -> do
-                facts' <- lift (mapM (fmap fst . flip runStateT Map.empty . desugarTerm) [ fact_rep | RFactDecl _ fact_rep <- program ])
+                facts' <- lift (mapM (fmap fst . flip runStateT Map.empty . desugarTerm []) [ fact_rep | RFactDecl _ fact_rep <- program ])
                 return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name })
 
 desugarQuery :: MonadUnique m => TermRep -> ExceptT ErrMsg m (TermExpr DataConstructor SLoc, Map.Map LargeId IVar)
-desugarQuery query0 = runStateT (desugarTerm query0) Map.empty
+desugarQuery query0 = runStateT (desugarTerm [] query0) Map.empty

@@ -1127,7 +1127,18 @@ In debug mode the interpreter prints, before each transition:
     `:assign ?V := t.` (§3.2.2.3); without it the user would have
     to guess the type discipline and would routinely trigger the
     §3.2.2.3 rejection.
-  - the source location (SLoc) of the goal, where known.
+
+Note (deferred to BETA2). An earlier draft of this section listed
+"the source location (SLoc) of the goal, where known" as a fifth
+line. Implementing that line at any useful resolution requires
+threading SLoc information through the desugarer, type checker,
+compiler, and every `rewriteWithSusp` / HOPU rewrite — i.e., a
+new `NLoc SLoc TermNode` wrapper that every reduction must
+preserve. The coarser alternatives (clause-level only, or a
+side-table keyed by `TermNode`) give too little for too much
+plumbing. The item is therefore explicitly out of scope for
+BETA1 and will be reconsidered in BETA2 together with whatever
+other diagnostics motivate the term-level threading.
 
 The `NotationDB` is *not* re-dumped each step (it would be noise);
 `:show` consults it silently.
