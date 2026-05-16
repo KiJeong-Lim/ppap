@@ -114,6 +114,8 @@ runREPL program = do
                         return ()
                     _ | (":assign " `List.isPrefixOf` response) ->
                         handleAssign ctx (drop (length (":assign " :: String)) response)
+                    _ | (":show " `List.isPrefixOf` response) ->
+                        handleShow ctx (drop (length (":show " :: String)) response)
                     _ -> return ()
         -- §3.2 `:assign ?V := t.` parsing: strip the literal `?` from the
         -- variable name and split on ` := `. The body is re-assembled as
@@ -133,6 +135,33 @@ runREPL program = do
             findSep (' ' : ':' : '=' : ' ' : rs) acc =
                 Just (reverse (dropWhile (== ' ') acc), dropWhile (== ' ') rs)
             findSep (c : cs) acc = findSep cs (c : acc)
+        -- §3.3 `:show ?V` — read-only lookup. Strip the optional leading
+        -- `?` (matching how `:assign` accepts the displayed name), then
+        -- resolve via the NameCache (or the anonymous-LV fallback used
+        -- by `:assign`). Print the current binding pretty-printed through
+        -- the cache, or the literal `unbound` if no binding exists. No
+        -- snapshot, no propagation — purely observational.
+        handleShow :: Context -> String -> IO ()
+        handleShow ctx body = do
+            let trimmed = dropWhile (== ' ') body
+                varName = case trimmed of
+                    '?' : rest -> rest
+                    _ -> trimmed
+            cache <- readIORef nameCache
+            let resolved = case fromDisplay varName cache of
+                    Just lv -> Just lv
+                    Nothing -> parseAnonymousLV varName
+            case resolved of
+                Nothing -> do
+                    _ <- promptify ("*** :show error: unknown variable '?" ++ varName ++ "'")
+                    return ()
+                Just lv -> case Map.lookup lv (unVarBinding (_TotalVarBinding ctx)) of
+                    Nothing -> do
+                        _ <- promptify ("*** :show: ?" ++ varName ++ " = unbound")
+                        return ()
+                    Just t -> do
+                        _ <- promptify ("*** :show: ?" ++ varName ++ " = " ++ prettyTerm cache t "")
+                        return ()
         handleAssign :: Context -> String -> IO ()
         handleAssign ctx body = case parseAssign body of
             Nothing -> do
