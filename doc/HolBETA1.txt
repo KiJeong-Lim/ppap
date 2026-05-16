@@ -83,7 +83,8 @@ Token classes:
   - character lit   : `'c'` (with the usual escapes)
   - string lit      : `"..."`
   - punctuation     : `( ) [ ] { } , . | \ :- => ;`
-  - reserved words  : `kind`, `type`, `module`, `infixl`, `infixr`, `infix`, `prefix`, `abbrev`, `notation`, `pi`, `sigma`, `is`, `true`, `fail`, `!`, `debug`, `presburger`
+  - reserved words  : `kind`, `type`, `module`, `infixl`, `infixr`, `infix`, `prefix`, `abbrev`, `notation`, `pi`, `sigma`, `is`, `true`, `fail`, `!`, `debug`
+    (`presburger` is *not* reserved — it is recognised after desugaring; see §2.3.3.)
   - line comment    : `% ...`
   - block comment   : `/* ... */`        (nested — see Q1)
 
@@ -198,7 +199,9 @@ The body grammar:
     | sigma x \ body                    -- existential
     | true | fail | !
     | t is <arith>                      -- arithmetic evaluation
-    | presburger <string-literal>       -- Presburger entailment query
+    | presburger <string-literal>       -- Presburger entailment query (see §2.3.3:
+    |                                   --   not parsed specially; recognised after
+    |                                   --   desugaring by `Arith.installPresburger`)
     | debug "..."
 
 `=>`, `pi`, and `sigma` form the core of λProlog's intuitionistic proof-search calculus (see §2.2).
@@ -485,34 +488,56 @@ direction is unnecessary because `=<` is already `LeqF`.)
 2.3.3 Compilation pipeline
 
 The pipeline transforms the surface form into an internal goal node.
+BETA1 deliberately avoids reserving `presburger` at the lexical level:
+the surface form is parsed as an ordinary `predicate applied to a
+string literal` and rewritten post-desugaring by a dedicated walker.
+This trades the per-site SLoc precision a dedicated `RPresburger`
+node would carry for a much smaller patch to the lexer / parser /
+type checker.
 
-  surface              RawTermRep                TermNode (internal)
-  -------------------  ----------------------    ---------------------
-  presburger "..."     RPresburger SLoc "..."    NPresburgerCheck rep
-                                                 where
-                                                   rep :: PresburgerFormulaRep
+  surface              TermNode (after desugaring)        TermNode (after install)
+  -------------------  ---------------------------------  ------------------------
+  presburger "..."     NApp (NCon (DC (DC_Named           NPresburgerCheck rep freeOf
+                          "presburger")))
+                          <string-literal>
 
 Stage 1 (Lexer)
-    Recognise the keyword `presburger` followed by a single string
-    literal as one body item; emit two tokens.
+    No special treatment. `presburger` lexes as an ordinary
+    identifier; the string literal lexes as a regular string token.
 
 Stage 2 (Parser)
-    Emit `RPresburger SLoc String` carrying the raw literal content
-    verbatim, *without* attempting to interpret it as a `string` term.
+    No special treatment. The phrase parses as `RApp (RCon
+    "presburger") (RStringLit ...)`.
 
-Stage 3 (Desugarer)
-    Call `Arith.parsePresburger sloc src env`, where `env` is the
-    identifier→`LogicVar` map already being threaded for the
-    surrounding clause (see §2.3.4). The call returns either a parse
-    error (reported with `sloc`) or a triple
+Stage 3 (Desugarer / TypeChecker)
+    No special treatment. The phrase desugars and type-checks as if
+    `presburger` were a user-declared predicate of type
+    `string -> o`. (This type signature is the documentation lie
+    mentioned in §2.3.2; the predicate is *not* registered in the
+    runtime type environment, but the desugarer / type checker do
+    not need to know that — they only see a well-formed application.)
 
-      (rep      :: PresburgerFormulaRep,
-       freeOf   :: Map MyVar LogicVar,
-       env'     :: Map LargeId LogicVar)
+Stage 4 (Install pass — `Arith.installPresburger`)
+    Walk the compiled `TermNode` (both program clauses and the query).
+    Wherever the pattern
 
-    consisting of the parsed formula, a map from the solver-internal
-    `MyVar`s appearing free in `rep` to the surrounding `LogicVar`s,
-    and the updated clause-level map. Wrap into the new constructor
+      NApp (NCon (DC (DC_Named "presburger"))) <closed-string-literal>
+
+    is found, extract the literal payload `src` and call
+
+      Arith.parsePresburger sloc src env
+
+    where `sloc` is a placeholder (see "SLoc limitation" below) and
+    `env` is the clause-wide identifier→`LogicVar` map (see §2.3.4).
+    A non-literal argument is a compile-time error reported at
+    `sloc`. The call returns either a parse error or
+
+      (rep    :: PresburgerFormulaRep,
+       freeOf :: Map MyVar LogicVar)
+
+    consisting of the parsed formula and the map from solver-internal
+    `MyVar`s appearing free in `rep` to the surrounding `LogicVar`s.
+    The walker replaces the matched subterm with
 
       NPresburgerCheck
         :: PresburgerFormulaRep
@@ -523,9 +548,14 @@ Stage 3 (Desugarer)
     in `freeOf` — they are scoped to `rep` itself and are dense with
     fresh integers.
 
-Stage 4 (TypeChecker)
-    `NPresburgerCheck rep freeOf` has type `o`. No type constraint is
-    emitted for `rep` itself.
+    SLoc limitation. Because the install pass runs on already-
+    desugared `TermNode`s, the original source location of the
+    `presburger` token is no longer reachable; the implementation
+    currently passes `placeholderSLoc = SLoc (0,0) (0,0)`. Parse
+    errors inside the literal therefore identify the token but not
+    the source position. A future revision may thread `SLoc`s
+    through the desugarer to recover precise locations; doing so is
+    *not* part of the BETA1 contract.
 
 Stage 5 (Runtime)
     See §2.3.5.
@@ -540,15 +570,21 @@ it.
 
 A free identifier inside the literal binds to the *same* logic
 variable as an identifier of the same name outside the literal.
-Concretely, the desugarer maintains
 
-  nameOfClause :: Map LargeId LogicVar
+Because the install pass runs *after* desugaring (§2.3.3), it does
+not have access to the desugarer's clause-level identifier
+environment. Sharing is achieved instead through `LV_Named`'s
+identity-by-name: an uppercase identifier `X` everywhere in the
+program desugars to the same `LV_Named "X"`, and `Hol.BETA1.TermNode`
+makes `LV_Named` equal iff their `LargeId`s match. The install pass
+therefore calls
 
-shared with the desugaring of the surrounding clause. When
-`parsePresburger` reports a free identifier `X`, the desugarer
+  Arith.parsePresburger placeholderSLoc src Map.empty
 
-  - reuses the existing `LogicVar` if `X` is already in `nameOfClause`;
-  - otherwise introduces a fresh `LV_Named "X"` and adds it.
+and `parsePresburger` introduces `LV_Named "X"` for every free
+identifier `X` inside the literal. The result automatically agrees
+with whatever `LV_Named "X"` the surrounding clause introduced for
+the same name.
 
 So, for example,
 
@@ -562,6 +598,18 @@ goal substitutes `X` to `3` inside `rep`, yielding the closed formula
 Identifiers occurring *only* inside the literal (with no companion
 outside) are still lifted to `LV_Named` of the same name; the solver
 then treats them as free variables for the entailment check.
+
+Limitation (intentional). Sharing is purely lexical: it depends on
+the *spelling* of identifiers in the source. Variables introduced
+by mechanisms that do not preserve a `LargeId` (for example, a
+fresh `LV_Unique` produced by `sigma x \\ ...`, or any quantifier
+that renames its bound name) are *not* shared with same-spelled
+identifiers inside a Presburger literal — they have already been
+turned into anonymous logic variables by the time the install pass
+runs, and the install pass cannot recover the original spelling.
+Users wishing to refer to such a variable inside a literal must
+have a same-named `LV_Named` in scope as well; this is the same
+caveat that applies to the rest of `Hol.BETA1`'s name resolution.
 
 Names bound by quantifiers *within* the literal (e.g. `Y` in
 `presburger "exists Y. Y + Y = X"`) are scoped to the formula; they
@@ -1173,18 +1221,21 @@ to retire ALPHA2; until then, both live side-by-side.
                         than consulting a hard-coded table (§2.6).
     PlanHolLexer.hs  -- copied; reserved words extended with
                         `infixl`/`infixr`/`infix`/`prefix`/`abbrev`/
-                        `notation`/`presburger`. Block-comment
+                        `notation`. (`presburger` is intentionally
+                        *not* reserved — see §2.3.3.) Block-comment
                         nesting per Q1.
-    PlanHolParser.hs -- copied; supports dynamic operator table,
-                        abbreviation declarations (§1.6), and the
-                        `presburger <string-literal>` body form
-                        (§2.3.2). Emits a raw `RPresburger` node.
+    PlanHolParser.hs -- copied; supports dynamic operator table and
+                        abbreviation declarations (§1.6). The
+                        `presburger <string-literal>` body form is
+                        parsed as an ordinary application; the
+                        post-desugaring install pass in `Arith.hs`
+                        promotes it to `NPresburgerCheck` (§2.3.3).
     Desugarer.hs     -- copied; expands abbreviations/notations
-                        (§1.6.3), parses the Presburger literal
-                        through `Arith.parsePresburger`, threads the
-                        clause-level `Map LargeId LogicVar` through
-                        every site that may introduce a logic
-                        variable.
+                        (§1.6.3) and threads the clause-level
+                        `Map LargeId LogicVar` through every site
+                        that may introduce a logic variable.
+                        Presburger literals are *not* parsed here;
+                        see `Arith.installPresburger` (§2.3.3).
     TypeChecker.hs   -- copied; sees only post-expansion forms;
                         wires through `Arith` and `Notation` for
                         error-message folding (§2.7.1 (T)).

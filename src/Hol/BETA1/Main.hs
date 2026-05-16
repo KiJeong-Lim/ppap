@@ -298,11 +298,27 @@ runREPL program = do
                                                 _ <- promptify ("*** :assign error: scope violation for '" ++ varName ++ "' — out-of-scope: " ++ List.intercalate ", " items)
                                                 return ()
                                             else do
+                                                -- §2.3.6 (T4): re-run the consistency check with the
+                                                -- proposed binding spliced into the active substitution.
+                                                -- If the new substitution makes any ArithmeticConstraint
+                                                -- in C unsatisfiable, refuse the assignment instead of
+                                                -- committing — otherwise the debugger would redraw a
+                                                -- prompt for a branch the runtime would immediately kill.
                                                 let new_binding = VarBinding (Map.singleton targetLV t_zonked)
-                                                writeIORef pendingSubst (new_binding <> existingPending)
-                                                let pp = prettyTerm cache
-                                                _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
-                                                return ()
+                                                    composedAfter = new_binding <> existingPending <> _TotalVarBinding ctx
+                                                    arithTermsAfter =
+                                                        [ bindVars composedAfter t
+                                                        | ArithmeticConstraint t <- _LeftConstraints ctx
+                                                        ]
+                                                if isInconsistent arithTermsAfter
+                                                    then do
+                                                        _ <- promptify ("*** :assign error: inconsistent with arithmetic constraints for '" ++ varName ++ "'")
+                                                        return ()
+                                                    else do
+                                                        writeIORef pendingSubst (new_binding <> existingPending)
+                                                        let pp = prettyTerm cache
+                                                        _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
+                                                        return ()
         -- §3.4 CMTT scope check: walk `t` and collect every rigid
         -- constant and every flexible LV (other than the target itself)
         -- whose scope level strictly exceeds `targetScope`. If the
