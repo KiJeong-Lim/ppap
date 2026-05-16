@@ -901,8 +901,10 @@ Same as ALPHA2 plus the following additions.
   :assign ?V := t.   instantiate a flexible variable to a user-supplied
                      term at the current breakpoint (debug mode only)
   :show ?V           show the current value (or "unbound") of ?V
-  :constraints       dump the current constraint multiset C
   :q                 quit (unchanged)
+
+The constraint multiset C is shown automatically on every step in
+debug mode (§3.4) and does not need a dedicated command.
 
 
 3.2 The `:assign` Command
@@ -1046,7 +1048,7 @@ When all preconditions pass:
     continue execution; `:assign` itself never advances the search.
 
 
-3.3 The `:show` and `:constraints` Commands
+3.3 The `:show` Command
 --------------------------------------------------------------------------------
 
   :show ?V
@@ -1056,22 +1058,7 @@ display-name resolution of §3.5) or the string `unbound` if it has
 no binding. The printed value is run through pretty printing (§2.6)
 and folding (§2.7) just like any other answer term.
 
-  :constraints
-
-dumps the multiset C in this format:
-
-  *** disagreements:
-        <t1> ?= <u1>
-        ...
-  *** evaluations:
-        <t1> is <u1>
-        ...
-  *** arithmetic:
-        <φ_1>
-        <φ_2>
-        ...
-
-Both commands are read-only and require no transaction.
+The command is read-only and requires no transaction.
 
 
 3.4 Debug Output During Stepping
@@ -1095,7 +1082,7 @@ In debug mode the interpreter prints, before each transition:
   - the source location (SLoc) of the goal, where known.
 
 The `NotationDB` is *not* re-dumped each step (it would be noise);
-`:constraints` and `:show` consult it silently.
+`:show` consults it silently.
 
 Environment notion: "the main file". The Hol REPL is launched with a
 file path:
@@ -1216,8 +1203,8 @@ to retire ALPHA2; until then, both live side-by-side.
     Notation.hs      -- ★ new module; holds the unified notation/
                         fixity/abbrev database. See §4.3.
     Debugger.hs      -- ★ new module; holds the display-name cache
-                        and the `:assign`/`:show`/`:constraints`
-                        command implementations. See §4.4.4 (and
+                        and the `:assign`/`:show` command
+                        implementations. See §4.4.4 (and
                         §3.5 for the cache itself).
 
 The "copied" modules above start as byte-for-byte copies of their
@@ -1437,9 +1424,6 @@ function in `Runtime.hs`.
                   -> Runtime String
       -- §3.3: formats and returns the value of one variable.
 
-  cmdConstraints  :: Runtime [Constraint]
-      -- §3.3: returns C; the REPL formats it for stdout.
-
   cmdQuit         :: Runtime ()
       -- §3.1: clears the runtime state.
 
@@ -1449,7 +1433,7 @@ Notes.
     REPL parses first; library callers (notably the future `LoL`
     proof assistant) may construct `TermNode`s directly without
     round-tripping through surface syntax.
-  - `cmdShow` and `cmdConstraints` are read-only.
+  - `cmdShow` is read-only.
   - `cmdAssign` is the only command that takes a snapshot. The
     others either are read-only or change only the debug-mode bit.
 
@@ -1624,7 +1608,7 @@ to run under ALPHA2.
       assign_ok.hol       -- successful :assign followed by `:q`
       assign_fail.hol     -- :assign that violates each of (1)-(5);
                              confirms transactional rollback
-      show_constraints.hol  -- :show, :constraints output stability
+      show.hol              -- :show output stability
     kind/
       higher_order_kind_rejected.hol  -- `kind foo ((type -> type) -> type).`
                                           must be rejected at desugar
