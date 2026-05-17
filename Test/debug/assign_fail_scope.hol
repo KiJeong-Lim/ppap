@@ -1,0 +1,10 @@
+% Failed :assign by precondition (5) scope/pattern (BETA1 spec section 3.2.2).
+% In `?- X = X.` the query's X is a polymorphic logic variable
+% (X : ?t4), so `:assign ?X := [].` survives the precondition (3)
+% type check (the RHS unifies with the polymorphic LHS). It then
+% fails the runtime-side scope check inside `cmdAssign`: the
+% type-meta-variable ?TV_n introduced when the RHS `[]` was typed
+% as `list ?t` escapes the scope of X, so the snapshot is restored
+% and the error "*** :assign error: scope violation for 'X' --
+% out-of-scope: ?TV_n" is reported.
+type p (nat -> o).

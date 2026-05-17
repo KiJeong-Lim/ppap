@@ -1689,6 +1689,23 @@ to run under ALPHA2.
                              snapshot/restore of 3.2.3 leaves the
                              search untouched and the normal `p X`
                              search then binds X to 0
+      assign_fail_typing.hol
+                          -- `:assign ?X := [].` where X has the
+                             inferred type `nat` fails the caller-side
+                             precondition (3) typing check; the error
+                             "*** :assign error: type mismatch for 'X'
+                             -- expected nat, got list ?t4" is reported
+                             and the search resumes with `p 0` / `p 1`
+      assign_fail_scope.hol
+                          -- with X polymorphic (`?- X = X.`) the
+                             precondition (3) type check accepts
+                             `:assign ?X := [].`, but the runtime
+                             scope check inside `cmdAssign` rejects
+                             the binding because the type-meta-variable
+                             introduced by `list ?t` escapes X's scope;
+                             the error "*** :assign error: scope
+                             violation for 'X' -- out-of-scope: ?TV_n"
+                             is reported (precondition 5)
       assign_t4.hol       -- after one step the context shows
                              `_constraints = [X > 5]`; the candidate
                              `:assign ?X := 3.` violates that constraint
@@ -1710,15 +1727,16 @@ first line is `Hol` and the second line is the `.hol` path), and
 byte-for-byte; any mismatch fails the suite. Re-record after an
 intentional change with `./Test/smoke.sh --update`.
 
-Status (2026-05-17): twelve cases authored — six presburger, five
+Status (2026-05-17): fourteen cases authored — six presburger, seven
 debug, one kind. `solver_sanity.hol`, `residual.hol`,
 `entailment_drop.hol`, and `assign_t4.hol` were the regressions that
 surfaced (and forced fixes of) two QE bugs in
 `Calc.Presburger.Internal`, a silent `printAnswer` reject, and the
-missing entailment-based residual pruning. `debug/assign_fail.hol`
-covers precondition (4) (occurs check); preconditions (3) and (5)
-remain reachable in the implementation (`*** tc-error[...]`,
-`*** :assign error: scope violation ...`) but unauthored. The notation
+missing entailment-based residual pruning. The `debug/assign_fail*`
+trio covers preconditions (3), (4), and (5) plus the (T4)
+consistency hook of §2.3.6; the only remaining `cmdAssign` failure
+mode without a sidecar is the parse-level rejection (`*** :assign
+error: parse failed` etc.), which is left for a future round. The notation
 sub-tree (`fixity.hol`, `abbrev.hol`, `notation.hol`, `override.hol`)
 is intentionally deferred: §1.5 semantics is unwired (RFixityDecl is
 silently filtered by `desugarProgram`), §1.6 abbrev/notation has no

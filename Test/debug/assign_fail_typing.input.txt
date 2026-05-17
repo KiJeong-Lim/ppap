@@ -1,0 +1,10 @@
+Hol
+Test/debug/assign_fail_typing.hol
+:d
+?- p X.
+:assign ?X := [].
+
+
+n
+:q
+

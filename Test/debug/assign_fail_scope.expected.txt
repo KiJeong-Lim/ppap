@@ -1,0 +1,70 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.debug.assign_fail_scope ( Test/debug/assign_fail_scope.hol, interpreted )
+Test.debug.assign_fail_scope> Ok, one module loaded.
+Test.debug.assign_fail_scope> Test.debug.assign_fail_scope> Debugging mode on.
+Test.debug.assign_fail_scope> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- X = X ] # call_id = 7
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            ]
+        , _thread_id = 7
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_fail_scope> Press the enter key to go to next state: Test.debug.assign_fail_scope> *** :assign error: scope violation for 'X' — out-of-scope: ?TV_6
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 8
+        ]
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := ?V_12
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            , ?V_12 : ?TV_9
+            ]
+        , _thread_id = 8
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_fail_scope> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := ?V_12
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            , ?V_12 : ?TV_9
+            ]
+        , _thread_id = 8
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_fail_scope> Press the enter key to go to next state: Test.debug.assign_fail_scope> The answer substitution is:
+Test.debug.assign_fail_scope> X := ?V_12.
+Test.debug.assign_fail_scope> Find more solutions? [Y/n] Test.debug.assign_fail_scope> yes.
+Test.debug.assign_fail_scope> Hol >>= quit

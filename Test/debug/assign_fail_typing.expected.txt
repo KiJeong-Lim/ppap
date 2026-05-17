@@ -1,0 +1,94 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.debug.assign_fail_typing ( Test/debug/assign_fail_typing.hol, interpreted )
+Test.debug.assign_fail_typing> Ok, one module loaded.
+Test.debug.assign_fail_typing> Test.debug.assign_fail_typing> Debugging mode on.
+Test.debug.assign_fail_typing> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- p X ] # call_id = 5
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 5
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_fail_typing> Press the enter key to go to next state: Test.debug.assign_fail_typing> *** :assign error: type mismatch for 'X' — expected nat, got list ?t4
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 6
+        ]
+    + context = Context
+        { _substitution = 
+            [ X := 0
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 6
+        }
+
+* The rest of the current stack is:
+- (#1)
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 6
+        ]
+    + context = Context
+        { _substitution = 
+            [ X := 1
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 6
+        }
+
+--------------------------------
+
+Test.debug.assign_fail_typing> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ X := 0
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 6
+        }
+
+* The rest of the current stack is:
+- (#1)
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 6
+        ]
+    + context = Context
+        { _substitution = 
+            [ X := 1
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 6
+        }
+
+--------------------------------
+
+Test.debug.assign_fail_typing> Press the enter key to go to next state: Test.debug.assign_fail_typing> The answer substitution is:
+Test.debug.assign_fail_typing> X := 0.
+Test.debug.assign_fail_typing> Find more solutions? [Y/n] Test.debug.assign_fail_typing> yes.
+Test.debug.assign_fail_typing> Hol >>= quit
