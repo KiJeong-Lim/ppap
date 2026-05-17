@@ -420,6 +420,12 @@ One file is one module. The module name is the file path with `/` replaced by `.
 An optional `module <name>.` header may appear as the first declaration.
 A proper `import` system is *not* part of BETA1 (see Q5).
 
+Implementation status (2026-05-18): the file-derived module name is fully
+wired. The optional `module <name>.` header form is *not* yet implemented
+— the lexer does not reserve the `module` keyword, so writing the header
+currently fails to parse. Deferred to BETA2 alongside the `import` system
+(both belong to the same module-resolution surface).
+
 
 ================================================================================
 Chapter 2. Semantics
