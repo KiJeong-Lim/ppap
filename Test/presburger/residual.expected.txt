@@ -1,0 +1,10 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.presburger.residual ( Test/presburger/residual.hol, interpreted )
+Test.presburger.residual> Ok, one module loaded.
+Test.presburger.residual> Test.presburger.residual> The remaining constraints are:
+Test.presburger.residual> X > 5
+Test.presburger.residual> The binding is:
+Test.presburger.residual> Find more solutions? [Y/n] Test.presburger.residual> yes.
+Test.presburger.residual> Hol >>= quit

@@ -1,0 +1,14 @@
+% Residual constraint reporting (BETA1 spec section 2.5).
+% When a query reaches success with a non-empty constraint set
+% whose members can be made true by some grounding, the runtime
+% must print the remaining constraints and the binding, then ask
+% whether to look for more solutions. Silently treating "constraint
+% still has a free LV" as failure is a bug -- the engine has
+% succeeded as far as proof search is concerned; the constraint is
+% simply deferred.
+%
+% Expected for the query X > 5 (with X unbound):
+%   The remaining constraints are:
+%     X > 5
+%   The binding is:
+%   Find more solutions prompt, then yes.

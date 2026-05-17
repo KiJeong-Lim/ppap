@@ -4,5 +4,6 @@ Test/debug/assign_t4.hol
 ?- X > 5.
 
 :assign ?X := 3.
+n
 :q
 

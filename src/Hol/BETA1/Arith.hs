@@ -6,6 +6,7 @@ module Hol.BETA1.Arith
     , liftConstraint
     , renumberFormula
     , entails
+    , arithEntails
     , installPresburger
     ) where
 
@@ -13,6 +14,7 @@ import Calc.Presburger.Internal
 import Data.Char (isAlphaNum, isDigit, isSpace)
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
+import Data.Maybe (mapMaybe)
 import qualified Data.Set as Set
 import Hol.BETA1.Constant
 import Hol.BETA1.Header
@@ -626,6 +628,30 @@ entails phis phi =
         closed = foldr AllF body fvs
         eliminated = eliminateQuantifierReferringToTheBookWrittenByPeterHinman closed
     in checkTruthValueOfMyPresburgerFormula eliminated == Just True
+
+-- §2.5 syntactic concession: returns True iff the lifted form of
+-- `phi` is entailed by the lifted forms of `hyps`, in a shared
+-- LogicVar-to-MyVar numbering that pins same-spelled LVs across
+-- hypotheses and goal. Constraints whose `liftConstraint` returns
+-- Nothing are dropped from `hyps` (best-effort, like `isInconsistent`);
+-- if `phi` itself fails to lift, the function is conservative and
+-- returns False. Used by `printAnswer` to prune ArithmeticConstraint
+-- entries that follow from the rest of the residual constraint set.
+arithEntails :: [TermNode] -> TermNode -> Bool
+arithEntails hyps phi =
+    case liftConstraint phi of
+        Nothing -> False
+        Just lrPhi ->
+            let liftedHs = mapMaybe liftConstraint hyps
+                allLVs = Set.toAscList $ Set.union
+                    (Set.fromList (Map.elems (_freeOfLifted lrPhi)))
+                    (Set.unions [ Set.fromList (Map.elems (_freeOfLifted h)) | h <- liftedHs ])
+                shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+                phiRep = renumberFormula shared (_freeOfLifted lrPhi) (_liftedFormula lrPhi)
+                hypReps = [ renumberFormula shared (_freeOfLifted h) (_liftedFormula h) | h <- liftedHs ]
+                compiledPhi = fmap compilePresburgerTerm phiRep
+                compiledHyps = map (fmap compilePresburgerTerm) hypReps
+            in entails compiledHyps compiledPhi
 
 freeMyVarsF :: MyPresburgerFormula -> Set.Set MyVar
 freeMyVarsF (ValF _) = Set.empty

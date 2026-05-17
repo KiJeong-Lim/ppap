@@ -780,7 +780,7 @@ This is the same behaviour as ALPHA2; the only change is that the resulting
 When the proof search reaches success on a query Q, the interpreter:
 
   1. Restricts the substitution to the free variables of Q and their transitive dependencies (as ALPHA2 already does).
-  2. Reports the residual constraint set, *with the syntactic concession* that any `ArithmeticConstraint` whose negation is implied by Φ is dropped (it is trivially true and uninformative).
+  2. Reports the residual constraint set, *with the syntactic concession* that any `ArithmeticConstraint` `c` that is implied by Φ \ {c} (the rest of the constraint set, viewed as a Presburger hypothesis) is dropped — it is trivially true relative to the remaining hypotheses and so uninformative. The check is best-effort: constraints whose terms do not lift into Presburger are kept untouched. The surviving residual list is sorted by its rendered form so that successive runs print constraints in a stable order.
   3. Pretty-prints the bindings using the rules of §2.6 and §2.7.
 
 
@@ -1672,6 +1672,13 @@ to run under ALPHA2.
       consistency.hol     -- `?- X > 5, X < 3.` (T2 firing 2.3.6)
       solver_sanity.hol   -- ground-truth regression for the QE
                              pipeline (forall/exists with naturals)
+      residual.hol        -- `?- X > 5.` succeeds with X unbound;
+                             runtime prints the residual constraint
+                             set per 2.5 instead of silently failing
+      entailment_drop.hol -- the 2.5 syntactic concession: a
+                             constraint implied by the rest of Phi
+                             is dropped; duplicates collapse; the
+                             final list is sorted for determinism
     debug/
       toggle.hol          -- `:d` (twice), `:verbose`, `:short`
                              confirmation lines
@@ -1703,11 +1710,12 @@ first line is `Hol` and the second line is the `.hol` path), and
 byte-for-byte; any mismatch fails the suite. Re-record after an
 intentional change with `./Test/smoke.sh --update`.
 
-Status (2026-05-17): ten cases authored — four presburger, five
-debug, one kind. `solver_sanity.hol` and `assign_t4.hol` were the
-regressions that surfaced (and forced fixes of) two bugs in
-`Calc.Presburger.Internal`'s QE pipeline; see §2.3's "Implementation
-notes" subsection for the bug summary. `debug/assign_fail.hol`
+Status (2026-05-17): twelve cases authored — six presburger, five
+debug, one kind. `solver_sanity.hol`, `residual.hol`,
+`entailment_drop.hol`, and `assign_t4.hol` were the regressions that
+surfaced (and forced fixes of) two QE bugs in
+`Calc.Presburger.Internal`, a silent `printAnswer` reject, and the
+missing entailment-based residual pruning. `debug/assign_fail.hol`
 covers precondition (4) (occurs check); preconditions (3) and (5)
 remain reachable in the implementation (`*** tc-error[...]`,
 `*** :assign error: scope violation ...`) but unauthored. The notation
@@ -1718,6 +1726,28 @@ parser production (reserved keywords only), and §2.6/§2.7 viewer
 folding is dead code in `Notation.hs`. Those cases will be authored
 together with the implementation work tracked in the BETA1
 unimplemented memo.
+
+§2.5's "syntactic concession" is implemented in two stages: (a) any
+constraint that evaluates to ground `Right True` under the current
+binding is dropped (so `X is 7, X > 5` prints `X := 7.` with no
+residual line); (b) for each surviving `ArithmeticConstraint` `c`,
+`arithEntails` is called on the other surviving Arithmetic
+hypotheses — if Φ\{c} ⊨ c the constraint is dropped (so
+`?- X > 5, X > 3.` keeps only `X > 5`). The pruning is sequential:
+when two equivalent constraints are present (e.g. two copies of
+`X > 5`), the first surviving copy serves as the hypothesis that
+drops every later copy. The final residual list is sorted by its
+rendered form for deterministic output.
+
+Open item (deferred). The "which copy survives" choice is driven by
+the cons ordering of `_LeftConstraints`, so for entailment-equivalent
+but syntactically distinct constraints the printed survivor depends
+on the order in which the runtime accumulated them. E.g.
+`?- X > 5, X < 10, X >= 6, X =< 9.` prints `[X < 10, X > 5]` rather
+than the tighter `[X =< 9, X >= 6]`. Both represent the same integer
+interval, but choosing a canonical (e.g. tightest) representative
+would require either a normalisation pass or a richer entailment
+heuristic — punted to a future round.
 
 4.6.3 No changes to `Example/`
 

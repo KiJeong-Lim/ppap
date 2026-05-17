@@ -1,0 +1,14 @@
+% Entailment-based residual pruning + deterministic ordering
+% (BETA1 spec section 2.5).
+%
+% A surviving ArithmeticConstraint c is dropped from the residual set
+% iff the remaining Arithmetic hypotheses Phi \ {c} already imply c
+% (so c is trivially true given Phi and would add no information).
+% Duplicate constraints collapse to one. The final residual list is
+% sorted by its rendered form for deterministic output.
+%
+% Three queries probed:
+%   ?- X > 5, X > 3.       -> drop X > 3 (entailed by X > 5)
+%   ?- X > 5, X > 5.       -> collapse to a single X > 5
+%   ?- X > 5, X < 10, X > 6.  -> drop X > 5 (entailed by X > 6);
+%                                surviving list sorted lexicographically

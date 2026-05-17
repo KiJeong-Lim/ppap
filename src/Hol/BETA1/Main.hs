@@ -1,6 +1,6 @@
 module Hol.BETA1.Main where
 
-import Hol.BETA1.Arith (installPresburger)
+import Hol.BETA1.Arith (arithEntails, installPresburger)
 import Hol.BETA1.Compiler
 import Hol.BETA1.Constant
 import Hol.BETA1.Debugger
@@ -340,6 +340,17 @@ runREPL program = do
                             _ -> throwE "*** :assign error: LHS did not resolve to a logic variable"
                         _ -> throwE "*** :assign error: did not compile to an equality"
         printAnswer :: Context -> IO RunMore
+        -- §2.5: when the proof search reaches success, restrict the
+        -- substitution to query-relevant LVs, report the residual
+        -- constraint set, and pretty-print the bindings. The
+        -- "consistency" check that used to gate this branch was
+        -- unsound: it asked every ArithmeticConstraint to evaluate
+        -- to ground `Right True`, but post-fix `arithOpCheck` now
+        -- legitimately leaves constraints with unbound LVs in
+        -- `_LeftConstraints` (the Presburger solver having already
+        -- ruled out the inconsistent ones via §2.3.6's hooks). Those
+        -- residual constraints are part of the answer the user must
+        -- see, not a reason to silently backtrack.
         printAnswer ctx
             | isShort && isClear = return False
             | isClear && List.null theAnswerSubst = return False
@@ -352,7 +363,6 @@ runREPL program = do
                     | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
-            | not consistent = return True
             | otherwise = do
                 printDisagreements
                 askToRunMore
@@ -378,19 +388,47 @@ runREPL program = do
                 final_ctx = Context
                     { _TotalVarBinding = VarBinding (unVarBinding (_TotalVarBinding ctx) `Map.restrictKeys` relevants)
                     , _CurrentLabeling = _CurrentLabeling ctx
-                    , _LeftConstraints = do
-                        it <- _LeftConstraints ctx
-                        case it of
-                            ArithmeticConstraint b -> case evaluateB b of
-                                Right True -> []
-                                _ -> pure it
-                            EvalutionConstraint lhs rhs -> case (evaluateA lhs, evaluateA rhs) of
-                                (Right x, Right y) -> if x == y then [] else pure it
-                                _ -> pure it
-                            it -> pure it
+                    , _LeftConstraints = prunedConstraints
                     , _ContextThreadId = _ContextThreadId ctx
                     , _debuggindModeOn = _debuggindModeOn ctx
                     }
+                -- §2.5 pruning. Stage (a) drops constraints that are
+                -- *ground* and trivially true under the current binding
+                -- (`X is 7, X > 5` → no residual). Stage (b) walks the
+                -- surviving ArithmeticConstraints sequentially and asks
+                -- the Presburger solver whether each `c` is entailed by
+                -- the other kept Arithmetic hypotheses; if so `c` is
+                -- redundant (e.g. `X > 3` given `X > 5`) and dropped.
+                -- Sequential traversal makes duplicate constraints
+                -- collapse to a single survivor: the first copy enters
+                -- `kept`, and every later identical copy is entailed by
+                -- it. Stage (c) sorts the final list by its rendered
+                -- form so that successive runs (or runs from
+                -- transposed source orderings) print constraints in a
+                -- stable order.
+                groundDropped :: [Constraint]
+                groundDropped = do
+                    it <- _LeftConstraints ctx
+                    case it of
+                        ArithmeticConstraint b -> case evaluateB b of
+                            Right True -> []
+                            _ -> pure it
+                        EvalutionConstraint lhs rhs -> case (evaluateA lhs, evaluateA rhs) of
+                            (Right x, Right y) -> if x == y then [] else pure it
+                            _ -> pure it
+                        it -> pure it
+                entailmentDropped :: [Constraint]
+                entailmentDropped = go [] groundDropped where
+                    go kept [] = reverse kept
+                    go kept (c : rest) = case c of
+                        ArithmeticConstraint t
+                            | arithEntails (otherArith kept rest) t -> go kept rest
+                        _ -> go (c : kept) rest
+                    otherArith :: [Constraint] -> [Constraint] -> [TermNode]
+                    otherArith kept rest =
+                        [ t | ArithmeticConstraint t <- kept ++ rest ]
+                prunedConstraints :: [Constraint]
+                prunedConstraints = List.sortOn (\c -> shows c "") entailmentDropped
                 theAnswerSubst :: [(LargeId, TermNode)]
                 -- §3.2.4: after `:assign ?V_n := t.`, the kernel ctx holds
                 -- both `?V_n := t` and any HOPU-derived `F := ?V_n`. The

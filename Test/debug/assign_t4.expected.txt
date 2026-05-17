@@ -39,5 +39,8 @@ Test.debug.assign_t4> Press the enter key to go to next state: -----------------
 --------------------------------
 
 Test.debug.assign_t4> Press the enter key to go to next state: Test.debug.assign_t4> *** :assign error: inconsistent with arithmetic constraints for 'X'
-Test.debug.assign_t4> no.
+Test.debug.assign_t4> The remaining constraints are:
+Test.debug.assign_t4> X > 5
+Test.debug.assign_t4> The binding is:
+Test.debug.assign_t4> Find more solutions? [Y/n] Test.debug.assign_t4> yes.
 Test.debug.assign_t4> Hol >>= quit
