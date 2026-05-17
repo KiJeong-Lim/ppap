@@ -356,7 +356,45 @@ constructViewer = constructViewerWith (const Nothing)
 -- viewer never mutates the cache. If `lookupName lv == Nothing`, falls
 -- back to the original policy: hint if present, otherwise `?V_<unique>`.
 constructViewerWith :: (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
-constructViewerWith lookupName = fst . runIdentity . uncurry (runStateT . formatView . eraseType) . runIdentity . flip runStateT 1 . makeView [] . rewrite NF where
+constructViewerWith = constructViewerCustom defaultCheckOper
+
+-- §1.5 fixity table for the built-in operators of BETA1. Identical
+-- to the table specified at the bottom of §1.5; carried here so that
+-- `Show TermNode` (and any debug path that has no `NotationDB` in
+-- hand) keeps producing the same output it always did. The
+-- NotationDB-aware path lives in `Hol.BETA1.Viewer` and consults
+-- `NotationDB.lookupFixity` via `constructViewerCustom`.
+defaultCheckOper :: String -> Maybe (Fixity (), Precedence)
+defaultCheckOper "->" = Just (InfixR () " -> " (), 4)
+defaultCheckOper "::" = Just (InfixR () " :: " (), 4)
+defaultCheckOper "Lambda" = Just (Prefix "Lambda " (), 0)
+defaultCheckOper ":-" = Just (InfixR () " :- " (), 0)
+defaultCheckOper ";" = Just (InfixL () "; " (), 1)
+defaultCheckOper "," = Just (InfixL () ", " (), 3)
+defaultCheckOper "=>" = Just (InfixR () " => " (), 2)
+defaultCheckOper "pi" = Just (Prefix "pi " (), 5)
+defaultCheckOper "sigma" = Just (Prefix "sigma " (), 5)
+defaultCheckOper "=" = Just (InfixN () " = " (), 5)
+defaultCheckOper "=<" = Just (InfixN () " =< " (), 5)
+defaultCheckOper "<" = Just (InfixN () " < " (), 5)
+defaultCheckOper ">=" = Just (InfixN () " >= " (), 5)
+defaultCheckOper ">" = Just (InfixN () " > " (), 5)
+defaultCheckOper "is" = Just (InfixN () " is " (), 5)
+defaultCheckOper "+" = Just (InfixN () " + " (), 6)
+defaultCheckOper "-" = Just (InfixN () " - " (), 6)
+defaultCheckOper "*" = Just (InfixN () " * " (), 7)
+defaultCheckOper "/" = Just (InfixN () " / " (), 7)
+defaultCheckOper _ = Nothing
+
+-- The most general viewer entry point: accepts both a fixity-resolver
+-- (for §1.5 user-defined notation) and a logic-var renamer. The two
+-- thin wrappers above (`constructViewer`, `constructViewerWith`) bake
+-- in `defaultCheckOper` so the legacy callers and `Show TermNode`
+-- stay byte-identical. `Hol.BETA1.Viewer` exposes the user-facing
+-- spelling — `constructViewerWith db = constructViewerCustom
+-- (notationCheckOper db)`.
+constructViewerCustom :: (String -> Maybe (Fixity (), Precedence)) -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
+constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runStateT . formatView . eraseType) . runIdentity . flip runStateT 1 . makeView [] . rewrite NF where
     isType :: ViewNode -> Bool
     isType (ViewTVar _) = True
     isType (ViewTCon _) = True
@@ -426,27 +464,6 @@ constructViewerWith lookupName = fst . runIdentity . uncurry (runStateT . format
     eraseType (ViewNatL nat) = ViewNatL nat
     eraseType (ViewChrL chr) = ViewChrL chr
     eraseType (ViewDCon c) = ViewDCon c
-    checkOper :: String -> Maybe (Fixity (), Precedence)
-    checkOper "->" = Just (InfixR () " -> " (), 4)
-    checkOper "::" = Just (InfixR () " :: " (), 4)
-    checkOper "Lambda" = Just (Prefix "Lambda " (), 0)
-    checkOper ":-" = Just (InfixR () " :- " (), 0)
-    checkOper ";" = Just (InfixL () "; " (), 1)
-    checkOper "," = Just (InfixL () ", " (), 3)
-    checkOper "=>" = Just (InfixR () " => " (), 2)
-    checkOper "pi" = Just (Prefix "pi " (), 5)
-    checkOper "sigma" = Just (Prefix "sigma " (), 5)
-    checkOper "=" = Just (InfixN () " = " (), 5)
-    checkOper "=<" = Just (InfixN () " =< " (), 5)
-    checkOper "<" = Just (InfixN () " < " (), 5)
-    checkOper ">=" = Just (InfixN () " >= " (), 5)
-    checkOper ">" = Just (InfixN () " > " (), 5)
-    checkOper "is" = Just (InfixN () " is " (), 5)
-    checkOper "+" = Just (InfixN () " + " (), 6)
-    checkOper "-" = Just (InfixN () " - " (), 6)
-    checkOper "*" = Just (InfixN () " * " (), 7)
-    checkOper "/" = Just (InfixN () " / " (), 7)
-    checkOper _ = Nothing
     formatView :: ViewNode -> StateT Int Identity ViewNode
     formatView (ViewDCon "[]") = return (ViewList [])
     formatView (ViewIApp (ViewIApp (ViewDCon "::") (ViewChrL chr)) t) = do

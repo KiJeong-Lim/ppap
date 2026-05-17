@@ -228,8 +228,8 @@ Implementation status (2026-05-17):
 
   - The lexer reserves all four keywords (`infixl`/`infixr`/`infix`/`prefix`) plus `abbrev`/`notation` (§1.6). `presburger` remains intentionally non-reserved (§2.3.3).
   - The parser accepts the four fixity-declaration forms above and produces a `RFixityDecl SLoc FixityForm SmallId Integer` constructor on `DeclRep`.
+  - **Semantics are wired (2026-05-17)**: `Desugarer.collectNotation` folds every `RFixityDecl` into the per-program `NotationDB` seeded by `Notation.initial`. `desugarProgram` returns the DB alongside the `Program`; `Main.runREPL` threads it into `RuntimeEnv._NotationDB`; `Notation.constructViewerWithDB` (via `Debugger.prettyTerm`) consumes it, so answer substitutions, `:assign`/`:show` output, and residual constraints all honour user-declared fixity. "Last declared wins" follows from `Map.insert` semantics.
   - **Restriction (first cut)**: the `<op>` slot is currently parsed as `T_id` only. Built-in symbolic operators (`+`, `=`, `::`, ...) cannot yet be re-declared because the parser does not yet enumerate alternatives for the corresponding token classes. This restriction is mechanical, not semantic — extending the grammar is straightforward but was deferred to keep the first cut small.
-  - **Semantics are not yet wired**: the desugarer silently filters `RFixityDecl` out (via the list-comprehension pattern in `desugarProgram`). Building a per-program `NotationDB` from collected declarations, threading it through the runtime, and consuming it in the viewer (§2.6) is the next step — see [[project-beta1-unimplemented]].
 
 The built-in fixity table (the BETA1 defaults, user-redefinable):
 
@@ -330,6 +330,30 @@ whose right-hand side happens to be `list char`.
 Built-in seeded at startup:
 
   abbrev string := list char.
+
+Implementation status (2026-05-17):
+
+  - Lexer reserves `abbrev`/`notation` and `:=`; parser produces
+    `RAbbrevDecl SLoc SmallId [LargeId] TypeRep` and
+    `RNotationDecl SLoc SmallId [LargeId] TermRep`.
+  - `Desugarer.collectExpansions` folds each declaration into the
+    program's `ExpansionDB`, seeded by `Notation.initialExpansionDB`
+    (which carries the built-in `string := list char`).
+  - `desugarProgram` applies `Notation.expandTypeRep` to every declared
+    type and `Notation.expandTermRep` to every fact body *before* the
+    type checker runs, so the surface tree reaching `makeTypeEnv` /
+    `desugarTerm` is already fully expanded. `Main.runREPL` does the
+    same to every query (interactive and `:assign`-synthesised).
+  - **Restriction (first cut)**: substitution is shadowing-aware but
+    not capture-avoiding. Notation parameter names that collide with
+    binders inside the body would capture; user code should pick
+    parameter names that avoid this. The fully capture-avoiding
+    implementation is deferred.
+  - **Display-direction fold (§2.7) is deferred**: user-declared
+    notation/abbrev bodies are not yet compiled to `TermNode`
+    templates, so the runtime never re-folds an expanded term back
+    into its `notation` head. Only the parsing direction (§1.6.3)
+    runs end-to-end at present.
 
 
 1.7 Modules
@@ -1716,6 +1740,20 @@ to run under ALPHA2.
     kind/
       higher_order_kind_rejected.hol  -- `kind foo ((type -> type) -> type).`
                                           rejected by `makeKindEnv`
+    notation/
+      fixity.hol          -- §1.5 end-to-end: `infixl my_op 6.` makes
+                             `Y := my_op 1 2.` print as `Y := 1 my_op 2.`
+                             through the NotationDB-aware viewer
+      abbrev.hol          -- §1.6.1: a user-declared `abbrev pp := list nat.`
+                             rewrites `type p (pp -> o).` to `list nat -> o`
+                             at desugar time and the body type-checks
+      notation.hol        -- §1.6.2: `notation duplo X := pair X X.`
+                             expands `duplo 7` at every call site into
+                             `pair 7 7` before the type checker runs
+      override.hol        -- §1.6.5 / §2.7.4 "last declared wins": a
+                             second `abbrev nats := list nat.` shadows
+                             the earlier `list char` so a list-of-nat
+                             body type-checks under the same alias
     smoke.sh              -- runs every `Test/**/*.hol` through
                              BETA1 with a scripted REPL transcript
                              alongside.
@@ -1727,8 +1765,8 @@ first line is `Hol` and the second line is the `.hol` path), and
 byte-for-byte; any mismatch fails the suite. Re-record after an
 intentional change with `./Test/smoke.sh --update`.
 
-Status (2026-05-17): fourteen cases authored — six presburger, seven
-debug, one kind. `solver_sanity.hol`, `residual.hol`,
+Status (2026-05-17): eighteen cases authored — six presburger, seven
+debug, one kind, four notation. `solver_sanity.hol`, `residual.hol`,
 `entailment_drop.hol`, and `assign_t4.hol` were the regressions that
 surfaced (and forced fixes of) two QE bugs in
 `Calc.Presburger.Internal`, a silent `printAnswer` reject, and the
@@ -1736,14 +1774,12 @@ missing entailment-based residual pruning. The `debug/assign_fail*`
 trio covers preconditions (3), (4), and (5) plus the (T4)
 consistency hook of §2.3.6; the only remaining `cmdAssign` failure
 mode without a sidecar is the parse-level rejection (`*** :assign
-error: parse failed` etc.), which is left for a future round. The notation
-sub-tree (`fixity.hol`, `abbrev.hol`, `notation.hol`, `override.hol`)
-is intentionally deferred: §1.5 semantics is unwired (RFixityDecl is
-silently filtered by `desugarProgram`), §1.6 abbrev/notation has no
-parser production (reserved keywords only), and §2.6/§2.7 viewer
-folding is dead code in `Notation.hs`. Those cases will be authored
-together with the implementation work tracked in the BETA1
-unimplemented memo.
+error: parse failed` etc.), which is left for a future round. The
+notation sub-tree was authored alongside the §1.5 / §1.6.3 wiring:
+`fixity.hol` exercises NotationDB-aware viewer fixity, `abbrev.hol`
+and `notation.hol` cover desugar-time expansion (TypeRep / TermRep),
+and `override.hol` covers "last declared wins" via consecutive
+`abbrev` declarations.
 
 §2.5's "syntactic concession" is implemented in two stages: (a) any
 constraint that evaluates to ground `Right True` under the current

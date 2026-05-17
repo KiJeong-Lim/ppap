@@ -1,0 +1,8 @@
+% Section 1.6.5 + 2.7.4 "last declared wins": a second `abbrev nats`
+% overrides the first. The fact `mylist [1, 2, 3]` only type-checks
+% under the second declaration, where `nats` resolves to `list nat`
+% (with the first one it would be `list char` and reject the body).
+abbrev nats := list char.
+abbrev nats := list nat.
+type mylist (nats -> o).
+mylist [1, 2, 3].

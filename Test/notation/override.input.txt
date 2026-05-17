@@ -1,0 +1,7 @@
+Hol
+Test/notation/override.hol
+?- mylist Y.
+
+n
+:q
+

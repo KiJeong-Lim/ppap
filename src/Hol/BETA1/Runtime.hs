@@ -3,6 +3,7 @@ module Hol.BETA1.Runtime where
 import Calc.Presburger.Internal
 import Hol.BETA1.Arith
 import Hol.BETA1.Debugger
+import Hol.BETA1.Notation (NotationDB)
 import Hol.BETA1.TermNode
 import Hol.BETA1.HOPU
 import Hol.BETA1.Constant
@@ -111,6 +112,13 @@ data RuntimeEnv
         -- so that `cmdDebugToggle` works even when the goal stack is
         -- empty (post-`cmdQuit`, post-search-completion).
         , _DebuggingRef :: IORef Debugging
+        -- §1.5 / §2.6: the program's notation database, built by the
+        -- desugarer from the `infix*`/`prefix` declarations in the
+        -- source file. Read by every viewer call so that user-defined
+        -- fixity (and the built-in seed table) shows up in answer
+        -- substitutions, `:show`/`:assign` output, and the residual
+        -- constraint listing of §2.5.
+        , _NotationDB :: NotationDB
         }
     deriving ()
 
@@ -219,7 +227,7 @@ cmdShow name = do
             ((ctx, _) : _, Just lv) ->
                 case Map.lookup lv (unVarBinding (_TotalVarBinding ctx)) of
                     Nothing -> return "unbound"
-                    Just t -> return (prettyTerm cache t "")
+                    Just t -> return (prettyTerm (_NotationDB env) cache t "")
 
 -- §3.4 CMTT scope check: a binding `?V := t` respects the contextual
 -- type iff every rigid constant and every other flexible variable

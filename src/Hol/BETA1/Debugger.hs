@@ -12,6 +12,7 @@ module Hol.BETA1.Debugger
 
 import qualified Data.Map.Strict as Map
 import Hol.BETA1.Header
+import Hol.BETA1.Notation (NotationDB, constructViewerWithDB)
 import Hol.BETA1.TermNode
 import Z.Utils
 
@@ -101,8 +102,9 @@ parseAnonymousLV nm = case nm of
         [(n, "")] -> Just (ctor (Unique n))
         _ -> Nothing
 
--- §2.6: render a TermNode through the cache-aware viewer. The cache
--- governs which LogicVars get short display names and which fall
--- back to the viewer's anonymous convention.
-prettyTerm :: NameCache -> TermNode -> ShowS
-prettyTerm cache t = pprint 0 (constructViewerWith (viewerLookup cache) t)
+-- §2.6: render a TermNode through the cache-aware viewer. `db`
+-- supplies the §1.5 user-defined fixity table; `cache` governs
+-- which LogicVars get short display names and which fall back to
+-- the viewer's anonymous convention.
+prettyTerm :: NotationDB -> NameCache -> TermNode -> ShowS
+prettyTerm db cache t = pprint 0 (constructViewerWithDB db (viewerLookup cache) t)

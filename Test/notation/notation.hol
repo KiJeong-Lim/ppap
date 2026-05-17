@@ -1,0 +1,9 @@
+% Section 1.6.2: a user-defined term notation gets expanded by the
+% desugarer at every call site. `duplo X := pair X X.` declared once,
+% then `duplo 7` everywhere it appears (in facts and in queries) is
+% rewritten to `pair 7 7` before the type checker runs.
+kind myt type.
+type pair (nat -> nat -> myt).
+notation duplo X := pair X X.
+type q (myt -> o).
+q (duplo 7).

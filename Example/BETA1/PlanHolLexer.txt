@@ -80,6 +80,8 @@
     T_bslash (SLoc (row1, col1) (row2, col2))
 \xmatch "::":
     T_cons (SLoc (row1, col1) (row2, col2))
+\xmatch ":=":
+    T_assign (SLoc (row1, col1) (row2, col2))
 \xmatch "kind":
     T_kind (SLoc (row1, col1) (row2, col2))
 \xmatch "type":
@@ -149,6 +151,7 @@
         | T_prefix SLoc
         | T_abbrev SLoc
         | T_notation SLoc
+        | T_assign SLoc
         | T_id SLoc String
         | T_nat_lit SLoc Integer
         | T_chr_lit SLoc Char
@@ -182,6 +185,8 @@
         | RTypeDecl SLoc DataConstructor TypeRep
         | RFactDecl SLoc TermRep
         | RFixityDecl SLoc FixityForm SmallId Integer
+        | RAbbrevDecl SLoc SmallId [LargeId] TypeRep
+        | RNotationDecl SLoc SmallId [LargeId] TermRep
         deriving (Show)
 
     data FixityForm
@@ -232,6 +237,7 @@
             T_prefix loc -> loc
             T_abbrev loc -> loc
             T_notation loc -> loc
+            T_assign loc -> loc
             T_id loc _ -> loc
             T_nat_lit loc _ -> loc
             T_chr_lit loc _ -> loc

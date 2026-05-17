@@ -1,6 +1,8 @@
 module Hol.BETA1.Desugarer where
 
 import Hol.BETA1.Header
+import Hol.BETA1.Notation (NotationDB, FixityKind (..), ExpansionDB)
+import qualified Hol.BETA1.Notation as Notation
 import Hol.BETA1.PlanHolLexer
 import Hol.BETA1.TermNode (freshenName)
 import Control.Monad.Trans.Class
@@ -151,15 +153,49 @@ desugarTerm live (RAbs loc1 var_rep term_rep) = do
             return (Lam loc1 var (Just storedHint) term)
 desugarTerm live (RPrn loc1 term_rep) = desugarTerm live term_rep
 
-desugarProgram :: MonadUnique m => KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc))
+desugarProgram :: MonadUnique m => KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
 desugarProgram kind_env type_env file_name program
-    = case makeKindEnv [ (loc, (tcon, krep)) | RKindDecl loc tcon krep <- program ] kind_env of
-        Left err_msg -> throwE err_msg
-        Right kind_env' -> case makeTypeEnv kind_env' [ (loc, (con, trep)) | RTypeDecl loc con trep <- program ] type_env of
+    = let expansion_db = collectExpansions program
+          notation_db = collectNotation program
+          expandedTypes = [ (loc, (con, Notation.expandTypeRep expansion_db trep)) | RTypeDecl loc con trep <- program ]
+          expandedFacts = [ Notation.expandTermRep expansion_db fact_rep | RFactDecl _ fact_rep <- program ]
+      in case makeKindEnv [ (loc, (tcon, krep)) | RKindDecl loc tcon krep <- program ] kind_env of
             Left err_msg -> throwE err_msg
-            Right type_env' -> do
-                facts' <- lift (mapM (fmap fst . flip runStateT Map.empty . desugarTerm []) [ fact_rep | RFactDecl _ fact_rep <- program ])
-                return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name })
+            Right kind_env' -> case makeTypeEnv kind_env' expandedTypes type_env of
+                Left err_msg -> throwE err_msg
+                Right type_env' -> do
+                    facts' <- lift (mapM (fmap fst . flip runStateT Map.empty . desugarTerm []) expandedFacts)
+                    return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name }, notation_db, expansion_db)
+
+-- §1.5: walk the program top-to-bottom, folding every `RFixityDecl`
+-- into the `NotationDB`. Order matters — "last declared wins"
+-- (§2.7.4) — so a later infixl that shadows an earlier infixr at
+-- the same name simply overwrites the entry in `_fixity`. The
+-- seed comes from `Notation.initial`, which carries the BETA1
+-- built-in defaults (§1.5's fixity table) and the built-in
+-- `string := list char` abbreviation. The desugarer's other passes
+-- continue to ignore `RFixityDecl` (it is consumed only here).
+collectNotation :: [DeclRep] -> NotationDB
+collectNotation = List.foldl' step Notation.initial where
+    step db (RFixityDecl _ form name prec) = Notation.addFixity name (toKind form) (fromInteger prec) db
+    step db _ = db
+    toKind FF_InfixL = FK_InfixL
+    toKind FF_InfixR = FK_InfixR
+    toKind FF_InfixN = FK_InfixN
+    toKind FF_Prefix = FK_Prefix
+
+-- §1.6: collect every `abbrev`/`notation` declaration into the
+-- ExpansionDB so `Notation.expandTermRep` / `expandTypeRep` can
+-- splice their bodies into call sites during desugaring.
+-- "Last declared wins" mirrors §2.7.4 — a later `addTypeAbbrevDecl`
+-- simply replaces the earlier entry under the same `Map.insert`
+-- semantics. The seed is `initialExpansionDB`, which carries the
+-- built-in `string := list char` abbreviation (§1.6.5).
+collectExpansions :: [DeclRep] -> ExpansionDB
+collectExpansions = List.foldl' step Notation.initialExpansionDB where
+    step db (RAbbrevDecl _ name params body) = Notation.addTypeAbbrevDecl name params body db
+    step db (RNotationDecl _ name params body) = Notation.addTermNotationDecl name params body db
+    step db _ = db
 
 desugarQuery :: MonadUnique m => TermRep -> ExceptT ErrMsg m (TermExpr DataConstructor SLoc, Map.Map LargeId IVar)
 desugarQuery query0 = runStateT (desugarTerm [] query0) Map.empty

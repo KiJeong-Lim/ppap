@@ -1,0 +1,7 @@
+Hol
+Test/notation/fixity.hol
+?- p Y.
+
+n
+:q
+

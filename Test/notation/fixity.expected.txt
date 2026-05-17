@@ -1,0 +1,9 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.notation.fixity ( Test/notation/fixity.hol, interpreted )
+Test.notation.fixity> Ok, one module loaded.
+Test.notation.fixity> Test.notation.fixity> The answer substitution is:
+Test.notation.fixity> Y := 3 my_op 5.
+Test.notation.fixity> Find more solutions? [Y/n] Test.notation.fixity> Find more solutions? [Y/n] Test.notation.fixity> yes.
+Test.notation.fixity> Hol >>= quit

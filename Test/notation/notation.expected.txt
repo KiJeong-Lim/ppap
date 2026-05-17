@@ -1,0 +1,9 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.notation.notation ( Test/notation/notation.hol, interpreted )
+Test.notation.notation> Ok, one module loaded.
+Test.notation.notation> Test.notation.notation> The answer substitution is:
+Test.notation.notation> Y := pair 7 7.
+Test.notation.notation> Find more solutions? [Y/n] Test.notation.notation> Find more solutions? [Y/n] Test.notation.notation> yes.
+Test.notation.notation> Hol >>= quit

@@ -7,6 +7,8 @@ import Hol.BETA1.Debugger
 import Hol.BETA1.Desugarer
 import Hol.BETA1.Header
 import Hol.BETA1.HOPU
+import Hol.BETA1.Notation (NotationDB, ExpansionDB)
+import qualified Hol.BETA1.Notation as Notation
 import Hol.BETA1.PlanHolLexer
 import Hol.BETA1.PlanHolParser
 import Hol.BETA1.Runtime
@@ -74,8 +76,8 @@ execRuntime env isDebugging facts query = do
         initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = initialLabeling, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
     runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
-runREPL :: Program TermNode -> UniqueT IO ()
-runREPL program = do
+runREPL :: Program TermNode -> NotationDB -> ExpansionDB -> UniqueT IO ()
+runREPL program notationDB expansionDB = do
     isDebugging <- lift (newIORef False)
     verboseTyping <- lift (newIORef False)
     nameCache <- lift (newIORef initialCache)
@@ -88,7 +90,7 @@ runREPL program = do
     mkRuntimeEnv :: IORef Debugging -> IORef Bool -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
     mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query = do
         stackRef <- newIORef []
-        return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging })
+        return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging, _NotationDB = notationDB })
       where
         runInteraction :: RuntimeEnv -> Context -> String -> IO ()
         runInteraction env ctx str = do
@@ -261,7 +263,7 @@ runREPL program = do
                                             ep <- readIORef pendingSubst
                                             return (ep <> _TotalVarBinding ctx)
                                         let t_zonked = bindVars composed_subst t_resolved
-                                            pp = prettyTerm cache
+                                            pp = prettyTerm notationDB cache
                                         _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
                                         return ()
         -- §3.4 CMTT: rewrite each `c_<digits>` identifier in a `:assign`
@@ -313,7 +315,7 @@ runREPL program = do
                 Left _ -> throwE "*** :assign error: parse failed"
                 Right (Right _) -> throwE "*** :assign error: expected a query, not a declaration"
                 Right (Left termRep) -> do
-                    (term2, free_vars) <- desugarQuery termRep
+                    (term2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB termRep)
                     (term3, (used_mtvs, assumptions)) <- checkType (_TypeDecls program) term2 mkTyO
                     term4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) term3
                     term5 <- either throwE return (installPresburger term4)
@@ -356,7 +358,7 @@ runREPL program = do
             | isClear && List.null theAnswerSubst = return False
             | isClear = do
                 cache <- readIORef nameCache
-                let pp = prettyTerm cache
+                let pp = prettyTerm notationDB cache
                 promptify "The answer substitution is:"
                 sequence_
                     [ promptify (myTabs ++ v ++ " := " ++ pp t ".")
@@ -448,7 +450,7 @@ runREPL program = do
                 printDisagreements :: IO ()
                 printDisagreements = do
                     cache <- readIORef nameCache
-                    let pp = prettyTerm cache
+                    let pp = prettyTerm notationDB cache
                     promptify "The remaining constraints are:"
                     sequence_
                         [ promptify (myTabs ++ shows constraint "")
@@ -508,7 +510,7 @@ runREPL program = do
                 Right output -> case output of
                     Left query1 -> do
                         result <- runExceptT $ do
-                            (query2, free_vars) <- desugarQuery query1
+                            (query2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB query1)
                             (query3, (used_mtvs, assumptions)) <- checkType (_TypeDecls program) query2 mkTyO
                             query4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
                             query5 <- either throwE return (installPresburger query4)
@@ -618,7 +620,7 @@ runHol = do
         "" -> case maybe_file_name of
             Nothing -> do
                 lift $ shelly (theDefaultModuleName ++ "> Ok, no module loaded.")
-                runREPL (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
+                runREPL (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName }) Notation.initial Notation.initialExpansionDB
             Just file_name -> do
                 let my_file_dir = file_name ++ ".hol"
                     myModuleName = modifySep '/' (const ".") id file_name
@@ -635,18 +637,18 @@ runHol = do
                             runHol
                         Right program1 -> do
                             result <- runExceptT $ do
-                                module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
+                                (module1, notation_db, expansion_db) <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
                                 facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
                                 facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
                                 facts4 <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
-                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts4, moduleName = myModuleName })
+                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts4, moduleName = myModuleName }, notation_db, expansion_db)
                             case result of
                                 Left err_msg -> do
                                     lift $ putStrLn err_msg
                                     runHol
-                                Right program2 -> do
+                                Right (program2, notation_db2, expansion_db2) -> do
                                     lift $ shelly (myModuleName ++ "> Ok, one module loaded.")
-                                    runREPL program2
+                                    runREPL program2 notation_db2 expansion_db2
         inconsistent_proof -> do
             lift $ shelly inconsistent_proof
             lift $ shelly ("Hol >>= quit")
