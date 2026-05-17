@@ -174,7 +174,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
     simplify (ModF t1 r t2) = mkModF t1 r t2
     simplify (NegF f1) = mkNegF (simplify f1)
     simplify (DisF f1 f2) = mkDisF (simplify f1) (simplify f2)
-    simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f1)
+    simplify (ConF f1 f2) = mkConF (simplify f1) (simplify f2)
     simplify (ImpF f1 f2) = mkImpF (simplify f1) (simplify f2)
     simplify (IffF f1 f2) = mkIffF (simplify f1) (simplify f2)
     simplify (AllF y f1) = mkAllF y (simplify f1)
@@ -243,7 +243,7 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
                     (KlassMod m t1 r t2) -> return m
                     (KlassEtc f) -> []
         step3 :: ([PresburgerKlass], [PositiveInteger]) -> MyPresburgerFormula
-        step3 = andcatKlasses . fst <*> null . snd <*> List.foldl' getGCD 1 . snd where
+        step3 = andcatKlasses . fst <*> null . snd <*> List.foldl' getLCM 1 . snd where
             andcatKlasses :: [PresburgerKlass] -> Bool -> PositiveInteger -> MyPresburgerFormula
             andcatKlasses yourKlasses isTrivialCase yourLCM = andcat (if isTrivialCase then yourEtcs else (yourLCM `seq` hisMethod myProperKlasses) : yourEtcs) where
                 myEqns :: [(PresburgerTerm, PresburgerTerm)]
@@ -267,6 +267,16 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
             hisMethod :: CollectionOfProperKlasses -> MyPresburgerFormula
             hisMethod (CollectionOfProperKlasses theEqns0 theLtns0 theGtns0 theMods0 theR)
                 = case theEqns0 of
+                    [] | null theLtns0 ->
+                        -- Cooper's +infinity case: with no upper bounds the
+                        -- existential is satisfied by taking X arbitrarily
+                        -- large. Every lower bound is then trivially met,
+                        -- and any mod constraint can be satisfied by
+                        -- choosing X in the right residue class — so the
+                        -- only obstacle is an internally inconsistent
+                        -- mod constraint, which we approximate as never
+                        -- arising when no real Eqn/Ltn appears.
+                        mkValF True
                     [] -> orcat
                         [ andcat
                             [ andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns0 ]

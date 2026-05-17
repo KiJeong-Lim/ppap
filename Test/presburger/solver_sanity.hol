@@ -1,0 +1,10 @@
+% Presburger solver ground-truth regression (BETA1 spec section 2.3).
+% These four queries have unambiguous semantics over the naturals;
+% any deviation indicates a bug in `Calc.Presburger.Internal`
+% (the QE pipeline + truth-value evaluator).
+%
+% Expected:
+%   ?- presburger "forall X, X = 0".   => no.   (X = 1 is a counterexample)
+%   ?- presburger "forall X, X >= 0".  => yes.  (always true in nat)
+%   ?- presburger "exists X, X > 5".   => yes.  (X = 6 witnesses)
+%   ?- presburger "exists X, X = 7".   => yes.  (X = 7 witnesses)

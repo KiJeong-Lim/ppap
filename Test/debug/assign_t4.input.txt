@@ -1,0 +1,8 @@
+Hol
+Test/debug/assign_t4.hol
+:d
+?- X > 5.
+
+:assign ?X := 3.
+:q
+

@@ -1,0 +1,10 @@
+Hol
+Test/debug/assign_fail.hol
+:d
+?- p X.
+:assign ?X := s X.
+
+
+n
+:q
+

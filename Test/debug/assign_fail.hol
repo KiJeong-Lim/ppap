@@ -1,0 +1,11 @@
+% Failed :assign rolls back transactionally (BETA1 spec section 3.2.3).
+% At a debug prompt the user attempts `:assign ?X := s X.`; the
+% runtime detects the occurs-check violation (precondition 4 of
+% section 3.2.2), prints "*** :assign error: occurs check failed for
+% 'X'", and restores the snapshot. The user then presses enter to
+% continue; the normal search proceeds and binds X to the first p
+% clause's value, demonstrating that the failed :assign left no
+% residue in the substitution.
+type p (nat -> o).
+p 0.
+p 1.

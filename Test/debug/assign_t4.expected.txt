@@ -1,0 +1,43 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.debug.assign_t4 ( Test/debug/assign_t4.hol, interpreted )
+Test.debug.assign_t4> Ok, one module loaded.
+Test.debug.assign_t4> Test.debug.assign_t4> Debugging mode on.
+Test.debug.assign_t4> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- X > 5 ] # call_id = 4
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 4
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_t4> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = []
+        , _constraints = 
+            [ X > 5
+            ]
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 5
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.debug.assign_t4> Press the enter key to go to next state: Test.debug.assign_t4> *** :assign error: inconsistent with arithmetic constraints for 'X'
+Test.debug.assign_t4> no.
+Test.debug.assign_t4> Hol >>= quit

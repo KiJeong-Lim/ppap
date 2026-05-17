@@ -1,0 +1,10 @@
+% Failed :assign by (T4) consistency hook (BETA1 spec section 2.3.6 + 3.2.3).
+% A query that adds an arithmetic constraint reaches a paused step at
+% which `_LeftConstraints = [X > 5]` is visible. Attempting
+% `:assign ?X := 3.` would make the candidate substitution inconsistent
+% with the accumulated constraint (3 > 5 is false). The runtime aborts
+% the assign with "*** :assign error: inconsistent with arithmetic
+% constraints for 'X'" and restores the snapshot. No subsequent fact
+% can satisfy the original goal (X > 5 with X unbound has no ground
+% witness reachable through search), so the query ultimately fails.
+type p (nat -> o).

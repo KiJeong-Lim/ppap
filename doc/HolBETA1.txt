@@ -1670,11 +1670,24 @@ to run under ALPHA2.
                              `presburger "forall Y, Y > 0"`: bound
                              names scoped to the formula
       consistency.hol     -- `?- X > 5, X < 3.` (T2 firing 2.3.6)
+      solver_sanity.hol   -- ground-truth regression for the QE
+                             pipeline (forall/exists with naturals)
     debug/
       toggle.hol          -- `:d` (twice), `:verbose`, `:short`
                              confirmation lines
       assign_ok.hol       -- `:assign ?X := 7.` at a debug prompt
                              then resume to the final answer
+      assign_fail.hol     -- `:assign ?X := s X.` triggers the
+                             occurs-check (3.2.2 precondition 4); the
+                             snapshot/restore of 3.2.3 leaves the
+                             search untouched and the normal `p X`
+                             search then binds X to 0
+      assign_t4.hol       -- after one step the context shows
+                             `_constraints = [X > 5]`; the candidate
+                             `:assign ?X := 3.` violates that constraint
+                             so the (T4) consistency hook (2.3.6)
+                             reports "*** :assign error: inconsistent
+                             with arithmetic constraints for 'X'"
       show.hol            -- `:show ?X` at debug prompts
     kind/
       higher_order_kind_rejected.hol  -- `kind foo ((type -> type) -> type).`
@@ -1690,14 +1703,21 @@ first line is `Hol` and the second line is the `.hol` path), and
 byte-for-byte; any mismatch fails the suite. Re-record after an
 intentional change with `./Test/smoke.sh --update`.
 
-Status (2026-05-17): seven cases authored — three presburger, three
-debug, one kind. The notation sub-tree (`fixity.hol`, `abbrev.hol`,
-`notation.hol`, `override.hol`) is intentionally deferred: §1.5
-semantics is unwired (RFixityDecl is silently filtered by
-`desugarProgram`), §1.6 abbrev/notation has no parser production
-(reserved keywords only), and §2.6/§2.7 viewer folding is dead
-code in `Notation.hs`. Those cases will be authored together with
-the implementation work tracked in the BETA1 unimplemented memo.
+Status (2026-05-17): ten cases authored — four presburger, five
+debug, one kind. `solver_sanity.hol` and `assign_t4.hol` were the
+regressions that surfaced (and forced fixes of) two bugs in
+`Calc.Presburger.Internal`'s QE pipeline; see §2.3's "Implementation
+notes" subsection for the bug summary. `debug/assign_fail.hol`
+covers precondition (4) (occurs check); preconditions (3) and (5)
+remain reachable in the implementation (`*** tc-error[...]`,
+`*** :assign error: scope violation ...`) but unauthored. The notation
+sub-tree (`fixity.hol`, `abbrev.hol`, `notation.hol`, `override.hol`)
+is intentionally deferred: §1.5 semantics is unwired (RFixityDecl is
+silently filtered by `desugarProgram`), §1.6 abbrev/notation has no
+parser production (reserved keywords only), and §2.6/§2.7 viewer
+folding is dead code in `Notation.hs`. Those cases will be authored
+together with the implementation work tracked in the BETA1
+unimplemented memo.
 
 4.6.3 No changes to `Example/`
 
