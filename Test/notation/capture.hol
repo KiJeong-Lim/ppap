@@ -1,0 +1,15 @@
+% Capture-avoiding substitution test (spec 1.6.3).
+% The notation body `Y\ cnst (F Y)` binds `Y` internally. The second
+% fact passes an argument `(Z\ Y)` whose free variable `Y` collides
+% with that binder. Without capture-avoidance, the outer `Y` would be
+% captured by the body's binder and the rule body `Y = 8` could not
+% propagate to the head -- the query below would fail. The capture-
+% avoiding implementation alpha-renames the body binder so the outer
+% `Y` remains free, the constraint `Y = 8` reaches the head, and the
+% query succeeds.
+kind myt type.
+type cnst (nat -> myt).
+notation lift F := Y\ cnst (F Y).
+type p ((nat -> myt) -> o).
+p (lift (Z\ Z)).
+p (lift (Z\ Y)) :- Y = 8.

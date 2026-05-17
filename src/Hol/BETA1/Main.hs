@@ -214,8 +214,8 @@ runREPL program notationDB expansionDB = do
                                         Just inferred
                                             | typeCompatible actual inferred -> []
                                             | otherwise -> ["type mismatch for 'c_" ++ show uni
-                                                    ++ "' — runtime type is " ++ showsMonoType 0 actual
-                                                        (", but context requires " ++ showsMonoType 0 inferred "")]
+                                                    ++ "' — runtime type is " ++ showsMonoType notationDB 0 actual
+                                                        (", but context requires " ++ showsMonoType notationDB 0 inferred "")]
                                 | (nm, uni) <- xconNames
                                 ]
                             xconSwap = Map.fromList
@@ -242,7 +242,7 @@ runREPL program notationDB expansionDB = do
                           else if badType
                             then case mexpectedTy of
                                 Just expectedTy -> do
-                                    _ <- promptify ("*** :assign error: type mismatch for '" ++ varName ++ "' — expected " ++ showsMonoType 0 expectedTy (", got " ++ showsMonoType 0 inferredTy ""))
+                                    _ <- promptify ("*** :assign error: type mismatch for '" ++ varName ++ "' — expected " ++ showsMonoType notationDB 0 expectedTy (", got " ++ showsMonoType notationDB 0 inferredTy ""))
                                     return ()
                                 Nothing -> return ()  -- unreachable
                             else do
@@ -316,7 +316,7 @@ runREPL program notationDB expansionDB = do
                 Right (Right _) -> throwE "*** :assign error: expected a query, not a declaration"
                 Right (Left termRep) -> do
                     (term2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB termRep)
-                    (term3, (used_mtvs, assumptions)) <- checkType (_TypeDecls program) term2 mkTyO
+                    (term3, (used_mtvs, assumptions)) <- checkType notationDB (_TypeDecls program) term2 mkTyO
                     term4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) term3
                     term5 <- either throwE return (installPresburger term4)
                     -- The inferred type of `X` inside the synthetic query
@@ -511,7 +511,7 @@ runREPL program notationDB expansionDB = do
                     Left query1 -> do
                         result <- runExceptT $ do
                             (query2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB query1)
-                            (query3, (used_mtvs, assumptions)) <- checkType (_TypeDecls program) query2 mkTyO
+                            (query3, (used_mtvs, assumptions)) <- checkType notationDB (_TypeDecls program) query2 mkTyO
                             query4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
                             query5 <- either throwE return (installPresburger query4)
                             -- §3.4: the debugger lists every visible flexible
@@ -638,7 +638,7 @@ runHol = do
                         Right program1 -> do
                             result <- runExceptT $ do
                                 (module1, notation_db, expansion_db) <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
-                                facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
+                                facts2 <- sequence [ checkType notation_db (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
                                 facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
                                 facts4 <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
                                 return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts4, moduleName = myModuleName }, notation_db, expansion_db)

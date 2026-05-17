@@ -75,6 +75,14 @@
         RFixityDecl ($1.loc <> $4.loc) FF_InfixN $2.contents $3.contents
     95 [$prefix, $id, $natlit, $dot]:
         RFixityDecl ($1.loc <> $4.loc) FF_Prefix $2.contents $3.contents
+    95 [$infixl, $SymOp, $natlit, $dot]:
+        RFixityDecl ($1.loc <> $4.loc) FF_InfixL $2 $3.contents
+    95 [$infixr, $SymOp, $natlit, $dot]:
+        RFixityDecl ($1.loc <> $4.loc) FF_InfixR $2 $3.contents
+    95 [$infix, $SymOp, $natlit, $dot]:
+        RFixityDecl ($1.loc <> $4.loc) FF_InfixN $2 $3.contents
+    95 [$prefix, $SymOp, $natlit, $dot]:
+        RFixityDecl ($1.loc <> $4.loc) FF_Prefix $2 $3.contents
     95 [$abbrev, $id, $Sequence $IdElem, $assign, $TypeRep0, $dot]:
         RAbbrevDecl ($1.loc <> $6.loc) $2.contents $3 $5
     95 [$notation, $id, $Sequence $IdElem, $assign, $TermRep0, $dot]:
@@ -86,6 +94,29 @@
 \define $IdElem : "LargeId" {
     10 [$id]:
         $1.contents
+}
+
+\define $SymOp : "SmallId" {
+    10 [$plus]:
+        "+"
+    10 [$minus]:
+        "-"
+    10 [$star]:
+        "*"
+    10 [$slash]:
+        "/"
+    10 [$eq]:
+        "="
+    10 [$le]:
+        "=<"
+    10 [$lt]:
+        "<"
+    10 [$ge]:
+        ">="
+    10 [$gt]:
+        ">"
+    10 [$cons]:
+        "::"
 }
 
 \define $KindRep0 : "KindRep" {

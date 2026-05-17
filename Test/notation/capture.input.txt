@@ -1,0 +1,7 @@
+Hol
+Test/notation/capture.hol
+?- p (W\ cnst 8).
+
+n
+:q
+

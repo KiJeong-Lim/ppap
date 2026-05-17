@@ -1,0 +1,7 @@
+Hol
+Test/notation/sym_operator.hol
+?- Y = (1 + 2) * 3.
+
+n
+:q
+

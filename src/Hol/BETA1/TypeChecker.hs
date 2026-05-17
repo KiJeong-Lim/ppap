@@ -3,6 +3,8 @@ module Hol.BETA1.TypeChecker where
 
 import Hol.BETA1.Constant
 import Hol.BETA1.Header
+import Hol.BETA1.Notation (NotationDB)
+import qualified Hol.BETA1.Notation as Notation
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -166,20 +168,33 @@ lhs ->> rhs
                 Right theta -> return theta
         go typ1 typ2 = Left (TypesAreMismatched typ1 typ2)
 
-showMonoType :: Map.Map MetaTVar LargeId -> MonoType Int -> String -> String
-showMonoType name_env = go 0 where
+-- §2.7.1 (T): the type-checker calls this when assembling user-facing
+-- error messages. Per §1.6 the kernel never sees abbreviations, so we
+-- apply the same write-boundary fold the runtime renderer uses
+-- (`Notation.tryFoldType`) before falling back to the structural
+-- printer. The MTV name table is only consulted in the leaf case, so
+-- folded abbreviations carry through to the message unchanged.
+showMonoType :: NotationDB -> Map.Map MetaTVar LargeId -> MonoType Int -> String -> String
+showMonoType db name_env = go 0 where
     go :: Precedence -> MonoType Int -> String -> String
-    go prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) typ1) typ2)
+    go prec t = case Notation.tryFoldType db t of
+        Just (name, []) -> strstr name
+        Just (name, args) ->
+            let inner = strstr name . List.foldr (.) id [ strstr " " . go 2 a | a <- args ]
+            in if prec > 1 then strstr "(" . inner . strstr ")" else inner
+        Nothing -> raw prec t
+    raw :: Precedence -> MonoType Int -> String -> String
+    raw prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) typ1) typ2)
         | prec <= 0 = go 1 typ1 . strstr " -> " . go 0 typ2
         | otherwise = strstr "(" . go 1 typ1 . strstr " -> " . go 0 typ2 . strstr ")"
-    go prec (TyApp typ1 typ2)
+    raw prec (TyApp typ1 typ2)
         | prec <= 1 = go 1 typ1 . strstr " " . go 2 typ2
         | otherwise = strstr "(" . go 1 typ1 . strstr " " . go 2 typ2 . strstr ")"
-    go prec (TyCon con)
+    raw prec (TyCon con)
         = pprint 0 con
-    go prec (TyVar var)
+    raw prec (TyVar var)
         = strstr "#" . showsPrec 0 var
-    go prec (TyMTV mtv)
+    raw prec (TyMTV mtv)
         = case Map.lookup mtv name_env of
             Nothing -> strstr "mtv_" . showsPrec 0 mtv
             Just name -> strstr name
@@ -220,29 +235,29 @@ zonkMTV theta = go where
     go (App (loc, typ) term1 term2) = App (loc, substMTVars theta typ) (go term1) (go term2)
     go (Lam (loc, typ) var h term) = Lam (loc, substMTVars theta typ) var h (go term)
 
-mkTyErr :: Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
-mkTyErr used_mtvs loc ((actual_typ, expected_typ), typ_error) = case typ_error of
+mkTyErr :: NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
+mkTyErr db used_mtvs loc ((actual_typ, expected_typ), typ_error) = case typ_error of
     KindsAreMismatched (typ1, kin1) (typ2, kin2) -> concat
         [ "*** typechecking-error[" ++ pprint 0 loc "]:\n"
-        , "  ? expected_typ = `" ++ showMonoType used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType used_mtvs actual_typ "\'.\n")
-        , "  ? couldn't solve the equation `" ++ showMonoType used_mtvs typ1 ("\' ~ `" ++ showMonoType used_mtvs typ2 "\',\n")
+        , "  ? expected_typ = `" ++ showMonoType db used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType db used_mtvs actual_typ "\'.\n")
+        , "  ? couldn't solve the equation `" ++ showMonoType db used_mtvs typ1 ("\' ~ `" ++ showMonoType db used_mtvs typ2 "\',\n")
         , "  ? because the kind of the L.H.S. is `" ++ pprint 0 kin1 ("\' but the kind of the R.H.S. is `" ++ pprint 0 kin2 "\'.")
         ]
     OccursCheckFailed mtv1 typ2 -> concat
         [ "*** typechecking-error[" ++ pprint 0 loc "]:\n"
-        , "  ? expected_typ = `" ++ showMonoType used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType used_mtvs actual_typ "\'.\n")
-        , "  ? couldn't solve the equation `" ++ showMonoType used_mtvs (TyMTV mtv1) ("\' ~ `" ++ showMonoType used_mtvs typ2 "\',\n")
+        , "  ? expected_typ = `" ++ showMonoType db used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType db used_mtvs actual_typ "\'.\n")
+        , "  ? couldn't solve the equation `" ++ showMonoType db used_mtvs (TyMTV mtv1) ("\' ~ `" ++ showMonoType db used_mtvs typ2 "\',\n")
         , "  ? because occurs check failed."
         ]
     TypesAreMismatched typ1 typ2 -> concat
         [ "*** typechecking-error[" ++ pprint 0 loc "]:\n"
-        , "  ? expected_typ = `" ++ showMonoType used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType used_mtvs actual_typ "\'.\n")
-        , "  ? couldn't solve the equation `" ++ showMonoType used_mtvs typ1 ("\' ~ `" ++ showMonoType used_mtvs typ2 "\',\n")
-        , "  ? because the types `" ++ showMonoType used_mtvs typ1 ("\' and `" ++ showMonoType used_mtvs typ2 "\' are non-unifiable.")
+        , "  ? expected_typ = `" ++ showMonoType db used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType db used_mtvs actual_typ "\'.\n")
+        , "  ? couldn't solve the equation `" ++ showMonoType db used_mtvs typ1 ("\' ~ `" ++ showMonoType db used_mtvs typ2 "\',\n")
+        , "  ? because the types `" ++ showMonoType db used_mtvs typ1 ("\' and `" ++ showMonoType db used_mtvs typ2 "\' are non-unifiable.")
         ]
 
-inferType :: MonadUnique m => TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
-inferType type_env = flip runStateT Map.empty . infer where
+inferType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
+inferType db type_env = flip runStateT Map.empty . infer where
     infer :: MonadUnique m => TermExpr DataConstructor SLoc -> StateT (Map.Map MetaTVar SmallId) (ExceptT ErrMsg m) (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int))
     infer (Var loc var) = do
         mtv <- getNewMTV "A"
@@ -266,7 +281,7 @@ inferType type_env = flip runStateT Map.empty . infer where
         mtv <- getNewMTV "A"
         used_mtvs <- get
         let disagrees = (snd (getAnnot term1'), snd (getAnnot term2') `mkTyArrow` TyMTV mtv) : [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
-        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr used_mtvs loc
+        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr db used_mtvs loc
         let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
             assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
         put used_mtvs'
@@ -279,11 +294,11 @@ inferType type_env = flip runStateT Map.empty . infer where
                 return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var h term', assumptions)
             Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
 
-checkType :: MonadUnique m => TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
-checkType type_env term expected_typ = do
-    ((term', assumptions), used_mtvs) <- inferType type_env term
+checkType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
+checkType db type_env term expected_typ = do
+    ((term', assumptions), used_mtvs) <- inferType db type_env term
     let actual_typ = snd (getAnnot term')
-    theta <- catchE (actual_typ ->> expected_typ) $ throwE . mkTyErr used_mtvs (getAnnot term)
+    theta <- catchE (actual_typ ->> expected_typ) $ throwE . mkTyErr db used_mtvs (getAnnot term)
     let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
         assumptions' = substMTVars theta assumptions
     return (zonkMTV theta term', (used_mtvs', assumptions'))

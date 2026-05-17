@@ -1,0 +1,13 @@
+% Spec 1.6 core invariant + 2.7 (W) write-boundary fold for the typing
+% context display. The kernel never sees `pp` -- it sees `list nat`,
+% the form `expandTypeRep` produced. The debugger's `_typing` block
+% is, however, a user-facing surface, so the runtime pipes every
+% MonoType through `Notation.tryFoldType` immediately before the
+% structural printer touches it. A registered `abbrev pp := list nat.`
+% therefore makes `_typing` print `X : pp` instead of `X : list nat`.
+% Regressing to the kernel-form display means the abbreviation has
+% leaked past the write boundary (or, equivalently, the fold-table /
+% Runtime threading has been broken).
+abbrev pp := list nat.
+type p (pp -> o).
+p [1, 2, 3].

@@ -1,0 +1,4 @@
+Hol
+Test/notation/typing_error_fold.hol
+:q
+

@@ -1,0 +1,63 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.notation.typing_fold ( Test/notation/typing_fold.hol, interpreted )
+Test.notation.typing_fold> Ok, one module loaded.
+Test.notation.typing_fold> Test.notation.typing_fold> Debugging mode on.
+Test.notation.typing_fold> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- p X ] # call_id = 14
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : pp
+            ]
+        , _thread_id = 14
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.notation.typing_fold> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 15
+        ]
+    + context = Context
+        { _substitution = 
+            [ X := [1, 2, 3]
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : pp
+            ]
+        , _thread_id = 15
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.notation.typing_fold> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ X := [1, 2, 3]
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : pp
+            ]
+        , _thread_id = 15
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.notation.typing_fold> Press the enter key to go to next state: Test.notation.typing_fold> The answer substitution is:
+Test.notation.typing_fold> X := [1, 2, 3].
+Test.notation.typing_fold> Find more solutions? [Y/n] Test.notation.typing_fold> yes.
+Test.notation.typing_fold> Hol >>= quit

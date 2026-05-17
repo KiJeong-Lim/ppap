@@ -1,0 +1,8 @@
+% Spec 1.5: user override of a built-in symbolic operator's display
+% precedence. Default seeds `+` at prec 6 and `*` at prec 7, so under
+% defaults the answer `(1 + 2) * 3` displays as `(1 + 2) * 3` (the
+% `+` subterm needs parens to survive being printed under `*`).
+% Raising `+` to prec 8 (above `*`) drops the parens around `1 + 2`.
+% Parsing is unaffected (grammar-fixed precedences); only the display
+% changes, which is exactly what NotationDB.fixity controls.
+infixl + 8.

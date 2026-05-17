@@ -1,7 +1,10 @@
-% Section 1.6.2: a user-defined term notation gets expanded by the
-% desugarer at every call site. `duplo X := pair X X.` declared once,
-% then `duplo 7` everywhere it appears (in facts and in queries) is
-% rewritten to `pair 7 7` before the type checker runs.
+% Section 1.6.2 (read) + 2.7 (write): the term notation
+% `duplo X := pair X X.` is expanded at every call site so the kernel
+% only ever sees `pair 7 7`. At display time the 2.7 fold pre-pass
+% folds matched subterms back to `duplo 7`, so the answer below is
+% `Y := duplo 7.`, not `Y := pair 7 7.`. Regressing to `pair 7 7`
+% means the term fold table is empty (populateTermFoldTable broken)
+% or the viewer pre-pass no longer runs.
 kind myt type.
 type pair (nat -> nat -> myt).
 notation duplo X := pair X X.

@@ -1,0 +1,10 @@
+% Spec 2.7.1 (T): the type checker pipes every MonoType through the
+% same write-boundary fold before emitting an error message. With
+% `abbrev pp := list nat.` declared, a fact whose body fails type
+% checking (`p 7.` where p expects `pp` but 7 is `nat`) prints the
+% mismatch as `nat -> o` vs `pp -> o` instead of leaking the kernel
+% form `nat -> o` vs `list nat -> o`. Regressing here means the type
+% checker no longer threads NotationDB through showMonoType/mkTyErr.
+abbrev pp := list nat.
+type p (pp -> o).
+p 7.

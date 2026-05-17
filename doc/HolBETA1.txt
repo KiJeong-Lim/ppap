@@ -229,7 +229,7 @@ Implementation status (2026-05-17):
   - The lexer reserves all four keywords (`infixl`/`infixr`/`infix`/`prefix`) plus `abbrev`/`notation` (§1.6). `presburger` remains intentionally non-reserved (§2.3.3).
   - The parser accepts the four fixity-declaration forms above and produces a `RFixityDecl SLoc FixityForm SmallId Integer` constructor on `DeclRep`.
   - **Semantics are wired (2026-05-17)**: `Desugarer.collectNotation` folds every `RFixityDecl` into the per-program `NotationDB` seeded by `Notation.initial`. `desugarProgram` returns the DB alongside the `Program`; `Main.runREPL` threads it into `RuntimeEnv._NotationDB`; `Notation.constructViewerWithDB` (via `Debugger.prettyTerm`) consumes it, so answer substitutions, `:assign`/`:show` output, and residual constraints all honour user-declared fixity. "Last declared wins" follows from `Map.insert` semantics.
-  - **Restriction (first cut)**: the `<op>` slot is currently parsed as `T_id` only. Built-in symbolic operators (`+`, `=`, `::`, ...) cannot yet be re-declared because the parser does not yet enumerate alternatives for the corresponding token classes. This restriction is mechanical, not semantic — extending the grammar is straightforward but was deferred to keep the first cut small.
+  - **Symbolic operator override is wired (2026-05-17)**: the parser now accepts the built-in symbolic operators (`+`, `-`, `*`, `/`, `=`, `=<`, `<`, `>=`, `>`, `::`) in the `<op>` slot of every fixity declaration form, via the `$SymOp` helper non-terminal. Because all of these names are pre-seeded in `Notation.initial`, a user re-declaration (e.g. `infixl + 8.`) simply overwrites the seed under "last declared wins" and the change is immediately visible in the viewer. Regression guard: `Test/notation/sym_operator.hol` re-precedences `+` above `*` and confirms `(1 + 2) * 3` prints as `1 + 2 * 3` (parens dropped because the inner `+` now binds tighter than the outer `*`).
 
 The built-in fixity table (the BETA1 defaults, user-redefinable):
 
@@ -259,6 +259,28 @@ the difference is that BETA1 carries it as data (inside the `NotationDB` of §4.
 
 1.6 Abbreviations and Notations
 --------------------------------------------------------------------------------
+
+**Core invariant.** Abbreviations and notations are *purely a user-I/O
+device*. The kernel — `TermNode`, `MonoType`, the unifier, HOPU, the
+type checker, the runtime — never sees, stores, or reasons about them.
+They exist in exactly two places:
+
+  (R) The read boundary (desugaring, §1.6.3). User input that names
+      an abbreviation is *expanded* into kernel form before any
+      kernel function touches it. After desugaring, no kernel-internal
+      structure mentions the abbreviation.
+
+  (W) The write boundary (pretty printer, §2.7). Just before kernel
+      values become characters on the user's screen, the printer
+      *folds* registered RHS shapes back into their declared name.
+      The kernel value is never rewritten in place.
+
+This invariant makes abbreviations free: a wrong, missing, or
+overlapping declaration can affect only display and parsing, never
+proof search, unification, or equality. It also lets us reason about
+the runtime without ever opening the `NotationDB` — every kernel
+operation is identical to the one it would be if no abbreviation
+had ever been declared.
 
 BETA1 follows Coq's `Notation` convention closely (motto, §0.1.4): a
 *parsing rule* that expands eagerly at desugaring time, and a *display
@@ -344,16 +366,51 @@ Implementation status (2026-05-17):
     type checker runs, so the surface tree reaching `makeTypeEnv` /
     `desugarTerm` is already fully expanded. `Main.runREPL` does the
     same to every query (interactive and `:assign`-synthesised).
-  - **Restriction (first cut)**: substitution is shadowing-aware but
-    not capture-avoiding. Notation parameter names that collide with
-    binders inside the body would capture; user code should pick
-    parameter names that avoid this. The fully capture-avoiding
-    implementation is deferred.
-  - **Display-direction fold (§2.7) is deferred**: user-declared
-    notation/abbrev bodies are not yet compiled to `TermNode`
-    templates, so the runtime never re-folds an expanded term back
-    into its `notation` head. Only the parsing direction (§1.6.3)
-    runs end-to-end at present.
+  - Substitution is **capture-avoiding** (2026-05-17): `Notation.substTermRep`
+    α-renames an `RAbs` binder to a fresh suffix (`x_1`, `x_2`, …)
+    whenever its bound name would shadow a free variable of the
+    substituted-in argument. `TypeRep` has no binders, so `substTypeRep`
+    is trivially capture-free. Regression guard:
+    `Test/notation/capture.hol` (a `lift F := Y\ cnst (F Y)` body called
+    with `(Z\ Y)` where outer `Y` is a free fact variable).
+  - **Display-direction fold (§2.7) — fully wired (2026-05-18)**:
+    Two pieces seed `NotationDB._entries` from the program's
+    declarations:
+      • `Desugarer.populateTypeFoldTable` runs after `makeKindEnv`
+        and, for every `abbrev`, lifts the RHS through
+        `typeRepToMono` → `Notation.addAbbrev` → `compileTypeTemplate`.
+      • `Desugarer.populateTermFoldTable` runs after `makeTypeEnv`
+        and, for every `notation`, replays the query-compilation
+        pipeline on the RHS (desugar with the parameters pre-bound
+        to fresh IVars → `inferType` → `convertQuery` with each
+        parameter IVar mapped to `LV_Named <param>`). The resulting
+        `TermNode` template carries the parameters as `LV_Named`
+        leaves — exactly the shape `Notation.matchTerm` expects.
+        Notations whose RHS fails any compilation step are silently
+        dropped (parsing-direction expansion still works).
+    Three write-boundary paths consume the table:
+      • `Notation.foldTermAsNode` (viewer pre-pass) folds matched
+        subtrees in answer-substitution / debugger TermNode output
+        before `makeView`.
+      • `Notation.tryFoldType` + `Runtime.showsMonoType` fold each
+        node of a typing-context MonoType, so `_typing` blocks and
+        `:assign error` messages print `X : pp` instead of
+        `X : list nat`.
+      • `TypeChecker.showMonoType` and `mkTyErr` now take a
+        `NotationDB`, so §2.7.1 (T) type-checker error messages
+        ("expected_typ = `pp -> o'", "couldn't solve `pp' ~ `nat'")
+        fold the same way. `inferType` / `checkType` carry the
+        `NotationDB` through their callers (the three `Main.hs`
+        sites for fact / query / `:assign`, and `populateTermFoldTable`
+        itself with the type-only fold table seeded first).
+    In every case the kernel `TermNode` / `MonoType` is *never*
+    rewritten — the fold is purely a printer concern, satisfying
+    §1.6's core invariant. Regression guards:
+    `Test/notation/typing_fold.hol` (debugger `_typing` prints
+    `X : pp`), `Test/notation/notation.hol` (the answer prints
+    `Y := duplo 7.` instead of `Y := pair 7 7.`), and
+    `Test/notation/typing_error_fold.hol` (type-checker error
+    prints `pp -> o` / `pp ~ nat` instead of the kernel form).
 
 
 1.7 Modules
@@ -1754,6 +1811,29 @@ to run under ALPHA2.
                              second `abbrev nats := list nat.` shadows
                              the earlier `list char` so a list-of-nat
                              body type-checks under the same alias
+      capture.hol         -- §1.6.3 capture-avoiding substitution: a
+                             notation body `lift F := Y\ cnst (F Y).`
+                             called with `(Z\ Y)` (outer Y free) only
+                             succeeds when the body binder is α-renamed
+      sym_operator.hol    -- §1.5 symbolic operator override: raising
+                             `infixl + 8.` above the seeded `*` (prec 7)
+                             changes the answer-substitution display
+                             of `(1 + 2) * 3` to `1 + 2 * 3`
+      typing_fold.hol     -- §1.6 invariant + §2.7 (W) fold for the
+                             typing-context renderer: with
+                             `abbrev pp := list nat.` declared, the
+                             debugger's `_typing` block prints
+                             `X : pp` instead of `X : list nat`,
+                             confirming the abbreviation never
+                             leaks into the kernel MonoType and
+                             that `Runtime.showsMonoType` honours
+                             the fold table
+      typing_error_fold.hol
+                          -- §2.7.1 (T): a fact `p 7.` whose body
+                             fails type checking under `type p (pp -> o).`
+                             prints the mismatch as `pp -> o` / `pp ~ nat`,
+                             confirming `TypeChecker.showMonoType` /
+                             `mkTyErr` thread the NotationDB
     smoke.sh              -- runs every `Test/**/*.hol` through
                              BETA1 with a scripted REPL transcript
                              alongside.
@@ -1765,8 +1845,8 @@ first line is `Hol` and the second line is the `.hol` path), and
 byte-for-byte; any mismatch fails the suite. Re-record after an
 intentional change with `./Test/smoke.sh --update`.
 
-Status (2026-05-17): eighteen cases authored — six presburger, seven
-debug, one kind, four notation. `solver_sanity.hol`, `residual.hol`,
+Status (2026-05-18): twenty-two cases authored — six presburger, seven
+debug, one kind, eight notation. `solver_sanity.hol`, `residual.hol`,
 `entailment_drop.hol`, and `assign_t4.hol` were the regressions that
 surfaced (and forced fixes of) two QE bugs in
 `Calc.Presburger.Internal`, a silent `printAnswer` reject, and the

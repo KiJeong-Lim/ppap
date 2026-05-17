@@ -21,12 +21,19 @@ module Hol.BETA1.Notation
     , addTermNotationDecl
     , lookupTypeAbbrev
     , lookupTermNotation
+    , typeAbbrevList
+    , termNotationList
     , expandTermRep
     , expandTypeRep
+    -- §2.7 fold pre-pass for the viewer
+    , foldTermAsNode
+    -- §2.7 type-level fold for the typing-context renderer
+    , tryFoldType
     ) where
 
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
+import qualified Data.Set as Set
 import Hol.BETA1.Constant
 import Hol.BETA1.Header
 import Hol.BETA1.PlanHolLexer
@@ -199,7 +206,8 @@ notationCheckOper db con =
 -- out of `db` (built by the desugarer from the program's §1.5
 -- `infix*`/`prefix` declarations) rather than `defaultCheckOper`.
 constructViewerWithDB :: NotationDB -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
-constructViewerWithDB db = constructViewerCustom (notationCheckOper db)
+constructViewerWithDB db lookupName t =
+    constructViewerCustom (notationCheckOper db) lookupName (foldTermAsNode db t)
 
 -- =============================================================
 -- Folding
@@ -253,6 +261,74 @@ tryMatch entries t = firstJust
         return (_feKind e, _feName e, args)
     | e <- entries
     ]
+
+-- §2.7 type-level fold for the typing-context renderer. The runtime
+-- prints a `MonoType Int` directly (no viewer round-trip), so it needs
+-- its own path into the fold table. We compile the candidate to a
+-- TermNode (env-free; TyMTV becomes LV_ty_var, TyVar Int becomes a
+-- placeholder LV_Named — typing display never carries TyVar Int in
+-- practice, but the case keeps the function total), run the same
+-- `tryMatch` used by the viewer fold, then convert the matched args
+-- *back* to MonoType Int so the caller can recurse with its existing
+-- printer. The round-trip is lossless for the shapes that occur in
+-- well-typed runtime contexts (TyApp / TyCon / TyMTV); anything else
+-- causes the match to be discarded, leaving the caller to fall back
+-- to the structural printer.
+tryFoldType :: NotationDB -> MonoType Int -> Maybe (SmallId, [MonoType Int])
+tryFoldType db t = case tryMatch typeEntries (monoTypeIntToNode t) of
+    Just (EK_Type, name, argNodes) -> do
+        args <- traverse nodeToMonoTypeInt argNodes
+        return (name, args)
+    _ -> Nothing
+  where
+    typeEntries = filter (\e -> _feKind e == EK_Type) (_entries db)
+
+-- Env-free MonoType Int → TermNode lift used by `tryFoldType`. The
+-- kernel never stores abbreviations, so this conversion is only ever
+-- a temporary shape for the fold matcher and is discarded immediately
+-- after `tryMatch` returns.
+monoTypeIntToNode :: MonoType Int -> TermNode
+monoTypeIntToNode (TyVar i) = mkLVar (LV_Named ("a_" ++ show i))
+monoTypeIntToNode (TyMTV m) = mkLVar (LV_ty_var m)
+monoTypeIntToNode (TyCon (TCon tc _)) = mkNCon tc
+monoTypeIntToNode (TyApp t1 t2) = mkNApp (monoTypeIntToNode t1) (monoTypeIntToNode t2)
+
+-- Inverse of `monoTypeIntToNode` restricted to the type-representable
+-- TermNode shapes the fold matcher hands back. Kind information is
+-- lost on round-trip (we substitute `Star` as a display-only dummy);
+-- this is harmless because the typing-display printer never inspects
+-- the embedded `KindExpr`.
+nodeToMonoTypeInt :: TermNode -> Maybe (MonoType Int)
+nodeToMonoTypeInt (LVar (LV_ty_var m)) = Just (TyMTV m)
+nodeToMonoTypeInt (NCon (TC tc)) = Just (TyCon (TCon tc Star))
+nodeToMonoTypeInt (NApp t1 t2) = TyApp <$> nodeToMonoTypeInt t1 <*> nodeToMonoTypeInt t2
+nodeToMonoTypeInt _ = Nothing
+
+-- §2.7 (P) display-time fold, run as a TermNode -> TermNode rewrite
+-- *before* the viewer's makeView pass. Walks bottom-up; at each
+-- position, tries to fold the post-rewrite subtree against the
+-- registered entries. A successful match replaces the subtree by a
+-- `<name> arg1 arg2 ...` application whose head is `NCon (DC_Named
+-- name)` (term notation) or `NCon (TC_Named name kind)` (type
+-- abbrev). Because the rewritten head feeds back into makeView, the
+-- viewer renders the folded form using the same DC_Named/TC_Named
+-- machinery (and notationCheckOper looks up its fixity). The arguments
+-- are themselves folded recursively before being spliced under the
+-- new head.
+foldTermAsNode :: NotationDB -> TermNode -> TermNode
+foldTermAsNode db = go where
+    go t = tryHere $ case t of
+        NApp t1 t2 -> NApp (go t1) (go t2)
+        NLam mhint ty body -> NLam mhint ty (go body)
+        Susp body env_n env_l mtv -> Susp (go body) env_n env_l mtv
+        _ -> t
+    tryHere t = case tryMatch (_entries db) t of
+        Just (kind, name, args) ->
+            let head_ = case kind of
+                    EK_Type -> mkNCon (TC_Named name)
+                    EK_Term -> mkNCon (DC_Named name)
+            in List.foldl' mkNApp head_ (map go args)
+        Nothing -> t
 
 -- First-order pattern matching on TermNodes. A parameter named in
 -- `params` appears as `LVar (LV_Named name)` inside the template and
@@ -337,17 +413,31 @@ lookupTypeAbbrev name db = Map.lookup name (_typeAbbrevs db)
 lookupTermNotation :: SmallId -> ExpansionDB -> Maybe ([LargeId], TermRep)
 lookupTermNotation name db = Map.lookup name (_termNotations db)
 
+-- §2.7 fold table population reads every registered type abbreviation
+-- so the desugarer can compile each RHS into a TermNode template and
+-- register it with `addAbbrev`. Returned in declaration-independent
+-- order (Map ascending); seq-based "last declared wins" is preserved
+-- by `addEntry` because each call increments `_nextSeq`.
+typeAbbrevList :: ExpansionDB -> [(SmallId, [LargeId], TypeRep)]
+typeAbbrevList db = [ (name, ps, rhs) | (name, (ps, rhs)) <- Map.toList (_typeAbbrevs db) ]
+
+-- Term-level analogue. The desugarer compiles each RHS through
+-- desugar/infer/convert and feeds the resulting `TermNode` template
+-- to `addNotation`; the viewer's `foldTermAsNode` pre-pass then
+-- re-folds matched subterms back to the user's `notation` head.
+termNotationList :: ExpansionDB -> [(SmallId, [LargeId], TermRep)]
+termNotationList db = [ (name, ps, rhs) | (name, (ps, rhs)) <- Map.toList (_termNotations db) ]
+
 -- =============================================================
 -- §1.6.3 expansion: surface-level recursive descent
 -- =============================================================
 --
 -- Both expanders walk the surface tree bottom-up and, whenever they
 -- find a head that matches a registered abbreviation/notation, splice
--- the body in place with capture-shadowing substitution (binders
--- inside the body remove the corresponding parameter from the env).
--- True capture-avoidance is not yet implemented — callers should use
--- parameter names that do not collide with any bound identifier in the
--- body. The 1st-cut limitation is documented in §1.6.3 of the spec.
+-- the body in place with capture-avoiding substitution (RAbs binders
+-- in the body are α-renamed when their bound name would capture a free
+-- variable of the substituted-in argument). TypeRep has no binders so
+-- substTypeRep is trivially capture-free.
 
 unfoldlTermApp :: TermRep -> (TermRep, [TermRep])
 unfoldlTermApp = go [] where
@@ -365,6 +455,29 @@ reapplyTerm loc = List.foldl' (\acc arg -> RApp loc acc arg)
 reapplyType :: SLoc -> TypeRep -> [TypeRep] -> TypeRep
 reapplyType loc = List.foldl' (\acc arg -> RTyApp loc acc arg)
 
+-- Free variable set of a TermRep. Only RVar contributes; RAbs binders mask
+-- their parameter from the resulting set. Used to decide when α-renaming
+-- is needed during substitution.
+freeVarsOfTermRep :: TermRep -> Set.Set LargeId
+freeVarsOfTermRep t = case t of
+    R_wc _ -> Set.empty
+    RVar _ x -> Set.singleton x
+    RCon _ _ -> Set.empty
+    RApp _ t1 t2 -> Set.union (freeVarsOfTermRep t1) (freeVarsOfTermRep t2)
+    RAbs _ x body -> Set.delete x (freeVarsOfTermRep body)
+    RPrn _ t' -> freeVarsOfTermRep t'
+
+-- Pick a fresh LargeId not present in `avoid`, derived from a base name by
+-- appending `_1`, `_2`, … until a non-colliding candidate is found.
+freshNameAvoiding :: Set.Set LargeId -> LargeId -> LargeId
+freshNameAvoiding avoid base
+    | not (Set.member base avoid) = base
+    | otherwise = go (1 :: Int)
+  where
+    go n =
+        let candidate = base ++ "_" ++ show n
+        in if Set.member candidate avoid then go (n + 1) else candidate
+
 substTermRep :: Map.Map LargeId TermRep -> TermRep -> TermRep
 substTermRep env t = case t of
     R_wc loc -> R_wc loc
@@ -373,7 +486,27 @@ substTermRep env t = case t of
         Nothing -> RVar loc x
     RCon loc c -> RCon loc c
     RApp loc t1 t2 -> RApp loc (substTermRep env t1) (substTermRep env t2)
-    RAbs loc x body -> RAbs loc x (substTermRep (Map.delete x env) body)
+    RAbs loc x body
+        | Map.member x env ->
+            -- Shadowing: the binder masks the parameter on its scope; drop
+            -- it from the env and recurse. Other env entries still apply,
+            -- so we may still need α-renaming below (handled by recursion).
+            RAbs loc x (substTermRep (Map.delete x env) body)
+        | Set.member x rhsFV ->
+            -- Capture would occur: α-rename the binder to a fresh name,
+            -- substitute the old binder for the fresh one in body, then
+            -- apply the outer substitution. The forbidden set unions the
+            -- env's free vars, the body's free vars, and the env's domain
+            -- (so the fresh name cannot accidentally become a key of env).
+            let bodyFV = freeVarsOfTermRep body
+                avoid = Set.unions [rhsFV, bodyFV, Map.keysSet env]
+                x' = freshNameAvoiding avoid x
+                renamed = substTermRep (Map.singleton x (RVar loc x')) body
+            in RAbs loc x' (substTermRep env renamed)
+        | otherwise ->
+            RAbs loc x (substTermRep env body)
+      where
+        rhsFV = Set.unions (map freeVarsOfTermRep (Map.elems env))
     RPrn loc t' -> RPrn loc (substTermRep env t')
 
 substTypeRep :: Map.Map LargeId TypeRep -> TypeRep -> TypeRep

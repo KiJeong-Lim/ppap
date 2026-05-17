@@ -4,6 +4,7 @@ import Calc.Presburger.Internal
 import Hol.BETA1.Arith
 import Hol.BETA1.Debugger
 import Hol.BETA1.Notation (NotationDB)
+import qualified Hol.BETA1.Notation as Notation
 import Hol.BETA1.TermNode
 import Hol.BETA1.HOPU
 import Hol.BETA1.Constant
@@ -357,16 +358,33 @@ showsvdash space (hyp : hyps) goal = shows hyp . strstr ", " . showsvdash space 
 -- is reserved for runtime-introduced ty_var references (produced by
 -- `instantiateFact LO_ty_pi`'s `substTyMTV` pass) and renders as
 -- `?TV_<n>` so it lines up with the CMTT context's bare-name form.
-showsMonoType :: Int -> MonoType Int -> ShowS
-showsMonoType _ (TyVar i) = strstr "a_" . shows i
-showsMonoType _ (TyMTV mtv) = strstr "?t" . shows mtv
-showsMonoType _ (TyCon (TCon (TC_Unique uni) _)) = strstr "?TV_" . shows (unUnique uni)
-showsMonoType _ (TyCon (TCon tc _)) = shows tc
-showsMonoType prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2) =
-    let inner = showsMonoType 5 t1 . strstr " -> " . showsMonoType 4 t2
+-- §1.6/§2.7 (W) write boundary: type-level fold runs immediately
+-- before the structural printer touches a `MonoType Int`. The kernel
+-- value itself is never rewritten — `tryFoldType` only inspects it
+-- and, on match, hands back a `(name, args)` view that the printer
+-- renders as `name arg1 arg2 ...`. Args are themselves passed back
+-- through `showsMonoType` so nested abbreviations fold uniformly.
+showsMonoType :: NotationDB -> Int -> MonoType Int -> ShowS
+showsMonoType db prec t = case Notation.tryFoldType db t of
+    Just (name, []) -> strstr name
+    Just (name, args) ->
+        let inner = strstr name . List.foldr (.) id [ strstr " " . showsMonoType db 7 a | a <- args ]
+        in if prec > 6 then strstr "(" . inner . strstr ")" else inner
+    Nothing -> showsMonoTypeRaw db prec t
+
+-- Structural printer used when no abbreviation matches at this node.
+-- Subterms are recursed through `showsMonoType` so a deeper match
+-- (e.g. inside an `->`) still folds.
+showsMonoTypeRaw :: NotationDB -> Int -> MonoType Int -> ShowS
+showsMonoTypeRaw _  _    (TyVar i) = strstr "a_" . shows i
+showsMonoTypeRaw _  _    (TyMTV mtv) = strstr "?t" . shows mtv
+showsMonoTypeRaw _  _    (TyCon (TCon (TC_Unique uni) _)) = strstr "?TV_" . shows (unUnique uni)
+showsMonoTypeRaw _  _    (TyCon (TCon tc _)) = shows tc
+showsMonoTypeRaw db prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2) =
+    let inner = showsMonoType db 5 t1 . strstr " -> " . showsMonoType db 4 t2
     in if prec > 4 then strstr "(" . inner . strstr ")" else inner
-showsMonoType prec (TyApp t1 t2) =
-    let inner = showsMonoType 6 t1 . strstr " " . showsMonoType 7 t2
+showsMonoTypeRaw db prec (TyApp t1 t2) =
+    let inner = showsMonoType db 6 t1 . strstr " " . showsMonoType db 7 t2
     in if prec > 6 then strstr "(" . inner . strstr ")" else inner
 
 -- Render a `LogicVar` using the same convention as `TermNode`'s viewer
@@ -391,11 +409,11 @@ showLVarVN (LV_Named name) = strstr name
 -- back into a younger variable). Empty contexts still render as
 -- `(|- t)` so the CMTT shape is uniform across all LVs (including
 -- `LV_Named` query variables at scope 0).
-showsMonoTypeIn :: Bool -> Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
-showsMonoTypeIn False _ _ mtyp = case mtyp of
-    Just t -> showsMonoType 0 t
+showsMonoTypeIn :: NotationDB -> Bool -> Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
+showsMonoTypeIn db False _ _ mtyp = case mtyp of
+    Just t -> showsMonoType db 0 t
     Nothing -> strstr "?"
-showsMonoTypeIn True labeling lv mtyp = render lv mtyp where
+showsMonoTypeIn db True labeling lv mtyp = render lv mtyp where
     render :: LogicVar -> Maybe (MonoType Int) -> ShowS
     render lv mtyp =
         let (scope_v, myK) = case lv of
@@ -421,11 +439,11 @@ showsMonoTypeIn True labeling lv mtyp = render lv mtyp where
                 [] -> strstr "("
                 _ -> strstr "(" . sepBy (strstr ", ") entries . strstr " "
             renderedTy = case mtyp of
-                Just t -> showsMonoType 0 t
+                Just t -> showsMonoType db 0 t
                 Nothing -> strstr "?"
         in prefix . strstr "|- " . renderedTy . strstr ")"
     renderCon :: Int -> MonoType Int -> ShowS
-    renderCon uni cTyp = strstr "c_" . shows uni . strstr " : " . showsMonoType 0 cTyp
+    renderCon uni cTyp = strstr "c_" . shows uni . strstr " : " . showsMonoType db 0 cTyp
     -- `?TV_<n>` (LV_ty_var, kind-level) appears as a bare name —
     -- no `: τ` since its sort lives one level up (Star/kind), which
     -- the MonoType-based renderer can't express. `?V_<n>` is rendered
@@ -442,8 +460,8 @@ showsMonoTypeIn True labeling lv mtyp = render lv mtyp where
     sepBy _ [x] = x
     sepBy sep (x : xs) = x . sep . sepBy sep xs
 
-showStackItem :: Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
-showStackItem verbose fvs typeMap space (ctx, cells) = strcat
+showStackItem :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
+showStackItem db verbose fvs typeMap space (ctx, cells) = strcat
     [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- [ " . showsvdash (space + 8) hyps goal . strstr " ] # call_id = " . shows call_id | Cell facts hyps level goal call_id <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
@@ -456,7 +474,7 @@ showStackItem verbose fvs typeMap space (ctx, cells) = strcat
     -- and from `_VarTypes` in the runtime `Labeling` for runtime-
     -- introduced anonymous vars; both are merged here.
     , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) (
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn verbose (_CurrentLabeling ctx) v (Just typ)
+        [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (Just typ)
         | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
         ]
         ++
@@ -466,7 +484,7 @@ showStackItem verbose fvs typeMap space (ctx, cells) = strcat
         -- shows `?` in that case. Skip `_TyVarKeys` entries — their
         -- "type" is kind-level (`*`), not a `MonoType`, so the line
         -- would carry no useful information.
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
+        [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
         | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
         , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
         , let v = LV_Unique (Unique uni) noHint
@@ -476,16 +494,16 @@ showStackItem verbose fvs typeMap space (ctx, cells) = strcat
     , pindent (space + 4) . strstr "}" . nl
     ]
 
-showsCurrentState :: Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
-showsCurrentState verbose fvs typeMap ctx cells stack = strcat
+showsCurrentState :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
+showsCurrentState db verbose fvs typeMap ctx cells stack = strcat
     [ strstr "--------------------------------" . nl
     , strstr "* The top of the current stack is:" . nl
-    , showStackItem verbose fvs typeMap 4 (ctx, cells) . nl
+    , showStackItem db verbose fvs typeMap 4 (ctx, cells) . nl
     , strstr "* The rest of the current stack is:" . nl
     , strcat
         [ strcat
             [ pindent 0 . strstr "- (#" . shows i . strstr ")" . nl
-            , showStackItem verbose fvs typeMap 4 item . nl
+            , showStackItem db verbose fvs typeMap 4 item . nl
             ]
         | (i, item) <- zip [1, 2 .. length stack] stack
         ]
@@ -849,7 +867,7 @@ runTransition env free_lvars = go where
                 liftIO $ do
                     dbg <- readIORef (_debuggindModeOn ctx)
                     verbose <- readIORef (_VerboseTyping env)
-                    when dbg $ _PutStr env env ctx (showsCurrentState verbose free_lvars (_TypeInfo env) ctx cells stack "")
+                    when dbg $ _PutStr env env ctx (showsCurrentState (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
                 stackAfterCb <- liftIO (readIORef (_StackRef env))
                 -- The user's `:assign` (entered via `_PutStr`) may have
                 -- arrived during the debug prompt. Re-drain so the very
