@@ -68,7 +68,7 @@
    2. 추가 사항:
       1. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
          ```
-         main C :- pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
+         main :- sigma\ C pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
          ```
       1. (대기 중) 분수(fraction), 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
@@ -88,7 +88,8 @@
    - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
    - `LoL ALPHA1`의 인터프리터를 만들 수 있는 하스켈 API도 제공해야 한다.
 
-1. `LoL ALPHA1` (대기 중): CIC 기반의 증명 스크립트 언어.
+1. `LoL ALPHA1` (대기 중):
+   CIC 기반의 증명 스크립트 언어.
    - tactic을 지원하지 않는다.
    - 과연 Hol V1 API로 만들 수 있을까? 애초에 방향이 틀린 건 아닌지 걱정됨.
 
