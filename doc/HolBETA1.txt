@@ -1995,9 +1995,9 @@ Appendix A. Open Questions
   [Feedback / Claude]
     On reflection, you are right — there is no fundamental issue.
     `:assign θ` commits a substitution; the runtime zonks all pending constraints with θ and either promotes/falsifies them or leaves them in C. Cut commits a *branch choice*, not a *constraint state*, so the two are orthogonal.
+    Closing Q6.
 
-    The only subtle UX case is hypothetical: if BETA1 later adds an `:undo` command, undoing across a cut boundary must be illegal (the cut has already discarded alternative branches).
-    For BETA1 with no `:undo`, this is moot, so I'm closing Q6 and moving the `:undo` interaction to a new Q8 if we ever revisit.
+    Note. A debugger "undo" primitive (rolling back the most recent `:assign` from inside the same session) is *intentionally not* part of Hol's design. The intended pattern for backtracking-style exploration — including the future LoL tactic engine — is for the client to *remember* prior states explicitly (e.g., via the public `snapshot` / `restore` of §4.4.1) and re-issue them as needed, rather than for the runtime to maintain an implicit undo stack. This keeps `:assign` a pure forward-only commit and avoids reconciling an undo stack with cut barriers, the display-name cache, and module reloads.
 
   [Q7] Native pretty-printing of mixed name-hint / de Bruijn terms in the presence of capture-avoiding substitution: do we need on-demand α-renaming in the viewer, or can the desugarer enforce a global uniqueness invariant?
   [A] The former sounds good. Is there any problem related to the former?
