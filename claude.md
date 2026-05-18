@@ -7,7 +7,8 @@
 ## 코딩 가이드라인
 
 ### 무조건 지켜야 하는 사항
-1. 하늘이 무너져도 절대 unsafe류를 쓰지 말 것.
+1. 하늘이 무너져도 절대 unsafe류를 쓰지 말아야 한다.
+1. 디렉토리 `src/X/`에서 C ffi 작업을 한다. 즉, 모든 C 코드와 그 하스켈 래퍼는 디렉토리 `src/X/` 안에 있어야 한다.
 
 ### 권고만 하는 사항
 1. let in을 지양하고 where을 쓸 것. do 표기법 안에서의 let은 허용함.
@@ -24,7 +25,7 @@
       x2 = t2
    in body
    ```
-와 같이 쓰지는 말것.
+   와 같이 쓰지는 말것.
 1. 하스켈 코드의 인덴테이션은 항상 4의 배수일 것.
 
 ## 나의 계획들
@@ -51,11 +52,12 @@
       2. (진행 중) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
       3. (대기 중) (B) SLoc threading: _sloc field + Header module name + debug line
    2. 추가 사항:
-      - (대기 중) `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
-      - (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`.
-        ```
-        main C :- pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
-        ```
+      1. (대기 중) `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
+      1. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`.
+         ```
+         main C :- pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
+         ```
+      1. (대기 중) 분수(fraction) 자료형 추가. (무리일 듯. 안 해도 무방함.)
    3. 확인할 점:
       1. `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       1. 이외의 Multi-head에서 발생할 수 있는 문제점.
@@ -66,6 +68,8 @@
 
 1. `LoL ALPHA1` (대기 중): CIC 기반의 증명 스크립트 언어. tactic을 지원하지 않는다.
 
-1. `Hol V2` (대기 중): 이것의 API로 `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다. [elpi](https://github.com/LPCIC/elpi)처럼 `main` 함수를 만들 것.
+1. `Hol V2` (대기 중): 이것의 API로 `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
+   - `Hol V1`의 완전한 상위호환이다.
+   -  [elpi](https://github.com/LPCIC/elpi)처럼 `main` 함수를 만들 것.
 
 1. `LoL BETA2` (대기 중): `LoL ALPHA1`을 계승한, CIC 기반의 증명 스크립트 언어. tactic을 지원한다.
