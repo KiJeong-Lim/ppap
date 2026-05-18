@@ -79,6 +79,7 @@ executable ppap
     Hol.BETA2.TermNode
     Hol.BETA2.TypeChecker
     Hol.Main
+    Hol.V1.Main
     IsabelleHol.Dependecies
     Json.JsonAst
     Json.JsonLexer
