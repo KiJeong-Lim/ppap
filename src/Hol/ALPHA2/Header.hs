@@ -174,6 +174,7 @@ instance Read KindExpr where
     readsPrec 0 str0 = [ (kin1 `KArr` kin2, str2) | (kin1, ' ' : '-' : '>' : ' ' : str1) <- readsPrec 1 str0, (kin2, str2) <- readsPrec 0 str1 ] ++ readsPrec 1 str0
     readsPrec 1 ('*' : str0) = [(Star, str0)]
     readsPrec 1 ('(' : str0) = [ (kin, str1) | (kin, ')' : str1) <- readsPrec 0 str0 ]
+    readsPrec _ _ = []
     readList = undefined
 
 instance Outputable KindExpr where
