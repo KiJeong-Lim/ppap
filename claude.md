@@ -66,19 +66,20 @@
       2. (진행 중) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
       3. (대기 중) (B) SLoc threading: _sloc field + Header module name + debug line
    2. 추가적인 구현 사항:
-      1. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
-         ```
-         main :- sigma\ C pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
-         ```
-         그러나, 이 기능을 추가할 때, 기존의 의미론과 조화로운지를 반드시 검토해야 한다.
-      1. (대기 중) 분수(fraction), 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
+      3번 사항과 4번 사항은 안 구현해도 괜찮지만, 1번 사항과 2번 사항은 구현하고 싶다.
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
          ```
          type print (A -> o). % X := 3일 때 `print X`하면, 3을 출력함.
          type read (A -> o).  % X가 unbounded일 때 `read X`하면, X := 3가 됨.
          ```
-         debugger나 assign이 이미 있는데, 굳이 필요할까 하는 생각이 든다.
-      1. (대기 중) `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면). 지금 당장은 넣지 말고, 후속 프로젝트에서 필요하면 넣는 게 좋을 듯.
+         debugger나 assign이 이미 있긴 하지만 필요하다고 생각한다.
+      2. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
+         ```
+         main :- sigma\ C pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
+         ```
+         그러나, 이 기능을 추가할 때, 기존의 의미론과 조화로운지를 반드시 검토해야 한다.
+      3. (대기 중) 분수(fraction), 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
+      4. (대기 중) `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면). 지금 당장은 넣지 말고, 후속 프로젝트에서 필요하면 넣는 게 좋을 듯.
    3. 확인할 점:
       1. `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       1. 위 사항 이외의 Multi-head에서 발생할 수 있는 문제점 생각하기.
