@@ -13,17 +13,17 @@
 1. let in을 지양하고 where을 쓸 것. do 표기법 안에서의 let은 허용함.
 1. 되도록이면 짧은 여러 줄 대신 긴 한 줄로 작성할 것.
 1. let in은 쓰더라도,
-```hs
-let x1 = t1 in
-let x2 = t2 in
-body
-```
-와 같이 쓰고,
-```hs
-let x1 = t1
-    x2 = t2
-in body
-```
+   ```hs
+   let x1 = t1 in
+   let x2 = t2 in
+   body
+   ```
+   와 같이 쓰고,
+   ```hs
+   let x1 = t1
+      x2 = t2
+   in body
+   ```
 와 같이 쓰지는 말것.
 1. 하스켈 코드의 인덴테이션은 항상 4의 배수일 것.
 
