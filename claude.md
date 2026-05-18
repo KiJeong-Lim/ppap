@@ -23,9 +23,10 @@
    - 디버깅하는 동안, 대화형으로 flexible variable (LVar)를 instantiate할 수 있게 하는 기능도 만들고 싶다. 이는 대화형 증명보조기의 택틱을 구현하는 데 핵심이 될 기술이다.
 
 2. `Hol BETA2`:
-   1. (C) Multi-head: parser ampersand production + Desugarer body cloning
-   2. (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
-   3. (B) SLoc threading: _sloc field + Header module name + debug line
+   - 현재 Task들:
+     1. (C) Multi-head: parser ampersand production + Desugarer body cloning
+     2. (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
+     3. (B) SLoc threading: _sloc field + Header module name + debug line
+   - `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
 
 3. `Hol V1`: Hol 프로젝트 정식 넘버링 (v1.0.0)
-   - `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
