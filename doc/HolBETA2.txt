@@ -7,20 +7,20 @@ This document specifies the syntax and semantics of `Hol BETA2`, a dialect of
 BETA1 working and additionally provides:
 
   (A) A first-class module system: an optional `module <name>.` header, an
-      `import <name>.` declaration that brings another file's declarations
-      into scope, and a consistency check that turns silently-disagreeing
-      imports into compile errors.
+  `import <name>.` declaration that brings another file's declarations
+  into scope, and a consistency check that turns silently-disagreeing
+  imports into compile errors.
   (B) Source-location threading from the surface syntax all the way through
-      desugaring, type checking, runtime reduction, HOPU, and the debugger.
-      Two BETA1 limitations close out: §2.3.4 ("install pass cannot reach
-      the original SLoc of a presburger literal") and §3.4 ("the source
-      location of the goal" line in debug output).
+  desugaring, type checking, runtime reduction, HOPU, and the debugger.
+  Two BETA1 limitations close out: §2.3.4 ("install pass cannot reach
+  the original SLoc of a presburger literal") and §3.4 ("the source
+  location of the goal" line in debug output).
   (C) Multi-head clauses `h_1 & ... & h_n :- body.` that desugar to `n`
-      independent clauses sharing the body (Appendix B [1] of BETA1).
+  independent clauses sharing the body (Appendix B [1] of BETA1).
   (D) A `sealed` modifier on abbreviations and notations that turns the
-      "last declared wins" rule into a compile error when the sealed name
-      is re-declared. Lets the implementation pin built-ins that must not
-      be lost (Q3 of BETA1).
+  "last declared wins" rule into a compile error when the sealed name
+  is re-declared. Lets the implementation pin built-ins that must not
+  be lost (Q3 of BETA1).
 
 Compatibility minimum: every `Test/*.hol` smoke case from BETA1 (twenty-two
 cases as of 2026-05-18) must continue to pass with byte-identical output
@@ -38,13 +38,13 @@ Chapter 0. Overview
 BETA2 pursues two goals on top of BETA1's four.
 
   1. *Module-resolution surface* — give the user a single, coherent story
-     for splitting code across files, importing notation tables coherently
-     (Q5), and re-exporting transitively. The motto of §0.1.4 still applies:
-     follow Coq where a choice presents itself.
+  for splitting code across files, importing notation tables coherently
+  (Q5), and re-exporting transitively. The motto of §0.1.4 still applies:
+  follow Coq where a choice presents itself.
   2. *Diagnostic fidelity* — every user-visible error must identify the
-     source position responsible for it, down to the offending token, not
-     just the offending clause. The BETA1 placeholder
-     `SLoc (0,0) (0,0)` is treated as a bug, not a feature.
+  source position responsible for it, down to the offending token, not
+  just the offending clause. The BETA1 placeholder
+  `SLoc (0,0) (0,0)` is treated as a bug, not a feature.
 
 The Coq-on-λProlog motto (§0.1.4 of BETA1) is unchanged and remains the
 tie-breaker for design decisions.
@@ -90,7 +90,7 @@ words and no new token classes.
 
   - reserved words (new) : `module`, `import`, `sealed`
   - reserved words (kept): everything from BETA1 §1.1, plus `presburger`
-                            still intentionally non-reserved (§2.3.3).
+  still intentionally non-reserved (§2.3.3).
 
 A module name is a `'.'`-separated sequence of *lowercase* identifiers:
 
@@ -146,12 +146,12 @@ who imports `M`.
 Two surface restrictions, both enforced at desugaring:
 
   (i)  All `import` declarations must precede the first non-import
-       declaration in the file. A second `import` after a clause is a
-       parse error. This restricts imports to a "header band" that a
-       reader can scan in one place.
+  declaration in the file. A second `import` after a clause is a
+  parse error. This restricts imports to a "header band" that a
+  reader can scan in one place.
   (ii) `import M.` and `import M.` repeated in the same file is a
-       desugaring warning, not an error; the second occurrence has no
-       effect (set semantics for the import edges).
+  desugaring warning, not an error; the second occurrence has no
+  effect (set semantics for the import edges).
 
 There is no surface mechanism for *selective* import (`import M (only a, b)`)
 or for *qualified* import (`import M as N`). Both are deferred to a future
@@ -167,8 +167,8 @@ module-loader sketch.
 BETA2 accepts the multi-head clause form (Appendix B [1] of BETA1):
 
   clause ::= ... (BETA1 forms) ...
-           | <atom> ( '&' <atom> )+ ':-' <body> '.'
-           | <atom> ( '&' <atom> )+ '.'
+          | <atom> ( '&' <atom> )+ ':-' <body> '.'
+          | <atom> ( '&' <atom> )+ '.'
 
 The `&` is a *declaration-level* separator. It binds tighter than `:-`
 but it is *not* a body connective — it must not appear inside the body
@@ -277,25 +277,25 @@ Every loaded module has a *name* of the form `s_1.s_2....s_k`. The name
 is derived as follows.
 
   (a) If the file `<path>.hol` opens with `module N.`, then the module
-      name is exactly `N`. (The compiler then checks that `N` matches
-      the file path; see §1.2.)
+  name is exactly `N`. (The compiler then checks that `N` matches
+  the file path; see §1.2.)
   (b) Otherwise, `<path>.hol` (e.g. `Example/foo/bar.hol`) becomes
-      `Example.foo.bar` — `/` replaced by `.`, the trailing `.hol`
-      stripped, no case change.
+  `Example.foo.bar` — `/` replaced by `.`, the trailing `.hol`
+  stripped, no case change.
 
 Lookup direction. An import `import M.` issued from a file at
 `<dir>/<file>.hol` is resolved by:
 
   1. Split `M` at dots to obtain segments `s_1, ..., s_k`.
   2. Look for `<dir>/s_1/s_2/.../s_k.hol`. If found, that is the
-     resolved file.
+  resolved file.
   3. Otherwise, look for `<root>/s_1/s_2/.../s_k.hol`, where `<root>`
-     is the directory the REPL was launched from (the working directory
-     of the `ppap` process). If found, that is the resolved file.
+  is the directory the REPL was launched from (the working directory
+  of the `ppap` process). If found, that is the resolved file.
   4. Otherwise, report
 
-       *** module-error[<import-loc>]:
-             ? cannot resolve module `M' from `<file>'.
+  *** module-error[<import-loc>]:
+        ? cannot resolve module `M' from `<file>'.
 
 `<dir>` precedence over `<root>` lets a directory hold its own private
 helper modules without leaking into the project-wide namespace.
@@ -319,15 +319,15 @@ Loading is a topological walk of the import graph.
 
   - Each `import M.` adds an edge `(current, M)` to the load graph.
   - The loader processes modules in depth-first order from the main
-    file: load all transitive imports first, then load the main file
-    itself.
+  file: load all transitive imports first, then load the main file
+  itself.
   - Each module is loaded *exactly once* per session, even if multiple
-    paths reach it through different importers (a "diamond" import).
+  paths reach it through different importers (a "diamond" import).
   - A back-edge — encountering a module that is already on the
-    in-progress stack — is a compile error:
+  in-progress stack — is a compile error:
 
-       *** module-error[<loc>]:
-             ? import cycle detected: <M_1> -> <M_2> -> ... -> <M_1>.
+    *** module-error[<loc>]:
+          ? import cycle detected: <M_1> -> <M_2> -> ... -> <M_1>.
 
 Order within a module. Within a single module, declarations are
 processed in source order, unchanged from BETA1. The processing order
@@ -395,13 +395,13 @@ flagged at compile time. The full taxonomy:
 
   (C1) Two imports declare the same kind constant with different kinds.
   (C2) Two imports declare the same type constant with different types
-       (after instance-equivalence checking — universally quantified
-       type variables may be α-renamed).
+  (after instance-equivalence checking — universally quantified
+  type variables may be α-renamed).
   (C3) Two imports declare the same abbreviation with different bodies
-       (modulo α-renaming of parameters).
+  (modulo α-renaming of parameters).
   (C4) Two imports declare the same notation with different bodies.
   (C5) Two imports declare the same operator with different fixity or
-       different precedence.
+  different precedence.
 
 Each is reported as
 
@@ -467,20 +467,20 @@ The desugarer expands a multi-head clause
 in three steps.
 
   (i)   Type-check the body once under a fresh logic-variable map,
-        producing a typed body `body_T` along with its monotype
-        constraints and free-variable typing.
+  producing a typed body `body_T` along with its monotype
+  constraints and free-variable typing.
   (ii)  For each head `h_i`, type-check `h_i` against `o` under the
-        same map, propagating the body's type unification. This makes
-        the multi-head clause's heads share the same logic-variable
-        types — the heads are *the same proposition* up to syntactic
-        spelling.
+  same map, propagating the body's type unification. This makes
+  the multi-head clause's heads share the same logic-variable
+  types — the heads are *the same proposition* up to syntactic
+  spelling.
   (iii) Emit `n` clauses `h_i' :- body_T'` where `body_T'` is the
-        result of freshening every internal logic variable in `body_T`
-        for clause `i`. `h_i'` uses the freshened versions of variables
-        that occur both in the head and the body, and uses the original
-        names for variables that occur only in the head — but, per (ii),
-        the *types* of those head-only variables are inherited from the
-        shared type unification.
+  result of freshening every internal logic variable in `body_T`
+  for clause `i`. `h_i'` uses the freshened versions of variables
+  that occur both in the head and the body, and uses the original
+  names for variables that occur only in the head — but, per (ii),
+  the *types* of those head-only variables are inherited from the
+  shared type unification.
 
 Equivalent surface fact. The user is free to write the desugared form
 by hand:
@@ -515,31 +515,31 @@ Three implementation strategies are admissible; the implementer
 chooses one. None of them must affect the semantic equality above.
 
   (a) Wrapper constructor: introduce `NLoc :: SLoc -> TermNode ->
-      TermNode` and strip-or-preserve it in every reducer. The
-      easiest to reason about, the most invasive to write.
+  TermNode` and strip-or-preserve it in every reducer. The
+  easiest to reason about, the most invasive to write.
   (b) Per-node side table: a `Map (StableNodeId) SLoc` keyed by a
-      counter the desugarer threads through node construction. The
-      runtime never inspects the table; only the diagnostic path
-      does. Less invasive but harder to debug when the table goes
-      stale.
+  counter the desugarer threads through node construction. The
+  runtime never inspects the table; only the diagnostic path
+  does. Less invasive but harder to debug when the table goes
+  stale.
   (c) Hint on `NLam`, `NCon`, `NApp`: add an `_sloc :: Maybe SLoc`
-      to each constructor. Symmetric with the BETA1 `_hint` field on
-      `NLam`. Medium invasion. *Recommended* — matches the BETA1
-      precedent and survives reduction trivially because reducers
-      already pattern-match constructors.
+  to each constructor. Symmetric with the BETA1 `_hint` field on
+  `NLam`. Medium invasion. *Recommended* — matches the BETA1
+  precedent and survives reduction trivially because reducers
+  already pattern-match constructors.
 
 Whichever strategy is picked, the threading must satisfy:
 
   (T1) Surface-to-TermNode: every leaf and binder reaching the
-       runtime can be traced to a specific source span.
+  runtime can be traced to a specific source span.
   (T2) Reduction preservation: a reduced term records the SLoc of
-       *some* surface position that produced it (the call site, the
-       definition site, or the redex — implementer's choice; the only
-       requirement is "not silently dropped").
+  *some* surface position that produced it (the call site, the
+  definition site, or the redex — implementer's choice; the only
+  requirement is "not silently dropped").
   (T3) Diagnostic granularity: a type error, runtime error, debugger
-       prompt, or `presburger` install-pass parse error attributes
-       its SLoc to the smallest enclosing annotated construct, not
-       to the whole clause.
+  prompt, or `presburger` install-pass parse error attributes
+  its SLoc to the smallest enclosing annotated construct, not
+  to the whole clause.
 
 (T3) is what closes the BETA1 §2.3.4 placeholder. The install pass now
 walks `RTermRep` *before* desugaring (or, equivalently, walks the SLoc-
@@ -569,10 +569,10 @@ at the originating token.
 
   - `presburger` install-pass parse errors (§2.3.3 of BETA1).
   - Type-check errors that mention a sub-term of a clause body
-    (BETA1 reported the whole clause; BETA2 reports the sub-term).
+  (BETA1 reported the whole clause; BETA2 reports the sub-term).
   - HOPU disagreement reports during debugging (BETA1 cited the hint
-    where one existed; BETA2 also cites the position where the
-    disagreement first arose).
+  where one existed; BETA2 also cites the position where the
+  disagreement first arose).
 
 Each is a strict refinement of BETA1's reporting: every BETA1 message
 is still emitted, but with a narrower SLoc.
@@ -592,14 +592,14 @@ Two clarifying notes about the inherited material under BETA2's
 module surface:
 
   (a) Implicit consistency pruning (§2.3.6 of BETA1) fires at the
-      same (T1)-(T4) sites. The set of arithmetic constraints under
-      consideration is now drawn from the full composed environment
-      μ (§2.3) — both the main file's and the imports' clauses
-      contribute.
+  same (T1)-(T4) sites. The set of arithmetic constraints under
+  consideration is now drawn from the full composed environment
+  μ (§2.3) — both the main file's and the imports' clauses
+  contribute.
   (b) The display-name cache (§3.5 of BETA1) is per-session, not
-      per-module. A logic variable's display name persists across
-      the boundary between a main-file clause and a body that
-      invokes an imported clause.
+  per-module. A logic variable's display name persists across
+  the boundary between a main-file clause and a body that
+  invokes an imported clause.
 
 
 ================================================================================
@@ -640,7 +640,7 @@ This applies uniformly to:
 
   - desugaring errors,
   - type-checking errors (still folded through `NotationDB`, §2.7.1
-    (T) of BETA1),
+  (T) of BETA1),
   - runtime / HOPU disagreement reports,
   - the debugger's per-step SLoc line (§3.1 of this doc).
 
@@ -774,7 +774,7 @@ The loader maintains three working sets:
 
   - `loaded   :: Map ModuleName ModuleEnv`  (already-completed)
   - `loading  :: [ModuleName]`              (in-progress stack, for
-                                             cycle detection)
+  cycle detection)
   - `pending  :: Queue (FilePath, SLoc)`    (imports to schedule)
 
 The main file is enqueued first with `SLoc = REPL-launch`. The loader
@@ -786,15 +786,15 @@ repeats:
   4. If `ModuleName ∈ loading`, emit cycle error and abort.
   5. Push `ModuleName` onto `loading`.
   6. Lex/parse the file. Read its `module` header (if any) and
-     check against the path-derived name (§1.2). Enqueue every
-     `import M.` from the header band into `pending`.
+  check against the path-derived name (§1.2). Enqueue every
+  `import M.` from the header band into `pending`.
   7. Recursively process the just-enqueued imports until the
-     `loading` stack is back to its pre-step-5 state.
+  `loading` stack is back to its pre-step-5 state.
   8. After all the file's dependencies are loaded, desugar the
-     file's body against the *composed* environment of those
-     dependencies. The result is a `ModuleEnv`. Run the
-     consistency checks of §2.4 against the union with already-
-     loaded modules.
+  file's body against the *composed* environment of those
+  dependencies. The result is a `ModuleEnv`. Run the
+  consistency checks of §2.4 against the union with already-
+  loaded modules.
   9. Pop `ModuleName` from `loading`; insert into `loaded`.
 
 The main file is loaded last; its `ModuleEnv` is `mainEnv`.
@@ -964,54 +964,54 @@ Questions [Q1]-[Q7] of BETA1 are inherited with the following close-
 outs.
 
   [Q3] (Display-time policy on overlapping abbreviations.) Closed in
-       BETA2 §1.5: built-in declarations are sealed and unoverridable.
-       The "last declared wins" rule of BETA1 still applies among
-       *unsealed* declarations.
+  BETA2 §1.5: built-in declarations are sealed and unoverridable.
+  The "last declared wins" rule of BETA1 still applies among
+  *unsealed* declarations.
 
   [Q5] (Module/import system.) Closed in BETA2 Chapter 1 (syntax),
-       Chapter 2 §2.1-§2.5 (semantics), and §4.2 (loader). Two
-       imports disagreeing on a name is a compile error (C1)-(C5).
-       Built-in shadowing is allowed unless the built-in was sealed.
+  Chapter 2 §2.1-§2.5 (semantics), and §4.2 (loader). Two
+  imports disagreeing on a name is a compile error (C1)-(C5).
+  Built-in shadowing is allowed unless the built-in was sealed.
 
 New open questions introduced by BETA2:
 
   [Q9] Should `:reload` be a debugger command, or should the REPL
-       always require a `:q` and relaunch?
+  always require a `:q` and relaunch?
   [A] The latter. A `:reload` that lives inside a debug session
-      would have to reconcile the session's display-name cache
-      (§3.5 of BETA1) with a new module environment, which is
-      brittle without a clear use case. The simpler contract is
-      "the file system is consulted only at REPL launch".
+  would have to reconcile the session's display-name cache
+  (§3.5 of BETA1) with a new module environment, which is
+  brittle without a clear use case. The simpler contract is
+  "the file system is consulted only at REPL launch".
 
   [Q10] What does `sealed kind` or `sealed type` mean?
   [A] Nothing in BETA2. `kind` and `type` declarations are already
-      closed by §2.3 (KindEnv / TypeEnv): once declared they cannot
-      be re-declared. `sealed` adds no additional semantics. A
-      future revision might use `sealed` to gate the *import* of a
-      kind or type constant ("private" declarations), but BETA2
-      does not.
+  closed by §2.3 (KindEnv / TypeEnv): once declared they cannot
+  be re-declared. `sealed` adds no additional semantics. A
+  future revision might use `sealed` to gate the *import* of a
+  kind or type constant ("private" declarations), but BETA2
+  does not.
 
   [Q11] Selective and qualified imports (`import M (a, b)` /
-       `import M as N`).
+  `import M as N`).
   [A] Deferred. Adding either form opens a design space (renaming
-      semantics, conflict resolution, transitivity) that the
-      single-form `import M.` of BETA2 deliberately closes off. A
-      revision may revisit once a concrete use case appears.
+  semantics, conflict resolution, transitivity) that the
+  single-form `import M.` of BETA2 deliberately closes off. A
+  revision may revisit once a concrete use case appears.
 
   [Q12] Multi-head clauses inside the body of a clause (e.g.,
-       `(p X & q X) :- body` *inside* an outer body)?
+  `(p X & q X) :- body` *inside* an outer body)?
   [A] Rejected. The `&` connective is declaration-level only
-      (§1.4). A user wanting "this fact holds in two forms"
-      writes two clauses; a user wanting "this body proves two
-      conjuncts" writes `body_1, body_2`. The two are not the
-      same operation.
+  (§1.4). A user wanting "this fact holds in two forms"
+  writes two clauses; a user wanting "this body proves two
+  conjuncts" writes `body_1, body_2`. The two are not the
+  same operation.
 
   [Q13] What is the SLoc-attribution policy for HOPU-introduced
-       sub-terms (`_sloc = Nothing`)?
+  sub-terms (`_sloc = Nothing`)?
   [A] Best-effort fill from the enclosing context (§4.3.1). If
-      no enclosing position is available either, the diagnostic
-      omits the position rather than fabricating one (§2.7.2,
-      "the absence of a position is informative").
+  no enclosing position is available either, the diagnostic
+  omits the position rather than fabricating one (§2.7.2,
+  "the absence of a position is informative").
 
 
 ================================================================================
@@ -1019,33 +1019,33 @@ Appendix B. Other Feedbacks to Claude
 ================================================================================
 
   [B1] Multi-head clauses (originally in Appendix B of BETA1):
-       implemented per §1.4 / §2.6. The desugaring is
-       declaration-level (n independent clauses, body cloned with
-       freshened logic variables). The shared-body intent is
-       respected; the shared-runtime-state expectation is rejected
-       (clauses do not share cuts or constraints).
+  implemented per §1.4 / §2.6. The desugaring is
+  declaration-level (n independent clauses, body cloned with
+  freshened logic variables). The shared-body intent is
+  respected; the shared-runtime-state expectation is rejected
+  (clauses do not share cuts or constraints).
 
   [B2] Should `import M.` accept a path literal in addition to a
-       dotted module name?
+  dotted module name?
   [Claude]
-       Recommended against. A path literal couples a user's file
-       layout to their imports textually — moving a file forces
-       every importer to update — and the dotted name uniquely
-       identifies a file under §2.1 anyway. The only motivation
-       would be importing from a non-standard location, which is
-       better served by a search-path mechanism (deferred).
+  Recommended against. A path literal couples a user's file
+  layout to their imports textually — moving a file forces
+  every importer to update — and the dotted name uniquely
+  identifies a file under §2.1 anyway. The only motivation
+  would be importing from a non-standard location, which is
+  better served by a search-path mechanism (deferred).
 
   [B3] SLoc on `NPresburgerCheck`:
   [Claude]
-       The wrapper constructor introduced by `Arith.installPresburger`
-       (§2.3.3 of BETA1, Stage 4) now carries the literal's actual
-       SLoc, not the placeholder. This is the *only* compile-time
-       effect of BETA2 on the presburger pipeline; everything else
-       in `Arith.hs` is unchanged.
+  The wrapper constructor introduced by `Arith.installPresburger`
+  (§2.3.3 of BETA1, Stage 4) now carries the literal's actual
+  SLoc, not the placeholder. This is the *only* compile-time
+  effect of BETA2 on the presburger pipeline; everything else
+  in `Arith.hs` is unchanged.
 
   [B4] Are `module` headers required for files that no one imports?
   [Claude]
-       Not required. The main file commonly has no importers; its
-       module header is optional purely as documentation. The file
-       path is always sufficient to identify it within a single
-       REPL session.
+  Not required. The main file commonly has no importers; its
+  module header is optional purely as documentation. The file
+  path is always sufficient to identify it within a single
+  REPL session.

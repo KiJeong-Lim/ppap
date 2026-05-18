@@ -84,7 +84,7 @@ Token classes:
   - string lit      : `"..."`
   - punctuation     : `( ) [ ] { } , . | \ :- => ;`
   - reserved words  : `kind`, `type`, `module`, `infixl`, `infixr`, `infix`, `prefix`, `abbrev`, `notation`, `pi`, `sigma`, `is`, `true`, `fail`, `!`, `debug`
-    (`presburger` is *not* reserved — it is recognised after desugaring; see §2.3.3.)
+  (`presburger` is *not* reserved — it is recognised after desugaring; see §2.3.3.)
   - line comment    : `% ...`
   - block comment   : `/* ... */`        (nested — see Q1)
 
@@ -266,14 +266,14 @@ type checker, the runtime — never sees, stores, or reasons about them.
 They exist in exactly two places:
 
   (R) The read boundary (desugaring, §1.6.3). User input that names
-      an abbreviation is *expanded* into kernel form before any
-      kernel function touches it. After desugaring, no kernel-internal
-      structure mentions the abbreviation.
+  an abbreviation is *expanded* into kernel form before any
+  kernel function touches it. After desugaring, no kernel-internal
+  structure mentions the abbreviation.
 
   (W) The write boundary (pretty printer, §2.7). Just before kernel
-      values become characters on the user's screen, the printer
-      *folds* registered RHS shapes back into their declared name.
-      The kernel value is never rewritten in place.
+  values become characters on the user's screen, the printer
+  *folds* registered RHS shapes back into their declared name.
+  The kernel value is never rewritten in place.
 
 This invariant makes abbreviations free: a wrong, missing, or
 overlapping declaration can affect only display and parsing, never
@@ -356,61 +356,61 @@ Built-in seeded at startup:
 Implementation status (2026-05-17):
 
   - Lexer reserves `abbrev`/`notation` and `:=`; parser produces
-    `RAbbrevDecl SLoc SmallId [LargeId] TypeRep` and
-    `RNotationDecl SLoc SmallId [LargeId] TermRep`.
+  `RAbbrevDecl SLoc SmallId [LargeId] TypeRep` and
+  `RNotationDecl SLoc SmallId [LargeId] TermRep`.
   - `Desugarer.collectExpansions` folds each declaration into the
-    program's `ExpansionDB`, seeded by `Notation.initialExpansionDB`
-    (which carries the built-in `string := list char`).
+  program's `ExpansionDB`, seeded by `Notation.initialExpansionDB`
+  (which carries the built-in `string := list char`).
   - `desugarProgram` applies `Notation.expandTypeRep` to every declared
-    type and `Notation.expandTermRep` to every fact body *before* the
-    type checker runs, so the surface tree reaching `makeTypeEnv` /
-    `desugarTerm` is already fully expanded. `Main.runREPL` does the
-    same to every query (interactive and `:assign`-synthesised).
+  type and `Notation.expandTermRep` to every fact body *before* the
+  type checker runs, so the surface tree reaching `makeTypeEnv` /
+  `desugarTerm` is already fully expanded. `Main.runREPL` does the
+  same to every query (interactive and `:assign`-synthesised).
   - Substitution is **capture-avoiding** (2026-05-17): `Notation.substTermRep`
-    α-renames an `RAbs` binder to a fresh suffix (`x_1`, `x_2`, …)
-    whenever its bound name would shadow a free variable of the
-    substituted-in argument. `TypeRep` has no binders, so `substTypeRep`
-    is trivially capture-free. Regression guard:
-    `Test/notation/capture.hol` (a `lift F := Y\ cnst (F Y)` body called
-    with `(Z\ Y)` where outer `Y` is a free fact variable).
+  α-renames an `RAbs` binder to a fresh suffix (`x_1`, `x_2`, …)
+  whenever its bound name would shadow a free variable of the
+  substituted-in argument. `TypeRep` has no binders, so `substTypeRep`
+  is trivially capture-free. Regression guard:
+  `Test/notation/capture.hol` (a `lift F := Y\ cnst (F Y)` body called
+  with `(Z\ Y)` where outer `Y` is a free fact variable).
   - **Display-direction fold (§2.7) — fully wired (2026-05-18)**:
-    Two pieces seed `NotationDB._entries` from the program's
-    declarations:
-      • `Desugarer.populateTypeFoldTable` runs after `makeKindEnv`
-        and, for every `abbrev`, lifts the RHS through
-        `typeRepToMono` → `Notation.addAbbrev` → `compileTypeTemplate`.
-      • `Desugarer.populateTermFoldTable` runs after `makeTypeEnv`
-        and, for every `notation`, replays the query-compilation
-        pipeline on the RHS (desugar with the parameters pre-bound
-        to fresh IVars → `inferType` → `convertQuery` with each
-        parameter IVar mapped to `LV_Named <param>`). The resulting
-        `TermNode` template carries the parameters as `LV_Named`
-        leaves — exactly the shape `Notation.matchTerm` expects.
-        Notations whose RHS fails any compilation step are silently
-        dropped (parsing-direction expansion still works).
-    Three write-boundary paths consume the table:
-      • `Notation.foldTermAsNode` (viewer pre-pass) folds matched
-        subtrees in answer-substitution / debugger TermNode output
-        before `makeView`.
-      • `Notation.tryFoldType` + `Runtime.showsMonoType` fold each
-        node of a typing-context MonoType, so `_typing` blocks and
-        `:assign error` messages print `X : pp` instead of
-        `X : list nat`.
-      • `TypeChecker.showMonoType` and `mkTyErr` now take a
-        `NotationDB`, so §2.7.1 (T) type-checker error messages
-        ("expected_typ = `pp -> o'", "couldn't solve `pp' ~ `nat'")
-        fold the same way. `inferType` / `checkType` carry the
-        `NotationDB` through their callers (the three `Main.hs`
-        sites for fact / query / `:assign`, and `populateTermFoldTable`
-        itself with the type-only fold table seeded first).
-    In every case the kernel `TermNode` / `MonoType` is *never*
-    rewritten — the fold is purely a printer concern, satisfying
-    §1.6's core invariant. Regression guards:
-    `Test/notation/typing_fold.hol` (debugger `_typing` prints
-    `X : pp`), `Test/notation/notation.hol` (the answer prints
-    `Y := duplo 7.` instead of `Y := pair 7 7.`), and
-    `Test/notation/typing_error_fold.hol` (type-checker error
-    prints `pp -> o` / `pp ~ nat` instead of the kernel form).
+  Two pieces seed `NotationDB._entries` from the program's
+  declarations:
+    • `Desugarer.populateTypeFoldTable` runs after `makeKindEnv`
+      and, for every `abbrev`, lifts the RHS through
+      `typeRepToMono` → `Notation.addAbbrev` → `compileTypeTemplate`.
+    • `Desugarer.populateTermFoldTable` runs after `makeTypeEnv`
+      and, for every `notation`, replays the query-compilation
+      pipeline on the RHS (desugar with the parameters pre-bound
+      to fresh IVars → `inferType` → `convertQuery` with each
+      parameter IVar mapped to `LV_Named <param>`). The resulting
+      `TermNode` template carries the parameters as `LV_Named`
+      leaves — exactly the shape `Notation.matchTerm` expects.
+      Notations whose RHS fails any compilation step are silently
+      dropped (parsing-direction expansion still works).
+  Three write-boundary paths consume the table:
+    • `Notation.foldTermAsNode` (viewer pre-pass) folds matched
+      subtrees in answer-substitution / debugger TermNode output
+      before `makeView`.
+    • `Notation.tryFoldType` + `Runtime.showsMonoType` fold each
+      node of a typing-context MonoType, so `_typing` blocks and
+      `:assign error` messages print `X : pp` instead of
+      `X : list nat`.
+    • `TypeChecker.showMonoType` and `mkTyErr` now take a
+      `NotationDB`, so §2.7.1 (T) type-checker error messages
+      ("expected_typ = `pp -> o'", "couldn't solve `pp' ~ `nat'")
+      fold the same way. `inferType` / `checkType` carry the
+      `NotationDB` through their callers (the three `Main.hs`
+      sites for fact / query / `:assign`, and `populateTermFoldTable`
+      itself with the type-only fold table seeded first).
+  In every case the kernel `TermNode` / `MonoType` is *never*
+  rewritten — the fold is purely a printer concern, satisfying
+  §1.6's core invariant. Regression guards:
+  `Test/notation/typing_fold.hol` (debugger `_typing` prints
+  `X : pp`), `Test/notation/notation.hol` (the answer prints
+  `Y := duplo 7.` instead of `Y := pair 7 7.`), and
+  `Test/notation/typing_error_fold.hol` (type-checker error
+  prints `pp -> o` / `pp ~ nat` instead of the kernel form).
 
 
 1.7 Modules
@@ -455,33 +455,33 @@ Write `Δ; Ψ ⊢ G | C` for "under program Δ and hypothesis set Ψ, the goal G
 is provable, leaving residual constraint set C".
 
   (TRUE)  ──────────────────
-          Δ; Ψ ⊢ true | ∅
+  Δ; Ψ ⊢ true | ∅
 
   (AND)   Δ;Ψ ⊢ G₁ | C₁     Δ;Ψ ⊢ G₂ | C₂
-          ─────────────────────────────────
-          Δ;Ψ ⊢ G₁, G₂ | C₁ ⊎ C₂
+  ─────────────────────────────────
+  Δ;Ψ ⊢ G₁, G₂ | C₁ ⊎ C₂
 
   (OR-i)  Δ;Ψ ⊢ Gᵢ | C
-          ─────────────────────
-          Δ;Ψ ⊢ G₁; G₂ | C        (i ∈ {1,2})
+  ─────────────────────
+  Δ;Ψ ⊢ G₁; G₂ | C        (i ∈ {1,2})
 
   (IMP)   Δ; Ψ ∪ {D} ⊢ G | C
-          ───────────────────
-          Δ;Ψ ⊢ D => G | C
+  ───────────────────
+  Δ;Ψ ⊢ D => G | C
 
   (ALL)   Δ;Ψ ⊢ G[c/x] | C        (c fresh constant)
-          ──────────────────────────────────────────
-          Δ;Ψ ⊢ pi x\ G | C
+  ──────────────────────────────────────────
+  Δ;Ψ ⊢ pi x\ G | C
 
   (EXS)   Δ;Ψ ⊢ G[?X/x] | C       (?X fresh logic variable)
-          ────────────────────────────────────────────────
-          Δ;Ψ ⊢ sigma x\ G | C
+  ────────────────────────────────────────────────
+  Δ;Ψ ⊢ sigma x\ G | C
 
   (BACK)  D ∈ Δ ∪ Ψ      D = ∀.(B :- A₁,…,Aₙ)
-          θ ∈ HOPU(A, head(D)) with residual C′
-          Δ;Ψ ⊢ θ(A₁),…,θ(Aₙ) | C″
-          ──────────────────────────────────────
-          Δ;Ψ ⊢ A | C′ ⊎ C″
+  θ ∈ HOPU(A, head(D)) with residual C′
+  Δ;Ψ ⊢ θ(A₁),…,θ(Aₙ) | C″
+  ──────────────────────────────────────
+  Δ;Ψ ⊢ A | C′ ⊎ C″
 
 (BACK) uses *higher-order pattern unification* (HOPU).
 Unification candidates outside the pattern fragment are not solved on the spot;
@@ -558,13 +558,13 @@ The grammar mirrors the `Show` syntax of the underlying solver IR
 *except* in two places:
 
   (i)  Variables are *named* (uppercase identifiers), not numbered
-       (`v1`, `v2`, ...). Each identifier is mapped to a `MyVar` by the
-       parser; see §2.3.4 for outer-scope sharing.
+  (`v1`, `v2`, ...). Each identifier is mapped to a `MyVar` by the
+  parser; see §2.3.4 for outer-scope sharing.
   (ii) Naturals are written in *decimal*; the parser desugars `n` into
-       `Succ (... Succ Zero)` with `n` applications of `Succ`. (Direct
-       use of the Show-level constants `O` / `S` is forbidden inside
-       the literal — `O` would clash with the uppercase-identifier
-       lexical class.)
+  `Succ (... Succ Zero)` with `n` applications of `Succ`. (Direct
+  use of the Show-level constants `O` / `S` is forbidden inside
+  the literal — `O` would clash with the uppercase-identifier
+  lexical class.)
 
 Precedence and associativity follow the `Show` instance:
 
@@ -627,7 +627,7 @@ Stage 4 (Install pass — `Arith.installPresburger`)
     `sloc`. The call returns either a parse error or
 
       (rep    :: PresburgerFormulaRep,
-       freeOf :: Map MyVar LogicVar)
+      freeOf :: Map MyVar LogicVar)
 
     consisting of the parsed formula and the map from solver-internal
     `MyVar`s appearing free in `rep` to the surrounding `LogicVar`s.
@@ -714,31 +714,31 @@ do not introduce or shadow logic variables outside.
 When the runtime reaches a goal `NPresburgerCheck rep freeOf`:
 
   1. Apply the current substitution θ via
-     `zonkPresburger θ freeOf rep`. For every `IVar v` in `rep` with
-     `freeOf(v) = Just lv`: if θ(lv) is a closed natural-number
-     literal `n`, replace `IVar v` by the decimal-`n` encoding
-     (`Succ` applied `n` times to `Zero`); otherwise leave `IVar v`
-     in place. Bound `IVar`s are untouched.
+  `zonkPresburger θ freeOf rep`. For every `IVar v` in `rep` with
+  `freeOf(v) = Just lv`: if θ(lv) is a closed natural-number
+  literal `n`, replace `IVar v` by the decimal-`n` encoding
+  (`Succ` applied `n` times to `Zero`); otherwise leave `IVar v`
+  in place. Bound `IVar`s are untouched.
 
   2. Build a candidate Φ from the current `ArithmeticConstraint`s in
-     C by applying `liftConstraint` to each conjunct. Conjuncts that
-     do not lift into the Presburger fragment are dropped (best-
-     effort lifting — see §4.2 for the soundness argument).
+  C by applying `liftConstraint` to each conjunct. Conjuncts that
+  do not lift into the Presburger fragment are dropped (best-
+  effort lifting — see §4.2 for the soundness argument).
 
   3. Renumber Φ and `rep` to share a single `Map LogicVar MyVar`
-     allocation (`renumberFormula` in §4.2), so that the same outer
-     `LogicVar` is represented by the same `MyVar` everywhere the
-     solver sees it.
+  allocation (`renumberFormula` in §4.2), so that the same outer
+  `LogicVar` is represented by the same `MyVar` everywhere the
+  solver sees it.
 
   4. Call
 
-       entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
+  entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
 
-     from `Arith`. The check produces no substitution and adds no
-     constraint.
+  from `Arith`. The check produces no substitution and adds no
+  constraint.
 
   5. The goal succeeds iff `entails Φ φ` returns `True`; otherwise it
-     fails and the runtime backtracks.
+  fails and the runtime backtracks.
 
 Remark (zonk depth).
     Step 1 substitutes only *closed natural-number literals*. It does
@@ -780,32 +780,32 @@ insertion sites are reused with the two additions below.
 The check fires at the following four points, and no others.
 
   (T1) After a successful (BACK) edge in `search`.
-       Once HOPU produces a substitution θ and the runtime has
-       zonked C through θ, the runtime calls
+  Once HOPU produces a substitution θ and the runtime has
+  zonked C through θ, the runtime calls
 
-         entails (lift C) ⊥
+    entails (lift C) ⊥
 
-       on the resulting `ArithmeticConstraint`s. If `True`, the new
-       branch is discarded (the substitution is undone) and the
-       runtime fails over to the next alternative. If `False`, the
-       new branch is committed.
+  on the resulting `ArithmeticConstraint`s. If `True`, the new
+  branch is discarded (the substitution is undone) and the
+  runtime fails over to the next alternative. If `False`, the
+  new branch is committed.
 
   (T2) After `arithOpCheck` adds a new constraint.
-       When a built-in comparison (`<`, `=<`, `>`, `>=`) is invoked
-       on terms that cannot fully evaluate via `evaluateA`, the
-       resulting `ArithmeticConstraint` is appended to C. The check
-       fires before `success` returns.
+  When a built-in comparison (`<`, `=<`, `>`, `>=`) is invoked
+  on terms that cannot fully evaluate via `evaluateA`, the
+  resulting `ArithmeticConstraint` is appended to C. The check
+  fires before `success` returns.
 
   (T3) After `LO_is` promotes an `EvaluationConstraint` to an
-       `ArithmeticConstraint`.
-       Whenever both sides of a pending `EvaluationConstraint` become
-       closed arithmetic terms, the constraint is promoted as in
-       §2.4. The check fires at that promotion step.
+  `ArithmeticConstraint`.
+  Whenever both sides of a pending `EvaluationConstraint` become
+  closed arithmetic terms, the constraint is promoted as in
+  §2.4. The check fires at that promotion step.
 
   (T4) After `:assign` commits a user substitution (§3.2.4).
-       The committed substitution is run through the same zonk and
-       lift machinery used at (T1), and the check fires before the
-       debugger redraws its prompt.
+  The committed substitution is run through the same zonk and
+  lift machinery used at (T1), and the check fires before the
+  debugger redraws its prompt.
 
 The check does *not* fire at (AND), (OR), (IMP), (PI), (SIGMA), or
 plain reduction edges, because none of those events can introduce a
@@ -894,15 +894,15 @@ The public `Show TermNode` instance keeps its signature but is now defined in te
 Folding runs in two places.
 
   (P) Display time. Immediately before pretty printing (§2.6) emits
-      the final character stream, the folder walks the `ViewNode`
-      tree and rewrites subtrees that match a registered template.
+  the final character stream, the folder walks the `ViewNode`
+  tree and rewrites subtrees that match a registered template.
 
   (T) Type-checking time. Whenever the type checker is about to emit
-      a user-visible message that mentions a type or a term, it pipes
-      the offending `MonoType` / `TermNode` through the same folder
-      first. Without this, an error like "expected `string`, got
-      `list nat`" would degenerate into "expected `list char`, got
-      `list nat`", losing the user-meaningful abbreviation.
+  a user-visible message that mentions a type or a term, it pipes
+  the offending `MonoType` / `TermNode` through the same folder
+  first. Without this, an error like "expected `string`, got
+  `list nat`" would degenerate into "expected `list char`, got
+  `list nat`", losing the user-meaningful abbreviation.
 
 Both passes share the same algorithm and the same fold table; they
 differ only in which tree they walk.
@@ -958,11 +958,11 @@ Folding rewrites the tree being printed; it never rewrites the
 underlying `TermNode` stored in the runtime state. Two consequences:
 
   - α-equivalence is decided on the unfolded form. The folder can
-    therefore make no decisions that affect unification, reduction,
-    or HOPU.
+  therefore make no decisions that affect unification, reduction,
+  or HOPU.
   - The same logical term can fold to different displays depending
-    on which entries are active (e.g., after a module import in a
-    later phase, §1.7). This is the intended Coq behaviour.
+  on which entries are active (e.g., after a module import in a
+  later phase, §1.7). This is the intended Coq behaviour.
 
 
 2.8 Names vs. de Bruijn (Hybrid Representation)
@@ -987,37 +987,37 @@ the desugarer and through suspensions; the runtime never reads them.
 Hints are introduced at three sites.
 
   (S1) Surface binders. Every `x \ t`, `pi x \ t`, and `sigma x \ t`
-       in the source becomes an `NLam { _hint = Just x, ... }` under
-       the desugarer's standard λ-translation. The quantifier
-       wrappers (`LO_pi`, `LO_sigma`) are applied on top of the
-       resulting `NLam`. If `x` would shadow an enclosing binder's
-       stored hint, the desugarer freshens `x` via §4.5.2 before
-       storing.
+  in the source becomes an `NLam { _hint = Just x, ... }` under
+  the desugarer's standard λ-translation. The quantifier
+  wrappers (`LO_pi`, `LO_sigma`) are applied on top of the
+  resulting `NLam`. If `x` would shadow an enclosing binder's
+  stored hint, the desugarer freshens `x` via §4.5.2 before
+  storing.
 
   (S2) Notation/abbreviation expansion (§1.6.3). Templates may
-       themselves contain binders; an expansion copies the template's
-       binders' hints verbatim, subject to the same shadowing rule
-       as (S1). No new hint identity is invented at this stage.
+  themselves contain binders; an expansion copies the template's
+  binders' hints verbatim, subject to the same shadowing rule
+  as (S1). No new hint identity is invented at this stage.
 
   (S3) HOPU pattern instantiation. The HOPU module (inherited from
-       ALPHA2 unchanged, §4.1.2) does not propagate hints: binders
-       it introduces carry `_hint = Nothing`. The viewer's
-       freshening algorithm (§4.5.2) assigns a display name at print
-       time. A future revision may inherit hints from the applicand
-       list to improve debugger UX; that is out of scope for BETA1.
+  ALPHA2 unchanged, §4.1.2) does not propagate hints: binders
+  it introduces carry `_hint = Nothing`. The viewer's
+  freshening algorithm (§4.5.2) assigns a display name at print
+  time. A future revision may inherit hints from the applicand
+  list to improve debugger UX; that is out of scope for BETA1.
 
 2.8.3 Where hints are consumed
 
   1. *Pretty printing* (§2.6, §4.5). Instead of `W_3\ W_2\ ...`, the
-     viewer renders `X\ Y\ ...` whenever the stored hints can be
-     shown without clash; otherwise the viewer applies the
-     freshening rule of §4.5.2.
+  viewer renders `X\ Y\ ...` whenever the stored hints can be
+  shown without clash; otherwise the viewer applies the
+  freshening rule of §4.5.2.
   2. *Diagnostics*. HOPU disagreement reports cite the original
-     hint where one exists.
+  hint where one exists.
   3. *Debugger UI* (§3, §3.5). The hint forms the starting display
-     name of a binder; if the viewer is forced to rename, the
-     `NameCache` records the rename for `:assign`/`:show` round-
-     tripping (but only for *logic variables* — see §4.5.4).
+  name of a binder; if the viewer is forced to rename, the
+  `NameCache` records the rename for `:assign`/`:show` round-
+  tripping (but only for *logic variables* — see §4.5.4).
 
 2.8.4 Hints are advisory (formal)
 
@@ -1041,7 +1041,7 @@ Same as ALPHA2 plus the following additions.
 
   :d                 toggle debug mode (unchanged)
   :assign ?V := t.   instantiate a flexible variable to a user-supplied
-                     term at the current breakpoint (debug mode only)
+                    term at the current breakpoint (debug mode only)
   :show ?V           show the current value (or "unbound") of ?V
   :q                 quit (unchanged)
 
@@ -1057,18 +1057,18 @@ future `LoL` project. Two properties are central and must hold
 unconditionally:
 
   (i)  Debug-mode only. The command is recognised *only* while debug
-       mode is on (§3.1: `:d`) and the engine is paused at a step
-       boundary. Outside debug mode it is rejected by the REPL with
-       a "command not available" message; the runtime never sees it.
+  mode is on (§3.1: `:d`) and the engine is paused at a step
+  boundary. Outside debug mode it is rejected by the REPL with
+  a "command not available" message; the runtime never sees it.
   (ii) Plain binding. `:assign ?V := t.` is *the* binding `?V := t`
-       and nothing more. Once the preconditions of §3.2.2 are met,
-       the substitution is applied to *every term in the current
-       state* — the substitution θ, the constraint multiset C, the
-       goal stack (current cell and all frames below it), and the
-       HOPU disagreement set. There is no display-only mode, no
-       deferred application, no per-frame selection: a single
-       `LogicVar`-keyed substitution propagates everywhere a term
-       lives.
+  and nothing more. Once the preconditions of §3.2.2 are met,
+  the substitution is applied to *every term in the current
+  state* — the substitution θ, the constraint multiset C, the
+  goal stack (current cell and all frames below it), and the
+  HOPU disagreement set. There is no display-only mode, no
+  deferred application, no per-frame selection: a single
+  `LogicVar`-keyed substitution propagates everywhere a term
+  lives.
 
 3.2.1 Surface syntax
 
@@ -1111,31 +1111,31 @@ through binders and HOPU unification.
 Before committing, the runtime checks in this order:
 
   1. *Session*: debug mode is on and the engine is paused at a step
-     boundary.
+  boundary.
   2. *Flexibility*: the resolved `LogicVar` is currently unbound (a
-     genuine `LVar`, not a residual `Susp` to an already-bound
-     variable).
+  genuine `LVar`, not a residual `Susp` to an already-bound
+  variable).
   3. *Typing*: the parsed `t` type-checks against `?V`'s expected
-     type under the current type environment. Hindley–Milner
-     unification is run; an `MGU` failure rejects the command. The
-     type of `?V`, of every other visible flexible variable, and of
-     every rigid runtime constant (introduced by enclosing `pi` /
-     `ty_pi` eliminations) is part of the state displayed by §3.4 so
-     that the user can construct a well-typed `t` without guessing.
+  type under the current type environment. Hindley–Milner
+  unification is run; an `MGU` failure rejects the command. The
+  type of `?V`, of every other visible flexible variable, and of
+  every rigid runtime constant (introduced by enclosing `pi` /
+  `ty_pi` eliminations) is part of the state displayed by §3.4 so
+  that the user can construct a well-typed `t` without guessing.
   4. *Occurs-check*: after the substitution `?V := t` is normalised
-     under the current θ, `?V` must not occur in `t`. The cyclic
-     binding `?V := ... ?V ...` is rejected; the engine will not
-     create infinite terms even at the user's request.
+  under the current θ, `?V` must not occur in `t`. The cyclic
+  binding `?V := ... ?V ...` is rejected; the engine will not
+  create infinite terms even at the user's request.
   5. *Pattern fragment*: the resulting candidate substitution
-     `?V := t` lies in HOPU's pattern fragment, with the binding of
-     `?V` respecting the current local scope (de Bruijn shifts,
-     captured variables, etc.).
+  `?V := t` lies in HOPU's pattern fragment, with the binding of
+  `?V` respecting the current local scope (de Bruijn shifts,
+  captured variables, etc.).
   6. *Consistency*: with the candidate substitution applied, the
-     constraint store C remains satisfiable. Concretely, all
-     `EvaluationConstraint`s are re-promoted as in §2.4, all
-     `ArithmeticConstraint`s are checked against §2.3.6's implicit
-     `presburger "_|_"` hook, and HOPU's disagreement set is
-     re-run.
+  constraint store C remains satisfiable. Concretely, all
+  `EvaluationConstraint`s are re-promoted as in §2.4, all
+  `ArithmeticConstraint`s are checked against §2.3.6's implicit
+  `presburger "_|_"` hook, and HOPU's disagreement set is
+  re-run.
 
 Failure at *any* step reports a localised error to the user and
 *aborts the command*. See §3.2.3 for the transactional guarantee.
@@ -1166,28 +1166,28 @@ without polluting the search.
 When all preconditions pass:
 
   - The candidate substitution `?V := t` is absorbed into the global
-    substitution via the normal HOPU machinery (no new code path).
+  substitution via the normal HOPU machinery (no new code path).
   - The substitution is then *propagated to every term in the
-    current state*. Concretely:
-      * the substitution map θ (the `_TotalVarBinding` of the
-        current `Context`),
-      * the constraint multiset C (every `Constraint` in
-        `_LeftConstraints`),
-      * the current cell's `_WantedGoal` and `_GivenHypos`,
-      * the goals and hypotheses of every frame deeper in the
-        goal stack (the `Stack` returned by `runTransition`),
-      * the HOPU disagreement set,
-      * the labelled-variable scope map.
-    This guarantees that after `:assign` returns, no surviving term
-    anywhere in the runtime still mentions `?V` unsubstituted. The
-    propagation is mechanical zonking under the singleton binding
-    `{?V := t}` — no per-frame heuristics, no display-only paths.
+  current state*. Concretely:
+    * the substitution map θ (the `_TotalVarBinding` of the
+    current `Context`),
+    * the constraint multiset C (every `Constraint` in
+    `_LeftConstraints`),
+    * the current cell's `_WantedGoal` and `_GivenHypos`,
+    * the goals and hypotheses of every frame deeper in the
+    goal stack (the `Stack` returned by `runTransition`),
+    * the HOPU disagreement set,
+    * the labelled-variable scope map.
+  This guarantees that after `:assign` returns, no surviving term
+  anywhere in the runtime still mentions `?V` unsubstituted. The
+  propagation is mechanical zonking under the singleton binding
+  `{?V := t}` — no per-frame heuristics, no display-only paths.
   - All pending `EvaluationConstraint`s are zonked and possibly
-    promoted to `ArithmeticConstraint`s.
+  promoted to `ArithmeticConstraint`s.
   - The implicit consistency check (§2.3.6) runs once.
   - The debugger redraws the prompt at the *same step boundary*.
-    The user must explicitly type `:d` off, press enter, or otherwise
-    continue execution; `:assign` itself never advances the search.
+  The user must explicitly type `:d` off, press enter, or otherwise
+  continue execution; `:assign` itself never advances the search.
 
 
 3.3 The `:show` Command
@@ -1210,17 +1210,17 @@ In debug mode the interpreter prints, before each transition:
 
   - the goal under consideration,
   - the constraint multiset C (arithmetic constraints rendered as in
-    `Calc.Presburger`),
+  `Calc.Presburger`),
   - the binding substitution restricted to user-visible names,
   - the *typing context*: every flexible variable in scope (the
-    `LogicVar`s that may appear in the current goal, hypotheses, or
-    θ) is listed with its inferred type, and every rigid runtime
-    constant introduced by an enclosing `pi` / `ty_pi` elimination
-    is listed with the type its eliminator gave it. This is exactly
-    the data the user needs to build a well-typed `t` for
-    `:assign ?V := t.` (§3.2.2.3); without it the user would have
-    to guess the type discipline and would routinely trigger the
-    §3.2.2.3 rejection.
+  `LogicVar`s that may appear in the current goal, hypotheses, or
+  θ) is listed with its inferred type, and every rigid runtime
+  constant introduced by an enclosing `pi` / `ty_pi` elimination
+  is listed with the type its eliminator gave it. This is exactly
+  the data the user needs to build a well-typed `t` for
+  `:assign ?V := t.` (§3.2.2.3); without it the user would have
+  to guess the type discipline and would routinely trigger the
+  §3.2.2.3 rejection.
 
 Note (deferred to BETA2). An earlier draft of this section listed
 "the source location (SLoc) of the goal, where known" as a fifth
@@ -1276,15 +1276,15 @@ n`. The debugger maintains a bidirectional cache
 with the following lifecycle:
 
   - The cache is created at the start of a debug session and reused
-    *throughout* that session.
+  *throughout* that session.
   - When the viewer renames a binder or a logic variable for
-    display, the rename is recorded here.
+  display, the rename is recorded here.
   - When a logic variable is encountered for the first time in a
-    print pass, it is added to the cache with whatever stable name
-    the viewer picked (e.g., its `_hint`, or `X1` after collision
-    handling).
+  print pass, it is added to the cache with whatever stable name
+  the viewer picked (e.g., its `_hint`, or `X1` after collision
+  handling).
   - `:assign`, `:show`, and any user-typed identifier inside the
-    debug REPL are resolved through `_fromDisplay`.
+  debug REPL are resolved through `_fromDisplay`.
 
 The cache survives across stepping, across `:assign` commits, and
 across `:assign` aborts (the rollback of §3.2.3 does *not* discard
@@ -1383,15 +1383,15 @@ formula therefore carries a side map that records which outer
 `AllF`/`ExsF`) are not in the map.
 
   - Inside one parsed literal, the parser allocates `MyVar`s densely
-    starting from `theMinNumOfMyVar` and emits a `Map MyVar LogicVar`
-    for the free ones.
+  starting from `theMinNumOfMyVar` and emits a `Map MyVar LogicVar`
+  for the free ones.
   - Inside one `liftConstraint` call on an `ArithmeticConstraint`
-    from C, the lifter does the same — but its `MyVar`s are
-    *unrelated* to those of any other formula.
+  from C, the lifter does the same — but its `MyVar`s are
+  *unrelated* to those of any other formula.
   - At evaluation time (§2.3.5, Step 3), the runtime allocates a
-    *shared* `Map LogicVar MyVar`, and renumbers every formula it
-    plans to hand to the solver via this shared map. After
-    renumbering, the solver sees a single coherent variable space.
+  *shared* `Map LogicVar MyVar`, and renumbers every formula it
+  plans to hand to the solver via this shared map. After
+  renumbering, the solver sees a single coherent variable space.
 
 This indirection is the price of keeping `Calc.Presburger.Internal`
 LogicVar-agnostic.
@@ -1526,7 +1526,7 @@ Internally the module holds:
 
   - `Map Constant (Fixity, Precedence)` for fixity (O(log n) lookup).
   - Two `[FoldEntry]`s (one Type-level, one Term-level), each ordered
-    by `_seq` decreasing, for fold attempts.
+  by `_seq` decreasing, for fold attempts.
 
 This split is not a public commitment; a future BETA may switch to a
 trie or term-index keyed by RHS head if folding becomes a hot path.
@@ -1586,12 +1586,12 @@ function in `Runtime.hs`.
 Notes.
 
   - `cmdAssign` accepts a *parsed* `TermNode`, not a raw string. The
-    REPL parses first; library callers (notably the future `LoL`
-    proof assistant) may construct `TermNode`s directly without
-    round-tripping through surface syntax.
+  REPL parses first; library callers (notably the future `LoL`
+  proof assistant) may construct `TermNode`s directly without
+  round-tripping through surface syntax.
   - `cmdShow` is read-only.
   - `cmdAssign` is the only command that takes a snapshot. The
-    others either are read-only or change only the debug-mode bit.
+  others either are read-only or change only the debug-mode bit.
 
 4.4.3 Why every command is exposed
 
@@ -1638,7 +1638,7 @@ At every binder inside a closed (top-level) term, the stored name
 hint must either be
 
   (i)  unique among the hints of binders enclosing it at that
-       position, or
+  position, or
   (ii) absent (`Nothing`).
 
 The desugarer enforces this on every `NLam` it constructs from a
@@ -1647,11 +1647,11 @@ surface `x \ t`, sketched below.
   desugarLam :: SmallId -> [SmallId] -> SurfaceTerm -> TermNode
   desugarLam sourceHint live body =
     let h' = if sourceHint `notElem` live
-             then sourceHint
-             else freshen sourceHint live
+            then sourceHint
+            else freshen sourceHint live
         body' = desugarTerm (sourceHint : live) body
-                           -- the *source* name binds inside `body`;
-                           -- only the stored hint changes
+                          -- the *source* name binds inside `body`;
+                          -- only the stored hint changes
     in NLam (Just h') body'
 
 The `freshen` rule of §4.5.2 always returns a fresh name (the digit
@@ -1693,19 +1693,19 @@ two enclosing binders with the same non-empty stored hint inside
 one closed term. Two residual cases remain.
 
   (a) `NLam` with `_hint = Nothing`. Typically an HOPU-introduced
-      binder (§2.8.2 (S3)). The viewer invents a display name via
-      `freshen base live` where `base` is an implementation-chosen
-      default (recommended: `"x"`).
+  binder (§2.8.2 (S3)). The viewer invents a display name via
+  `freshen base live` where `base` is an implementation-chosen
+  default (recommended: `"x"`).
 
   (b) A stored hint that, while unique among the binders, collides
-      with a *free logic variable's* display name already in scope
-      at print time (read out of `NameCache`, §3.5). The viewer
-      freshens against the union
+  with a *free logic variable's* display name already in scope
+  at print time (read out of `NameCache`, §3.5). The viewer
+  freshens against the union
 
-         live = enclosingBinderDisplayNames
-              ∪ freeLogicVarDisplayNames
+    live = enclosingBinderDisplayNames
+          ∪ freeLogicVarDisplayNames
 
-      and prints the freshened name.
+  and prints the freshened name.
 
 Case (b) is the *only* situation in which the viewer's chosen
 display name differs from the stored hint. Logging this rename is
@@ -1735,12 +1735,12 @@ display name. Lambda binders are not addressable by `:assign`.
 4.6.1 ALPHA2 parity
 
   - For every file in `Example/*.hol` the answer set produced by
-    BETA1 must be identical to the answer set produced by ALPHA2.
-    Differences in pretty-printed form are tolerated only insofar as
-    they reflect the user's notation/abbreviation declarations
-    (§2.6, §2.7).
+  BETA1 must be identical to the answer set produced by ALPHA2.
+  Differences in pretty-printed form are tolerated only insofar as
+  they reflect the user's notation/abbreviation declarations
+  (§2.6, §2.7).
   - `einstein.sh`, `fi.sh`, `lbeta.sh` must exit 0 with byte-
-    identical answer strings modulo whitespace and notation folding.
+  identical answer strings modulo whitespace and notation folding.
 
 4.6.2 BETA1-only tests
 
@@ -1751,98 +1751,98 @@ to run under ALPHA2.
   Test/
     presburger/
       basic.hol           -- `?- X is 7, presburger "X > 5".` (yes) +
-                             same with `X is 3` (no): closed-formula
-                             entailment via outer-scope sharing (2.3.4)
+                            same with `X is 3` (no): closed-formula
+                            entailment via outer-scope sharing (2.3.4)
       quantified.hol      -- `presburger "exists Y, Y + Y = 6"` and
-                             `presburger "forall Y, Y > 0"`: bound
-                             names scoped to the formula
+                            `presburger "forall Y, Y > 0"`: bound
+                            names scoped to the formula
       consistency.hol     -- `?- X > 5, X < 3.` (T2 firing 2.3.6)
       solver_sanity.hol   -- ground-truth regression for the QE
-                             pipeline (forall/exists with naturals)
+                            pipeline (forall/exists with naturals)
       residual.hol        -- `?- X > 5.` succeeds with X unbound;
-                             runtime prints the residual constraint
-                             set per 2.5 instead of silently failing
+                            runtime prints the residual constraint
+                            set per 2.5 instead of silently failing
       entailment_drop.hol -- the 2.5 syntactic concession: a
-                             constraint implied by the rest of Phi
-                             is dropped; duplicates collapse; the
-                             final list is sorted for determinism
+                            constraint implied by the rest of Phi
+                            is dropped; duplicates collapse; the
+                            final list is sorted for determinism
     debug/
       toggle.hol          -- `:d` (twice), `:verbose`, `:short`
-                             confirmation lines
+                            confirmation lines
       assign_ok.hol       -- `:assign ?X := 7.` at a debug prompt
-                             then resume to the final answer
+                            then resume to the final answer
       assign_fail.hol     -- `:assign ?X := s X.` triggers the
-                             occurs-check (3.2.2 precondition 4); the
-                             snapshot/restore of 3.2.3 leaves the
-                             search untouched and the normal `p X`
-                             search then binds X to 0
+                            occurs-check (3.2.2 precondition 4); the
+                            snapshot/restore of 3.2.3 leaves the
+                            search untouched and the normal `p X`
+                            search then binds X to 0
       assign_fail_typing.hol
                           -- `:assign ?X := [].` where X has the
-                             inferred type `nat` fails the caller-side
-                             precondition (3) typing check; the error
-                             "*** :assign error: type mismatch for 'X'
-                             -- expected nat, got list ?t4" is reported
-                             and the search resumes with `p 0` / `p 1`
+                            inferred type `nat` fails the caller-side
+                            precondition (3) typing check; the error
+                            "*** :assign error: type mismatch for 'X'
+                            -- expected nat, got list ?t4" is reported
+                            and the search resumes with `p 0` / `p 1`
       assign_fail_scope.hol
                           -- with X polymorphic (`?- X = X.`) the
-                             precondition (3) type check accepts
-                             `:assign ?X := [].`, but the runtime
-                             scope check inside `cmdAssign` rejects
-                             the binding because the type-meta-variable
-                             introduced by `list ?t` escapes X's scope;
-                             the error "*** :assign error: scope
-                             violation for 'X' -- out-of-scope: ?TV_n"
-                             is reported (precondition 5)
+                            precondition (3) type check accepts
+                            `:assign ?X := [].`, but the runtime
+                            scope check inside `cmdAssign` rejects
+                            the binding because the type-meta-variable
+                            introduced by `list ?t` escapes X's scope;
+                            the error "*** :assign error: scope
+                            violation for 'X' -- out-of-scope: ?TV_n"
+                            is reported (precondition 5)
       assign_t4.hol       -- after one step the context shows
-                             `_constraints = [X > 5]`; the candidate
-                             `:assign ?X := 3.` violates that constraint
-                             so the (T4) consistency hook (2.3.6)
-                             reports "*** :assign error: inconsistent
-                             with arithmetic constraints for 'X'"
+                            `_constraints = [X > 5]`; the candidate
+                            `:assign ?X := 3.` violates that constraint
+                            so the (T4) consistency hook (2.3.6)
+                            reports "*** :assign error: inconsistent
+                            with arithmetic constraints for 'X'"
       show.hol            -- `:show ?X` at debug prompts
     kind/
       higher_order_kind_rejected.hol  -- `kind foo ((type -> type) -> type).`
                                           rejected by `makeKindEnv`
     notation/
       fixity.hol          -- §1.5 end-to-end: `infixl my_op 6.` makes
-                             `Y := my_op 1 2.` print as `Y := 1 my_op 2.`
-                             through the NotationDB-aware viewer
+                            `Y := my_op 1 2.` print as `Y := 1 my_op 2.`
+                            through the NotationDB-aware viewer
       abbrev.hol          -- §1.6.1: a user-declared `abbrev pp := list nat.`
-                             rewrites `type p (pp -> o).` to `list nat -> o`
-                             at desugar time and the body type-checks
+                            rewrites `type p (pp -> o).` to `list nat -> o`
+                            at desugar time and the body type-checks
       notation.hol        -- §1.6.2: `notation duplo X := pair X X.`
-                             expands `duplo 7` at every call site into
-                             `pair 7 7` before the type checker runs
+                            expands `duplo 7` at every call site into
+                            `pair 7 7` before the type checker runs
       override.hol        -- §1.6.5 / §2.7.4 "last declared wins": a
-                             second `abbrev nats := list nat.` shadows
-                             the earlier `list char` so a list-of-nat
-                             body type-checks under the same alias
+                            second `abbrev nats := list nat.` shadows
+                            the earlier `list char` so a list-of-nat
+                            body type-checks under the same alias
       capture.hol         -- §1.6.3 capture-avoiding substitution: a
-                             notation body `lift F := Y\ cnst (F Y).`
-                             called with `(Z\ Y)` (outer Y free) only
-                             succeeds when the body binder is α-renamed
+                            notation body `lift F := Y\ cnst (F Y).`
+                            called with `(Z\ Y)` (outer Y free) only
+                            succeeds when the body binder is α-renamed
       sym_operator.hol    -- §1.5 symbolic operator override: raising
-                             `infixl + 8.` above the seeded `*` (prec 7)
-                             changes the answer-substitution display
-                             of `(1 + 2) * 3` to `1 + 2 * 3`
+                            `infixl + 8.` above the seeded `*` (prec 7)
+                            changes the answer-substitution display
+                            of `(1 + 2) * 3` to `1 + 2 * 3`
       typing_fold.hol     -- §1.6 invariant + §2.7 (W) fold for the
-                             typing-context renderer: with
-                             `abbrev pp := list nat.` declared, the
-                             debugger's `_typing` block prints
-                             `X : pp` instead of `X : list nat`,
-                             confirming the abbreviation never
-                             leaks into the kernel MonoType and
-                             that `Runtime.showsMonoType` honours
-                             the fold table
+                            typing-context renderer: with
+                            `abbrev pp := list nat.` declared, the
+                            debugger's `_typing` block prints
+                            `X : pp` instead of `X : list nat`,
+                            confirming the abbreviation never
+                            leaks into the kernel MonoType and
+                            that `Runtime.showsMonoType` honours
+                            the fold table
       typing_error_fold.hol
                           -- §2.7.1 (T): a fact `p 7.` whose body
-                             fails type checking under `type p (pp -> o).`
-                             prints the mismatch as `pp -> o` / `pp ~ nat`,
-                             confirming `TypeChecker.showMonoType` /
-                             `mkTyErr` thread the NotationDB
+                            fails type checking under `type p (pp -> o).`
+                            prints the mismatch as `pp -> o` / `pp ~ nat`,
+                            confirming `TypeChecker.showMonoType` /
+                            `mkTyErr` thread the NotationDB
     smoke.sh              -- runs every `Test/**/*.hol` through
-                             BETA1 with a scripted REPL transcript
-                             alongside.
+                            BETA1 with a scripted REPL transcript
+                            alongside.
 
 Each `*.hol` file has two siblings: `*.input.txt` is the REPL input
 to feed on stdin (starting from the top-level `ppap` menu, i.e. the
@@ -1907,16 +1907,16 @@ changes are intended; the user applies them manually.
   (2) Choose one of two activation modes.
 
       (a) *Separate executable.* Add a new executable `ppap-beta1`
-          whose `main-is` resolves to `Hol.BETA1.Main.main`. The
-          existing `ppap` executable continues to run ALPHA2.
-          *Recommended* — matches the copy-paste model (§4.1.1)
-          with no cross-version branches at runtime.
+      whose `main-is` resolves to `Hol.BETA1.Main.main`. The
+      existing `ppap` executable continues to run ALPHA2.
+      *Recommended* — matches the copy-paste model (§4.1.1)
+      with no cross-version branches at runtime.
 
       (b) *Single executable with a flag.* Keep one `ppap`
-          executable; have `Hol.Main.main` switch on a command-line
-          flag (e.g., `--beta1`) or an environment variable
-          (`HOL_VERSION=BETA1`). Useful if the user wants to keep
-          one binary, accepting one branch at startup.
+      executable; have `Hol.Main.main` switch on a command-line
+      flag (e.g., `--beta1`) or an environment variable
+      (`HOL_VERSION=BETA1`). Useful if the user wants to keep
+      one binary, accepting one branch at startup.
 
   (3) Add a `test-suite` stanza for the `Test/` tree of §4.6.2, if
       the test runner is to be cabal-driven. Otherwise the bash
@@ -1932,88 +1932,88 @@ Appendix A. Open Questions
   [Q1] Should block comments `/* ... */` be allowed to nest?
   [A] Yes. We need to one-to-one-match `/*` with `*/`.
   [Feedback / Claude]
-    Agreed. One corner case to nail down: `/*` and `*/` occurring inside string or character literals must NOT count toward the nesting depth. Otherwise `/* "*/" */` lexes as a single unterminated comment.
-    Implementation note: the lexer's comment state machine must still recognise string/char literal openings while inside a comment, and skip past their closers without altering the comment depth.
+  Agreed. One corner case to nail down: `/*` and `*/` occurring inside string or character literals must NOT count toward the nesting depth. Otherwise `/* "*/" */` lexes as a single unterminated comment.
+  Implementation note: the lexer's comment state machine must still recognise string/char literal openings while inside a comment, and skip past their closers without altering the comment depth.
 
   [Q2] Should operator declarations accept identifier operators (backtick form), or only symbolic ones?
   [A] The former; like Haskell.
   [Feedback / Claude]
-    Reasonable. One clarification belongs in §1.5: a backtick declaration such as `infixl `plus` 6.` does NOT introduce a new constant — it only attaches fixity metadata to the *existing* constant `plus`, which must already have a `type` declaration in scope.
-    This matches ALPHA2's existing model where `=`, `+`, etc. are bound to specific `DataConstructor`s; a backtick-quoted user operator maps to `DC_Named name` rather than to a fresh constructor.
+  Reasonable. One clarification belongs in §1.5: a backtick declaration such as `infixl `plus` 6.` does NOT introduce a new constant — it only attaches fixity metadata to the *existing* constant `plus`, which must already have a `type` declaration in scope.
+  This matches ALPHA2's existing model where `=`, `+`, etc. are bound to specific `DataConstructor`s; a backtick-quoted user operator maps to `DC_Named name` rather than to a fresh constructor.
 
   [Q3] What is the exact display-time policy when a term has multiple valid abbreviation foldings?
   "Most-specific-first" is under-specified for incomparable abbreviations.
   [A] Use the last declared one.
   [Feedback / Claude]
-    Clean rule. One consequence to document explicitly: the built-in `abbrev string := list char` is declared *first*, so any user `abbrev mystring := list char` declared later will shadow `string`.
-    Recommend stating in §1.6 that built-in abbreviations are "overridable, not privileged";
-    this avoids surprising users who expect `list char` to always print as `string`.
-    If we want certain built-ins to be sticky (e.g., the system never wants users to lose the `string` rendering),
-    we should introduce a separate `sealed abbrev` form — but I'd defer that to BETA2.
+  Clean rule. One consequence to document explicitly: the built-in `abbrev string := list char` is declared *first*, so any user `abbrev mystring := list char` declared later will shadow `string`.
+  Recommend stating in §1.6 that built-in abbreviations are "overridable, not privileged";
+  this avoids surprising users who expect `list char` to always print as `string`.
+  If we want certain built-ins to be sticky (e.g., the system never wants users to lose the `string` rendering),
+  we should introduce a separate `sealed abbrev` form — but I'd defer that to BETA2.
 
   [Q4] When `presburger` is called with a non-ground string, should we (i) fail immediately, (ii) raise a runtime error, or (iii) suspend until the string becomes ground?
   Option (iii) is interesting but expensive.
   [A] (ii) Moreover, every input string will be compiled in internal AST. Some kind of special magic.
   [Feedback / Claude]
-    This is a major design decision worth flagging: `presburger` is no
-    longer a predicate, it is a *special form*. Three follow-on items.
+  This is a major design decision worth flagging: `presburger` is no
+  longer a predicate, it is a *special form*. Three follow-on items.
 
-    (a) §1.4 already lists `presburger <string-literal>` as a body form, which is correct.
-        §2.3 should reframe the line "presburger : string -> o" as a user-facing type signature that the elaborator compiles away, not as a real predicate.
-        Compare to Haskell's `seq :: a -> b -> b` — its surface type lies; the kernel treats it specially.
+  (a) §1.4 already lists `presburger <string-literal>` as a body form, which is correct.
+  §2.3 should reframe the line "presburger : string -> o" as a user-facing type signature that the elaborator compiles away, not as a real predicate.
+  Compare to Haskell's `seq :: a -> b -> b` — its surface type lies; the kernel treats it specially.
 
-    (b) Compilation timing: at the desugaring step the literal is parsed via `Arith.hs::parsePresburger`.
-        The result becomes a new AST node, e.g.
+  (b) Compilation timing: at the desugaring step the literal is parsed via `Arith.hs::parsePresburger`.
+  The result becomes a new AST node, e.g.
 
-            PresburgerCheckBody :: PresburgerFormulaRep -> Body
+      PresburgerCheckBody :: PresburgerFormulaRep -> Body
 
-        The string itself never reaches the runtime.
-        A non-literal argument (e.g., a variable) is caught at this stage and reported as a *compile* error, not a runtime error — strengthening (ii).
+  The string itself never reaches the runtime.
+  A non-literal argument (e.g., a variable) is caught at this stage and reported as a *compile* error, not a runtime error — strengthening (ii).
 
-    (c) Variable binding inside the literal — this needs an explicit ruling.
-        In `?- X is 3, presburger "X > 5".`, does the `X` inside the string refer to the surrounding `X`?
+  (c) Variable binding inside the literal — this needs an explicit ruling.
+  In `?- X is 3, presburger "X > 5".`, does the `X` inside the string refer to the surrounding `X`?
 
-        Strongly recommend YES (same `LVar`). Concretely: when `parsePresburger` encounters an identifier, it emits `LV_Named "X"`, the same identity the surrounding clause uses. Without this, the §2.3 examples are meaningless.
+  Strongly recommend YES (same `LVar`). Concretely: when `parsePresburger` encounters an identifier, it emits `LV_Named "X"`, the same identity the surrounding clause uses. Without this, the §2.3 examples are meaningless.
 
-        Side effect: identifiers inside the literal participate in ordinary HOPU zonking, scope rules, etc.
-        The lexical convention (upper-case = logic var, lower-case = constant) inside the string mirrors the convention outside.
+  Side effect: identifiers inside the literal participate in ordinary HOPU zonking, scope rules, etc.
+  The lexical convention (upper-case = logic var, lower-case = constant) inside the string mirrors the convention outside.
 
   [Q5] Module / `import` system — not in BETA1, but it should be designed in a way that abbreviation tables and notation tables can be re-exported coherently.
   [A] If imported modules are inconsistent, then raise a compile error.
   [Feedback / Claude]
-    Agreed. The definition of "inconsistent" should be pinned down:
+  Agreed. The definition of "inconsistent" should be pinned down:
 
-      - two imports disagree on `(fixity, precedence)` for the same operator, or
-      - two imports disagree on the right-hand side of an abbreviation with the same name.
+    - two imports disagree on `(fixity, precedence)` for the same operator, or
+    - two imports disagree on the right-hand side of an abbreviation with the same name.
 
-    A separate policy question: can a user module shadow a *built-in* table entry without it counting as "inconsistency"?
-    Recommended answer: yes, built-ins are always overridable; only inter-import disagreements are errors.
-    This keeps the system extensible without making users fight the standard library.
+  A separate policy question: can a user module shadow a *built-in* table entry without it counting as "inconsistency"?
+  Recommended answer: yes, built-ins are always overridable; only inter-import disagreements are errors.
+  This keeps the system extensible without making users fight the standard library.
 
   [Q6] How does `:assign` interact with cut (`!`) when the assignment creates new disagreements? Should we re-run the constraint-promotion pass before resuming, or only at the next natural step boundary?
   [A] Why is it a problem? I couldn't find any problem; would you explain more?
   [Feedback / Claude]
-    On reflection, you are right — there is no fundamental issue.
-    `:assign θ` commits a substitution; the runtime zonks all pending constraints with θ and either promotes/falsifies them or leaves them in C. Cut commits a *branch choice*, not a *constraint state*, so the two are orthogonal.
-    Closing Q6.
+  On reflection, you are right — there is no fundamental issue.
+  `:assign θ` commits a substitution; the runtime zonks all pending constraints with θ and either promotes/falsifies them or leaves them in C. Cut commits a *branch choice*, not a *constraint state*, so the two are orthogonal.
+  Closing Q6.
 
-    Note. A debugger "undo" primitive (rolling back the most recent `:assign` from inside the same session) is *intentionally not* part of Hol's design. The intended pattern for backtracking-style exploration — including the future LoL tactic engine — is for the client to *remember* prior states explicitly (e.g., via the public `snapshot` / `restore` of §4.4.1) and re-issue them as needed, rather than for the runtime to maintain an implicit undo stack. This keeps `:assign` a pure forward-only commit and avoids reconciling an undo stack with cut barriers, the display-name cache, and module reloads.
+  Note. A debugger "undo" primitive (rolling back the most recent `:assign` from inside the same session) is *intentionally not* part of Hol's design. The intended pattern for backtracking-style exploration — including the future LoL tactic engine — is for the client to *remember* prior states explicitly (e.g., via the public `snapshot` / `restore` of §4.4.1) and re-issue them as needed, rather than for the runtime to maintain an implicit undo stack. This keeps `:assign` a pure forward-only commit and avoids reconciling an undo stack with cut barriers, the display-name cache, and module reloads.
 
   [Q7] Native pretty-printing of mixed name-hint / de Bruijn terms in the presence of capture-avoiding substitution: do we need on-demand α-renaming in the viewer, or can the desugarer enforce a global uniqueness invariant?
   [A] The former sounds good. Is there any problem related to the former?
   [Feedback / Claude]
-    Mostly fine; two UX caveats, both manageable.
+  Mostly fine; two UX caveats, both manageable.
 
-    (i) *Round-tripping*:
-      If the viewer renames a binder for display (e.g., shows `X1` instead of `X` to avoid shadowing), and the user then types `:assign X1 := t` based on the displayed name, the runtime must map `X1` back to the original `LVar`.
-      Solution: cache the (display-name ↔ internal-id) map for the current breakpoint, and consult it inside `:assign`. Without this, the UI is lying to the user.
+  (i) *Round-tripping*:
+  If the viewer renames a binder for display (e.g., shows `X1` instead of `X` to avoid shadowing), and the user then types `:assign X1 := t` based on the displayed name, the runtime must map `X1` back to the original `LVar`.
+  Solution: cache the (display-name ↔ internal-id) map for the current breakpoint, and consult it inside `:assign`. Without this, the UI is lying to the user.
 
-    (ii) *Stability across prompts*:
-      The same logic variable should display as the same name within one debugging session, not just within a single print pass.
-      Otherwise the user sees `X1` in one prompt and `X2` in the next for the same variable.
-      Solution: carry the display-naming cache for the lifetime of the REPL, not per-print.
+  (ii) *Stability across prompts*:
+  The same logic variable should display as the same name within one debugging session, not just within a single print pass.
+  Otherwise the user sees `X1` in one prompt and `X2` in the next for the same variable.
+  Solution: carry the display-naming cache for the lifetime of the REPL, not per-print.
 
-    Neither affects correctness; both belong in §3.5 once we finalise the debugger UI.
+  Neither affects correctness; both belong in §3.5 once we finalise the debugger UI.
 
 ================================================================================
 Appendix B. Other feedbacks to claude
