@@ -34,10 +34,10 @@
          type print (A -> o). % X := 3일 때 `print X`하면, 3을 출력함.
          type read (A -> o). % X가 unbounded일 때 `read X`하면, X := 3가 됨.
          ```
-         debugger나 assign이 이미 있긴 하지만, `print`와 `read`도 필요하다고 생각한다.
-      2. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
+         debugger나 assign이 이미 있긴 하지만, `print`와 `read`도 필요하다고 생각한다 (디버그 모드에 있지 않고 싶은 때가 있을 수도 있으니까).
+      2. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 쿼리로 확인가능하다:
          ```
-         main :- sigma\ C pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
+         ?- sigma\ C pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
          ```
          그러나, 이 기능을 추가할 때, 기존의 의미론과 조화로운지를 반드시 검토해야 한다.
       3. (대기 중) 분수(fraction), 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
@@ -50,7 +50,7 @@
       - 프로젝트 완료 후, 코딩 가이드라인(`claude.md`의 부록 A)에 따라 `Hol BETA 1`과 `Hol BETA 2` 모두 리팩토링할 것. 포맷팅이 내 마음에 들지 않음.
 
 1. `Hol V1` (대기 중):
-   Hol 프로젝트 정식 넘버링 (v1.0.0).
+   Hol 프로젝트의 첫 번째 정식 넘버링 (v1.0.0).
    - 인터프리터 외에도, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
    - `LoL ALPHA1`의 인터프리터를 만들 수 있는 하스켈 API도 제공해야 한다.
 
@@ -60,7 +60,7 @@
    - 과연 Hol V1 API로 만들 수 있을까? 애초에 방향이 틀린 건 아닌지 걱정됨.
 
 1. `Hol V2` (대기 중):
-   Hol 프로젝트 정식 넘버링 (v2.0.0). `Hol V1`의 완전한 상위호환.
+   Hol 프로젝트의 두 번째 정식 넘버링 (v2.0.0). `Hol V1`의 완전한 상위호환.
    - 이것의 API로 `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
    - [`elpi`](https://github.com/LPCIC/elpi)처럼 `main` 함수를 만들 것.
 
