@@ -51,7 +51,8 @@
        x2 = t2
    in body
    ```
-   와 같이 쓰지는 말것.
+   와 같이 쓰지는 말 것.
+   (do 표기법 안의 let은 해당 안 됨.)
 1. `where`을 이렇게 쓸 것:
    ```hs
    foo x y = ... where
@@ -63,7 +64,7 @@
        where
            go z = ...
    ```
-1. 절대 align하지 말 것. 예:
+1. align하지 말 것. 예:
    ```hs
    foo (Just x) = ...
    foo Nothing  = ...
