@@ -14,7 +14,7 @@
 
 1. `Hol BETA1` (완료됨):
    - 우선적으로 `doc/HolBETA1.txt` 참고할 것. 또한, claude는 `doc/HolBETA1.txt`를 편집할 수 있다.
-   - Hol ALPHA2를 상위호환으로 가져간다는 느낌으로 구현하되 필요하면 적극적으로 구조를 바꿔도 됨. 단, 테스트 `einstein.sh`, `fi.sh`, `lbeta.sh`를 통과해야 함.
+   - Hol ALPHA2를 상위호환으로 가져간다는 느낌으로 구현하되 필요하면 적극적으로 구조를 바꿔도 됨. 단, 테스트 {`einstein.sh`(성능 테스트), `fi.sh`(`=>` 의미론,산술 의미론 체크), `lbeta.sh`(hopu 체크)}를 통과해야 함.
    - (폐기됨) 실행하는 동안 산술 제약(Presburger arithmetic을 기반으로 함, `doc/HolBETA1.txt`을 참고할 것)의 무모순성을 확인하는 로직을 내장하기. 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
    - 원조 람다 프롤로그식 전위/중위 커스텀 노테이션을 다룰 수 있게 하기. 단, 런타임에 커스텀 노테이션을 그대로 보여줄 수 있어야 함.
    - 매크로 기능 지원(Coq의 abbrevation과 비슷하게). 그 예로 list char를 string로 단축한다.
@@ -29,13 +29,14 @@
       3. (B) SLoc threading: _sloc field + Header module name + debug line
    2. 추가 사항:
       - `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
+      - symbolic calculus. e.g., `Y is (X + 1) * (X + 2)` => `Y := X * X + 3 * X + 2`.
 
 1. `Hol V1` (대기 중): Hol 프로젝트 정식 넘버링 (v1.0.0):
-   - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)보다 잘하고 싶다.
+   - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh`을 푸는 데 1초 정도 걸릴 것).
    - `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
 
-1. `LoL ALPHA1` (대기 중): CIC 기반의 언어. Axiom과 Definition 뿐으로 tactic을 지원하지 않는다.
+1. `LoL ALPHA1` (대기 중): CIC 기반의 증명 스크립트 언어. 명령어는 Axiom과 Definition 뿐으로 tactic을 지원하지 않는다.
 
 1. `Hol V2` (대기 중): `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
 
-1. `LoL BETA2` (대기 중): `LoL ALPHA1`을 계승한, CIC 기반의 언어. tactic을 지원한다.
+1. `LoL BETA2` (대기 중): `LoL ALPHA1`을 계승한, CIC 기반의 증명 스크립트 언어. tactic을 지원한다.
