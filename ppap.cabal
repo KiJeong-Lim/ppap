@@ -71,6 +71,7 @@ executable ppap
     Hol.BETA2.Header
     Hol.BETA2.HOPU
     Hol.BETA2.Main
+    Hol.BETA2.ModuleLoader
     Hol.BETA2.Notation
     Hol.BETA2.PlanHolLexer
     Hol.BETA2.PlanHolParser
