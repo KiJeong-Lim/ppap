@@ -820,8 +820,8 @@ A new sub-tree of `Test/` exercises BETA2's additions.
         identical to inlining the import.
       transitive_import.hol
         A imports B; B imports C; C declares
-        `c : nat`. A uses `c`. Verifies
-        transitive re-export per §2.3.
+        `i : type` and `c : i`. A uses `c`.
+        Verifies transitive re-export per §2.3.
       diamond_import.hol
         A imports B and D; both import C;
         C declares `abbrev s := list nat.`
