@@ -10,6 +10,7 @@
 1. 하늘이 무너져도 절대 unsafe류는 쓰면 안 된다.
 1. C ffi 작업은 디렉토리 `src/X/`에서 한다. 즉, 모든 C 코드와 그 하스켈 래퍼는 디렉토리 `src/X/` 안에 있어야 한다.
 1. 하스켈 코드의 인덴테이션은 항상 4의 배수일 것.
+1. 튜플이 아닌 소괄호 안의 식은 무조건 1줄로 쓸 것.
 
 ### 권고 사항
 1. let in을 지양하고 where을 쓸 것. do 표기법 안에서의 let은 허용함. 예:
@@ -83,6 +84,30 @@
        , strstr "world" . nl
        ]
    ```
+1. if then else는 아예 1줄로 쓰거나
+   ```hs
+   if b then
+       e1
+   else
+       e2
+   ```
+   또는
+   ```hs
+   if b
+       then e1
+       else e2
+   ```
+   와 같이 쓸 것.
+   그러나 `else if`는
+   ```hs
+   if b1 then
+       e1
+   else if b2 then
+       e2
+   else
+       e3
+   ```
+   와 같이 쓸 것.
 
 ## 나의 계획들
 
