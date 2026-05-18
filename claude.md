@@ -26,3 +26,5 @@
    1. (C) Multi-head: parser ampersand production + Desugarer body cloning
    2. (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
    3. (B) SLoc threading: _sloc field + Header module name + debug line
+
+3. `Hol V1`: Hol 프로젝트 정식 넘버링 (v1.0.0)
