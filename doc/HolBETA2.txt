@@ -112,9 +112,11 @@ from the file path with `/` replaced by `.`, identical to BETA1 §1.7.
 If the header is present and the declared name disagrees with the path-
 derived name, the compiler raises
 
-  *** desugaring-error[<loc>]:
-    ? module header `<declared>` does not match file path-derived
-    ? name `<path-derived>`.
+```
+*** desugaring-error[<loc>]:
+  ? module header `<declared>` does not match file path-derived
+  ? name `<path-derived>`.
+```
 
 The header is purely documentation when the two agree: it has no semantic
 content beyond *fixing* the path-derived name in source.
@@ -151,8 +153,7 @@ Two surface restrictions, both enforced at desugaring:
   (set semantics for the import edges).
 
 There is no surface mechanism for *selective* import (`import M (only a, b)`)
-or for *qualified* import (`import M as N`). Both are deferred to a future
-revision; BETA2's import is unconditional and unqualified.
+or for *qualified* import (`import M as N`). Both won't be developed.
 
 Implementation status (initial draft): not yet wired. See §4.2 for the
 module-loader sketch.
@@ -250,8 +251,10 @@ Lookup direction. An import `import M.` issued from a file at
   of the `ppap` process). If found, that is the resolved file.
   4. Otherwise, report
 
-  *** module-error[<import-loc>]:
-    ? cannot resolve module `M' from `<file>'.
+```
+*** module-error[<import-loc>]:
+  ? cannot resolve module `M' from `<file>'.
+```
 
 `<dir>` precedence over `<root>` lets a directory hold its own private
 helper modules without leaking into the project-wide namespace.
@@ -282,8 +285,10 @@ Loading is a topological walk of the import graph.
   - A back-edge — encountering a module that is already on the
   in-progress stack — is a compile error:
 
-    *** module-error[<loc>]:
-      ? import cycle detected: <M_1> -> <M_2> -> ... -> <M_1>.
+```
+*** module-error[<loc>]:
+  ? import cycle detected: <M_1> -> <M_2> -> ... -> <M_1>.
+```
 
 Order within a module. Within a single module, declarations are
 processed in source order, unchanged from BETA1. The processing order
@@ -361,10 +366,12 @@ flagged at compile time. The full taxonomy:
 
 Each is reported as
 
-  *** module-error[<importer-loc>]:
-    ? import inconsistency: `<name>' is declared by both
-    ? `<M_a>' and `<M_b>' with disagreeing <kind|type|...>.
-    ? (`<M_a>': <rhs_a>; `<M_b>': <rhs_b>.)
+```
+*** module-error[<importer-loc>]:
+  ? import inconsistency: `<name>' is declared by both
+  ? `<M_a>' and `<M_b>' with disagreeing <kind|type|...>.
+  ? (`<M_a>': <rhs_a>; `<M_b>': <rhs_b>.)
+```
 
 The check fires when the second of the two imports is processed,
 attributing the error to the later import's location.
@@ -608,61 +615,61 @@ place; no `Hol.BETA2` module imports a `Hol.BETA1` module.
 
   src/Hol/BETA2/
     Header.hs
-        copied; `SLoc` extended to record its
-        originating file (module name via §2.1).
-        `TermNode` constructors get `_sloc :: Maybe
-        SLoc` under the (c) strategy of §2.6.1.
+      copied; `SLoc` extended to record its
+      originating file (module name via §2.1).
+      `TermNode` constructors get `_sloc :: Maybe
+      SLoc` under the (c) strategy of §2.6.1.
     Constant.hs
-        copied; unchanged.
+      copied; unchanged.
     TermNode.hs
-        copied; constructor changes per §2.6.1 (c).
-        Viewer takes an `SLoc` along with every
-        emitted `ViewNode` for the new debug-output
-        line.
+      copied; constructor changes per §2.6.1 (c).
+      Viewer takes an `SLoc` along with every
+      emitted `ViewNode` for the new debug-output
+      line.
     PlanHolLexer.hs
-        copied; `module` / `import` reserved.
-        LGS regen.
+      copied; `module` / `import` reserved.
+      LGS regen.
     PlanHolParser.hs
-        copied; `module` header, `import` block, and
-        `&`-multi-head clause productions. PGS regen.
+      copied; `module` header, `import` block, and
+      `&`-multi-head clause productions. PGS regen.
     Desugarer.hs
-        copied; SLoc threading per §2.6.1; multi-
-        head expansion per §2.5. `desugarProgram`
-        now returns a `ModuleEnv` (per-import)
-        rather than a single composed environment.
+      copied; SLoc threading per §2.6.1; multi-
+      head expansion per §2.5. `desugarProgram`
+      now returns a `ModuleEnv` (per-import)
+      rather than a single composed environment.
     TypeChecker.hs
-        copied; receives SLocs on every inferred
-        sub-term and uses them in error attribution
-        (§2.6.3).
+      copied; receives SLocs on every inferred
+      sub-term and uses them in error attribution
+      (§2.6.3).
     HOPU.hs
-        copied; passes SLoc through disagreement
-        reports (§2.6.3).
+      copied; passes SLoc through disagreement
+      reports (§2.6.3).
     Runtime.hs
-        copied; per-step SLoc line in debug output (§3.1).
+      copied; per-step SLoc line in debug output (§3.1).
     Compiler.hs
-        copied; SLoc threading from `TermRep` into
-        compiled `TermNode`.
+      copied; SLoc threading from `TermRep` into
+      compiled `TermNode`.
     Main.hs
-        copied; loads the main file through
-        `ModuleLoader` (§4.2) rather than directly.
-        Debug-mode prompt prints the new SLoc line.
+      copied; loads the main file through
+      `ModuleLoader` (§4.2) rather than directly.
+      Debug-mode prompt prints the new SLoc line.
     Arith.hs
-        copied; `installPresburger` now receives
-        the literal's actual SLoc (closes §2.3.4
-        of BETA1).
+      copied; `installPresburger` now receives
+      the literal's actual SLoc (closes §2.3.4
+      of BETA1).
     Notation.
-        copied; the `merge` operation used by
-        `ModuleLoader` enforces the consistency
-        rules of §2.4.
+      copied; the `merge` operation used by
+      `ModuleLoader` enforces the consistency
+      rules of §2.4.
     Debugger.hs
-        copied; unchanged (no new debugger commands
-        in BETA2 — the SLoc threading lives in the
-        viewer and `Runtime.hs`).
+      copied; unchanged (no new debugger commands
+      in BETA2 — the SLoc threading lives in the
+      viewer and `Runtime.hs`).
     ModuleLoader.hs
-        ★ new module (no BETA1 counterpart);
-        implements the topological load of §2.2,
-        the import-composition of §2.3, and the
-        consistency checks of §2.4.
+      ★ new module (no BETA1 counterpart);
+      implements the topological load of §2.2,
+      the import-composition of §2.3, and the
+      consistency checks of §2.4.
 
 Per the §4.7-of-BETA1 caveat, `ppap.cabal` is outside this document's
 edit scope. The user adds the new `Hol.BETA2.*` modules manually,
@@ -688,18 +695,18 @@ testable in isolation.
   data ModuleEnv                               -- opaque
 
   loadMain :: FilePath -> IO (Either LoadError LoadedModule)
-      -- Reads the main file, parses any `module`/`import` header,
-      -- topologically loads every transitive import, runs the
-      -- consistency checks of §2.4, and returns a `LoadedModule`
-      -- whose `mainEnv` is the composed environment of §2.3.
+    -- Reads the main file, parses any `module`/`import` header,
+    -- topologically loads every transitive import, runs the
+    -- consistency checks of §2.4, and returns a `LoadedModule`
+    -- whose `mainEnv` is the composed environment of §2.3.
 
   mainEnv :: LoadedModule -> ModuleEnv
-      -- Total composed environment seen by main-file clauses.
+    -- Total composed environment seen by main-file clauses.
 
   envOfModule :: ModuleName -> LoadedModule -> Maybe ModuleEnv
-      -- Exposed environment of one named module. Used by §3.2 to
-      -- attribute diagnostics to the module that introduced the
-      -- offending declaration.
+    -- Exposed environment of one named module. Used by §3.2 to
+    -- attribute diagnostics to the module that introduced the
+    -- offending declaration.
 
 4.2.2 Algorithm
 
@@ -736,11 +743,10 @@ The loader caches by absolute path (resolved via `canonicalizePath`)
 to avoid loading the same file twice through two different relative
 paths. Symlinks resolve to their canonical targets.
 
-4.2.4 No incremental loading
+4.2.4 Incremental loading
 
-BETA2 does not support hot reload of a module mid-session. The user
-relaunches the REPL with `:q` if the main file or any of its imports
-changes on disk. A `:reload` command is left for a future revision.
+BETA2 supports hot reload of a module mid-session.
+By the `:reload` command, user can hot reload the current file.
 
 
 4.3 SLoc-Threaded TermNode Wrappers
@@ -808,67 +814,67 @@ A new sub-tree of `Test/` exercises BETA2's additions.
   Test/
     module/
       simple_import.hol
-          main file imports one module;
-          a constant from the import is used
-          in a main-file clause. Output
-          identical to inlining the import.
+        main file imports one module;
+        a constant from the import is used
+        in a main-file clause. Output
+        identical to inlining the import.
       transitive_import.hol
-          A imports B; B imports C; C declares
-          `c : nat`. A uses `c`. Verifies
-          transitive re-export per §2.3.
+        A imports B; B imports C; C declares
+        `c : nat`. A uses `c`. Verifies
+        transitive re-export per §2.3.
       diamond_import.hol
-          A imports B and D; both import C;
-          C declares `abbrev s := list nat.`
-          exactly once. Verifies idempotent
-          loading per §2.2.
+        A imports B and D; both import C;
+        C declares `abbrev s := list nat.`
+        exactly once. Verifies idempotent
+        loading per §2.2.
       cycle.hol
-          A imports B; B imports A.
-          Expected output: cycle error per §2.2.
+        A imports B; B imports A.
+        Expected output: cycle error per §2.2.
       inconsistent_abbrev.hol
-          A imports B and D;
-          B declares `abbrev s := list nat.`;
-          D declares `abbrev s := list char.`.
-          Expected: §2.4 (C3) error.
+        A imports B and D;
+        B declares `abbrev s := list nat.`;
+        D declares `abbrev s := list char.`.
+        Expected: §2.4 (C3) error.
       inconsistent_fixity.hol
-          A imports B and D; B declares `infixl + 6.`;
-          D declares`infixl + 8.`.
-          Expected: §2.4 (C5) error.
+        A imports B and D; B declares `infixl + 6.`;
+        D declares`infixl + 8.`.
+        Expected: §2.4 (C5) error.
       explicit_header.hol
-          the main file opens with
-          `module Test.module.explicit_header.`
-          matching its file path.
-          Loads cleanly.
+        the main file opens with
+        `module Test.module.explicit_header.`
+        matching its file path.
+        Loads cleanly.
       mismatched_header.hol
-          the main file opens with `module Wrong.Name.`.
-          Expected: §1.2 path-mismatch error.
+        the main file opens with `module Wrong.Name.`.
+        Expected: §1.2 path-mismatch error.
     multi_head/
       simple.hol
-          `p X & q X :- nat_kind X.` then
-          `?- p 7.` and `?- q 7.` both
-          succeed.
+        `p X & q X :- nat_kind X.` then
+        `?- p 7.` and `?- q 7.` both
+        succeed.
       type_unification.hol
-          multi-head shares logic-var types
-          across heads per §2.5 (ii).
+        multi-head shares logic-var types
+        across heads per §2.5 (ii).
       cut_in_body.hol
-          multi-head body contains `!`;
-          each cloned clause's cut is local.
+        multi-head body contains `!`;
+        each cloned clause's cut is local.
     sloc/
       install_pass_loc.hol
-          a `presburger` literal with a syntax
-          error inside. Expected: the parse
-          error is attributed to the literal's
-          actual SLoc, not to `(0,0)-(0,0)`.
-          Closes §2.3.4 of BETA1.
+        a `presburger` literal with a syntax
+        error inside. Expected: the parse
+        error is attributed to the literal's
+        actual SLoc, not to `(0,0)-(0,0)`.
+        Closes §2.3.4 of BETA1.
       goal_loc_in_debug.hol
-          debug-mode step boundary prints the
-          goal's SLoc per §3.1.
+        debug-mode step boundary prints the
+        goal's SLoc per §3.1.
       type_error_subterm.hol
-          a sub-term of a clause body fails
-          type-check; the error is attributed
-          to the sub-term's SLoc, not the
-          clause's. Closes §2.6.3 refinement 3.
+        a sub-term of a clause body fails
+        type-check; the error is attributed
+        to the sub-term's SLoc, not the
+        clause's. Closes §2.6.3 refinement 3.
     smoke.sh
-        inherits BETA1's runner with --update.
+      inherits BETA1's runner with --update.
 
 Each `.hol` file has the same sidecar pair (`.input.txt`,
 `.expected.txt`) as BETA1's existing tests. The runner reuses
@@ -943,7 +949,7 @@ New open questions introduced by BETA2:
 
 
 ================================================================================
-Appendix B. Other Feedbacks to Claude
+Appendix B. Feedbacks to Claude
 ================================================================================
 
   [B1] Multi-head clauses (originally in Appendix B of BETA1):

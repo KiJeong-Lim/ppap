@@ -1,5 +1,5 @@
 ================================================================================
-Hol BETA1 — Language Specification (Draft)
+Hol BETA1 — Language Specification
 ================================================================================
 
 This document specifies the syntax and semantics of `Hol BETA1`, a dialect of λProlog that supersedes `Hol ALPHA2`. BETA1 keeps every program accepted by ALPHA2 working and additionally provides:
@@ -2014,13 +2014,3 @@ Appendix A. Open Questions
   Solution: carry the display-naming cache for the lifetime of the REPL, not per-print.
 
   Neither affects correctness; both belong in §3.5 once we finalise the debugger UI.
-
-================================================================================
-Appendix B. Other feedbacks to claude
-================================================================================
-
-  [1] In `Hol BETA1`, like the original λProlog, we will support a multiple declaration---e.g.:
-  ```
-  p (f X Y) & p (g X Y) :- p X, p Y.
-  ```
-  // Feedback here.
