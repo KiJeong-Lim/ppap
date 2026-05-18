@@ -822,27 +822,25 @@ A new sub-tree of `Test/` exercises BETA2's additions.
           exactly once. Verifies idempotent
           loading per §2.2.
       cycle.hol
-          A imports B; B imports A. Expected
-          output: cycle error per §2.2.
+          A imports B; B imports A.
+          Expected output: cycle error per §2.2.
       inconsistent_abbrev.hol
-          A imports B and D; B declares
-          `abbrev s := list nat.`; D declares
-          `abbrev s := list char.`. Expected:
-          §2.4 (C3) error.
+          A imports B and D;
+          B declares `abbrev s := list nat.`;
+          D declares `abbrev s := list char.`.
+          Expected: §2.4 (C3) error.
       inconsistent_fixity.hol
-          A imports B and D; B declares
-          `infixl + 6.`; D declares
-          `infixl + 8.`. Expected: §2.4 (C5)
-          error.
+          A imports B and D; B declares `infixl + 6.`;
+          D declares`infixl + 8.`.
+          Expected: §2.4 (C5) error.
       explicit_header.hol
           the main file opens with
           `module Test.module.explicit_header.`
-          matching its file path. Loads
-          cleanly.
+          matching its file path.
+          Loads cleanly.
       mismatched_header.hol
-          the main file opens with
-          `module Wrong.Name.`. Expected:
-          §1.2 path-mismatch error.
+          the main file opens with `module Wrong.Name.`.
+          Expected: §1.2 path-mismatch error.
     multi_head/
       simple.hol
           `p X & q X :- nat_kind X.` then
@@ -868,10 +866,9 @@ A new sub-tree of `Test/` exercises BETA2's additions.
           a sub-term of a clause body fails
           type-check; the error is attributed
           to the sub-term's SLoc, not the
-          clause's. Closes §2.6.3 refinement
-          3.
+          clause's. Closes §2.6.3 refinement 3.
     smoke.sh
-        -- inherits BETA1's runner with --update.
+        inherits BETA1's runner with --update.
 
 Each `.hol` file has the same sidecar pair (`.input.txt`,
 `.expected.txt`) as BETA1's existing tests. The runner reuses
