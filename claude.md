@@ -21,3 +21,8 @@
    - 고급테크닉이지만, deBruijn index를 쓰되 named-lambda를 쓰는 것도 가능할까? (마치 Coq처럼).
    - 실행하는 동안 산술 제약을 모은다. 입력받은 문자열을 파싱하여, 주어진 산술 논리식이 현재 산술 제약들로부터 도출가능한지를 presburger (string -> o)라는 술어를 지원한다. 암묵적으로 매 호출마다 `presburger "_|_", !, fail`이 있는 것으로 간주하는 건 어떨까? 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
    - 디버깅하는 동안, 대화형으로 flexible variable (LVar)를 instantiate할 수 있게 하는 기능도 만들고 싶다. 이는 대화형 증명보조기의 택틱을 구현하는 데 핵심이 될 기술이다.
+
+2. `Hol BETA2`:
+   1. (C) Multi-head: parser ampersand production + Desugarer body cloning
+   2. (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
+   3. (B) SLoc threading: _sloc field + Header module name + debug line
