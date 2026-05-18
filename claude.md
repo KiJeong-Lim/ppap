@@ -14,7 +14,7 @@
 
 1. `Hol BETA1` (완료됨):
    - 우선적으로 `doc/HolBETA1.txt` 참고할 것. 또한, claude는 `doc/HolBETA1.txt`를 편집할 수 있다.
-   - Hol ALPHA2를 상위호환으로 가져간다는 느낌으로 구현하되 필요하면 적극적으로 구조를 바꿔도 됨. 단, 테스트 {`einstein.sh`(성능 테스트), `fi.sh`(`=>` 의미론,산술 의미론 체크), `lbeta.sh`(hopu 체크)}를 통과해야 함.
+   - Hol ALPHA2를 상위호환으로 가져간다는 느낌으로 구현하되 필요하면 적극적으로 구조를 바꿔도 됨. 단, 테스트 {`einstein.sh`(성능 테스트), `fi.sh`(`=>`의 의미론, 산술 의미론 체크), `lbeta.sh`(hopu 체크)}를 통과해야 함.
    - (폐기됨) 실행하는 동안 산술 제약(Presburger arithmetic을 기반으로 함, `doc/HolBETA1.txt`을 참고할 것)의 무모순성을 확인하는 로직을 내장하기. 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
    - 원조 람다 프롤로그식 전위/중위 커스텀 노테이션을 다룰 수 있게 하기. 단, 런타임에 커스텀 노테이션을 그대로 보여줄 수 있어야 함.
    - 매크로 기능 지원(Coq의 abbrevation과 비슷하게). 그 예로 list char를 string로 단축한다.
