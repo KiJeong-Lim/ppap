@@ -11,7 +11,21 @@
 1. 디렉토리 `src/X/`에서 C ffi 작업을 한다. 즉, 모든 C 코드와 그 하스켈 래퍼는 디렉토리 `src/X/` 안에 있어야 한다.
 
 ### 권고만 하는 사항
-1. let in을 지양하고 where을 쓸 것. do 표기법 안에서의 let은 허용함.
+1. let in을 지양하고 where을 쓸 것. do 표기법 안에서의 let은 허용함. 예:
+   ```hs
+   foo bar = case bar of
+       Bar x ->
+           let y = x + 2
+           in y * 2
+   ```
+   를 지양하고
+   ```hs
+   foo bar
+       = case foo of
+           Foo x -> y * 2 where
+               y = x + 2
+   ```
+   와 같이 쓴다.
 1. 되도록이면 짧은 여러 줄 대신 긴 한 줄로 작성할 것.
 1. let in은 쓰더라도,
    ```hs
