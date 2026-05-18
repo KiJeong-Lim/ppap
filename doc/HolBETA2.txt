@@ -153,7 +153,10 @@ Two surface restrictions, both enforced at desugaring:
   (set semantics for the import edges).
 
 There is no surface mechanism for *selective* import (`import M (only a, b)`)
-or for *qualified* import (`import M as N`). Both won't be developed.
+or for *qualified* import (`import M as N`). Neither is on the BETA2
+roadmap: BETA2's import is unconditional and unqualified by design,
+and a future revision is expected to address scoping needs at a
+higher level rather than by extending the import surface.
 
 Implementation status (initial draft): not yet wired. See §4.2 for the
 module-loader sketch.
@@ -657,7 +660,7 @@ place; no `Hol.BETA2` module imports a `Hol.BETA1` module.
       copied; `installPresburger` now receives
       the literal's actual SLoc (closes §2.3.4
       of BETA1).
-    Notation.
+    Notation.hs
       copied; the `merge` operation used by
       `ModuleLoader` enforces the consistency
       rules of §2.4.
@@ -743,10 +746,37 @@ The loader caches by absolute path (resolved via `canonicalizePath`)
 to avoid loading the same file twice through two different relative
 paths. Symlinks resolve to their canonical targets.
 
-4.2.4 Incremental loading
+4.2.4 The `:reload` command
 
-BETA2 supports hot reload of a module mid-session.
-By the `:reload` command, user can hot reload the current file.
+BETA2 provides a `:reload` REPL command whose semantics are exactly
+those of a full shutdown and relaunch with the same main file: the
+loader's `loaded` and `loading` tables are dropped, the display-name
+cache (§3.5 of BETA1) is cleared, every snapshot becomes invalid,
+and `loadMain(path)` is re-invoked from scratch against the
+current contents of the file system.
+
+`:reload` is only accepted at the top-level prompt. It is rejected
+with
+
+```
+*** repl-error:
+  ? `:reload' is not available inside `:debug' mode
+  ? or while a query is searching for answers.
+```
+
+if invoked while a `:debug` session is open or while the runtime is
+still enumerating answers for a pending query. This makes `:reload`
+a strictly off-line operation: there is no need to reconcile it with
+cut barriers (§2.2 of BETA1), pending `:assign`s (§3.2 of BETA1),
+or partially-instantiated logic variables. The contract "the file
+system is consulted only at top-level transitions" replaces BETA1's
+narrower "the file system is consulted only at REPL launch".
+
+Because `:reload` is observationally identical to `:q` followed by
+relaunching, §2.1's invariant — "everything visible at a debug prompt
+is the transitive closure of the main file's imports" — remains
+intact: a debug prompt opens only after a load completes, and a load
+completes only at top-level.
 
 
 4.3 SLoc-Threaded TermNode Wrappers
@@ -925,7 +955,7 @@ New open questions introduced by BETA2:
   conjuncts" writes `body_1, body_2`. The two are not the
   same operation.
 
-  [Q11] What is the SLoc-attribution policy for HOPU-introduced
+  [Q10] What is the SLoc-attribution policy for HOPU-introduced
   sub-terms (`_sloc = Nothing`)?
   [A] Best-effort fill from the enclosing context (§4.3.1). If
   no enclosing position is available either, the diagnostic
