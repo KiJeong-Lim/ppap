@@ -10,7 +10,8 @@
 1. 하늘이 무너져도 절대 unsafe류를 쓰지 말 것.
 
 ### 권고만 하는 사항
-1. let in을 지양하고 where을 쓸 것. do 표기법 안에서의 let은 허용함. let in은 쓰더라도
+1. let in을 지양하고 where을 쓸 것. do 표기법 안에서의 let은 허용함.
+1. let in은 쓰더라도
 ```hs
 let x1 = t1 in
 let x2 = t2 in
