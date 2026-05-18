@@ -1,7 +1,7 @@
 # 지침서
 
 우리는 이미 렉서 생성기(`src/LGS/Main.hs`), 파서 생성기(`src/PGS/Main.hs`)를 자체적으로 갖추었고, 람다 프롤로그의 방언 구현체(Hol ALPHA2)도 가지고 있다.
-사용자는 다음 계획들을 구상 중이며, claude에게 모든 파일을 읽을 수 있는 권한과 {`claude.md`, `LICENSE`, `ppap.cabal`, `README.md`, `stack.yaml`, `stack.yaml.lock`}를 제외한 모든 문서 및 코드를 편집할 수 있는 권한을 부여한다.
+사용자는 다음 계획들을 구상 중이며, claude에게 모든 파일을 읽을 수 있는 권한과 {`claude.md`, `LICENSE`, `ppap.cabal`, `stack.yaml`, `stack.yaml.lock`}를 제외한 모든 문서 및 코드를 편집할 수 있는 권한을 부여한다.
 또한, claude는 궁금한 것은 얼마든지 사용자에게 물어볼 수도 있고, 언제든지 [나의 계획들]을 실현하기 위해 필요한 새로운 단기계획을 시작시킬 것을 제안할 수 있다.
 
 ## 나의 계획들
@@ -22,7 +22,7 @@
    - 실행하는 동안 산술 제약을 모은다. 입력받은 문자열을 파싱하여, 주어진 산술 논리식이 현재 산술 제약들로부터 도출가능한지를 presburger (string -> o)라는 술어를 지원한다. 암묵적으로 매 호출마다 `presburger "_|_", !, fail`이 있는 것으로 간주하는 건 어떨까? 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
    - 디버깅하는 동안, 대화형으로 flexible variable (LVar)를 instantiate할 수 있게 하는 기능도 만들고 싶다. 이는 대화형 증명보조기의 택틱을 구현하는 데 핵심이 될 기술이다.
 
-2. `Hol BETA2` (진행중):
+1. `Hol BETA2` (진행 중):
    1. 현재 Task들:
       1. (C) Multi-head: parser ampersand production + Desugarer body cloning
       2. (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
@@ -30,4 +30,12 @@
    2. 추가 사항:
       - `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
 
-3. `Hol V1` (대기 중): Hol 프로젝트 정식 넘버링 (v1.0.0)
+1. `Hol V1` (대기 중): Hol 프로젝트 정식 넘버링 (v1.0.0):
+   - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)보다 잘하고 싶다.
+   - `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
+
+1. `LoL ALPHA1` (대기 중): CIC 기반의 언어. Axiom과 Definition 뿐으로 tactic을 지원하지 않는다.
+
+1. `Hol V2` (대기 중): `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
+
+1. `LoL BETA2` (대기 중): `LoL ALPHA1`을 계승한, CIC 기반의 언어. tactic을 지원한다.

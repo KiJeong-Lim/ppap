@@ -4,9 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/*
+extern int hol_v1(int argc, char *argv[]);
 
-char *myread(void);
-
-*/
 #endif
