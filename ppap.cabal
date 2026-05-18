@@ -63,6 +63,20 @@ executable ppap
     Hol.BETA1.Runtime
     Hol.BETA1.TermNode
     Hol.BETA1.TypeChecker
+    Hol.BETA2.Arith
+    Hol.BETA2.Compiler
+    Hol.BETA2.Constant
+    Hol.BETA2.Debugger
+    Hol.BETA2.Desugarer
+    Hol.BETA2.Header
+    Hol.BETA2.HOPU
+    Hol.BETA2.Main
+    Hol.BETA2.Notation
+    Hol.BETA2.PlanHolLexer
+    Hol.BETA2.PlanHolParser
+    Hol.BETA2.Runtime
+    Hol.BETA2.TermNode
+    Hol.BETA2.TypeChecker
     Hol.Main
     IsabelleHol.Dependecies
     Json.JsonAst
