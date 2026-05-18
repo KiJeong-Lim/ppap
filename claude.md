@@ -99,5 +99,6 @@
    - 이것의 API로 `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
    - [`elpi`](https://github.com/LPCIC/elpi)처럼 `main` 함수를 만들 것.
 
-1. `LoL BETA2` (대기 중): `LoL ALPHA1`을 계승한, CIC 기반의 증명 스크립트 언어.
+1. `LoL BETA2` (대기 중):
+   `LoL ALPHA1`을 계승한, CIC 기반의 증명 스크립트 언어.
    - tactic을 지원한다.
