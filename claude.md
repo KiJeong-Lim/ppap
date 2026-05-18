@@ -28,3 +28,4 @@
    3. (B) SLoc threading: _sloc field + Header module name + debug line
 
 3. `Hol V1`: Hol 프로젝트 정식 넘버링 (v1.0.0)
+   - `:constraint X > 3` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
