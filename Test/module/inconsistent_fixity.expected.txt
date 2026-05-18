@@ -3,6 +3,5 @@ ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main)
 Hol =<< Hol> Compiling Test.module.inconsistent_fixity ( Test/module/inconsistent_fixity.hol, interpreted )
 *** module-error[5:1-5:32]:
-  ? import inconsistency (C5): `my_op' is declared by
-  ? `Test.module.inc_fixity_b' with a different fixities than a prior import.
+  ? import inconsistency (C5): `my_op' is declared by `Test.module.inc_fixity_b' with a different fixity than a prior import.
 Hol =<< ppap: :q.hol: openFile: does not exist (No such file or directory)

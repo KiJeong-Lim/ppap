@@ -70,7 +70,8 @@ tie-breaker for design decisions.
 
 Inherited verbatim from §0.3 of BETA1. In addition:
 
-  - `M`, `N`     : module names (dotted lowercase paths, e.g. `Stdlib.list`)
+  - `M`, `N`     : module names (dotted identifier paths, e.g.
+  `Stdlib.list`, `Test.module.util`)
   - `μ`          : a single module's *exported environment*
   - `ℒ`          : a multiset of import edges (used during loading)
 
@@ -83,19 +84,36 @@ Chapter 1. Syntax
 --------------------------------------------------------------------------------
 
 The lexical structure of BETA1 (§1.1) is extended with two new reserved
-words and no new token classes.
+words and one new token class for dotted identifiers.
 
   - reserved words (new) : `module`, `import`
   - reserved words (kept): everything from BETA1 §1.1, plus `presburger`
   still intentionally non-reserved (§2.3.3).
+  - new token         : `<qid>`, a dotted identifier of two or more
+  segments (`foo.bar`, `Test.module.util`), each segment a BETA1
+  identifier.
 
-A module name is a `'.'`-separated sequence of *lowercase* identifiers:
+A module name is a `'.'`-separated sequence of identifiers:
 
-  module-name ::= lowercase ( '.' lowercase )*
+  module-name ::= ident ( '.' ident )*
+  ident       ::= letter ( letter | digit | '_' )*
+
+The first character of each segment is any ASCII letter (upper or
+lower case), so that path-derived names such as `Example.foo.bar`
+(§2.1) round-trip through the surface unchanged. The lexer emits
+`<id>` when the name has a single segment and `<qid>` when it has
+two or more — both forms are accepted in module/import positions.
 
 Module names do not appear in expression position; they appear only inside
-`module <name>.` headers and `import <name>.` declarations, where the
-parser knows to switch into module-name mode.
+`module <name>.` headers and `import <name>.` declarations.
+
+Lexer caveat. Because `<qid>` is matched greedily by the lexer, a
+two-fact sequence written on a single line with no whitespace
+(`foo.bar.`) would be misread as a single `<qid>` followed by `.`.
+Programs in `Test/**.hol` and `Example/**.hol` avoid this corner;
+authors are advised to place declarations on separate lines or to
+insert whitespace around a terminating period if they wish to keep a
+single-line layout.
 
 
 1.2 Module Headers
@@ -371,10 +389,24 @@ Each is reported as
 
 ```
 *** module-error[<importer-loc>]:
-  ? import inconsistency: `<name>' is declared by both
+  ? import inconsistency (C<n>): `<name>' is declared by `<M_b>'
+  ? with a different <kind|type|fixity|abbreviation|notation> than a
+  ? prior import.
+```
+
+A two-sided variant naming the earlier import `<M_a>` and showing both
+right-hand sides is also conformant:
+
+```
+*** module-error[<importer-loc>]:
+  ? import inconsistency (C<n>): `<name>' is declared by both
   ? `<M_a>' and `<M_b>' with disagreeing <kind|type|...>.
   ? (`<M_a>': <rhs_a>; `<M_b>': <rhs_b>.)
 ```
+
+Choosing between the two forms is an implementation matter: the
+single-sided form requires only the importer's local state; the
+two-sided form additionally requires a per-name origin table.
 
 The check fires when the second of the two imports is processed,
 attributing the error to the later import's location.

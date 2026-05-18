@@ -243,7 +243,7 @@ mergeKindsStrict iloc iname old new = foldr step (Right old) (Map.toList new)
         case Map.lookup tc m of
             Nothing -> Right (Map.insert tc k m)
             Just k' | k == k' -> Right m
-                    | otherwise -> Left (inconsErr iloc "C1" iname (showTC tc) "kinds")
+                    | otherwise -> Left (inconsErr iloc "C1" iname (showTC tc) "kind")
 
 mergeTypesStrict :: SLoc -> String -> TypeEnv -> TypeEnv -> Either ErrMsg TypeEnv
 mergeTypesStrict iloc iname old new = foldr step (Right old) (Map.toList new)
@@ -253,7 +253,7 @@ mergeTypesStrict iloc iname old new = foldr step (Right old) (Map.toList new)
         case Map.lookup dc m of
             Nothing -> Right (Map.insert dc p m)
             Just p' | p == p' -> Right m
-                    | otherwise -> Left (inconsErr iloc "C2" iname (showDC dc) "types")
+                    | otherwise -> Left (inconsErr iloc "C2" iname (showDC dc) "type")
 
 showTC :: TypeConstructor -> String
 showTC (TC_Named s) = s
@@ -269,7 +269,7 @@ mergeFixityStrict iloc iname old new = do
         (\(name, fp) -> case lookupFixity name old of
             Nothing -> Right ()
             Just fp' | fp == fp' -> Right ()
-                     | otherwise -> Left (inconsErr iloc "C5" iname name "fixities"))
+                     | otherwise -> Left (inconsErr iloc "C5" iname name "fixity"))
         (Notation.fixityList new)
     Right (Notation.merge old new)
   where
@@ -285,13 +285,13 @@ mergeExpStrict iloc iname old new = do
         (\(nm, ps, rhs) -> case lookup nm [ (n', (p', r')) | (n', p', r') <- typeAbbrevs old ] of
             Nothing -> Right ()
             Just (ps', rhs') | ps == ps' && typeRepEq rhs rhs' -> Right ()
-                             | otherwise -> Left (inconsErr iloc "C3" iname nm "abbreviations"))
+                             | otherwise -> Left (inconsErr iloc "C3" iname nm "abbreviation"))
         (typeAbbrevs new)
     _ <- mapM_
         (\(nm, ps, rhs) -> case lookup nm [ (n', (p', r')) | (n', p', r') <- termNotations old ] of
             Nothing -> Right ()
             Just (ps', rhs') | ps == ps' && termRepEq rhs rhs' -> Right ()
-                             | otherwise -> Left (inconsErr iloc "C4" iname nm "notations"))
+                             | otherwise -> Left (inconsErr iloc "C4" iname nm "notation"))
         (termNotations new)
     Right (Notation.mergeExpansion old new)
   where
@@ -301,8 +301,9 @@ mergeExpStrict iloc iname old new = do
 inconsErr :: SLoc -> String -> String -> String -> String -> ErrMsg
 inconsErr iloc tag iname dname kindLabel =
     "*** module-error[" ++ pprint 0 iloc "" ++ "]:\n"
-    ++ "  ? import inconsistency (" ++ tag ++ "): `" ++ dname ++ "' is declared by\n"
-    ++ "  ? `" ++ iname ++ "' with a different " ++ kindLabel ++ " than a prior import."
+    ++ "  ? import inconsistency (" ++ tag ++ "): `" ++ dname
+    ++ "' is declared by `" ++ iname ++ "' with a different "
+    ++ kindLabel ++ " than a prior import."
 
 -- SLoc-blind structural equality on surface TypeRep / TermRep.  Two
 -- imports declaring the same abbreviation/notation should be considered
