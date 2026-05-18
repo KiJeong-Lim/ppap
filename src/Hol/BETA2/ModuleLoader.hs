@@ -151,8 +151,8 @@ elaborate canonicalPath mname decls = do
     let initialKinds = lsInitialKinds st
         initialFacts = lsInitialFacts st
         initialTypes = lsInitialTypes st
-    (composedKinds, composedTypes, composedNotation, composedExpansion) <- foldM combineImport
-        (initialKinds, initialTypes, Notation.initial, Notation.initialExpansionDB)
+    (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM combineImport
+        (initialKinds, initialTypes, Notation.initial, Notation.initialExpansionDB, emptyOrigins)
         importedEnvsWithLocs
     let importedFacts = concatMap (drop (length initialFacts) . moduleEnvFacts . snd) importedEnvsWithLocs
     (env1, ownNotation0, ownExpansion0) <- desugarProgram composedKinds composedTypes mname body
@@ -220,40 +220,61 @@ mergeNotation = Notation.merge
 mergeExpansion :: ExpansionDB -> ExpansionDB -> ExpansionDB
 mergeExpansion = Notation.mergeExpansion
 
--- §2.4 consistency checks.  `combineImport (k, t, n, e) ((iloc, iname), env)`
--- merges `env` into the accumulator and fails with a §2.4 C1-C5 error
--- attributed to `iloc` if any decl in `env` disagrees with the
+-- §2.4 origin tracking: a per-name sidecar that records *which* import
+-- contributed each declaration, so the two-sided inconsistency report
+-- can name M_a alongside the offending M_b.
+data Origins = Origins
+    { oKinds    :: !(Map.Map TypeConstructor String)
+    , oTypes    :: !(Map.Map DataConstructor String)
+    , oFixity   :: !(Map.Map SmallId String)
+    , oAbbrev   :: !(Map.Map SmallId String)
+    , oNotation :: !(Map.Map SmallId String)
+    }
+
+emptyOrigins :: Origins
+emptyOrigins = Origins Map.empty Map.empty Map.empty Map.empty Map.empty
+
+-- §2.4 consistency checks.  `combineImport (k, t, n, e, o) ((iloc, iname), env)`
+-- merges `env` into the accumulator, threads `Origins` so the error
+-- message can name the *prior* import, and fails with a §2.4 C1-C5
+-- error attributed to `iloc` if any decl in `env` disagrees with the
 -- accumulator's previous content.
 combineImport
-    :: (KindEnv, TypeEnv, NotationDB, ExpansionDB)
+    :: (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
     -> ((SLoc, String), ModuleEnv)
-    -> Loader (KindEnv, TypeEnv, NotationDB, ExpansionDB)
-combineImport (k, t, n, e) ((iloc, iname), env) = do
-    k' <- liftEither (mergeKindsStrict   iloc iname k (moduleEnvKinds     env))
-    t' <- liftEither (mergeTypesStrict   iloc iname t (moduleEnvTypes     env))
-    n' <- liftEither (mergeFixityStrict  iloc iname n (moduleEnvNotation  env))
-    e' <- liftEither (mergeExpStrict     iloc iname e (moduleEnvExpansion env))
-    return (k', t', n', e')
+    -> Loader (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
+combineImport (k, t, n, e, o) ((iloc, iname), env) = do
+    (k', oK) <- liftEither (mergeKindsStrict   iloc iname (oKinds o)    k (moduleEnvKinds     env))
+    (t', oT) <- liftEither (mergeTypesStrict   iloc iname (oTypes o)    t (moduleEnvTypes     env))
+    (n', oF) <- liftEither (mergeFixityStrict  iloc iname (oFixity o)   n (moduleEnvNotation  env))
+    (e', oA, oN) <- liftEither (mergeExpStrict iloc iname (oAbbrev o) (oNotation o) e (moduleEnvExpansion env))
+    return (k', t', n', e', Origins { oKinds = oK, oTypes = oT, oFixity = oF, oAbbrev = oA, oNotation = oN })
 
-mergeKindsStrict :: SLoc -> String -> KindEnv -> KindEnv -> Either ErrMsg KindEnv
-mergeKindsStrict iloc iname old new = foldr step (Right old) (Map.toList new)
+mergeKindsStrict :: SLoc -> String -> Map.Map TypeConstructor String -> KindEnv -> KindEnv -> Either ErrMsg (KindEnv, Map.Map TypeConstructor String)
+mergeKindsStrict iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
   where
     step (tc, k) acc = do
-        m <- acc
+        (m, origin) <- acc
         case Map.lookup tc m of
-            Nothing -> Right (Map.insert tc k m)
-            Just k' | k == k' -> Right m
-                    | otherwise -> Left (inconsErr iloc "C1" iname (showTC tc) "kind")
+            Nothing -> Right (Map.insert tc k m, Map.insert tc iname origin)
+            Just k' | k == k' -> Right (m, origin)
+                    | otherwise ->
+                        let prior = Map.lookup tc origin
+                        in Left (inconsErr2 iloc "C1" prior iname (showTC tc) "kind"
+                                   (pprint 0 k' "") (pprint 0 k ""))
 
-mergeTypesStrict :: SLoc -> String -> TypeEnv -> TypeEnv -> Either ErrMsg TypeEnv
-mergeTypesStrict iloc iname old new = foldr step (Right old) (Map.toList new)
+mergeTypesStrict :: SLoc -> String -> Map.Map DataConstructor String -> TypeEnv -> TypeEnv -> Either ErrMsg (TypeEnv, Map.Map DataConstructor String)
+mergeTypesStrict iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
   where
     step (dc, p) acc = do
-        m <- acc
+        (m, origin) <- acc
         case Map.lookup dc m of
-            Nothing -> Right (Map.insert dc p m)
-            Just p' | polyTypeEq p p' -> Right m
-                    | otherwise -> Left (inconsErr iloc "C2" iname (showDC dc) "type")
+            Nothing -> Right (Map.insert dc p m, Map.insert dc iname origin)
+            Just p' | polyTypeEq p p' -> Right (m, origin)
+                    | otherwise ->
+                        let prior = Map.lookup dc origin
+                        in Left (inconsErr2 iloc "C2" prior iname (showDC dc) "type"
+                                   "<scheme>" "<scheme>")
 
 -- §2.4 C2: universally-quantified type variables may be α-renamed.
 -- `Forall xs t` and `Forall ys u` are α-equivalent iff they bind the
@@ -273,47 +294,74 @@ showDC :: DataConstructor -> String
 showDC (DC_Named s) = s
 showDC dc           = show dc
 
-mergeFixityStrict :: SLoc -> String -> NotationDB -> NotationDB -> Either ErrMsg NotationDB
-mergeFixityStrict iloc iname old new = do
-    _ <- mapM_
-        (\(name, fp) -> case lookupFixity name old of
-            Nothing -> Right ()
-            Just fp' | fp == fp' -> Right ()
-                     | otherwise -> Left (inconsErr iloc "C5" iname name "fixity"))
-        (Notation.fixityList new)
-    Right (Notation.merge old new)
+mergeFixityStrict :: SLoc -> String -> Map.Map SmallId String -> NotationDB -> NotationDB -> Either ErrMsg (NotationDB, Map.Map SmallId String)
+mergeFixityStrict iloc iname origin0 old new = do
+    origin' <- foldr step (Right origin0) (Notation.fixityList new)
+    Right (Notation.merge old new, origin')
   where
+    step (name, fp) acc = do
+        origin <- acc
+        case lookupFixity name old of
+            Nothing -> Right (Map.insert name iname origin)
+            Just fp' | fp == fp' -> Right origin
+                     | otherwise ->
+                        let prior = Map.lookup name origin
+                        in Left (inconsErr2 iloc "C5" prior iname name "fixity"
+                                   (showFixity fp') (showFixity fp))
     lookupFixity name db = lookup name (Notation.fixityList db)
+    showFixity (kind, prec) = show kind ++ " " ++ show prec
 
 -- §2.4 C3/C4: surface-level abbreviation/notation conflicts.  We compare
 -- against the ExpansionDB (TypeRep/TermRep) bodies rather than the
 -- compiled TermNode templates so the error attributes the right SLoc
 -- chain and so we don't have to recompile the body just to compare.
-mergeExpStrict :: SLoc -> String -> ExpansionDB -> ExpansionDB -> Either ErrMsg ExpansionDB
-mergeExpStrict iloc iname old new = do
-    _ <- mapM_
-        (\(nm, ps, rhs) -> case lookup nm [ (n', (p', r')) | (n', p', r') <- typeAbbrevs old ] of
-            Nothing -> Right ()
-            Just (ps', rhs') | ps == ps' && typeRepEq rhs rhs' -> Right ()
-                             | otherwise -> Left (inconsErr iloc "C3" iname nm "abbreviation"))
-        (typeAbbrevs new)
-    _ <- mapM_
-        (\(nm, ps, rhs) -> case lookup nm [ (n', (p', r')) | (n', p', r') <- termNotations old ] of
-            Nothing -> Right ()
-            Just (ps', rhs') | ps == ps' && termRepEq rhs rhs' -> Right ()
-                             | otherwise -> Left (inconsErr iloc "C4" iname nm "notation"))
-        (termNotations new)
-    Right (Notation.mergeExpansion old new)
+mergeExpStrict
+    :: SLoc -> String
+    -> Map.Map SmallId String -> Map.Map SmallId String
+    -> ExpansionDB -> ExpansionDB
+    -> Either ErrMsg (ExpansionDB, Map.Map SmallId String, Map.Map SmallId String)
+mergeExpStrict iloc iname oA0 oN0 old new = do
+    oA <- foldr stepA (Right oA0) (Notation.typeAbbrevList new)
+    oN <- foldr stepN (Right oN0) (Notation.termNotationList new)
+    Right (Notation.mergeExpansion old new, oA, oN)
   where
-    typeAbbrevs   = Notation.typeAbbrevList
-    termNotations = Notation.termNotationList
+    stepA (nm, ps, rhs) acc = do
+        oA <- acc
+        case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.typeAbbrevList old ] of
+            Nothing -> Right (Map.insert nm iname oA)
+            Just (ps', rhs') | ps == ps' && typeRepEq rhs rhs' -> Right oA
+                             | otherwise ->
+                                let prior = Map.lookup nm oA
+                                in Left (inconsErr2 iloc "C3" prior iname nm "abbreviation"
+                                           "<prior body>" "<current body>")
+    stepN (nm, ps, rhs) acc = do
+        oN <- acc
+        case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.termNotationList old ] of
+            Nothing -> Right (Map.insert nm iname oN)
+            Just (ps', rhs') | ps == ps' && termRepEq rhs rhs' -> Right oN
+                             | otherwise ->
+                                let prior = Map.lookup nm oN
+                                in Left (inconsErr2 iloc "C4" prior iname nm "notation"
+                                           "<prior body>" "<current body>")
 
-inconsErr :: SLoc -> String -> String -> String -> String -> ErrMsg
-inconsErr iloc tag iname dname kindLabel =
-    "*** module-error[" ++ pprint 0 iloc "" ++ "]:\n"
-    ++ "  ? import inconsistency (" ++ tag ++ "): `" ++ dname
-    ++ "' is declared by `" ++ iname ++ "' with a different "
-    ++ kindLabel ++ " than a prior import."
+-- §2.4 error format.  If `mPrior` names an earlier import, emit the
+-- two-sided variant that pins down both M_a and M_b along with their
+-- right-hand sides.  Otherwise (the conflicting decl came from the
+-- built-in seed) emit the single-sided fallback.
+inconsErr2 :: SLoc -> String -> Maybe String -> String -> String -> String -> String -> String -> ErrMsg
+inconsErr2 iloc tag mPrior iname dname kindLabel rhsA rhsB = case mPrior of
+    Just prior ->
+        "*** module-error[" ++ pprint 0 iloc "" ++ "]:\n"
+        ++ "  ? import inconsistency (" ++ tag ++ "): `" ++ dname
+        ++ "' is declared by both\n"
+        ++ "  ? `" ++ prior ++ "' and `" ++ iname
+        ++ "' with disagreeing " ++ kindLabel ++ ".\n"
+        ++ "  ? (`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
+    Nothing ->
+        "*** module-error[" ++ pprint 0 iloc "" ++ "]:\n"
+        ++ "  ? import inconsistency (" ++ tag ++ "): `" ++ dname
+        ++ "' is declared by `" ++ iname ++ "' with a different "
+        ++ kindLabel ++ " than the built-in seed."
 
 -- SLoc-blind structural equality on surface TypeRep / TermRep.  Two
 -- imports declaring the same abbreviation/notation should be considered
