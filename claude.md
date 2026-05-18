@@ -108,7 +108,7 @@
       2. (완료됨) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
       3. (진행 중) (B) SLoc threading: _sloc field + Header module name + debug line
    2. (대기 중) 추가적인 구현 사항:
-      3번 사항과 4번 사항은 안 구현해도 괜찮지만, 1번 사항과 2번 사항은 구현하고 싶다.
+      3번 사항과 4번 사항은 다음 버전에 구현하거나 안 구현해도 괜찮지만, 1번 사항과 2번 사항은 이번 버전에서 구현하고 싶다. 5번 사항과 6번 사항은 이번 버전에 넣을지 고민 중이다. claude의 의견을 듣고 싶음.
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
          ```
          type print (A -> o). % X := 3일 때 `print X`하면, 3을 출력함.
