@@ -176,21 +176,21 @@ lookupConType _ _ = Nothing
 typeOfTerm :: Labeling -> [MonoType Int] -> TermNode -> Maybe (MonoType Int)
 typeOfTerm lbl env t = case t of
     LVar v -> lookupLVarType v lbl
-    NCon c -> lookupConType c lbl
+    NCon c _ -> lookupConType c lbl
     NIdx i
         | i >= 0 && i < length env -> Just (env !! i)
         | otherwise -> Nothing
-    NApp t1 t2 -> do
+    NApp t1 t2 _ -> do
         ty1 <- typeOfTerm lbl env t1
         case ty1 of
             TyApp (TyApp (TyCon (TCon TC_Arrow _)) _) r -> Just r
             _ -> Nothing
-    NLam _ (LamType (Just dom)) body -> do
+    NLam _ (LamType (Just dom)) body _ -> do
         cod <- typeOfTerm lbl (dom : env) body
         Just (mkTyArrow dom cod)
-    NLam _ _ _ -> Nothing
+    NLam _ _ _ _ -> Nothing
     Susp body _ _ _ -> typeOfTerm lbl env body
-    NPresburgerCheck _ _ -> Just mkTyO
+    NPresburgerCheck _ _ _ -> Just mkTyO
 
 -- The HOPU pruning sites construct a substitution shaped like
 --   var := \b_1 \b_2 ... \b_k. common_head a_1 a_2 ... a_m
@@ -228,12 +228,12 @@ instance ZonkLVar Labeling where
 
 accLVarsTerm :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
 accLVarsTerm (LVar v) = Set.insert v
-accLVarsTerm (NCon _) = id
+accLVarsTerm (NCon _ _) = id
 accLVarsTerm (NIdx _) = id
-accLVarsTerm (NApp t1 t2) = accLVarsTerm t1 . accLVarsTerm t2
-accLVarsTerm (NLam _ _ t) = accLVarsTerm t
+accLVarsTerm (NApp t1 t2 _) = accLVarsTerm t1 . accLVarsTerm t2
+accLVarsTerm (NLam _ _ t _) = accLVarsTerm t
 accLVarsTerm (Susp t _ _ env) = accLVarsTerm t . accLVarsSuspEnv env
-accLVarsTerm (NPresburgerCheck _ freeOf) = Set.union (Set.fromList (Map.elems freeOf))
+accLVarsTerm (NPresburgerCheck _ freeOf _) = Set.union (Set.fromList (Map.elems freeOf))
 
 accLVarsSuspEnv :: SuspEnv -> Set.Set LogicVar -> Set.Set LogicVar
 accLVarsSuspEnv [] = id
@@ -303,7 +303,7 @@ instance Outputable Disagreement where
 
 {-# INLINE isRigidAtom #-}
 isRigidAtom :: TermNode -> Bool
-isRigidAtom (NCon (DC DC_wc)) = False
+isRigidAtom (NCon (DC DC_wc) _) = False
 isRigidAtom (NCon {}) = True
 isRigidAtom (NIdx {}) = True
 isRigidAtom _ = False
@@ -314,7 +314,7 @@ isTyLVar (LV_ty_var {}) = True
 isTyLVar _ = False
 
 isPatternRespectTo :: LogicVar -> [TermNode] -> Labeling -> Bool
-isPatternRespectTo v ts labeling = all isRigidAtom ts && areAllDistinct ts && and [ lookupLabel v labeling < lookupLabel c labeling | NCon c <- ts ]
+isPatternRespectTo v ts labeling = all isRigidAtom ts && areAllDistinct ts && and [ lookupLabel v labeling < lookupLabel c labeling | NCon c _ <- ts ]
 
 down :: Monad m => [TermNode] -> [TermNode] -> StateT Labeling (ExceptT HopuFail m) [TermNode]
 zs `down` ts = if downable then return indices else lift (throwE DownFail) where
@@ -328,16 +328,16 @@ ts `up` y = if upable then fmap findVisibles get else lift (throwE UpFail) where
     upable :: Bool
     upable = areAllDistinct ts && all isRigidAtom ts
     findVisibles :: Labeling -> [TermNode]
-    findVisibles labeling = [ mkNCon c | NCon c <- ts, lookupLabel c labeling <= lookupLabel y labeling ]
+    findVisibles labeling = [ mkNCon c | NCon c _ <- ts, lookupLabel c labeling <= lookupLabel y labeling ]
 
 bind :: [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
 bind outerHints var = go . rewrite HNF where
     go :: TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
-    go (NLam mhint mty rhs') parameters bindHints = do
+    go (NLam mhint mty rhs' _) parameters bindHints = do
         (subst, lhs') <- go rhs' parameters (bindHints ++ [mhint])
         return (subst, mkNLamHintTy mhint mty lhs')
     go rhs parameters bindHints
-        | (NCon (DC DC_wc), _) <- unfoldlNApp rhs
+        | (NCon (DC DC_wc) _, _) <- unfoldlNApp rhs
         = do
             labeling <- get
             -- §3.4 CMTT: the wildcard's type would equal `var`'s result
@@ -358,7 +358,7 @@ bind outerHints var = go . rewrite HNF where
                     (theta, lhs_tail) <- foldbind (bindVars subst rhs_tail)
                     return (theta <> subst, bindVars theta lhs_tail_elements : lhs_tail)
                 getLhsHead lhs_arguments
-                    | NCon con <- rhs_head
+                    | NCon con _ <- rhs_head
                     , lookupLabel var labeling >= lookupLabel con labeling
                     = return rhs_head
                     | Just idx <- rhs_head `List.elemIndex` lhs_arguments
@@ -399,11 +399,11 @@ bind outerHints var = go . rewrite HNF where
                 theta <- lift $ var' +-> makeNestedNLamH (map (paramHint hints) rhs_arguments) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
                 modify (zonkLVar theta)
                 return (theta, List.foldl' mkNApp common_head (lhs_inner ++ lhs_outer))
-            else if cmp_res /= LT && all isRigidAtom rhs_arguments && and [ lookupLabel c labeling > lookupLabel var' labeling | NCon c <- rhs_arguments ] then do
-                let mkBetaPattern (NCon c)
+            else if cmp_res /= LT && all isRigidAtom rhs_arguments && and [ lookupLabel c labeling > lookupLabel var' labeling | NCon c _ <- rhs_arguments ] then do
+                let mkBetaPattern (NCon c _)
                         | lookupLabel c labeling <= lookupLabel var labeling = [mkNCon c]
                     mkBetaPattern z = [ mkNIdx (length lhs_arguments - 1 - i) | i <- toList (z `List.elemIndex` lhs_arguments) ]
-                    isBetaPattern (NCon c)
+                    isBetaPattern (NCon c _)
                         | lookupLabel c labeling <= lookupLabel var labeling = True
                     isBetaPattern z = z `elem` common_arguments
                 let betaArgs = [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ]
@@ -425,7 +425,7 @@ bind outerHints var = go . rewrite HNF where
 -- anonymous logic variables, type variables, applied terms, or
 -- NIdx whose binder is out of `outerHints` reach).
 paramHint :: [Maybe SmallId] -> TermNode -> Maybe SmallId
-paramHint _ (NCon (DC (DC_Unique _ (DispHint mh)))) = mh
+paramHint _ (NCon (DC (DC_Unique _ (DispHint mh))) _) = mh
 paramHint _ (LVar (LV_Unique _ (DispHint mh))) = mh
 paramHint outerHints (NIdx i)
     | i >= 0 && i < n = outerHints !! (n - 1 - i)
@@ -483,9 +483,9 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
     canView :: Labeling -> TermNode -> Bool
     canView labeling = go where
         go :: TermNode -> Bool
-        go (NLam _ _ t1) = go t1
-        go (NApp t1 t2) = go t1 && go t2
-        go (NCon c) = lookupLabel var labeling >= lookupLabel c labeling
+        go (NLam _ _ t1 _) = go t1
+        go (NApp t1 t2 _) = go t1 && go t2
+        go (NCon c _) = lookupLabel var labeling >= lookupLabel c labeling
         go (LVar x) = lookupLabel var labeling >= lookupLabel x labeling
 
 simplify :: [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
@@ -542,11 +542,11 @@ simplify = flip loop mempty . zip (repeat []) where
                     Just (HopuSol labeling' subst') -> do
                         put True
                         loop (bindVars subst' disagreements) (subst' <> subst) labeling'
-            | (NCon (DC DC_wc), parameters) <- unfoldlNApp lhs
+            | (NCon (DC DC_wc) _, parameters) <- unfoldlNApp lhs
             = do
                 put True
                 loop disagreements subst labeling
-            | (NCon (DC DC_wc), parameters) <- unfoldlNApp rhs
+            | (NCon (DC DC_wc) _, parameters) <- unfoldlNApp rhs
             = do
                 put True
                 loop disagreements subst labeling
@@ -586,10 +586,10 @@ flatten (VarBinding mapsto)
         go (LVar v) = case Map.lookup v mapsto of
             Just t -> t
             Nothing -> LVar v
-        go t@(NCon _) = t
+        go t@(NCon _ _) = t
         go t@(NIdx _) = t
-        go (NApp t1 t2) = mkNApp (go t1) (go t2)
-        go (NLam h ty t) = mkNLamHintTy h ty (go t)
+        go (NApp t1 t2 _) = mkNApp (go t1) (go t2)
+        go (NLam h ty t _) = mkNLamHintTy h ty (go t)
         go t = t
 
 (+->) :: Monad m => LogicVar -> TermNode -> ExceptT HopuFail m VarBinding
@@ -623,19 +623,19 @@ etaReduce :: TermNode -> TermNode
 etaReduce = go . rewrite NF where
     isFreeIn :: DeBruijn -> TermNode -> Bool
     isFreeIn i (NIdx j) = i == j
-    isFreeIn i (NApp t1 t2) = isFreeIn i t1 || isFreeIn i t2
-    isFreeIn i (NLam _ _ t1) = isFreeIn (i + 1) t1
+    isFreeIn i (NApp t1 t2 _) = isFreeIn i t1 || isFreeIn i t2
+    isFreeIn i (NLam _ _ t1 _) = isFreeIn (i + 1) t1
     isFreeIn i _ = False
     decr :: TermNode -> TermNode
     decr (LVar x) = mkLVar x
     decr (NIdx i) = if i > 0 then mkNIdx (i - 1) else error "etaReduce.decr: unreachable..."
-    decr (NCon c) = mkNCon c
-    decr (NApp t1 t2) = mkNApp (decr t1) (decr t2)
-    decr (NLam h ty t1) = mkNLamHintTy h ty (decr t1)
+    decr (NCon c _) = mkNCon c
+    decr (NApp t1 t2 _) = mkNApp (decr t1) (decr t2)
+    decr (NLam h ty t1 _) = mkNLamHintTy h ty (decr t1)
     go :: TermNode -> TermNode
-    go (NApp t1 t2) = mkNApp (go t1) (go t2)
-    go (NLam h ty t1) = case go t1 of
-        NApp t1' (NIdx 0)
+    go (NApp t1 t2 _) = mkNApp (go t1) (go t2)
+    go (NLam h ty t1 _) = case go t1 of
+        NApp t1' (NIdx 0) _
             | not (isFreeIn 0 t1') -> decr t1'
         t1' -> mkNLamHintTy h ty t1'
     go t = t

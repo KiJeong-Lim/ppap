@@ -63,8 +63,8 @@
 1. `Hol BETA2` (진행 중):
    1. 현재 Task들:
       1. (완료됨) (C) Multi-head: parser ampersand production + Desugarer body cloning
-      2. (진행 중) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
-      3. (대기 중) (B) SLoc threading: _sloc field + Header module name + debug line
+      2. (완료됨) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
+      3. (진행 중) (B) SLoc threading: _sloc field + Header module name + debug line
    2. 추가적인 구현 사항:
       3번 사항과 4번 사항은 안 구현해도 괜찮지만, 1번 사항과 2번 사항은 구현하고 싶다.
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
@@ -80,6 +80,8 @@
          그러나, 이 기능을 추가할 때, 기존의 의미론과 조화로운지를 반드시 검토해야 한다.
       3. (대기 중) 분수(fraction), 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
       4. (대기 중) `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면). 지금 당장은 넣지 말고, 후속 프로젝트에서 필요하면 넣는 게 좋을 듯.
+      5. (대기 중) 아무래도 타입 메세지 출력을 너무 못하는 듯. GHC식 타입체킹 알고리즘 적용 가능할까?
+      6. (대기 중) Z.Doc(Z.Text.Doc 아님)을 이용하여 에러 메세지 깔끔하게 출력
    3. 확인할 점:
       1. `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       1. 위 사항 이외의 Multi-head에서 발생할 수 있는 문제점 생각하기.

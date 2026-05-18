@@ -1,0 +1,4 @@
+Hol
+Test/sloc/install_pass_loc.hol
+:q
+

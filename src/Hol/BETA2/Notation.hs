@@ -259,11 +259,11 @@ renderTerm :: NotationDB -> TermNode -> ViewNode
 renderTerm _ (LVar (LV_ty_var u)) = ViewTVar ("?TV_" ++ show u)
 renderTerm _ (LVar (LV_Unique u (DispHint mhint))) = ViewLVar (case mhint of Just s -> s; Nothing -> "?V_" ++ show u)
 renderTerm _ (LVar (LV_Named v)) = ViewLVar v
-renderTerm _ (NCon (DC d)) = ViewDCon (show d)
-renderTerm _ (NCon (TC t)) = ViewTCon (show t)
+renderTerm _ (NCon (DC d) _) = ViewDCon (show d)
+renderTerm _ (NCon (TC t) _) = ViewTCon (show t)
 renderTerm _ (NIdx i) = ViewIVar ("W_" ++ show i)
-renderTerm db (NApp t1 t2) = ViewIApp (foldTerm db t1) (foldTerm db t2)
-renderTerm db (NLam mhint _ t) =
+renderTerm db (NApp t1 t2 _) = ViewIApp (foldTerm db t1) (foldTerm db t2)
+renderTerm db (NLam mhint _ t _) =
     let name = case mhint of
             Just s -> s
             Nothing -> "x"
@@ -320,8 +320,8 @@ monoTypeIntToNode (TyApp t1 t2) = mkNApp (monoTypeIntToNode t1) (monoTypeIntToNo
 -- the embedded `KindExpr`.
 nodeToMonoTypeInt :: TermNode -> Maybe (MonoType Int)
 nodeToMonoTypeInt (LVar (LV_ty_var m)) = Just (TyMTV m)
-nodeToMonoTypeInt (NCon (TC tc)) = Just (TyCon (TCon tc Star))
-nodeToMonoTypeInt (NApp t1 t2) = TyApp <$> nodeToMonoTypeInt t1 <*> nodeToMonoTypeInt t2
+nodeToMonoTypeInt (NCon (TC tc) _) = Just (TyCon (TCon tc Star))
+nodeToMonoTypeInt (NApp t1 t2 _) = TyApp <$> nodeToMonoTypeInt t1 <*> nodeToMonoTypeInt t2
 nodeToMonoTypeInt _ = Nothing
 
 -- §2.7 (P) display-time fold, run as a TermNode -> TermNode rewrite
@@ -338,8 +338,8 @@ nodeToMonoTypeInt _ = Nothing
 foldTermAsNode :: NotationDB -> TermNode -> TermNode
 foldTermAsNode db = go where
     go t = tryHere $ case t of
-        NApp t1 t2 -> NApp (go t1) (go t2)
-        NLam mhint ty body -> NLam mhint ty (go body)
+        NApp t1 t2 sl -> NApp (go t1) (go t2) sl
+        NLam mhint ty body sl -> NLam mhint ty (go body) sl
         Susp body env_n env_l mtv -> Susp (go body) env_n env_l mtv
         _ -> t
     tryHere t = case tryMatch (_entries db) t of
@@ -372,12 +372,12 @@ matchTerm params tmpl cand = go tmpl cand Map.empty
                 Nothing -> Just (Map.insert n c env)
                 Just prev -> if prev == c then Just env else Nothing
     go (LVar lv1) (LVar lv2) env = if lv1 == lv2 then Just env else Nothing
-    go (NCon c1) (NCon c2) env = if c1 == c2 then Just env else Nothing
+    go (NCon c1 _) (NCon c2 _) env = if c1 == c2 then Just env else Nothing
     go (NIdx i) (NIdx j) env = if i == j then Just env else Nothing
-    go (NApp a1 a2) (NApp b1 b2) env = do
+    go (NApp a1 a2 _) (NApp b1 b2 _) env = do
         env1 <- go a1 b1 env
         go a2 b2 env1
-    go (NLam _ _ t1) (NLam _ _ t2) env = go t1 t2 env
+    go (NLam _ _ t1 _) (NLam _ _ t2 _) env = go t1 t2 env
     go _ _ _ = Nothing
 
 -- =============================================================

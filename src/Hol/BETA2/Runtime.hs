@@ -244,11 +244,11 @@ scopeEscaping labeling targetScope targetLV = walk where
         | v == targetLV = ([], [])
         | lookupLabel v labeling > targetScope = ([], [v])
         | otherwise = ([], [])
-    walk (NCon c)
+    walk (NCon c _)
         | lookupLabel c labeling > targetScope = ([c], [])
         | otherwise = ([], [])
-    walk (NApp t1 t2) = combine (walk t1) (walk t2)
-    walk (NLam _ _ t) = walk t
+    walk (NApp t1 t2 _) = combine (walk t1) (walk t2)
+    walk (NLam _ _ t _) = walk t
     walk (Susp body _ _ _) = walk body
     walk _ = ([], [])
     combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
@@ -329,7 +329,7 @@ instance ZonkLVar Constraint where
     zonkLVar theta (EvalutionConstraint lhs rhs)
         | LVar x <- lhs = case Map.lookup x (unVarBinding theta) of
             Nothing -> EvalutionConstraint lhs (bindVars theta rhs)
-            Just t -> ArithmeticConstraint (NApp (NApp (NApp (NCon (DC DC_eq)) (NCon (TC (TC_Named "nat")))) t) (bindVars theta rhs))
+            Just t -> ArithmeticConstraint (mkNApp (mkNApp (mkNApp (mkNCon (DC DC_eq)) (mkNCon (TC (TC_Named "nat")))) t) (bindVars theta rhs))
         | otherwise = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
     zonkLVar theta (ArithmeticConstraint arith)
         = ArithmeticConstraint (bindVars theta arith)
@@ -491,8 +491,20 @@ showStackItem db verbose fvs typeMap space (ctx, cells) = strcat
         ]
       ) . nl
     , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
+    -- §3.1 / §3.4 BETA1: the source location of the current goal, where
+    -- known. Surface-visible only when the topmost cell's goal carries
+    -- an `_sloc` (§2.6.1 (c)).  Goals introduced by the runtime
+    -- (cut frames, conjuncts of an `LO_and`) have no SLoc and the
+    -- line shows `(none)` rather than a fabricated position.
+    , pindent (space + 4) . strstr ", " . strstr "_sloc = " . slocLine cells . nl
     , pindent (space + 4) . strstr "}" . nl
     ]
+  where
+    slocLine :: [Cell] -> ShowS
+    slocLine [] = strstr "(none)"
+    slocLine (cell : _) = case getNodeSLoc (_WantedGoal cell) of
+        Just l  -> strstr "`" . pprint 0 l . strstr "'"
+        Nothing -> strstr "(none)"
 
 showsCurrentState :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
 showsCurrentState db verbose fvs typeMap ctx cells stack = strcat
@@ -513,7 +525,7 @@ showsCurrentState db verbose fvs typeMap ctx cells stack = strcat
 instantiateFact :: Fact -> ScopeLevel -> StateT Labeling (ExceptT KernelErr (UniqueT IO)) (TermNode, TermNode)
 instantiateFact fact level
     = case unfoldlNApp (rewrite HNF fact) of
-        (NCon (DC (DC_LO LO_ty_pi)), [fact1]) -> do
+        (NCon (DC (DC_LO LO_ty_pi)) _, [fact1]) -> do
             uni <- getUnique
             let var = LV_ty_var uni
                 -- The `LO_ty_pi` binder's LamType slot carries the MTV
@@ -521,7 +533,7 @@ instantiateFact fact level
                 -- `Main.eqFact`). Recovering it lets us rewrite every
                 -- `TyMTV mtv` in the body to point at `uni`.
                 mtvKey = case rewrite HNF fact1 of
-                    NLam _ (LamType (Just (TyMTV mtv))) _ -> Just mtv
+                    NLam _ (LamType (Just (TyMTV mtv))) _ _ -> Just mtv
                     _ -> Nothing
                 fact1' = case mtvKey of
                     Just mtv -> substTyMTV mtv uni fact1
@@ -531,10 +543,10 @@ instantiateFact fact level
             -- debugger picks `?TV_<n>` over `?V_<n>`.
             modify (\lbl -> lbl { _TyVarKeys = IntMap.insert (unUnique uni) () (_TyVarKeys lbl) })
             instantiateFact (mkNApp fact1' (mkLVar var)) level
-        (NCon (DC (DC_LO LO_pi)), [fact1]) -> do
+        (NCon (DC (DC_LO LO_pi)) _, [fact1]) -> do
             uni <- getUnique
             let (mhint, mty) = case rewrite HNF fact1 of
-                    NLam h ty _ -> (h, unLamType ty)
+                    NLam h ty _ _ -> (h, unLamType ty)
                     _ -> (Nothing, Nothing)
                 var = LV_Unique uni (mkHint mhint)
             modify (enrollLabel var level)
@@ -542,8 +554,8 @@ instantiateFact fact level
                 Just ty -> modify (\lbl -> lbl { _VarTypes = IntMap.insert (unUnique uni) ty (_VarTypes lbl) })
                 Nothing -> return ()
             instantiateFact (mkNApp fact1 (mkLVar var)) level
-        (NCon (DC (DC_LO LO_if)), [conclusion, premise]) -> return (conclusion, premise)
-        (NCon (DC (DC_LO logical_operator)), args) -> lift (throwE (BadFactGiven (foldlNApp (mkNCon logical_operator) args)))
+        (NCon (DC (DC_LO LO_if)) _, [conclusion, premise]) -> return (conclusion, premise)
+        (NCon (DC (DC_LO logical_operator)) _, args) -> lift (throwE (BadFactGiven (foldlNApp (mkNCon logical_operator) args)))
         (t, ts) -> return (foldlNApp t ts, mkNCon LO_true)
 
 runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
@@ -565,7 +577,7 @@ runLogicalOperator LO_sigma [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
         let (mhint, mty) = case rewrite HNF goal1 of
-                NLam h ty _ -> (h, unLamType ty)
+                NLam h ty _ _ -> (h, unLamType ty)
                 _ -> (Nothing, Nothing)
             var = LV_Unique uni (mkHint mhint)
             labeling0 = enrollLabel var level (_CurrentLabeling ctx)
@@ -577,7 +589,7 @@ runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
         let (mhint, mty) = case rewrite HNF goal1 of
-                NLam h ty _ -> (h, unLamType ty)
+                NLam h ty _ _ -> (h, unLamType ty)
                 _ -> (Nothing, Nothing)
             con = DC (DC_Unique uni (mkHint mhint))
             labeling0 = enrollLabel con (level + 1) (_CurrentLabeling ctx)
@@ -590,9 +602,9 @@ runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     = return stack
     | LVar x <- rewrite NF lhs
     , Right v <- evaluateA (rewrite NF rhs)
-    = let theta = VarBinding (Map.singleton x (NCon (DC (DC_NatL v)))) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+    = let theta = VarBinding (Map.singleton x (mkNCon (DC (DC_NatL v)))) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
     | Right v <- evaluateA (rewrite NF rhs)
-    , rewrite NF lhs == NCon (DC (DC_NatL v))
+    , rewrite NF lhs == mkNCon (DC (DC_NatL v))
     = return ((ctx, cells) : stack)
     | otherwise
     = return ((ctx { _LeftConstraints = EvalutionConstraint (rewrite NF lhs) (rewrite NF rhs) : _LeftConstraints ctx }, cells) : stack)
@@ -609,22 +621,22 @@ execIs ctx cells stack
         new_arithmetic_constraints = [ rewrite NF arith | ArithmeticConstraint arith <- _LeftConstraints ctx ]
 
 evaluateA :: TermNode -> Either ErrMsg Integer
-evaluateA (NApp (NCon (DC DC_Succ)) t1) = do
+evaluateA (NApp (NCon (DC DC_Succ) _) t1 _) = do
     v1 <- evaluateA t1
     return (succ v1)
-evaluateA (NApp (NApp (NCon (DC DC_plus)) t1) t2) = do
+evaluateA (NApp (NApp (NCon (DC DC_plus) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     return (v1 + v2)
-evaluateA (NApp (NApp (NCon (DC DC_minus)) t1) t2) = do
+evaluateA (NApp (NApp (NCon (DC DC_minus) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     if v1 >= v2 then return (v1 - v2) else Left "ill"
-evaluateA (NApp (NApp (NCon (DC DC_mul)) t1) t2) = do
+evaluateA (NApp (NApp (NCon (DC DC_mul) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     return (v1 * v2)
-evaluateA (NApp (NApp (NCon (DC DC_div)) t1) t2) = do
+evaluateA (NApp (NApp (NCon (DC DC_div) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     if v2 == 0 then Left "ill" else return (v1 `div` v2)
@@ -633,23 +645,23 @@ evaluateA t = case reads (shows t "") of
     _ -> Left "non"
 
 evaluateB :: TermNode -> Either ErrMsg Bool
-evaluateB (NApp (NApp (NApp (NCon (DC DC_eq)) (NCon (TC (TC_Named "nat")))) t1) t2) = do
+evaluateB (NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     return (v1 == v2)
-evaluateB (NApp (NApp (NCon (DC DC_le)) t1) t2) = do
+evaluateB (NApp (NApp (NCon (DC DC_le) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     return (v1 <= v2)
-evaluateB (NApp (NApp (NCon (DC DC_lt)) t1) t2) = do
+evaluateB (NApp (NApp (NCon (DC DC_lt) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     return (v1 < v2)
-evaluateB (NApp (NApp (NCon (DC DC_ge)) t1) t2) = do
+evaluateB (NApp (NApp (NCon (DC DC_ge) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     return (v1 >= v2)
-evaluateB (NApp (NApp (NCon (DC DC_gt)) t1) t2) = do
+evaluateB (NApp (NApp (NCon (DC DC_gt) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
     return (v1 > v2)
@@ -746,7 +758,7 @@ runTransition env free_lvars = go where
                 let newCtx = Context
                         { _TotalVarBinding = _TotalVarBinding ctx
                         , _CurrentLabeling = _CurrentLabeling ctx
-                        , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
+                        , _LeftConstraints = ArithmeticConstraint (foldlNApp (mkNConLoc Nothing predicate) args) : _LeftConstraints ctx
                         , _ContextThreadId = call_id
                         , _debuggindModeOn = _debuggindModeOn ctx
                         }
@@ -770,7 +782,7 @@ runTransition env free_lvars = go where
         ans2 <- fmap concat $ forM (Map.findWithDefault [] predicate facts) $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
-                (NCon predicate', args')
+                (NCon predicate' _, args')
                     | predicate == predicate' -> do
                         hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ])) else throwE (BadFactGiven goal')
                         let new_level = level
@@ -797,7 +809,7 @@ runTransition env free_lvars = go where
         ans3 <- fmap concat $ forM hyps $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
-                (NCon predicate', args')
+                (NCon predicate' _, args')
                     | predicate == predicate' -> do
                         hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ])) else throwE (BadFactGiven goal')
                         let new_level = level
@@ -823,7 +835,7 @@ runTransition env free_lvars = go where
                 _ -> failure
         return (ans1 ++ ans2 ++ ans3)
     dispatch :: Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
-    dispatch ctx facts hyps level (NCon predicate, args) call_id cells stack
+    dispatch ctx facts hyps level (NCon predicate _, args) call_id cells stack
         | DC (DC_LO logical_operator) <- predicate
         = do
             stack' <- runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack
@@ -832,7 +844,7 @@ runTransition env free_lvars = go where
         = do
             stack' <- search facts hyps level predicate args ctx cells
             go (stack' ++ stack)
-    dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf, []) _call_id cells stack
+    dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf _, []) _call_id cells stack
         = go (runPresburger rep freeOf ctx cells stack)
     dispatch ctx facts hyps level (t, ts) call_id cells stack = throwE (BadGoalGiven (foldlNApp t ts))
     -- §3.2.4: drain any `:assign` substitution before each step. The

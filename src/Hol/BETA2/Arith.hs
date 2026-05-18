@@ -455,7 +455,7 @@ zonkPresburger theta freeOf = goFormula Set.empty
     goTerm bound (Plus t1 t2) = Plus (goTerm bound t1) (goTerm bound t2)
 
     asClosedNatLit :: TermNode -> Maybe Integer
-    asClosedNatLit (NCon (DC (DC_NatL n))) = Just n
+    asClosedNatLit (NCon (DC (DC_NatL n)) _) = Just n
     asClosedNatLit _ = Nothing
 
 -- =============================================================
@@ -521,27 +521,27 @@ allocL lv = L $ \s -> case Map.lookup lv (lsInverse s) of
 
 liftFormula :: TermNode -> L MyPresburgerFormulaRep
 liftFormula t = case t of
-    NApp (NApp (NApp (NCon (DC DC_eq)) (NCon (TC (TC_Named "nat")))) a) b ->
+    NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) a _) b _ ->
         do { a' <- liftTerm a; b' <- liftTerm b; return (EqnF a' b') }
-    NApp (NApp (NCon (DC DC_lt)) a) b ->
+    NApp (NApp (NCon (DC DC_lt) _) a _) b _ ->
         do { a' <- liftTerm a; b' <- liftTerm b; return (LtnF a' b') }
-    NApp (NApp (NCon (DC DC_le)) a) b ->
+    NApp (NApp (NCon (DC DC_le) _) a _) b _ ->
         do { a' <- liftTerm a; b' <- liftTerm b; return (LeqF a' b') }
-    NApp (NApp (NCon (DC DC_gt)) a) b ->
+    NApp (NApp (NCon (DC DC_gt) _) a _) b _ ->
         do { a' <- liftTerm a; b' <- liftTerm b; return (GtnF a' b') }
-    NApp (NApp (NCon (DC DC_ge)) a) b ->
+    NApp (NApp (NCon (DC DC_ge) _) a _) b _ ->
         do { a' <- liftTerm a; b' <- liftTerm b; return (NegF (LtnF a' b')) }
     _ -> fail_
 
 liftTerm :: TermNode -> L PresburgerTermRep
 liftTerm t = case t of
-    NCon (DC (DC_NatL n))
+    NCon (DC (DC_NatL n)) _
         | n >= 0 -> return (natToTermRep n)
         | otherwise -> fail_
-    NApp (NCon (DC DC_Succ)) a -> do
+    NApp (NCon (DC DC_Succ) _) a _ -> do
         a' <- liftTerm a
         return (Succ a')
-    NApp (NApp (NCon (DC DC_plus)) a) b -> do
+    NApp (NApp (NCon (DC DC_plus) _) a _) b _ -> do
         a' <- liftTerm a
         b' <- liftTerm b
         return (Plus a' b')
@@ -688,20 +688,21 @@ installPresburger = go
     placeholderSLoc = SLoc (0, 0) (0, 0)
 
     go :: TermNode -> Either ErrMsg TermNode
-    go (NApp (NCon (DC (DC_Named "presburger"))) arg) =
+    go (NApp (NCon (DC (DC_Named "presburger")) _) arg sl) =
         case extractString arg of
             Just src -> do
-                r <- parsePresburger placeholderSLoc src Map.empty
-                return (NPresburgerCheck (_formula r) (_freeOfFormula r))
+                let litLoc = case sl of { Just l -> l; Nothing -> placeholderSLoc }
+                r <- parsePresburger litLoc src Map.empty
+                return (NPresburgerCheck (_formula r) (_freeOfFormula r) sl)
             Nothing -> Left
                 "*** presburger: the argument must be a closed string literal."
-    go (NApp t1 t2) = do
+    go (NApp t1 t2 sl) = do
         t1' <- go t1
         t2' <- go t2
-        return (NApp t1' t2')
-    go (NLam h ty t) = do
+        return (NApp t1' t2' sl)
+    go (NLam h ty t sl) = do
         t' <- go t
-        return (NLam h ty t')
+        return (NLam h ty t' sl)
     go (Susp body ol nl env) = do
         body' <- go body
         env' <- traverse goSuspItem env
@@ -720,13 +721,13 @@ installPresburger = go
     -- and `c :: rest` arrives as
     --   NApp (NApp (NApp (NCon DC_Cons) <type-arg>) (NCon (DC_ChrL c))) rest
     extractString :: TermNode -> Maybe String
-    extractString (NApp (NCon (DC DC_Nil)) _) = Just ""
+    extractString (NApp (NCon (DC DC_Nil) _) _ _) = Just ""
     extractString
         (NApp
             (NApp
-                (NApp (NCon (DC DC_Cons)) _typeArg)
-                (NCon (DC (DC_ChrL c))))
-            rest) = do
+                (NApp (NCon (DC DC_Cons) _) _typeArg _)
+                (NCon (DC (DC_ChrL c)) _) _)
+            rest _) = do
                 cs <- extractString rest
                 return (c : cs)
     extractString _ = Nothing

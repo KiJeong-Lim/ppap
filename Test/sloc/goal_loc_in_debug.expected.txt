@@ -1,0 +1,92 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.sloc.goal_loc_in_debug ( Test/sloc/goal_loc_in_debug.hol, interpreted )
+Test.sloc.goal_loc_in_debug> Ok, one module loaded.
+Test.sloc.goal_loc_in_debug> Test.sloc.goal_loc_in_debug> Debugging mode on.
+Test.sloc.goal_loc_in_debug> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- p X ] # call_id = 11
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 11
+        , _sloc = `1:4-1:6'
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.sloc.goal_loc_in_debug> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- q ?V_14 ] # call_id = 12
+        ]
+    + context = Context
+        { _substitution = 
+            [ X := ?V_14
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            , ?V_13 : nat
+            , ?V_14 : nat
+            ]
+        , _thread_id = 12
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.sloc.goal_loc_in_debug> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 15
+        ]
+    + context = Context
+        { _substitution = 
+            [ X := 5
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            , ?V_13 : nat
+            , ?V_14 : nat
+            ]
+        , _thread_id = 15
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.sloc.goal_loc_in_debug> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ X := 5
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            , ?V_13 : nat
+            , ?V_14 : nat
+            ]
+        , _thread_id = 15
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+Test.sloc.goal_loc_in_debug> Press the enter key to go to next state: Test.sloc.goal_loc_in_debug> The answer substitution is:
+Test.sloc.goal_loc_in_debug> X := 5.
+Test.sloc.goal_loc_in_debug> Find more solutions? [Y/n] Test.sloc.goal_loc_in_debug> yes.
+Test.sloc.goal_loc_in_debug> Hol >>= quit

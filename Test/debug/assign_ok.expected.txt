@@ -16,6 +16,7 @@ Test.debug.assign_ok> --------------------------------
             [ X : ?t4
             ]
         , _thread_id = 7
+        , _sloc = `1:4-1:8'
         }
 
 * The rest of the current stack is:
@@ -38,6 +39,7 @@ Test.debug.assign_ok> Press the enter key to go to next state: Test.debug.assign
             , ?V_10 : ?TV_9
             ]
         , _thread_id = 8
+        , _sloc = (none)
         }
 
 * The rest of the current stack is:
@@ -57,6 +59,7 @@ Test.debug.assign_ok> Press the enter key to go to next state: -----------------
             , ?V_10 : ?TV_9
             ]
         , _thread_id = 8
+        , _sloc = (none)
         }
 
 * The rest of the current stack is:

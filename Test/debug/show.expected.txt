@@ -16,6 +16,7 @@ Test.debug.show> --------------------------------
             [ X : nat
             ]
         , _thread_id = 5
+        , _sloc = `1:4-1:9'
         }
 
 * The rest of the current stack is:
@@ -34,6 +35,7 @@ Test.debug.show> Press the enter key to go to next state: Test.debug.show> *** :
             [ X : nat
             ]
         , _thread_id = 5
+        , _sloc = (none)
         }
 
 * The rest of the current stack is:

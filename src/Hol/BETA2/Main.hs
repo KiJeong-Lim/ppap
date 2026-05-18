@@ -50,11 +50,11 @@ addIndex :: [Fact] -> Map.Map Constant [Fact]
 addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, let f' = rewrite NF f ] where
     hd :: Fact -> Constant
     hd t = case unfoldlNApp t of
-        (NLam _ _ t, _) -> hd t
-        (NCon (DC (DC_LO LO_ty_pi)), [t]) -> hd t
-        (NCon (DC (DC_LO LO_pi)), [t]) -> hd t
-        (NCon (DC (DC_LO LO_if)), [t, _]) -> hd t
-        (NCon c, _) -> c
+        (NLam _ _ t _, _) -> hd t
+        (NCon (DC (DC_LO LO_ty_pi)) _, [t]) -> hd t
+        (NCon (DC (DC_LO LO_pi)) _, [t]) -> hd t
+        (NCon (DC (DC_LO LO_if)) _, [t, _]) -> hd t
+        (NCon c _, _) -> c
 
 execRuntime :: RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr (UniqueT IO) Satisfied
 execRuntime env isDebugging facts query = do
@@ -338,7 +338,7 @@ runREPL program notationDB expansionDB = do
                             , Just ty <- [Map.lookup ivar assumptions]
                             ]
                     case unfoldlNApp (rewrite NF term5) of
-                        (NCon (DC DC_eq), [_typeArg, lhs, rhs]) -> case rewrite NF lhs of
+                        (NCon (DC DC_eq) _, [_typeArg, lhs, rhs]) -> case rewrite NF lhs of
                             LVar lv -> return (lv, rhs, inferredTy, nameToType)
                             _ -> throwE "*** :assign error: LHS did not resolve to a logic variable"
                         _ -> throwE "*** :assign error: did not compile to an equality"

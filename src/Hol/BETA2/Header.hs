@@ -155,6 +155,14 @@ instance Outputable SLoc where
         , showsPrec 0 col2
         ]
 
+-- §3.2 module-aware diagnostic format: `[<module-name>]:<l>:<c>-<l>:<c>`.
+-- Used by the debugger's per-step `_sloc` line (§3.1) and by every
+-- diagnostic that names a position; falls back to the bare BETA1 form
+-- when the module context is unknown (e.g., REPL command-line errors).
+pprintMSLoc :: Maybe String -> SLoc -> ShowS
+pprintMSLoc Nothing  loc = pprint 0 loc
+pprintMSLoc (Just m) loc = strstr "[" . strstr m . strstr "]:" . pprint 0 loc
+
 instance Show LogicalOperator where
     showsPrec _ logical_operator = case logical_operator of
         LO_ty_pi -> strstr "Lambda"

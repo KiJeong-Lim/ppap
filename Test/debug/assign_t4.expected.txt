@@ -16,6 +16,7 @@ Test.debug.assign_t4> --------------------------------
             [ X : nat
             ]
         , _thread_id = 4
+        , _sloc = `1:4-1:8'
         }
 
 * The rest of the current stack is:
@@ -33,6 +34,7 @@ Test.debug.assign_t4> Press the enter key to go to next state: -----------------
             [ X : nat
             ]
         , _thread_id = 5
+        , _sloc = (none)
         }
 
 * The rest of the current stack is:

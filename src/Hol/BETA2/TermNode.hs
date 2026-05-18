@@ -24,19 +24,26 @@ data LogicVar
     | LV_Named LargeId
     deriving (Eq, Ord)
 
+-- §2.6.1 (c): NCon / NApp / NLam / NPresburgerCheck each carry an
+-- optional surface SLoc as their LAST positional field.  The kernel
+-- ignores it for α-equivalence / reduction (Eq / Ord below); it is
+-- consumed only by diagnostics and the per-step debug `_sloc` line
+-- (§3.1).  Existing call sites use the `mkN*` smart constructors,
+-- which thread `Nothing` by default; SLoc-aware sites use the
+-- `mkN*Loc` variants.
 data TermNode
     = LVar !LogicVar
-    | NCon !Constant
+    | NCon !Constant !(Maybe SLoc)
     | NIdx {-# UNPACK #-} !DeBruijn
-    | NApp !TermNode !TermNode
-    | NLam !(Maybe SmallId) !LamType !TermNode
+    | NApp !TermNode !TermNode !(Maybe SLoc)
+    | NLam !(Maybe SmallId) !LamType !TermNode !(Maybe SLoc)
     | Susp
         { getSuspBody :: !TermNode
         , getSuspOL :: {-# UNPACK #-} !Int
         , getSuspNL :: {-# UNPACK #-} !Int
         , getSuspEnv :: !SuspEnv
         }
-    | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar)
+    | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar) !(Maybe SLoc)
 
 -- §3.4 CMTT: the type of the bound variable of a lambda, as inferred by
 -- the type checker. Carried only so that the runtime can recover the
@@ -64,12 +71,12 @@ mkLamType = LamType . Just
 -- stay equal regardless of which surface name happened to flow in.
 instance Eq TermNode where
     LVar v1 == LVar v2 = v1 == v2
-    NCon c1 == NCon c2 = c1 == c2
+    NCon c1 _ == NCon c2 _ = c1 == c2
     NIdx i == NIdx j = i == j
-    NApp a1 b1 == NApp a2 b2 = a1 == a2 && b1 == b2
-    NLam _ _ b1 == NLam _ _ b2 = b1 == b2
+    NApp a1 b1 _ == NApp a2 b2 _ = a1 == a2 && b1 == b2
+    NLam _ _ b1 _ == NLam _ _ b2 _ = b1 == b2
     Susp b1 ol1 nl1 e1 == Susp b2 ol2 nl2 e2 = b1 == b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
-    NPresburgerCheck f1 m1 == NPresburgerCheck f2 m2 = f1 == f2 && m1 == m2
+    NPresburgerCheck f1 m1 _ == NPresburgerCheck f2 m2 _ = f1 == f2 && m1 == m2
     _ == _ = False
 
 instance Ord TermNode where
@@ -77,21 +84,21 @@ instance Ord TermNode where
       where
         ctorIdx :: TermNode -> Int
         ctorIdx (LVar _) = 0
-        ctorIdx (NCon _) = 1
+        ctorIdx (NCon _ _) = 1
         ctorIdx (NIdx _) = 2
-        ctorIdx (NApp _ _) = 3
-        ctorIdx (NLam _ _ _) = 4
+        ctorIdx (NApp _ _ _) = 3
+        ctorIdx (NLam _ _ _ _) = 4
         ctorIdx (Susp {}) = 5
-        ctorIdx (NPresburgerCheck _ _) = 6
+        ctorIdx (NPresburgerCheck _ _ _) = 6
         cmpTerm :: TermNode -> TermNode -> Ordering
         cmpTerm (LVar v1) (LVar v2) = compare v1 v2
-        cmpTerm (NCon c1) (NCon c2) = compare c1 c2
+        cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
         cmpTerm (NIdx i) (NIdx j) = compare i j
-        cmpTerm (NApp a1 b1) (NApp a2 b2) = compare a1 a2 <> compare b1 b2
-        cmpTerm (NLam _ _ b1) (NLam _ _ b2) = compare b1 b2
+        cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = compare a1 a2 <> compare b1 b2
+        cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = compare b1 b2
         cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
             compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
-        cmpTerm (NPresburgerCheck f1 m1) (NPresburgerCheck f2 m2) =
+        cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
             compare f1 f2 <> compare m1 m2
         cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
 
@@ -171,7 +178,11 @@ mkLVar v = LVar v
 mkNCon :: ToConstant a => a -> TermNode
 mkNCon = go . makeConstant where
     go :: Constant -> TermNode
-    go c = NCon c
+    go c = NCon c Nothing
+
+{-# INLINE mkNConLoc #-}
+mkNConLoc :: ToConstant a => Maybe SLoc -> a -> TermNode
+mkNConLoc sl x = NCon (makeConstant x) sl
 
 {-# INLINE mkNIdx #-}
 mkNIdx :: DeBruijn -> TermNode
@@ -179,20 +190,39 @@ mkNIdx i = NIdx i
 
 {-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (NCon (DC (DC_Succ))) (NCon (DC (DC_NatL n))) = let n' = n + 1  in n' `seq` mkNCon (DC_NatL n')
-mkNApp t1 t2 = NApp t1 t2
+mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = let n' = n + 1  in n' `seq` mkNCon (DC_NatL n')
+mkNApp t1 t2 = NApp t1 t2 Nothing
+
+{-# INLINE mkNAppLoc #-}
+mkNAppLoc :: Maybe SLoc -> TermNode -> TermNode -> TermNode
+mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = let n' = n + 1 in n' `seq` mkNConLoc sl (DC_NatL n')
+mkNAppLoc sl t1 t2 = NApp t1 t2 sl
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
-mkNLam t = NLam Nothing noLamType t
+mkNLam t = NLam Nothing noLamType t Nothing
 
 {-# INLINE mkNLamHint #-}
 mkNLamHint :: Maybe SmallId -> TermNode -> TermNode
-mkNLamHint h t = NLam h noLamType t
+mkNLamHint h t = NLam h noLamType t Nothing
 
 {-# INLINE mkNLamHintTy #-}
 mkNLamHintTy :: Maybe SmallId -> LamType -> TermNode -> TermNode
-mkNLamHintTy h ty t = NLam h ty t
+mkNLamHintTy h ty t = NLam h ty t Nothing
+
+{-# INLINE mkNLamLoc #-}
+mkNLamLoc :: Maybe SLoc -> Maybe SmallId -> LamType -> TermNode -> TermNode
+mkNLamLoc sl h ty t = NLam h ty t sl
+
+-- §2.6 advisory accessor: extract the recorded surface position of a
+-- TermNode, if any.  NIdx / LVar / Susp never carry one (binders and
+-- substitutions are introduced by the kernel, not by the surface).
+getNodeSLoc :: TermNode -> Maybe SLoc
+getNodeSLoc (NCon _ sl) = sl
+getNodeSLoc (NApp _ _ sl) = sl
+getNodeSLoc (NLam _ _ _ sl) = sl
+getNodeSLoc (NPresburgerCheck _ _ sl) = sl
+getNodeSLoc _ = Nothing
 
 {-# INLINE mkSusp #-}
 mkSusp :: TermNode -> Int -> Int -> SuspEnv -> TermNode
@@ -220,8 +250,8 @@ substTyMTV mtv uni = go where
     refTy :: MonoType Int
     refTy = TyCon (TCon (TC_Unique uni) Star)
     go :: TermNode -> TermNode
-    go (NApp t1 t2) = mkNApp (go t1) (go t2)
-    go (NLam h ty t) = mkNLamHintTy h (goLamType ty) (go t)
+    go (NApp t1 t2 sl) = mkNAppLoc sl (go t1) (go t2)
+    go (NLam h ty t sl) = mkNLamLoc sl h (goLamType ty) (go t)
     go (Susp t ol nl env) = mkSusp (go t) ol nl (map goItem env)
     go t = t
     goItem :: SuspItem -> SuspItem
@@ -250,11 +280,11 @@ rewriteWithSusp t ol nl env option = dispatch t where
         | otherwise = error "***normalizeWithSuspEnv: A negative De-Bruijn index given..."
     dispatch (NCon {})
         = t
-    dispatch (NApp t1 t2)
-        | NLam _ _ t11 <- t1' = beta t11
-        | option == WHNF = mkNApp t1' (mkSusp t2 ol nl env)
-        | option == HNF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (mkSusp t2 ol nl env)
-        | option == NF = mkNApp (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
+    dispatch (NApp t1 t2 sl)
+        | NLam _ _ t11 _ <- t1' = beta t11
+        | option == WHNF = mkNAppLoc sl t1' (mkSusp t2 ol nl env)
+        | option == HNF = mkNAppLoc sl (rewriteWithSusp t1' 0 0 [] option) (mkSusp t2 ol nl env)
+        | option == NF = mkNAppLoc sl (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
         where
             t1' :: TermNode
             t1' = rewriteWithSusp t1 ol nl env WHNF
@@ -262,9 +292,9 @@ rewriteWithSusp t ol nl env option = dispatch t where
             beta (Susp t' ol' nl' (Dummy l' : env'))
                 | nl' == l' = rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
             beta t' = rewriteWithSusp t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
-    dispatch (NLam h ty t1)
-        | option == WHNF = mkNLamHintTy h ty (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
-        | otherwise = mkNLamHintTy h ty (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
+    dispatch (NLam h ty t1 sl)
+        | option == WHNF = mkNLamLoc sl h ty (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
+        | otherwise = mkNLamLoc sl h ty (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
     dispatch (Susp t' ol' nl' env')
         | ol' == 0 && nl' == 0 = rewriteWithSusp t' ol nl env option
         | ol == 0 = rewriteWithSusp t' ol' (nl + nl') env' option
@@ -284,11 +314,11 @@ rewrite option t = case t of
 unfoldlNApp :: TermNode -> (TermNode, [TermNode])
 unfoldlNApp = flip go [] where
     go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
-    go (NCon (DC (DC_NatL n))) ts
+    go (NCon (DC (DC_NatL n)) _) ts
         | n == 0 = (mkNCon (DC_NatL 0), ts)
         | n > 0 = let n' = n - 1 in n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
         | otherwise = error "`unfoldlNApp\': negative integer"
-    go (NApp t1 t2) ts = go t1 (t2 : ts)
+    go (NApp t1 t2 _) ts = go t1 (t2 : ts)
     go t ts = (t, ts)
 
 lensForSuspEnv :: (TermNode -> TermNode) -> SuspEnv -> SuspEnv
@@ -334,7 +364,7 @@ freshenName h live
 viewNestedNLam :: TermNode -> (Int, TermNode)
 viewNestedNLam = go 0 where
     go :: Int -> TermNode -> (Int, TermNode)
-    go n (NLam _ _ t) = go (n + 1) t
+    go n (NLam _ _ t _) = go (n + 1) t
     go n t = (n, t)
 
 -- Like `viewNestedNLam`, but also returns the hint of each peeled
@@ -343,7 +373,7 @@ viewNestedNLam = go 0 where
 viewNestedNLamH :: TermNode -> ([Maybe SmallId], TermNode)
 viewNestedNLamH = go [] where
     go :: [Maybe SmallId] -> TermNode -> ([Maybe SmallId], TermNode)
-    go hs (NLam h _ t) = go (h : hs) t
+    go hs (NLam h _ t _) = go (h : hs) t
     go hs t = (reverse hs, t)
 
 constructViewer :: TermNode -> ViewNode
@@ -411,7 +441,7 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
         LV_Named v -> return (ViewLVar (case lookupName var of
             Just cached -> cached
             Nothing -> v))
-    makeView vars (NCon con) = case con of
+    makeView vars (NCon con _) = case con of
         DC data_constructor -> case data_constructor of
             DC_LO logical_operator -> return (ViewDCon (show logical_operator))
             DC_Named name -> return (ViewDCon ("__" ++ name))
@@ -436,11 +466,11 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
             TC_Unique uni -> return (ViewTCon ("tc_" ++ show uni))
             TC_Named name -> return (ViewTCon ("__" ++ name))
     makeView vars (NIdx idx) = return (ViewIVar (vars !! idx))
-    makeView vars (NApp t1 t2) = do
+    makeView vars (NApp t1 t2 _) = do
         t1_rep <- makeView vars t1
         t2_rep <- makeView vars t2
         return (if isType t1_rep then ViewTApp t1_rep t2_rep else ViewIApp t1_rep t2_rep)
-    makeView vars (NLam mhint _ t) = do
+    makeView vars (NLam mhint _ t _) = do
         counter <- get
         put (counter + 1)
         let preferred = case mhint of
@@ -449,7 +479,7 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
             chosen = freshenName preferred vars
         t_rep <- makeView (chosen : vars) t
         return (ViewIAbs chosen t_rep)
-    makeView vars (NPresburgerCheck rep _) =
+    makeView vars (NPresburgerCheck rep _ _) =
         return (ViewDCon ("presburger \"" ++ shows rep "\""))
     makeView vars (Susp body _ _ _) = makeView vars body
     eraseType :: ViewNode -> ViewNode

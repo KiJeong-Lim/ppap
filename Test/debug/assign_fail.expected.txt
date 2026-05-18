@@ -16,6 +16,7 @@ Test.debug.assign_fail> --------------------------------
             [ X : nat
             ]
         , _thread_id = 5
+        , _sloc = `1:4-1:6'
         }
 
 * The rest of the current stack is:
@@ -36,6 +37,7 @@ Test.debug.assign_fail> Press the enter key to go to next state: Test.debug.assi
             [ X : nat
             ]
         , _thread_id = 6
+        , _sloc = (none)
         }
 
 * The rest of the current stack is:
@@ -52,6 +54,7 @@ Test.debug.assign_fail> Press the enter key to go to next state: Test.debug.assi
             [ X : nat
             ]
         , _thread_id = 6
+        , _sloc = (none)
         }
 
 --------------------------------
@@ -68,6 +71,7 @@ Test.debug.assign_fail> Press the enter key to go to next state: ---------------
             [ X : nat
             ]
         , _thread_id = 6
+        , _sloc = (none)
         }
 
 * The rest of the current stack is:
@@ -84,6 +88,7 @@ Test.debug.assign_fail> Press the enter key to go to next state: ---------------
             [ X : nat
             ]
         , _thread_id = 6
+        , _sloc = (none)
         }
 
 --------------------------------
