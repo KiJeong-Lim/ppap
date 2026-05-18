@@ -32,11 +32,11 @@
       - symbolic calculus. e.g., `Y is (X + 1) * (X + 2)` => `Y := X * X + 3 * X + 2`.
 
 1. `Hol V1` (대기 중): Hol 프로젝트 정식 넘버링 (v1.0.0):
-   - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`}에 위치함)을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
+   - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
    - `LoL BETA1`의 인터프리터를 만들 수 있는 하스켈 API도 제공해야 한다.
 
-1. `LoL ALPHA1` (대기 중): CIC 기반의 증명 스크립트 언어. 명령어는 Axiom과 Definition 뿐으로 tactic을 지원하지 않는다.
+1. `LoL ALPHA1` (대기 중): CIC 기반의 증명 스크립트 언어. tactic을 지원하지 않는다.
 
-1. `Hol V2` (대기 중): `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
+1. `Hol V2` (대기 중): `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다. [elpi](https://github.com/LPCIC/elpi)처럼 `main` 함수를 만들 것.
 
 1. `LoL BETA2` (대기 중): `LoL ALPHA1`을 계승한, CIC 기반의 증명 스크립트 언어. tactic을 지원한다.
