@@ -2,7 +2,7 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main)
 Hol =<< Hol> Compiling Test.notation.typing_error_fold ( Test/notation/typing_error_fold.hol, interpreted )
-*** typechecking-error[10:1-10:3]:
+*** typechecking-error[10:3-10:3]:
   ? expected_typ = `nat -> o', actual_typ = `pp -> o'.
   ? couldn't solve the equation `pp' ~ `nat',
   ? because the types `pp' and `nat' are non-unifiable.

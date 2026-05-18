@@ -16,7 +16,7 @@ Test.debug.assign_fail_typing> --------------------------------
             [ X : nat
             ]
         , _thread_id = 5
-        , _sloc = `1:4-1:6'
+        , _sloc = `[Test.debug.assign_fail_typing]:1:4-1:6'
         }
 
 * The rest of the current stack is:

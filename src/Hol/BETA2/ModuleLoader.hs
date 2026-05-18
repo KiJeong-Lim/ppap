@@ -252,8 +252,18 @@ mergeTypesStrict iloc iname old new = foldr step (Right old) (Map.toList new)
         m <- acc
         case Map.lookup dc m of
             Nothing -> Right (Map.insert dc p m)
-            Just p' | p == p' -> Right m
+            Just p' | polyTypeEq p p' -> Right m
                     | otherwise -> Left (inconsErr iloc "C2" iname (showDC dc) "type")
+
+-- §2.4 C2: universally-quantified type variables may be α-renamed.
+-- `Forall xs t` and `Forall ys u` are α-equivalent iff they bind the
+-- same number of variables AND their bodies agree pointwise — since
+-- `TyVar` is a de-Bruijn-like Int index into the binder list, syntactic
+-- equality of bodies suffices once the arities match.
+polyTypeEq :: PolyType -> PolyType -> Bool
+polyTypeEq (Forall xs t) (Forall ys u)
+    | length xs /= length ys = False
+    | otherwise              = t == u
 
 showTC :: TypeConstructor -> String
 showTC (TC_Named s) = s

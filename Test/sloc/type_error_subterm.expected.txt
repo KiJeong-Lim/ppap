@@ -2,7 +2,7 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main)
 Hol =<< Hol> Compiling Test.sloc.type_error_subterm ( Test/sloc/type_error_subterm.hol, interpreted )
-*** typechecking-error[8:1-8:17]:
+*** typechecking-error[8:15-8:15]:
   ? expected_typ = `nat -> myStr -> o', actual_typ = `string -> myStr -> o'.
   ? couldn't solve the equation `string' ~ `nat',
   ? because the types `string' and `nat' are non-unifiable.

@@ -120,6 +120,11 @@ data RuntimeEnv
         -- substitutions, `:show`/`:assign` output, and the residual
         -- constraint listing of §2.5.
         , _NotationDB :: NotationDB
+        -- §3.2 module-aware diagnostics: the main module's path-derived
+        -- (or header-declared) name, used to prefix every debug `_sloc`
+        -- line with `[<mod>]`. Set once by `Main.mkRuntimeEnv` from
+        -- `Program.moduleName`.
+        , _ModuleName :: String
         }
     deriving ()
 
@@ -460,8 +465,8 @@ showsMonoTypeIn db True labeling lv mtyp = render lv mtyp where
     sepBy _ [x] = x
     sepBy sep (x : xs) = x . sep . sepBy sep xs
 
-showStackItem :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
-showStackItem db verbose fvs typeMap space (ctx, cells) = strcat
+showStackItem :: String -> NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
+showStackItem mname db verbose fvs typeMap space (ctx, cells) = strcat
     [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- [ " . showsvdash (space + 8) hyps goal . strstr " ] # call_id = " . shows call_id | Cell facts hyps level goal call_id <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
@@ -503,19 +508,19 @@ showStackItem db verbose fvs typeMap space (ctx, cells) = strcat
     slocLine :: [Cell] -> ShowS
     slocLine [] = strstr "(none)"
     slocLine (cell : _) = case getNodeSLoc (_WantedGoal cell) of
-        Just l  -> strstr "`" . pprint 0 l . strstr "'"
+        Just l  -> strstr "`" . pprintMSLoc (Just mname) l . strstr "'"
         Nothing -> strstr "(none)"
 
-showsCurrentState :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
-showsCurrentState db verbose fvs typeMap ctx cells stack = strcat
+showsCurrentState :: String -> NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
+showsCurrentState mname db verbose fvs typeMap ctx cells stack = strcat
     [ strstr "--------------------------------" . nl
     , strstr "* The top of the current stack is:" . nl
-    , showStackItem db verbose fvs typeMap 4 (ctx, cells) . nl
+    , showStackItem mname db verbose fvs typeMap 4 (ctx, cells) . nl
     , strstr "* The rest of the current stack is:" . nl
     , strcat
         [ strcat
             [ pindent 0 . strstr "- (#" . shows i . strstr ")" . nl
-            , showStackItem db verbose fvs typeMap 4 item . nl
+            , showStackItem mname db verbose fvs typeMap 4 item . nl
             ]
         | (i, item) <- zip [1, 2 .. length stack] stack
         ]
@@ -879,7 +884,7 @@ runTransition env free_lvars = go where
                 liftIO $ do
                     dbg <- readIORef (_debuggindModeOn ctx)
                     verbose <- readIORef (_VerboseTyping env)
-                    when dbg $ _PutStr env env ctx (showsCurrentState (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
+                    when dbg $ _PutStr env env ctx (showsCurrentState (_ModuleName env) (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
                 stackAfterCb <- liftIO (readIORef (_StackRef env))
                 -- The user's `:assign` (entered via `_PutStr`) may have
                 -- arrived during the debug prompt. Re-drain so the very

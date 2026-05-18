@@ -16,7 +16,7 @@ Test.sloc.goal_loc_in_debug> --------------------------------
             [ X : nat
             ]
         , _thread_id = 11
-        , _sloc = `1:4-1:6'
+        , _sloc = `[Test.sloc.goal_loc_in_debug]:1:4-1:6'
         }
 
 * The rest of the current stack is:

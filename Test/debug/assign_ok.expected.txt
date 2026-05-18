@@ -16,7 +16,7 @@ Test.debug.assign_ok> --------------------------------
             [ X : ?t4
             ]
         , _thread_id = 7
-        , _sloc = `1:4-1:8'
+        , _sloc = `[Test.debug.assign_ok]:1:4-1:8'
         }
 
 * The rest of the current stack is:

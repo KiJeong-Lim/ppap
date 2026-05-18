@@ -281,7 +281,12 @@ inferType db type_env = flip runStateT Map.empty . infer where
         mtv <- getNewMTV "A"
         used_mtvs <- get
         let disagrees = (snd (getAnnot term1'), snd (getAnnot term2') `mkTyArrow` TyMTV mtv) : [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
-        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr db used_mtvs loc
+        -- §2.6.1 (T3): the smallest enclosing annotated construct is
+        -- the offending argument `term2`, not the whole application.
+        -- Reporting `getAnnot term2` lets the user jump to the bad
+        -- subterm (e.g. the literal `7` in `appendStr "a" 7 _`) rather
+        -- than the entire call.
+        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr db used_mtvs (fst (getAnnot term2'))
         let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
             assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
         put used_mtvs'

@@ -16,7 +16,7 @@ Test.notation.typing_fold> --------------------------------
             [ X : pp
             ]
         , _thread_id = 14
-        , _sloc = `1:4-1:6'
+        , _sloc = `[Test.notation.typing_fold]:1:4-1:6'
         }
 
 * The rest of the current stack is:

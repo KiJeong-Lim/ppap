@@ -61,11 +61,11 @@
    - 디버깅하는 동안, 대화형으로 flexible variable (LVar)를 instantiate할 수 있게 하는 기능도 만들고 싶다. 이는 대화형 증명보조기의 택틱을 구현하는 데 핵심이 될 기술이다.
 
 1. `Hol BETA2` (진행 중):
-   1. 현재 Task들:
+   1. (진행 중) 현재 Task들:
       1. (완료됨) (C) Multi-head: parser ampersand production + Desugarer body cloning
       2. (완료됨) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
       3. (진행 중) (B) SLoc threading: _sloc field + Header module name + debug line
-   2. 추가적인 구현 사항:
+   2. (대기 중) 추가적인 구현 사항:
       3번 사항과 4번 사항은 안 구현해도 괜찮지만, 1번 사항과 2번 사항은 구현하고 싶다.
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
          ```
