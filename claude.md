@@ -65,11 +65,12 @@
       1. (완료됨) (C) Multi-head: parser ampersand production + Desugarer body cloning
       2. (진행 중) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
       3. (대기 중) (B) SLoc threading: _sloc field + Header module name + debug line
-   2. 추가 사항:
+   2. 추가적인 구현 사항:
       1. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
          ```
          main :- sigma\ C pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
          ```
+         그러나, 이 기능을 추가할 때, 기존의 의미론과 조화로운지를 반드시 검토해야 한다.
       1. (대기 중) 분수(fraction), 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
          ```
