@@ -4,7 +4,9 @@ Hol BETA2 — Language Specification (Draft)
 
 This document specifies the syntax and semantics of `Hol BETA2`, a dialect of
 λProlog that supersedes `Hol BETA1`. BETA2 keeps every program accepted by
-BETA1 working and additionally provides:
+BETA1 working, with the single exception that built-in declarations are now
+sealed (§2.5; notably `string := list char` is no longer overridable), and
+additionally provides:
 
   (A) A first-class module system: an optional `module <name>.` header, an
   `import <name>.` declaration that brings another file's declarations
@@ -24,8 +26,10 @@ BETA1 working and additionally provides:
 
 Compatibility minimum: every `Test/*.hol` smoke case from BETA1 (twenty-two
 cases as of 2026-05-18) must continue to pass with byte-identical output
-after BETA2's additions are wired. The Example/ acceptance set (einstein,
-fibonacci, lbeta) inherits the same obligation.
+after BETA2's additions are wired, with the sole exception of debug-mode
+cases (`Test/debug/*.hol`), whose expected sidecars are updated to include
+the new SLoc line of §3.1 (see §4.4.1). The Example/ acceptance set
+(einstein, fibonacci, lbeta) inherits the same obligation.
 
 
 ================================================================================
@@ -149,9 +153,9 @@ Two surface restrictions, both enforced at desugaring:
   declaration in the file. A second `import` after a clause is a
   parse error. This restricts imports to a "header band" that a
   reader can scan in one place.
-  (ii) `import M.` and `import M.` repeated in the same file is a
-  desugaring warning, not an error; the second occurrence has no
-  effect (set semantics for the import edges).
+  (ii) An `import M.` repeated in the same file is a desugaring
+  warning, not an error; the second occurrence has no effect
+  (set semantics for the import edges).
 
 There is no surface mechanism for *selective* import (`import M (only a, b)`)
 or for *qualified* import (`import M as N`). Both are deferred to a future
@@ -555,7 +559,7 @@ BETA2. With (T1)-(T3) in place, that line is now emitted whenever the
 current goal carries a recoverable SLoc. The line format mirrors the
 top-level error format:
 
-  _sloc = `<file>:<line>:<col>-<line>:<col>'
+  _sloc = `[<module-name>]:<line>:<col>-<line>:<col>'
 
 The line is suppressed if the goal is a synthetic intermediary (e.g., a
 runtime-introduced cut frame) for which no surface position is
@@ -683,10 +687,10 @@ modules start as byte-for-byte copies of `Hol.BETA1.*` and diverge in
 place; no `Hol.BETA2` module imports a `Hol.BETA1` module.
 
   src/Hol/BETA2/
-    Header.hs        -- copied; extended with module-name metadata
-                        on every `TermNode` (or via the (c) scheme
-                        of §2.7.1, an `_sloc :: Maybe SLoc` field on
-                        the relevant constructors).
+    Header.hs        -- copied; `SLoc` extended to record its
+                        originating file (module name via §2.1).
+                        `TermNode` constructors get `_sloc :: Maybe
+                        SLoc` under the (c) strategy of §2.7.1.
     Constant.hs      -- copied; unchanged.
     TermNode.hs      -- copied; constructor changes per §2.7.1 (c).
                         Viewer takes an `SLoc` along with every
@@ -770,34 +774,33 @@ testable in isolation.
 
 4.2.2 Algorithm
 
-The loader maintains three working sets:
+The loader maintains two pieces of state:
 
   - `loaded   :: Map ModuleName ModuleEnv`  (already-completed)
-  - `loading  :: [ModuleName]`              (in-progress stack, for
-  cycle detection)
-  - `pending  :: Queue (FilePath, SLoc)`    (imports to schedule)
+  - `loading  :: [ModuleName]`              (in-progress stack,
+  for cycle detection)
 
-The main file is enqueued first with `SLoc = REPL-launch`. The loader
-repeats:
+`loadModule(path, importSLoc)` is defined recursively:
 
-  1. If `pending` is empty, the main file's environment is ready.
-  2. Pop a `(path, importSLoc)`. Compute its `ModuleName` via §2.1.
-  3. If `ModuleName ∈ loaded`, skip (diamond import).
-  4. If `ModuleName ∈ loading`, emit cycle error and abort.
-  5. Push `ModuleName` onto `loading`.
-  6. Lex/parse the file. Read its `module` header (if any) and
-  check against the path-derived name (§1.2). Enqueue every
-  `import M.` from the header band into `pending`.
-  7. Recursively process the just-enqueued imports until the
-  `loading` stack is back to its pre-step-5 state.
-  8. After all the file's dependencies are loaded, desugar the
-  file's body against the *composed* environment of those
-  dependencies. The result is a `ModuleEnv`. Run the
-  consistency checks of §2.4 against the union with already-
-  loaded modules.
-  9. Pop `ModuleName` from `loading`; insert into `loaded`.
+  1. Compute the file's `ModuleName` via §2.1.
+  2. If `ModuleName ∈ loaded`, return (diamond import).
+  3. If `ModuleName ∈ loading`, emit a cycle error at
+  `importSLoc` (§2.2) and abort.
+  4. Push `ModuleName` onto `loading`.
+  5. Lex/parse the file. Read its `module` header (if any) and
+  check against the path-derived name (§1.2).
+  6. For each `import M.` in the header band, resolve `M` per
+  §2.1 and recurse on the resolved file. When the call
+  returns, `M` is in `loaded`.
+  7. Desugar the file's body against the *composed* environment
+  of those dependencies. The result is a `ModuleEnv`. Run
+  the consistency checks of §2.4 against the union with
+  already-loaded modules.
+  8. Pop `ModuleName` from `loading`; insert the `ModuleEnv`
+  into `loaded`.
 
-The main file is loaded last; its `ModuleEnv` is `mainEnv`.
+`loadMain(path)` invokes `loadModule(path, REPL-launch)`. The main
+file is processed last; its `ModuleEnv` is `mainEnv`.
 
 4.2.3 Caching
 
