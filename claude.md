@@ -22,7 +22,7 @@
    와 같이 쓰고,
    ```hs
    let x1 = t1
-      x2 = t2
+       x2 = t2
    in body
    ```
    와 같이 쓰지는 말것.
@@ -53,7 +53,7 @@
       3. (대기 중) (B) SLoc threading: _sloc field + Header module name + debug line
    2. 추가 사항:
       1. (대기 중) `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
-      1. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`.
+      1. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
          ```
          main C :- pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
          ```
@@ -66,10 +66,11 @@
    - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
    - `LoL ALPHA1`의 인터프리터를 만들 수 있는 하스켈 API도 제공해야 한다.
 
-1. `LoL ALPHA1` (대기 중): CIC 기반의 증명 스크립트 언어. tactic을 지원하지 않는다.
+1. `LoL ALPHA1` (대기 중): CIC 기반의 증명 스크립트 언어.
+   - tactic을 지원하지 않는다.
 
-1. `Hol V2` (대기 중): 이것의 API로 `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
-   - `Hol V1`의 완전한 상위호환이다.
+1. `Hol V2` (대기 중): `Hol V1`의 완전한 상위호환.
+   - 이것의 API로 `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
    -  [elpi](https://github.com/LPCIC/elpi)처럼 `main` 함수를 만들 것.
 
 1. `LoL BETA2` (대기 중): `LoL ALPHA1`을 계승한, CIC 기반의 증명 스크립트 언어. tactic을 지원한다.
