@@ -917,22 +917,7 @@ inherited "last declared wins" rule of BETA1 §2.7.4.
 
 New open questions introduced by BETA2:
 
-  [Q9] Should `:reload` be a debugger command, or should the REPL
-  always require a `:q` and relaunch?
-  [A] The latter. A `:reload` that lives inside a debug session
-  would have to reconcile the session's display-name cache
-  (§3.5 of BETA1) with a new module environment, which is
-  brittle without a clear use case. The simpler contract is
-  "the file system is consulted only at REPL launch".
-
-  [Q11] Selective and qualified imports (`import M (a, b)` /
-  `import M as N`).
-  [A] Deferred. Adding either form opens a design space (renaming
-  semantics, conflict resolution, transitivity) that the
-  single-form `import M.` of BETA2 deliberately closes off. A
-  revision may revisit once a concrete use case appears.
-
-  [Q12] Multi-head clauses inside the body of a clause (e.g.,
+  [Q9] Multi-head clauses inside the body of a clause (e.g.,
   `(p X & q X) :- body` *inside* an outer body)?
   [A] Rejected. The `&` connective is declaration-level only
   (§1.4). A user wanting "this fact holds in two forms"
@@ -940,7 +925,7 @@ New open questions introduced by BETA2:
   conjuncts" writes `body_1, body_2`. The two are not the
   same operation.
 
-  [Q13] What is the SLoc-attribution policy for HOPU-introduced
+  [Q11] What is the SLoc-attribution policy for HOPU-introduced
   sub-terms (`_sloc = Nothing`)?
   [A] Best-effort fill from the enclosing context (§4.3.1). If
   no enclosing position is available either, the diagnostic
