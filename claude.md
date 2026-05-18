@@ -29,7 +29,7 @@
       3. (B) SLoc threading: _sloc field + Header module name + debug line
    2. 추가 사항:
       - `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
-      - symbolic calculus. e.g., `Y is (X + 1) * (X + 2)` => `Y := X * X + 3 * X + 2`.
+      - 새로운 기능: symbolic calculus. 예: `Y is (X + 1) * (X + 2)` => `Y := X * X + 3 * X + 2`.
 
 1. `Hol V1` (대기 중): Hol 프로젝트 정식 넘버링 (v1.0.0):
    - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
