@@ -12,7 +12,7 @@
 
 ## 단기 계획 목록
 
-1. `Hol BETA1`:
+1. `Hol BETA1` (완료됨):
    - 우선적으로 `doc/HolBETA1.txt` 참고할 것. 또한, claude는 `doc/HolBETA1.txt`를 편집할 수 있다.
    - Hol ALPHA2를 상위호환으로 가져간다는 느낌으로 구현하되 필요하면 적극적으로 구조를 바꿔도 됨. 단, 테스트 `einstein.sh`, `fi.sh`, `lbeta.sh`를 통과해야 함.
    - (폐기됨) 실행하는 동안 산술 제약(Presburger arithmetic을 기반으로 함, `doc/HolBETA1.txt`을 참고할 것)의 무모순성을 확인하는 로직을 내장하기. 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
@@ -22,7 +22,7 @@
    - 실행하는 동안 산술 제약을 모은다. 입력받은 문자열을 파싱하여, 주어진 산술 논리식이 현재 산술 제약들로부터 도출가능한지를 presburger (string -> o)라는 술어를 지원한다. 암묵적으로 매 호출마다 `presburger "_|_", !, fail`이 있는 것으로 간주하는 건 어떨까? 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
    - 디버깅하는 동안, 대화형으로 flexible variable (LVar)를 instantiate할 수 있게 하는 기능도 만들고 싶다. 이는 대화형 증명보조기의 택틱을 구현하는 데 핵심이 될 기술이다.
 
-2. `Hol BETA2`:
+2. `Hol BETA2` (진행중):
    1. 현재 Task들:
       1. (C) Multi-head: parser ampersand production + Desugarer body cloning
       2. (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
@@ -30,4 +30,4 @@
    2. 추가 사항:
       1. `:constraint X > 3.` 같은 기능을 넣고 싶다 (아직 이 기능이 없다면).
 
-3. `Hol V1`: Hol 프로젝트 정식 넘버링 (v1.0.0)
+3. `Hol V1` (대기 중): Hol 프로젝트 정식 넘버링 (v1.0.0)
