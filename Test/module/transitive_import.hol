@@ -1,0 +1,8 @@
+% Section 2.2: `import Test.module.mid.` loads `mid.hol`, whose own
+% `import Test.module.leaf.` brings in `tag` transitively.  Without
+% transitive resolution `mid_pred` would fail to type-check (it
+% references `tag` which is declared only in `leaf`).
+import Test.module.mid.
+
+type hit (nat -> o).
+hit X :- mid_pred X.

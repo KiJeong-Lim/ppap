@@ -3,10 +3,12 @@ module Hol.BETA2.Notation
     , FixityKind (..)
     , Precedence
     , initial
+    , merge
     , addFixity
     , addAbbrev
     , addNotation
     , lookupFixity
+    , fixityList
     , viewerFixity
     , notationCheckOper
     , constructViewerWithDB
@@ -17,6 +19,7 @@ module Hol.BETA2.Notation
     , ExpansionDB
     , emptyExpansionDB
     , initialExpansionDB
+    , mergeExpansion
     , addTypeAbbrevDecl
     , addTermNotationDecl
     , lookupTypeAbbrev
@@ -173,8 +176,25 @@ addEntry kind name ps rhs db =
         , _nextSeq = n + 1
         }
 
+-- §2.3 composition for NotationDB: `merge older newer` returns a DB
+-- whose fixities and fold entries reflect `newer` shadowing `older`
+-- ("last declared wins", BETA1 §2.7.4).  Entries from `newer` are
+-- placed in front so the linear lookup in `_entries` finds them first.
+-- `_nextSeq` is bumped so subsequent adds keep producing fresh keys.
+merge :: NotationDB -> NotationDB -> NotationDB
+merge older newer = NotationDB
+    { _fixity  = Map.union (_fixity newer) (_fixity older)
+    , _entries = _entries newer ++ _entries older
+    , _nextSeq = max (_nextSeq older) (_nextSeq newer)
+    }
+
 lookupFixity :: SmallId -> NotationDB -> Maybe (FixityKind, Precedence)
 lookupFixity name db = Map.lookup name (_fixity db)
+
+-- §2.4 (C5): enumerate every operator's fixity for cross-import consistency
+-- checks.  The returned list is in `Map.toList` order (sorted by name).
+fixityList :: NotationDB -> [(SmallId, (FixityKind, Precedence))]
+fixityList = Map.toList . _fixity
 
 -- §2.6: convert a NotationDB-resolved `(kind, prec)` into the
 -- `Fixity ()` shape the viewer's `formatView` pass consumes. Spacing
@@ -388,6 +408,14 @@ data ExpansionDB = ExpansionDB
 
 emptyExpansionDB :: ExpansionDB
 emptyExpansionDB = ExpansionDB { _typeAbbrevs = Map.empty, _termNotations = Map.empty }
+
+-- §2.3 composition for ExpansionDB.  Same semantics as `merge` for
+-- NotationDB: `newer` shadows `older` under "last declared wins".
+mergeExpansion :: ExpansionDB -> ExpansionDB -> ExpansionDB
+mergeExpansion older newer = ExpansionDB
+    { _typeAbbrevs   = Map.union (_typeAbbrevs   newer) (_typeAbbrevs   older)
+    , _termNotations = Map.union (_termNotations newer) (_termNotations older)
+    }
 
 -- §1.6.5: BETA1 seeds `abbrev string := list char.` as the only
 -- built-in abbreviation. Other built-ins (lists, naturals, chars) are

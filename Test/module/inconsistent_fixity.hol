@@ -1,0 +1,8 @@
+% Section 2.4 (C5): two imports must not declare the same operator with
+% different fixity or precedence.  The second import raises a
+% `module-error` attributed to its own line.
+import Test.module.inc_fixity_a.
+import Test.module.inc_fixity_b.
+
+type top (myt -> o).
+top X.

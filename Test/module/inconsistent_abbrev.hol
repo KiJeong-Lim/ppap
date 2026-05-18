@@ -1,0 +1,8 @@
+% Section 2.4 (C3): two imports must not redefine the same abbreviation
+% with disagreeing right-hand sides.  Loading the second of the two
+% imports raises `module-error[<importer-loc>]`.
+import Test.module.inc_abbrev_a.
+import Test.module.inc_abbrev_b.
+
+type dummy (nat -> o).
+dummy 0.

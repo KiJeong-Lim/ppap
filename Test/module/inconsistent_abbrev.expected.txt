@@ -1,0 +1,8 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.module.inconsistent_abbrev ( Test/module/inconsistent_abbrev.hol, interpreted )
+*** module-error[5:1-5:32]:
+  ? import inconsistency (C3): `pair' is declared by
+  ? `Test.module.inc_abbrev_b' with a different abbreviations than a prior import.
+Hol =<< ppap: :q.hol: openFile: does not exist (No such file or directory)

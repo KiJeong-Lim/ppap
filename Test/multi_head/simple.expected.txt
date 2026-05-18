@@ -1,0 +1,10 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.multi_head.simple ( Test/multi_head/simple.hol, interpreted )
+Test.multi_head.simple> Ok, one module loaded.
+Test.multi_head.simple> Test.multi_head.simple> yes.
+Test.multi_head.simple> Test.multi_head.simple> yes.
+Test.multi_head.simple> Test.multi_head.simple> no.
+Test.multi_head.simple> Test.multi_head.simple> no.
+Test.multi_head.simple> Hol >>= quit

@@ -1,0 +1,2 @@
+% Two imports declare the abbreviation `pair` with different bodies.
+abbrev pair := list nat.

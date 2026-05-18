@@ -1,0 +1,12 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.multi_head.cut_in_body ( Test/multi_head/cut_in_body.hol, interpreted )
+Test.multi_head.cut_in_body> Ok, one module loaded.
+Test.multi_head.cut_in_body> Test.multi_head.cut_in_body> The answer substitution is:
+Test.multi_head.cut_in_body> Z := 1.
+Test.multi_head.cut_in_body> Find more solutions? [Y/n] Test.multi_head.cut_in_body> Find more solutions? [Y/n] Test.multi_head.cut_in_body> yes.
+Test.multi_head.cut_in_body> Test.multi_head.cut_in_body> The answer substitution is:
+Test.multi_head.cut_in_body> Z := 1.
+Test.multi_head.cut_in_body> Find more solutions? [Y/n] Test.multi_head.cut_in_body> Find more solutions? [Y/n] Test.multi_head.cut_in_body> yes.
+Test.multi_head.cut_in_body> Hol >>= quit

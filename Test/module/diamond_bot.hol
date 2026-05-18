@@ -1,0 +1,4 @@
+% Bottom of the diamond - must be loaded exactly once even though both
+% `diamond_left` and `diamond_right` import it.
+type d_bot (nat -> o).
+d_bot 42.

@@ -1,0 +1,7 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.module.mismatched_header ( Test/module/mismatched_header.hol, interpreted )
+*** desugaring-error[3:1-3:18]:
+  ? module header `wrong.name' does not match file path-derived name `Test.module.mismatched_header'.
+Hol =<< ppap: :q.hol: openFile: does not exist (No such file or directory)

@@ -1,0 +1,11 @@
+% Section 1.4 / 2.5: cut inside the shared body is local to *each*
+% cloned clause.  Both `p` and `q` commit to the first matching `r`
+% via their own cut barrier; backtracking inside one clone does not
+% leak into the other.  Each query therefore returns exactly one
+% answer (X := 1), not two.
+type p (nat -> o).
+type q (nat -> o).
+type r (nat -> o).
+r 1.
+r 2.
+p X & q X :- r X, !.

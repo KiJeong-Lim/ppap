@@ -117,7 +117,7 @@ data MonoType tvar
 
 data PolyType
     = Forall [SmallId] (MonoType Int)
-    deriving ()
+    deriving (Eq)
 
 data TermExpr dcon annot
     = Var annot IVar

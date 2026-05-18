@@ -1,0 +1,6 @@
+% `my_op` is declared with infixl precedence 5 here, infixr precedence 6
+% in inc_fixity_b.hol.  A main file that imports both is a C5
+% inconsistency.
+kind myt type.
+type my_op (nat -> nat -> myt).
+infixl my_op 5.

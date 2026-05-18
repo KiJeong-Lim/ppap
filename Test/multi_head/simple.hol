@@ -1,0 +1,6 @@
+% Section 1.4 / 2.5: multi-head clause `foo X & bar X :- ...` desugars
+% to two independent clauses sharing the body.  Querying `foo 3` and
+% `bar 3` both succeed via the cloned body.
+type foo (nat -> o).
+type bar (nat -> o).
+foo X & bar X :- X = 3.

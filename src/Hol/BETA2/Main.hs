@@ -7,6 +7,7 @@ import Hol.BETA2.Debugger
 import Hol.BETA2.Desugarer
 import Hol.BETA2.Header
 import Hol.BETA2.HOPU
+import Hol.BETA2.ModuleLoader (LoadedModule (..), ModuleEnv (..), loadMain)
 import Hol.BETA2.Notation (NotationDB, ExpansionDB)
 import qualified Hol.BETA2.Notation as Notation
 import Hol.BETA2.PlanHolLexer
@@ -624,31 +625,24 @@ runHol = do
             Just file_name -> do
                 let my_file_dir = file_name ++ ".hol"
                     myModuleName = modifySep '/' (const ".") id file_name
-                src <- lift $ readFile my_file_dir
+                _ <- lift $ readFile my_file_dir
                 file_abs_dir <- fmap (fromMaybe my_file_dir) (lift $ makePathAbsolutely my_file_dir)
                 lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
-                case runAnalyzer src of
+                result <- loadMain theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
+                case result of
                     Left err_msg -> do
                         lift $ putStrLn err_msg
                         runHol
-                    Right output -> case output of
-                        Left query1 -> do
-                            lift $ putStrLn "*** parsing-error: it is not a program."
-                            runHol
-                        Right program1 -> do
-                            result <- runExceptT $ do
-                                (module1, notation_db, expansion_db) <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
-                                facts2 <- sequence [ checkType notation_db (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
-                                facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
-                                facts4 <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
-                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts4, moduleName = myModuleName }, notation_db, expansion_db)
-                            case result of
-                                Left err_msg -> do
-                                    lift $ putStrLn err_msg
-                                    runHol
-                                Right (program2, notation_db2, expansion_db2) -> do
-                                    lift $ shelly (myModuleName ++ "> Ok, one module loaded.")
-                                    runREPL program2 notation_db2 expansion_db2
+                    Right loaded -> do
+                        let mainEnv = loadedMain loaded
+                            program2 = Program
+                                { _KindDecls  = moduleEnvKinds mainEnv
+                                , _TypeDecls  = moduleEnvTypes mainEnv
+                                , _FactDecls  = moduleEnvFacts mainEnv
+                                , moduleName  = moduleEnvName mainEnv
+                                }
+                        lift $ shelly (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
+                        runREPL program2 (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
         inconsistent_proof -> do
             lift $ shelly inconsistent_proof
             lift $ shelly ("Hol >>= quit")

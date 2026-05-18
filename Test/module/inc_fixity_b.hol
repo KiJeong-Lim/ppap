@@ -1,0 +1,3 @@
+kind myt type.
+type my_op (nat -> nat -> myt).
+infixr my_op 6.

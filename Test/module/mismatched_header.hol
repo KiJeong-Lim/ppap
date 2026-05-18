@@ -1,0 +1,6 @@
+% Section 1.2: when the declared name does not match the path-derived
+% name, the compiler raises `desugaring-error[<header-loc>]`.
+module wrong.name.
+
+type x (nat -> o).
+x 0.

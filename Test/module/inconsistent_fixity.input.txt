@@ -1,0 +1,3 @@
+Hol
+Test/module/inconsistent_fixity.hol
+:q

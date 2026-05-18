@@ -1,0 +1,6 @@
+% Middle of a transitive chain.  `mid` imports `leaf`, so anyone who
+% imports `mid` transitively sees `leaf`'s declarations.
+import Test.module.leaf.
+
+type mid_pred (nat -> o).
+mid_pred X :- tag X.

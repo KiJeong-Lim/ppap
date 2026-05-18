@@ -1,0 +1,9 @@
+% Section 2.2 (idempotence): `diamond_bot` is reached through two
+% importers (`left` and `right`).  The loader's `loaded` table must
+% return the cached environment on the second visit, so its facts
+% (`d_bot 42`) appear only once in the runtime fact list.
+import Test.module.diamond_left.
+import Test.module.diamond_right.
+
+type d_top (nat -> o).
+d_top X :- d_left X, d_right X.

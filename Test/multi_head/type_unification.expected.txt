@@ -1,0 +1,18 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.multi_head.type_unification ( Test/multi_head/type_unification.hol, interpreted )
+Test.multi_head.type_unification> Ok, one module loaded.
+Test.multi_head.type_unification> Test.multi_head.type_unification> The answer substitution is:
+Test.multi_head.type_unification> X := 7.
+Test.multi_head.type_unification> Find more solutions? [Y/n] Test.multi_head.type_unification> Find more solutions? [Y/n] Test.multi_head.type_unification> yes.
+Test.multi_head.type_unification> Test.multi_head.type_unification> The answer substitution is:
+Test.multi_head.type_unification> X := 7.
+Test.multi_head.type_unification> Find more solutions? [Y/n] Test.multi_head.type_unification> Find more solutions? [Y/n] Test.multi_head.type_unification> yes.
+Test.multi_head.type_unification> Test.multi_head.type_unification> The answer substitution is:
+Test.multi_head.type_unification> X := 7.
+Test.multi_head.type_unification> Find more solutions? [Y/n] Test.multi_head.type_unification> Find more solutions? [Y/n] Test.multi_head.type_unification> yes.
+Test.multi_head.type_unification> Test.multi_head.type_unification> yes.
+Test.multi_head.type_unification> Test.multi_head.type_unification> no.
+Test.multi_head.type_unification> Test.multi_head.type_unification> no.
+Test.multi_head.type_unification> Hol >>= quit

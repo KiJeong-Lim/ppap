@@ -1,0 +1,4 @@
+% Leaf module - used by transitive_import_top.hol and diamond_*.
+type tag (nat -> o).
+tag 100.
+tag 200.

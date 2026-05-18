@@ -1,0 +1,7 @@
+% Section 1.2: an explicit `module N.` header that *matches* the file's
+% path-derived name is documentation, not a redeclaration.  Loading
+% must succeed and behave identically to the no-header case.
+module Test.module.explicit_header.
+
+type marker (nat -> o).
+marker 7.

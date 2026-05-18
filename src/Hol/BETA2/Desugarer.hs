@@ -162,9 +162,26 @@ desugarTerm live (RAbs loc1 var_rep term_rep) = do
             return (Lam loc1 var (Just storedHint) term)
 desugarTerm live (RPrn loc1 term_rep) = desugarTerm live term_rep
 
+-- §2.5: a multi-head clause `h_1 & ... & h_n :- body.` is surface sugar
+-- for n independent `h_i :- body.` clauses. The body is *cloned* into each
+-- clause; downstream `desugarTerm` runs with a fresh name-env per RFactDecl,
+-- so logic variables inside the cloned body are freshened per clause
+-- (§4.5.1 freshening invariant) and head-level vars share types with body-level
+-- vars within their own clause but not across clauses. The unit form
+-- `h_1 & ... & h_n.` desugars analogously to n unit facts.
+expandMultiHead :: DeclRep -> [DeclRep]
+expandMultiHead (RMultiHeadFactDecl loc heads mbody) =
+    [ case mbody of
+        Just body -> RFactDecl loc (RApp loc (RApp loc (RCon loc (DC_LO LO_if)) h) body)
+        Nothing   -> RFactDecl loc h
+    | h <- heads
+    ]
+expandMultiHead decl = [decl]
+
 desugarProgram :: MonadUnique m => KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
-desugarProgram kind_env type_env file_name program
-    = let expansion_db = collectExpansions program
+desugarProgram kind_env type_env file_name program0
+    = let program = concatMap expandMultiHead program0
+          expansion_db = collectExpansions program
           notation_db0 = collectNotation program
           expandedTypes = [ (loc, (con, Notation.expandTypeRep expansion_db trep)) | RTypeDecl loc con trep <- program ]
           expandedFacts = [ Notation.expandTermRep expansion_db fact_rep | RFactDecl _ fact_rep <- program ]

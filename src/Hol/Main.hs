@@ -6,4 +6,4 @@ import Hol.BETA2.Main as BETA2
 import Hol.V1.Main as V1
 
 main :: IO ()
-main = BETA1.main
+main = BETA2.main
