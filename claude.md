@@ -71,12 +71,13 @@
          ```
          main C :- pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
          ```
-      1. (폐기됨) 분수(fraction), 부동소수점(float) 자료형 추가. (무리일 듯. 안 해도 무방함.)
-      1. (대기 중) `print`, `read` 술어 추가할 것.
+      1. (대기 중) 분수(fraction), 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
+      1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
          ```
-         type print (A -> o). % X := 3일 때 `print X`하면 ==> 3을 출력.
-         type read (A -> o). % X가 unbounded일 때 `read X`하면 ==> X := 3
+         type print (A -> o). % X := 3일 때 `print X`하면, 3을 출력함.
+         type read (A -> o).  % X가 unbounded일 때 `read X`하면, X := 3가 됨.
          ```
+         debugger나 assign이 있는데, 굳이 필요할까 하는 생각이 든다.
    3. 확인할 점:
       1. `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       1. 위 사항 이외의 Multi-head에서 발생할 수 있는 문제점.
