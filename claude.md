@@ -26,7 +26,18 @@
                y = x + 2
    ```
    와 같이 쓴다.
-1. 되도록이면 짧은 여러 줄 대신 긴 한 줄로 작성할 것. 예: `mapM_ (\x -> ...) xs`은 한 줄 안에 쓴다. do 노테이션에서 `<pat> <- <term>`도 한 줄에 쓴다. `Record { fld1 = ..., ..., fldn = ... }`도 단독으로 나타나지 않고 인자인 경우 한 줄로 길게 쓸 것.
+1. 되도록이면 짧은 여러 줄 대신 긴 한 줄로 작성할 것. 예: `mapM_ (\x -> ...) xs`은 한 줄 안에 쓴다. do 노테이션에서 `<pat> <- <term>`도 한 줄에 쓴다. `Record { fld1 = ..., ..., fldn = ... }`도 단독으로 나타나지 않고 인자인 경우 한 줄로 길게 쓸 것. 예:
+   ```hs
+   foo x y = bar (Baz { baz1 = f x, baz2 = g y })
+   ```
+   처럼 쓰고
+   ```hs
+   foo x y = bar $ Bar
+       { baz1 = f x
+       , baz2 = g y
+       }
+   ```
+   처럼은 쓰지 않는다.
 1. let in은 쓰더라도,
    ```hs
    let x1 = t1 in
@@ -67,9 +78,9 @@
    ```hs
    helloWord :: ShowS
    helloWord = strcat
-      [ strstr "hello" . nl
-      , strstr "world" . nl
-      ]
+       [ strstr "hello" . nl
+       , strstr "world" . nl
+       ]
    ```
 
 ## 나의 계획들
