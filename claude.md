@@ -112,7 +112,7 @@
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
          ```
          type print (A -> o). % X := 3일 때 `print X`하면, 3을 출력함.
-         type read (A -> o).  % X가 unbounded일 때 `read X`하면, X := 3가 됨.
+         type read (A -> o). % X가 unbounded일 때 `read X`하면, X := 3가 됨.
          ```
          debugger나 assign이 이미 있긴 하지만, `print`와 `read`도 필요하다고 생각한다.
       2. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
@@ -131,7 +131,7 @@
 
 1. `Hol V1` (대기 중):
    Hol 프로젝트 정식 넘버링 (v1.0.0).
-   - 기존의 인터프리터 대신, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
+   - 인터프리터 외에도, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
    - `LoL ALPHA1`의 인터프리터를 만들 수 있는 하스켈 API도 제공해야 한다.
 
 1. `LoL ALPHA1` (대기 중):
