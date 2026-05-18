@@ -4,9 +4,7 @@ Hol BETA2 — Language Specification (Draft)
 
 This document specifies the syntax and semantics of `Hol BETA2`, a dialect of
 λProlog that supersedes `Hol BETA1`. BETA2 keeps every program accepted by
-BETA1 working, with the single exception that built-in declarations are now
-sealed (§2.5; notably `string := list char` is no longer overridable), and
-additionally provides:
+BETA1 working and additionally provides:
 
   (A) A first-class module system: an optional `module <name>.` header, an
   `import <name>.` declaration that brings another file's declarations
@@ -19,10 +17,6 @@ additionally provides:
   location of the goal" line in debug output).
   (C) Multi-head clauses `h_1 & ... & h_n :- body.` that desugar to `n`
   independent clauses sharing the body (Appendix B [1] of BETA1).
-  (D) A `sealed` modifier on abbreviations and notations that turns the
-  "last declared wins" rule into a compile error when the sealed name
-  is re-declared. Lets the implementation pin built-ins that must not
-  be lost (Q3 of BETA1).
 
 Compatibility minimum: every `Test/*.hol` smoke case from BETA1 (twenty-two
 cases as of 2026-05-18) must continue to pass with byte-identical output
@@ -65,7 +59,6 @@ tie-breaker for design decisions.
   | Module name           | derived from file path   | also explicit in header    |
   | Notation merge        | within one file          | across imports + main file |
   | Import inconsistency  | n/a                      | compile error              |
-  | Built-in protection   | always overridable       | `sealed` form prevents it  |
   | SLoc inside literals  | placeholder `(0,0)-(0,0)`| original token SLoc        |
   | SLoc on goals         | not threaded             | threaded; debug shows it   |
   | Multi-head clauses    | n/a (Appendix B [1])     | `h₁ & ... & hₙ :- body.`   |
@@ -89,10 +82,10 @@ Chapter 1. Syntax
 1.1 Lexical Additions
 --------------------------------------------------------------------------------
 
-The lexical structure of BETA1 (§1.1) is extended with three new reserved
+The lexical structure of BETA1 (§1.1) is extended with two new reserved
 words and no new token classes.
 
-  - reserved words (new) : `module`, `import`, `sealed`
+  - reserved words (new) : `module`, `import`
   - reserved words (kept): everything from BETA1 §1.1, plus `presburger`
   still intentionally non-reserved (§2.3.3).
 
@@ -212,49 +205,7 @@ attempting to give it a semantics as a body connective collides with
 λProlog's `,`/`;`/`=>` calculus (§2.2). BETA2 follows the convention.
 
 
-1.5 Sealed Abbreviations and Notations
---------------------------------------------------------------------------------
-
-A declaration may be prefixed with `sealed`:
-
-  sealed abbrev <name> <X1> ... <Xn> := <type>.
-  sealed notation <name> <X1> ... <Xn> := <term>.
-
-A sealed declaration registers in the `NotationDB` exactly like an
-unsealed one (same fold-table seeding, same parser-direction expansion,
-same Coq-style semantics). The difference is in how *subsequent*
-declarations interact with it.
-
-Sealing rule. Once `<name>` has been declared `sealed`, any subsequent
-attempt to declare a notation or abbreviation with the same `<name>` —
-sealed or not — is a desugaring error:
-
-  *** desugaring-error[<loc>]:
-        ? cannot redeclare sealed <kind> `<name>'
-        ? (originally declared at <prior-loc>).
-
-This is the *only* surface difference. Pretty printing, parser-direction
-expansion, fold-table seeding, and `:show` all behave identically for
-sealed and unsealed forms.
-
-Built-ins. The built-in abbreviations seeded at startup (§1.6.5 of BETA1
-— currently just `string := list char`) are sealed in BETA2. Trying to
-override `string` is now an error, not a silent shadow. User code that
-wants its own type alias for `list char` must pick a different name
-(e.g., `abbrev byte_string := list char.`).
-
-Importation. Two imports may both `sealed abbrev` the same name with the
-same right-hand side without conflict (identity check). Two imports that
-seal the same name with *different* right-hand sides are a §2.4 import-
-inconsistency error, sealed or not.
-
-Forward compatibility. Sealed is the surface form Q3 of BETA1 deferred.
-Future revisions may extend sealing to fixity declarations (currently not
-needed because the BETA1 built-in fixity table is already idempotent under
-re-declaration with the same precedence).
-
-
-1.6 Source-Location Annotations
+1.5 Source-Location Annotations
 --------------------------------------------------------------------------------
 
 Source locations (`SLoc`s) are not part of the surface syntax. They are
@@ -264,10 +215,10 @@ parser (per-AST-node), through the desugarer (onto the produced
 diagnostic. The user has no way to write an `SLoc` literal and no
 reason to.
 
-§3.4 of BETA1 deferred this threading to BETA2. §1.6 of BETA2 records
+§3.4 of BETA1 deferred this threading to BETA2. §1.5 of BETA2 records
 the deferral as resolved: every `TermNode` constructor carries (or can
 be queried for) an `SLoc` that points at the surface position from which
-that subtree originally arose, modulo the technical caveat of §2.7.
+that subtree originally arose, modulo the technical caveat of §2.6.
 
 
 ================================================================================
@@ -382,8 +333,8 @@ is *not* re-exported to other modules.)
 NotationDB (fold table). Same rule. Two imports declaring the same
 abbreviation/notation name must agree on the right-hand side
 (α-equivalence on the parameters, syntactic equality on the body
-modulo NotationDB itself). Main-file shadowing is allowed unless the
-target was `sealed` (§1.5).
+modulo NotationDB itself). Main-file shadowing is allowed under the
+inherited "last declared wins" rule (BETA1 §2.7.4).
 
 ExpansionDB (parser-direction expansion). Composed identically to the
 fold table — the two databases share the underlying entry list (§4.3
@@ -420,48 +371,16 @@ attributing the error to the later import's location.
 Built-in escape. The implicit built-in module is *not* a "import" for
 the purpose of (C1)-(C5). A user module declaring `abbrev s := T.` for
 a name `s` that the built-in module also declares does not constitute
-an inconsistency — it is shadowing, and is rejected only if the
-built-in declaration was sealed.
+an inconsistency — it is shadowing under the inherited "last declared
+wins" rule of BETA1 §2.7.4.
 
 Main-file shadowing. The main file's own declarations are not subject
 to (C1)-(C5) against imports either, *except* for kind/type constants
 which are closed (see §2.3). A main file may freely shadow imported
-abbreviations, notations, and fixities with its own declarations,
-as long as the shadowed name is not sealed.
+abbreviations, notations, and fixities with its own declarations.
 
 
-2.5 Built-in Overridability and Sealing
---------------------------------------------------------------------------------
-
-The "last declared wins" rule of BETA1 §2.7.4 is now relativised. The
-table of declarations at any printing point is:
-
-  built-in seeds (lowest priority)
-    ↓
-  imported declarations (per §2.3)
-    ↓
-  main-file declarations (highest priority)
-
-Within each tier, ties are still broken by source order (later wins).
-The shadowing rule applies as long as the target is not sealed.
-
-Sealed declarations (§1.5) bypass the tier ordering: once sealed, the
-name's right-hand side is fixed for the remainder of the load. A
-subsequent declaration in any tier raises a desugaring or import error.
-
-This change is what closes Q3 of BETA1: built-ins that *must* survive
-(like `string := list char` if a downstream test relies on it being
-printed as `string`) can now be marked sealed at seed time. The
-implementation declares the BETA1 built-ins as sealed in `Notation.hs`'s
-`initial` / `initialExpansionDB`; user code can no longer override them.
-
-This is a small backwards-incompatibility against BETA1, where built-in
-`string := list char` *was* overridable. The BETA1 capability is judged
-to have been an oversight rather than a deliberate feature; no
-production test exercises it.
-
-
-2.6 Multi-Head Clause Expansion
+2.5 Multi-Head Clause Expansion
 --------------------------------------------------------------------------------
 
 The desugarer expands a multi-head clause
@@ -502,10 +421,10 @@ implementation must run step (ii) for *all* heads before reporting,
 so that the user sees every offending head per compile.
 
 
-2.7 Source Locations
+2.6 Source Locations
 --------------------------------------------------------------------------------
 
-2.7.1 The threading invariant
+2.6.1 The threading invariant
 
 Every `TermNode` produced by the desugarer carries (in a side band
 that the runtime forwards unchanged) the `SLoc` of the surface
@@ -551,7 +470,7 @@ annotated `TermNode` after desugaring) and passes the actual literal's
 SLoc to `parsePresburger`. Parse errors inside the literal point at
 the literal's column position, not at `(0,0)-(0,0)`.
 
-2.7.2 Debug output
+2.6.2 Debug output
 
 §3.4 of BETA1 listed a fifth line in the per-step debug print —
 "source location of the goal, where known" — that was deferred to
@@ -566,7 +485,7 @@ runtime-introduced cut frame) for which no surface position is
 available. The display does not try to reconstruct a fake SLoc; the
 *absence* of a position is informative.
 
-2.7.3 Recovered diagnostics
+2.6.3 Recovered diagnostics
 
 Three classes of diagnostic that BETA1 reported imprecisely now point
 at the originating token.
@@ -582,7 +501,7 @@ Each is a strict refinement of BETA1's reporting: every BETA1 message
 is still emitted, but with a narrower SLoc.
 
 
-2.8 Inheritance of BETA1 Semantics
+2.7 Inheritance of BETA1 Semantics
 --------------------------------------------------------------------------------
 
 Every section of BETA1 Chapter 2 that this document does not modify is
@@ -619,7 +538,7 @@ The five-line BETA1 debug print (§3.4) is now six lines:
   - the constraint multiset C
   - the binding substitution restricted to user-visible names
   - the typing context (§3.4 of BETA1)
-  - the source location of the goal, where known (§2.7.2 of this doc)
+  - the source location of the goal, where known (§2.6.2 of this doc)
   - (unchanged) the prompt
 
 The new line is added at the position the BETA1 spec already reserved
@@ -631,7 +550,7 @@ both modes (it is short by construction).
 3.2 Module-Aware Diagnostics
 --------------------------------------------------------------------------------
 
-Every diagnostic that names an `SLoc` (§2.7.3) now also names the
+Every diagnostic that names an `SLoc` (§2.6.3) now also names the
 module the location came from. The format is
 
   [<module-name>]:<line>:<col>-<line>:<col>
@@ -690,27 +609,25 @@ place; no `Hol.BETA2` module imports a `Hol.BETA1` module.
     Header.hs        -- copied; `SLoc` extended to record its
                         originating file (module name via §2.1).
                         `TermNode` constructors get `_sloc :: Maybe
-                        SLoc` under the (c) strategy of §2.7.1.
+                        SLoc` under the (c) strategy of §2.6.1.
     Constant.hs      -- copied; unchanged.
-    TermNode.hs      -- copied; constructor changes per §2.7.1 (c).
+    TermNode.hs      -- copied; constructor changes per §2.6.1 (c).
                         Viewer takes an `SLoc` along with every
                         emitted `ViewNode` for the new debug-output
                         line.
-    PlanHolLexer.hs  -- copied; `module` / `import` / `sealed`
-                        reserved. LGS regen.
-    PlanHolParser.hs -- copied; `module` header, `import` block,
-                        `sealed` modifier, and `&`-multi-head
-                        clause productions. PGS regen.
-    Desugarer.hs     -- copied; SLoc threading per §2.7.1; multi-
-                        head expansion per §2.6; sealed-violation
-                        detection per §1.5. `desugarProgram` now
-                        returns a `ModuleEnv` (per-import) rather
-                        than a single composed environment.
+    PlanHolLexer.hs  -- copied; `module` / `import` reserved.
+                        LGS regen.
+    PlanHolParser.hs -- copied; `module` header, `import` block, and
+                        `&`-multi-head clause productions. PGS regen.
+    Desugarer.hs     -- copied; SLoc threading per §2.6.1; multi-
+                        head expansion per §2.5. `desugarProgram`
+                        now returns a `ModuleEnv` (per-import)
+                        rather than a single composed environment.
     TypeChecker.hs   -- copied; receives SLocs on every inferred
                         sub-term and uses them in error attribution
-                        (§2.7.3).
+                        (§2.6.3).
     HOPU.hs          -- copied; passes SLoc through disagreement
-                        reports (§2.7.3).
+                        reports (§2.6.3).
     Runtime.hs       -- copied; per-step SLoc line in debug output
                         (§3.1).
     Compiler.hs      -- copied; SLoc threading from `TermRep` into
@@ -721,10 +638,9 @@ place; no `Hol.BETA2` module imports a `Hol.BETA1` module.
     Arith.hs         -- copied; `installPresburger` now receives
                         the literal's actual SLoc (closes §2.3.4
                         of BETA1).
-    Notation.hs      -- copied; `addAbbrev` / `addNotation` take a
-                        `sealed :: Bool` flag; `merge` operation
-                        used by `ModuleLoader` enforces the
-                        consistency rules of §2.4.
+    Notation.hs      -- copied; the `merge` operation used by
+                        `ModuleLoader` enforces the consistency
+                        rules of §2.4.
     Debugger.hs      -- copied; unchanged (no new debugger commands
                         in BETA2 — the SLoc threading lives in the
                         viewer and `Runtime.hs`).
@@ -818,7 +734,7 @@ changes on disk. A `:reload` command is left for a future revision.
 4.3 SLoc-Threaded TermNode Wrappers
 --------------------------------------------------------------------------------
 
-The recommended strategy (c) of §2.7.1 adds an `Maybe SLoc` field to
+The recommended strategy (c) of §2.6.1 adds an `Maybe SLoc` field to
 each of `NCon`, `NApp`, and `NLam` (plus the BETA1-introduced
 `NPresburgerCheck`). The desugarer fills the field with the
 corresponding `RTermRep` node's SLoc; HOPU-introduced nodes leave the
@@ -903,9 +819,6 @@ A new sub-tree of `Test/` exercises BETA2's additions.
                                 `infixl + 6.`; D declares
                                 `infixl + 8.`. Expected: §2.4 (C5)
                                 error.
-      sealed_redecl.hol     -- main file tries to redeclare the
-                                built-in `string`. Expected:
-                                §1.5 sealed-violation error.
       explicit_header.hol   -- the main file opens with
                                 `module Test.module.explicit_header.`
                                 matching its file path. Loads
@@ -918,7 +831,7 @@ A new sub-tree of `Test/` exercises BETA2's additions.
                                 `?- p 7.` and `?- q 7.` both
                                 succeed.
       type_unification.hol  -- multi-head shares logic-var types
-                                across heads per §2.6 (ii).
+                                across heads per §2.5 (ii).
       cut_in_body.hol       -- multi-head body contains `!`;
                                 each cloned clause's cut is local.
     sloc/
@@ -932,7 +845,7 @@ A new sub-tree of `Test/` exercises BETA2's additions.
       type_error_subterm.hol-- a sub-term of a clause body fails
                                 type-check; the error is attributed
                                 to the sub-term's SLoc, not the
-                                clause's. Closes §2.7.3 refinement
+                                clause's. Closes §2.6.3 refinement
                                 3.
     smoke.sh                -- inherits BETA1's runner with --update.
 
@@ -964,17 +877,16 @@ Appendix A. Open Questions
 ================================================================================
 
 Questions [Q1]-[Q7] of BETA1 are inherited with the following close-
-outs.
-
-  [Q3] (Display-time policy on overlapping abbreviations.) Closed in
-  BETA2 §1.5: built-in declarations are sealed and unoverridable.
-  The "last declared wins" rule of BETA1 still applies among
-  *unsealed* declarations.
+outs. [Q3] remains open in BETA2: a surface form for pinning built-in
+abbreviations against override was considered (a `sealed` modifier) and
+deferred — built-in declarations are still overridable under the
+inherited "last declared wins" rule of BETA1 §2.7.4.
 
   [Q5] (Module/import system.) Closed in BETA2 Chapter 1 (syntax),
-  Chapter 2 §2.1-§2.5 (semantics), and §4.2 (loader). Two
+  Chapter 2 §2.1-§2.4 (semantics), and §4.2 (loader). Two
   imports disagreeing on a name is a compile error (C1)-(C5).
-  Built-in shadowing is allowed unless the built-in was sealed.
+  Built-in shadowing is allowed under the inherited "last
+  declared wins" rule.
 
 New open questions introduced by BETA2:
 
@@ -985,14 +897,6 @@ New open questions introduced by BETA2:
   (§3.5 of BETA1) with a new module environment, which is
   brittle without a clear use case. The simpler contract is
   "the file system is consulted only at REPL launch".
-
-  [Q10] What does `sealed kind` or `sealed type` mean?
-  [A] Nothing in BETA2. `kind` and `type` declarations are already
-  closed by §2.3 (KindEnv / TypeEnv): once declared they cannot
-  be re-declared. `sealed` adds no additional semantics. A
-  future revision might use `sealed` to gate the *import* of a
-  kind or type constant ("private" declarations), but BETA2
-  does not.
 
   [Q11] Selective and qualified imports (`import M (a, b)` /
   `import M as N`).
@@ -1013,7 +917,7 @@ New open questions introduced by BETA2:
   sub-terms (`_sloc = Nothing`)?
   [A] Best-effort fill from the enclosing context (§4.3.1). If
   no enclosing position is available either, the diagnostic
-  omits the position rather than fabricating one (§2.7.2,
+  omits the position rather than fabricating one (§2.6.2,
   "the absence of a position is informative").
 
 
@@ -1022,7 +926,7 @@ Appendix B. Other Feedbacks to Claude
 ================================================================================
 
   [B1] Multi-head clauses (originally in Appendix B of BETA1):
-  implemented per §1.4 / §2.6. The desugaring is
+  implemented per §1.4 / §2.5. The desugaring is
   declaration-level (n independent clauses, body cloned with
   freshened logic variables). The shared-body intent is
   respected; the shared-runtime-state expectation is rejected
