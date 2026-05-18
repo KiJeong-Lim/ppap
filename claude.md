@@ -4,10 +4,10 @@
 사용자는 다음 계획들을 구상 중이며, claude에게 모든 파일을 읽을 수 있는 권한과 {`claude.md`, `LICENSE`, `ppap.cabal`, `stack.yaml`, `stack.yaml.lock`}를 제외한 모든 문서 및 코드를 편집할 수 있는 권한을 부여한다.
 또한, claude는 궁금한 것은 얼마든지 사용자에게 물어볼 수도 있고, 언제든지 [나의 계획들]을 실현하기 위해 필요한 새로운 단기계획을 시작시킬 것을 제안할 수 있다.
 
-## 코딩 가이드라인
+## 하스켈 코드 작성 가이드라인
 
 ### 무조건 지켜야 하는 사항
-1. 하늘이 무너져도 절대 unsafe류를 쓰면 안 된다.
+1. 하늘이 무너져도 절대 unsafe류는 쓰면 안 된다.
 1. 디렉토리 `src/X/`에서 C ffi 작업을 한다. 즉, 모든 C 코드와 그 하스켈 래퍼는 디렉토리 `src/X/` 안에 있어야 한다.
 
 ### 권고만 하는 사항
@@ -26,7 +26,7 @@
                y = x + 2
    ```
    와 같이 쓴다.
-1. 되도록이면 짧은 여러 줄 대신 긴 한 줄로 작성할 것.
+1. 되도록이면 짧은 여러 줄 대신 긴 한 줄로 작성할 것. 예: `mapM_ (\x -> ...) xs`은 한 줄 안에 쓴다. do 노테이션에서 `<pat> <- <term>`도 한 줄에 쓴다. `Record { fld1 = ..., ..., fldn = ... }`도 단독으로 나타나지 않고 인자인 경우 한 줄로 길게 쓸 것.
 1. let in은 쓰더라도,
    ```hs
    let x1 = t1 in
@@ -41,6 +41,36 @@
    ```
    와 같이 쓰지는 말것.
 1. 하스켈 코드의 인덴테이션은 항상 4의 배수일 것.
+1. `where`을 이렇게 쓸 것:
+   ```hs
+   foo x y = ... where
+       go z = ... 
+
+   bar x y
+       | ... = ...
+       | otherwise = ...
+       where
+           go z = ...
+   ```
+1. 절대 align하지 말 것. 예:
+   ```hs
+   foo (Just x) = ...
+   foo Nothing  = ...
+   ```
+   를 지양하고
+   ```hs
+   foo (Just x) = ...
+   foo Nothing = ...
+   ```
+   를 지향한다.
+1. 문자열을 출력할 때, `String` 대신 `ShowS`을 쓰고, `++` 대신 `.`를 쓸 것. (`strstr`은 당연히 써야 함.) 예:
+   ```hs
+   helloWord :: ShowS
+   helloWord = strcat
+      [ strstr "hello" . nl
+      , strstr "world" . nl
+      ]
+   ```
 
 ## 나의 계획들
 
@@ -72,7 +102,7 @@
          type print (A -> o). % X := 3일 때 `print X`하면, 3을 출력함.
          type read (A -> o).  % X가 unbounded일 때 `read X`하면, X := 3가 됨.
          ```
-         debugger나 assign이 이미 있긴 하지만 필요하다고 생각한다.
+         debugger나 assign이 이미 있긴 하지만, `print`와 `read`도 필요하다고 생각한다.
       2. (대기 중) 새로운 기능: symbolic calculus. 예: `Y : (C : (|- nat), x : nat |- nat)`일 때 `Y is C * (x + 1) * (x + 2)` => `Y := C * x * x + 3 * C * x + 2 * C`. 다음 스크립트로 확인가능하다:
          ```
          main :- sigma\ C pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), debug "".
@@ -85,7 +115,7 @@
    3. 확인할 점:
       1. `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       1. 위 사항 이외의 Multi-head에서 발생할 수 있는 문제점 생각하기.
-      1. 프로젝트 완료 후, 코딩 가이드라인에 따라 `Hol BETA 1`과 `Hol BETA 2` 모두 리팩토링할 것.
+      1. 프로젝트 완료 후, 코딩 가이드라인에 따라 `Hol BETA 1`과 `Hol BETA 2` 모두 리팩토링할 것. 포맷팅이 내 마음에 들지 않음.
 
 1. `Hol V1` (대기 중):
    Hol 프로젝트 정식 넘버링 (v1.0.0).
