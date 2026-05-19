@@ -3,12 +3,19 @@ module Z.System
     , writeFileNow
     , matchFileDirWithExtension
     , makePathAbsolutely
+    , ShellyState
+    , ShellyT
+    , emptyShellyState
+    , runShellyT
+    , shellyM
     , shelly
     ) where
 
 import Control.Applicative
 import Control.Exception (finally)
 import Control.Monad (MonadPlus (..), (>=>))
+import Control.Monad.IO.Class
+import Control.Monad.Trans.State.Strict
 import Data.Ratio ((%))
 
 import System.Directory
@@ -18,6 +25,18 @@ import qualified System.Time.Extra as Extra
 
 import Z.System.File (readFileNow, writeFileNow)
 import Z.Utils
+
+data ShellyState = ShellyState
+    { shellyHistory :: [String]
+    } deriving ()
+
+type ShellyT = StateT ShellyState IO
+
+emptyShellyState :: ShellyState
+emptyShellyState = ShellyState { shellyHistory = [] }
+
+runShellyT :: ShellyT a -> IO a
+runShellyT action = evalStateT action emptyShellyState
 
 newtype PM a
     = PM { unPM :: ReadS a }
@@ -79,7 +98,10 @@ makePathAbsolutely = fmap (uncurry go . span (\ch -> ch /= ':')) . makeAbsolute 
     drivesuffix = ":\\\\"
 
 shelly :: String -> IO String
-shelly = shellymain where
+shelly msg = runShellyT (shellyM msg)
+
+shellyM :: String -> ShellyT String
+shellyM = shellymain where
     identifierPM :: PM String
     identifierPM = pure (:) <*> acceptCharIf (\ch -> ch `elem` ['$'] ++ ['a' .. 'z'] ++ ['A' .. 'Z']) <*> many (acceptCharIf (\ch -> ch `elem` ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ ['.', '_', '-']))
     numberPM :: PM String
@@ -154,103 +176,108 @@ shelly = shellymain where
             (my_suffix_left, my_suffix_right) -> if null my_suffix_left then my_prefix ++ my_suffix_left ++ my_suffix_right else color Cyan (my_prefix ++ my_suffix_left) ++ my_suffix_right
     elaborate :: String -> String
     elaborate str = maybe (smallshell str) concat (foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ])
-    shellymain :: String -> IO String
+    shellymain :: String -> ShellyT String
     shellymain msg = do
-        can_prettify <- supportsPretty
+        can_prettify <- liftIO supportsPretty
         let rendered = if can_prettify then elaborate msg else msg
-        cout << rendered << Flush
+        liftIO $ cout << rendered << Flush
         if not (null msg) && last msg == ' '
             then do
-                is_terminal <- hIsTerminalDevice stdin
+                is_terminal <- liftIO (hIsTerminalDevice stdin)
                 if is_terminal
                     then readEditedLine rendered
                     else do
-                        bfm <- hGetBuffering stdin
-                        hSetBuffering stdin LineBuffering
-                        str <- getLine
-                        hSetBuffering stdin bfm
+                        bfm <- liftIO (hGetBuffering stdin)
+                        liftIO (hSetBuffering stdin LineBuffering)
+                        str <- liftIO getLine
+                        liftIO (hSetBuffering stdin bfm)
+                        remember str
                         return str
             else do
-                delay 100
-                cout << endl << Flush
+                liftIO (delay 100)
+                liftIO $ cout << endl << Flush
                 return ""
-    readEditedLine :: String -> IO String
+    readEditedLine :: String -> ShellyT String
     readEditedLine prompt = do
-        bfm <- hGetBuffering stdin
-        echo <- hGetEcho stdin
-        hSetBuffering stdin NoBuffering
-        hSetEcho stdin False
+        history <- gets shellyHistory
+        bfm <- liftIO (hGetBuffering stdin)
+        echo <- liftIO (hGetEcho stdin)
+        liftIO (hSetBuffering stdin NoBuffering)
+        liftIO (hSetEcho stdin False)
         let restore = do
                 hSetEcho stdin echo
                 hSetBuffering stdin bfm
-        loop "" "" `finally` restore
+        str <- liftIO (loop history 0 "" "" Nothing `finally` restore)
+        remember str
+        return str
       where
-        loop :: String -> String -> IO String
-        loop left right = do
+        loop :: [String] -> Int -> String -> String -> Maybe String -> IO String
+        loop history index left right saved = do
             ch <- hGetChar stdin
             case ch of
                 '\n' -> finish left right
                 '\r' -> finish left right
-                '\DEL' -> backspace left right
-                '\b' -> backspace left right
+                '\DEL' -> backspace history index left right saved
+                '\b' -> backspace history index left right saved
                 '\ESC' -> do
-                    (left', right') <- escape left right
-                    loop left' right'
+                    (index', left', right', saved') <- escape history index left right saved
+                    loop history index' left' right' saved'
                 _ | ch >= ' ' -> do
                     let left' = left ++ [ch]
                     redraw left' right
-                    loop left' right
-                  | otherwise -> loop left right
+                    loop history index left' right saved
+                  | otherwise -> loop history index left right saved
         finish left right = do
             cout << endl << Flush
             return (left ++ right)
-        backspace [] right = loop [] right
-        backspace left right = do
+        backspace history index [] right saved = loop history index [] right saved
+        backspace history index left right saved = do
             let left' = init left
             redraw left' right
-            loop left' right
-        escape left right = do
+            loop history index left' right saved
+        escape history index left right saved = do
             ready <- hReady stdin
             if not ready
-                then return (left, right)
+                then return (index, left, right, saved)
                 else do
                     ch <- hGetChar stdin
                     case ch of
-                        '[' -> csi left right
-                        'O' -> ss3 left right
-                        _ -> return (left, right)
-        csi left right = do
+                        '[' -> csi history index left right saved
+                        'O' -> ss3 index left right saved
+                        _ -> return (index, left, right, saved)
+        csi history index left right saved = do
             ready <- hReady stdin
             if not ready
-                then return (left, right)
+                then return (index, left, right, saved)
                 else do
                     ch <- hGetChar stdin
                     case ch of
-                        'D' -> moveLeft left right
-                        'C' -> moveRight left right
-                        'A' -> return (left, right)
-                        'B' -> return (left, right)
-                        'H' -> moveHome left right
-                        'F' -> moveEnd left right
+                        'D' -> withIndex index saved <$> moveLeft left right
+                        'C' -> withIndex index saved <$> moveRight left right
+                        'A' -> historyUp history index left right saved
+                        'B' -> historyDown history index left right saved
+                        'H' -> withIndex index saved <$> moveHome left right
+                        'F' -> withIndex index saved <$> moveEnd left right
                         '3' -> do
                             tilde <- hReady stdin
-                            if tilde then do { _ <- hGetChar stdin; deleteChar left right } else return (left, right)
-                        '1' -> consumeTilde *> moveHome left right
-                        '4' -> consumeTilde *> moveEnd left right
-                        _ -> return (left, right)
-        ss3 left right = do
+                            if tilde then do { _ <- hGetChar stdin; withIndex index saved <$> deleteChar left right } else return (index, left, right, saved)
+                        '1' -> consumeTilde *> (withIndex index saved <$> moveHome left right)
+                        '4' -> consumeTilde *> (withIndex index saved <$> moveEnd left right)
+                        _ -> return (index, left, right, saved)
+        ss3 index left right saved = do
             ready <- hReady stdin
             if not ready
-                then return (left, right)
+                then return (index, left, right, saved)
                 else do
                     ch <- hGetChar stdin
                     case ch of
-                        'H' -> moveHome left right
-                        'F' -> moveEnd left right
-                        _ -> return (left, right)
+                        'H' -> withIndex index saved <$> moveHome left right
+                        'F' -> withIndex index saved <$> moveEnd left right
+                        _ -> return (index, left, right, saved)
         consumeTilde = do
             ready <- hReady stdin
             if ready then do { _ <- hGetChar stdin; return () } else return ()
+        withIndex index saved (left, right) = (index, left, right, saved)
         moveLeft [] right = return ([], right)
         moveLeft left right = do
             let left' = init left
@@ -272,10 +299,37 @@ shelly = shellymain where
         deleteChar left (_ : right) = do
             redraw left right
             return (left, right)
+        historyUp [] index left right saved = return (index, left, right, saved)
+        historyUp history index left right saved
+            | index >= length history = return (index, left, right, saved)
+            | otherwise = do
+                let saved' = case saved of
+                        Nothing -> Just (left ++ right)
+                        Just old -> Just old
+                    entry = history !! index
+                redraw entry ""
+                return (index + 1, entry, "", saved')
+        historyDown history index left right saved
+            | index <= 0 = return (index, left, right, saved)
+            | index == 1 = do
+                let entry = maybe "" id saved
+                redraw entry ""
+                return (0, entry, "", saved)
+            | otherwise = do
+                let index' = index - 1
+                    entry = history !! (index' - 1)
+                redraw entry ""
+                return (index', entry, "", saved)
         redraw left right = do
             cout << "\r\ESC[2K" << prompt << left << right << cursorBack (length right) << Flush
         cursorBack 0 = ""
         cursorBack n = "\ESC[" ++ show n ++ "D"
+    remember :: String -> ShellyT ()
+    remember str = do
+        let entry = dropWhile (== ' ') str
+        if null entry
+            then return ()
+            else modify $ \st -> st { shellyHistory = entry : filter (/= entry) (shellyHistory st) }
 
 delay :: Integer -> IO ()
 delay = Extra.sleep . fromMilliSec where

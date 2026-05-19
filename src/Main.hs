@@ -4,6 +4,7 @@ import qualified Calc.Main as Calc
 import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
+import Control.Monad.IO.Class
 import Z.Algo.Function
 import Z.System.Shelly
 
@@ -30,42 +31,42 @@ matchCommand str
             go :: (String, String) -> Maybe (String, [String])
             go (my_prefix, my_suffix) = if my_prefix == cmd then extractArgs my_suffix >>= curry return cmd else Nothing
 
-ppap :: IO ()
+ppap :: ShellyT ()
 ppap = do
-    command <- shelly ("ppap =<< ")
+    command <- shellyM ("ppap =<< ")
     case matchCommand command of
         Nothing -> do
-            shelly ("ppap >>= tell (invalid-command=" ++ shows command ")")
+            shellyM ("ppap >>= tell (invalid-command=" ++ shows command ")")
             ppap
         Just ("", []) -> return ()
         Just ("Hol", args)
             | args `elem` [[], ["pretty"], ["test"]] -> do
-            shelly ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
-            Hol.mainWithArgs args
+            shellyM ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
+            liftIO (Hol.mainWithArgs args)
         Just ("Calc", []) -> do
-            shelly ("ppap >>= exec (Calc.main)")
-            Calc.main
+            shellyM ("ppap >>= exec (Calc.main)")
+            liftIO Calc.main
         Just ("LGS", []) -> do
-            shelly ("ppap >>= exec (LGS.main)")
-            LGS.main
+            shellyM ("ppap >>= exec (LGS.main)")
+            liftIO LGS.main
         Just ("PGS", []) -> do
-            shelly ("ppap >>= exec (PGS.main)")
-            PGS.main
+            shellyM ("ppap >>= exec (PGS.main)")
+            liftIO PGS.main
         Just (cmd, args) -> do
-            shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
+            shellyM ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
   where
     extraArgs :: [String] -> String
     extraArgs [] = ""
     extraArgs args = concat [ " --" ++ arg | arg <- args ]
 
-copyright :: IO ()
+copyright :: ShellyT ()
 copyright = do
-    shelly ("ppap> Copyright (c) 2021-2026, Kijeong Lim")
-    shelly ("ppap> All rights reserved")
+    shellyM ("ppap> Copyright (c) 2021-2026, Kijeong Lim")
+    shellyM ("ppap> All rights reserved")
     return ()
 
 main :: IO ()
-main = do
+main = runShellyT $ do
     copyright
     ppap
