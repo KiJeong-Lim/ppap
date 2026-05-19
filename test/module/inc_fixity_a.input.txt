@@ -1,0 +1,3 @@
+Hol --test
+test/module/inc_fixity_a.hol
+:q

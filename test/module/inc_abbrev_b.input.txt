@@ -1,0 +1,3 @@
+Hol --test
+test/module/inc_abbrev_b.hol
+:q

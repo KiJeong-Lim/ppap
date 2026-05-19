@@ -1,0 +1,3 @@
+Hol --test
+test/module/diamond_bot.hol
+:q

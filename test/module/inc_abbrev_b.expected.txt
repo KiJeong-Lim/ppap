@@ -1,0 +1,6 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.module.inc_abbrev_b ( test/module/inc_abbrev_b.hol, interpreted )
+test.module.inc_abbrev_b> Ok, one module loaded.
+test.module.inc_abbrev_b> Hol >>= quit

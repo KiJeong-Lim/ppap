@@ -1,0 +1,3 @@
+Hol --test
+test/module/leaf.hol
+:q
