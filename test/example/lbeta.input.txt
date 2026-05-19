@@ -1,0 +1,5 @@
+Hol --test
+test/example/lbeta.hol
+?- main X Y Z.
+y:q
+

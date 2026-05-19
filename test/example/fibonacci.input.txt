@@ -1,0 +1,8 @@
+Hol --test
+test/example/fibonacci.hol
+?- main N.
+y
+y
+y
+:q
+

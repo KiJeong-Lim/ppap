@@ -1,0 +1,6 @@
+Hol --test
+test/example/einstein.hol
+?- answer Houses.
+y
+:q
+
