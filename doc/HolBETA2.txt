@@ -401,15 +401,16 @@ is the proof-search semantics).
 NotationDB (fixity table). The fixity table merges by name. Identical
 declarations collapse; conflicting declarations across imports are
 errors. The main file *may* override an imported fixity with a new
-declaration: such an override is silent ("last declared wins") and
-applies only within the main file's pretty-print scope. (The override
-is *not* re-exported to other modules.)
+declaration: such an override is silent ("last declared wins") and is
+part of the module's exported environment. Downstream importers see the
+override exactly as they see the module's other exported declarations.
 
 NotationDB (fold table). Same rule. Two imports declaring the same
 abbreviation/notation name must agree on the right-hand side
 (α-equivalence on the parameters, syntactic equality on the body
 modulo NotationDB itself). Main-file shadowing is allowed under the
-inherited "last declared wins" rule (BETA1 §2.7.4).
+inherited "last declared wins" rule (BETA1 §2.7.4) and is re-exported
+as part of the shadowing module's environment.
 
 ExpansionDB (parser-direction expansion). Composed identically to the
 fold table — the two databases share the underlying entry list (§4.3
@@ -505,11 +506,12 @@ modulo source ordering. The `&` form is surface sugar for the installed
 fact set, even though the parser now keeps it as `LO_and` until fact
 installation.
 
-Diagnostics. A type error inside `body` reports a single error
-(attributed to `body`'s SLoc), not `n` errors. A type error inside a
-specific `h_i` reports an error attributed to `h_i`'s SLoc. The
-implementation must run step (ii) for *all* heads before reporting,
-so that the user sees every offending head per compile.
+Diagnostics. Because the surface `&` chain is type-checked before fact
+installation, a type error reports at the smallest offending sub-term
+inside the original unsplit clause. The compiler is not required to
+split a type-invalid multi-head fact merely to enumerate every bad head:
+splitting is an installation/runtime operation that happens only after
+the whole clause has type-checked.
 
 
 2.6 Source Locations

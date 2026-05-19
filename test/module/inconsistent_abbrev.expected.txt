@@ -2,7 +2,7 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling test.module.inconsistent_abbrev ( test/module/inconsistent_abbrev.hol, interpreted )
-5:1: error: [HolBETA2-ModuleError]
+[test.module.inconsistent_abbrev]:5:1-5:32: error: [HolBETA2-ModuleError]
    |                                 
  5 | import test.module.inc_abbrev_b.
    | ^                               

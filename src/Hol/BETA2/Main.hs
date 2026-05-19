@@ -35,6 +35,8 @@ import Data.IntMap (restrictKeys)
 
 type AnalyzerOuput = Either TermRep [DeclRep]
 
+data ReplResult = ReplQuit | ReplReload
+
 runAnalyzer :: DiagnosticMode -> String -> Either ErrMsg AnalyzerOuput
 runAnalyzer mode src0
     = case runHolLexer src0 of
@@ -79,7 +81,7 @@ execRuntime env isDebugging facts query = do
         initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = initialLabeling, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
     runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
-runREPL :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> UniqueT ShellyT ()
+runREPL :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> UniqueT ShellyT ReplResult
 runREPL mode program notationDB expansionDB = do
     isDebugging <- liftIO (newIORef False)
     verboseTyping <- liftIO (newIORef False)
@@ -151,6 +153,9 @@ runREPL mode program notationDB expansionDB = do
                     ":verbose" -> do
                         writeIORef verboseTyping True
                         promptify "Typing display: verbose."
+                        return ()
+                    ":reload" -> do
+                        _ <- promptify (diagnosticNoLocWith mode "HolBETA2-REPLError" [Z.Doc.text "`:reload' is not available inside `:debug' mode or while a query is searching for answers."])
                         return ()
                     _ | (":assign " `List.isPrefixOf` response) ->
                         handleAssign env ctx (drop (length (":assign " :: String)) response)
@@ -532,16 +537,19 @@ runREPL mode program notationDB expansionDB = do
                     ]
                 consistent :: Bool
                 consistent = evalokay && arithokay 
-    go :: IORef Debugging -> IORef Bool -> IORef NameCache -> UniqueT ShellyT ()
+    go :: IORef Debugging -> IORef Bool -> IORef NameCache -> UniqueT ShellyT ReplResult
     go isDebugging verboseTyping nameCache = do
         query <- lift $ promptifyM ""
         case query of
             "" -> do
                 lift $ shellyM "Hol >>= quit"
-                return ()
+                return ReplQuit
             ":q" -> do
                 lift $ shellyM "Hol >>= quit"
-                return ()
+                return ReplQuit
+            ":reload" -> do
+                lift $ shellyM "Hol >>= reload"
+                return ReplReload
             ":d" -> do
                 lift $ do
                     liftIO $ modifyIORef isDebugging not
@@ -681,33 +689,11 @@ runHol mode = do
         "" -> case maybe_file_name of
             Nothing -> do
                 lift $ shellyM (theDefaultModuleName ++ "> Ok, no module loaded.")
-                runREPL mode (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName }) Notation.initial Notation.initialExpansionDB
-            Just file_name -> do
-                let my_file_dir = file_name ++ ".hol"
-                    myModuleName = modifySep '/' (const ".") id file_name
-                msrc <- liftIO $ readFileNow my_file_dir
-                case msrc of
-                    Nothing -> do
-                        liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-FileError" [Z.Doc.text ("Cannot read file `" ++ my_file_dir ++ "'.")])
-                        runHol mode
-                    Just _ -> do
-                        file_abs_dir <- fmap (fromMaybe my_file_dir) (liftIO $ makePathAbsolutely my_file_dir)
-                        lift $ shellyM (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
-                        result <- loadMainWithDiagnostic mode theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
-                        case result of
-                            Left err_msg -> do
-                                liftIO $ putStrLn err_msg
-                                runHol mode
-                            Right loaded -> do
-                                let mainEnv = loadedMain loaded
-                                    program2 = Program
-                                        { _KindDecls  = moduleEnvKinds mainEnv
-                                        , _TypeDecls  = moduleEnvTypes mainEnv
-                                        , _FactDecls  = moduleEnvFacts mainEnv
-                                        , moduleName  = moduleEnvName mainEnv
-                                        }
-                                lift $ shellyM (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
-                                runREPL mode program2 (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
+                replResult <- runREPL mode (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName }) Notation.initial Notation.initialExpansionDB
+                case replResult of
+                    ReplQuit -> return ()
+                    ReplReload -> runHol mode
+            Just file_name -> runHolFile mode file_name
         inconsistent_proof -> do
             if inconsistent_proof == ":q"
                 then do
@@ -717,6 +703,38 @@ runHol mode = do
                     lift $ shellyM inconsistent_proof
                     lift $ shellyM ("Hol >>= quit")
                     return ()
+
+runHolFile :: DiagnosticMode -> String -> UniqueT ShellyT ()
+runHolFile mode file_name = do
+    let my_file_dir = file_name ++ ".hol"
+        myModuleName = modifySep '/' (const ".") id file_name
+    msrc <- liftIO $ readFileNow my_file_dir
+    case msrc of
+        Nothing -> do
+            liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-FileError" [Z.Doc.text ("Cannot read file `" ++ my_file_dir ++ "'.")])
+            runHol mode
+        Just _ -> do
+            file_abs_dir <- fmap (fromMaybe my_file_dir) (liftIO $ makePathAbsolutely my_file_dir)
+            lift $ shellyM (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
+            result <- loadMainWithDiagnostic mode theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
+            case result of
+                Left err_msg -> do
+                    liftIO $ putStrLn err_msg
+                    runHol mode
+                Right loaded -> do
+                    liftIO $ mapM_ putStrLn (loadedWarnings loaded)
+                    let mainEnv = loadedMain loaded
+                        program2 = Program
+                            { _KindDecls  = moduleEnvKinds mainEnv
+                            , _TypeDecls  = moduleEnvTypes mainEnv
+                            , _FactDecls  = moduleEnvFacts mainEnv
+                            , moduleName  = moduleEnvName mainEnv
+                            }
+                    lift $ shellyM (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
+                    replResult <- runREPL mode program2 (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
+                    case replResult of
+                        ReplQuit -> return ()
+                        ReplReload -> runHolFile mode file_name
 
 mainWithModeM :: DiagnosticMode -> ShellyT ()
 mainWithModeM = execUniqueT . runHol

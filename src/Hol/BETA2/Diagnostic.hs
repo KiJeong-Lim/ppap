@@ -3,6 +3,9 @@ module Hol.BETA2.Diagnostic
     , SourceLines
     , diagnostic
     , diagnosticWith
+    , diagnosticInModule
+    , diagnosticWithModule
+    , diagnosticWarningWithModule
     , diagnosticAt
     , diagnosticNoLoc
     , diagnosticNoLocWith
@@ -10,7 +13,7 @@ module Hol.BETA2.Diagnostic
     , locBlockWith
     ) where
 
-import Hol.BETA2.Header (SLoc (..))
+import Hol.BETA2.Header (SLoc (..), pprintMSLoc)
 import qualified Z.Doc as Doc
 
 type SourceLines = Maybe [String]
@@ -25,8 +28,20 @@ diagnostic = diagnosticWith DiagnosticPretty
 
 diagnosticWith :: DiagnosticMode -> String -> SourceLines -> SLoc -> [Doc.Doc] -> String
 diagnosticWith mode tag sourceLines loc body =
+    diagnosticWithModule mode tag Nothing sourceLines loc body
+
+diagnosticInModule :: String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
+diagnosticInModule = diagnosticWithModule DiagnosticPretty
+
+diagnosticWithModule :: DiagnosticMode -> String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
+diagnosticWithModule mode tag moduleName sourceLines loc body =
     render mode $ Doc.vcat
-        (Doc.text (ghcLoc loc ++ ": error: [" ++ tag ++ "]") : locBlockWith mode sourceLines loc : body)
+        (Doc.text (locPrefix moduleName loc ++ ": error: [" ++ tag ++ "]") : locBlockWith mode sourceLines loc : body)
+
+diagnosticWarningWithModule :: DiagnosticMode -> String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
+diagnosticWarningWithModule mode tag moduleName sourceLines loc body =
+    render mode $ Doc.vcat
+        (Doc.text (locPrefix moduleName loc ++ ": warning: [" ++ tag ++ "]") : locBlockWith mode sourceLines loc : body)
 
 diagnosticAt :: String -> Int -> Int -> [Doc.Doc] -> String
 diagnosticAt tag row col body =
@@ -68,6 +83,10 @@ locBlockWith mode sourceLines (SLoc (row, col) _) =
 
 ghcLoc :: SLoc -> String
 ghcLoc (SLoc (row, col) _) = show row ++ ":" ++ show col
+
+locPrefix :: Maybe String -> SLoc -> String
+locPrefix Nothing loc = ghcLoc loc
+locPrefix moduleName loc = pprintMSLoc moduleName loc ""
 
 render :: DiagnosticMode -> Doc.Doc -> String
 render DiagnosticPretty = Doc.renderDoc

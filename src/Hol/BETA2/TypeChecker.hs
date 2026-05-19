@@ -237,9 +237,9 @@ zonkMTV theta = go where
     go (App (loc, typ) term1 term2) = App (loc, substMTVars theta typ) (go term1) (go term2)
     go (Lam (loc, typ) var h term) = Lam (loc, substMTVars theta typ) var h (go term)
 
-mkTyErr :: DiagnosticMode -> SourceLines -> NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
-mkTyErr mode source_lines db used_mtvs loc ((actual_typ, expected_typ), typ_error) =
-    diagnosticWith mode "HolBETA2-TypeError" source_lines loc
+mkTyErr :: DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
+mkTyErr mode moduleName source_lines db used_mtvs loc ((actual_typ, expected_typ), typ_error) =
+    diagnosticWithModule mode "HolBETA2-TypeError" moduleName source_lines loc
         [ text ("Couldn't match expected type `" ++ ty expected_typ ++ "'")
         , text ("            with actual type `" ++ ty actual_typ ++ "'")
         , text ("Relevant equation: `" ++ ty lhs ++ "' ~ `" ++ ty rhs ++ "'")
@@ -273,7 +273,10 @@ inferTypeWithSource :: MonadUnique m => SourceLines -> NotationDB -> TypeEnv -> 
 inferTypeWithSource = inferTypeWithDiagnostic DiagnosticPretty
 
 inferTypeWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
-inferTypeWithDiagnostic mode source_lines db type_env = flip runStateT Map.empty . infer where
+inferTypeWithDiagnostic mode = inferTypeWithModule mode Nothing
+
+inferTypeWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
+inferTypeWithModule mode moduleName source_lines db type_env = flip runStateT Map.empty . infer where
     infer :: MonadUnique m => TermExpr DataConstructor SLoc -> StateT (Map.Map MetaTVar SmallId) (ExceptT ErrMsg m) (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int))
     infer (Var loc var) = do
         mtv <- getNewMTV "A"
@@ -288,7 +291,7 @@ inferTypeWithDiagnostic mode source_lines db type_env = flip runStateT Map.empty
         con -> do
             used_mtvs_0 <- get
             (mtvs, typ) <- case Map.lookup con type_env of
-                Nothing -> lift (throwE (mkUnknownConErr mode source_lines loc con))
+                Nothing -> lift (throwE (mkUnknownConErr mode moduleName source_lines loc con))
                 Just scheme -> instantiateScheme scheme
             return (Con (loc, typ) (con, map TyMTV mtvs), Map.empty)
     infer (App loc term1 term2) = do
@@ -302,7 +305,7 @@ inferTypeWithDiagnostic mode source_lines db type_env = flip runStateT Map.empty
         -- Reporting `getAnnot term2` lets the user jump to the bad
         -- subterm (e.g. the literal `7` in `appendStr "a" 7 _`) rather
         -- than the entire call.
-        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr mode source_lines db used_mtvs (fst (getAnnot term2'))
+        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr mode moduleName source_lines db used_mtvs (fst (getAnnot term2'))
         let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
             assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
         put used_mtvs'
@@ -314,9 +317,9 @@ inferTypeWithDiagnostic mode source_lines db type_env = flip runStateT Map.empty
                 mtv <- getNewMTV "A"
                 return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var h term', assumptions)
             Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
-    mkUnknownConErr :: DiagnosticMode -> SourceLines -> SLoc -> DataConstructor -> ErrMsg
-    mkUnknownConErr mode' source loc con =
-        diagnosticWith mode' "HolBETA2-NotInScope" source loc
+    mkUnknownConErr :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> DataConstructor -> ErrMsg
+    mkUnknownConErr mode' moduleName' source loc con =
+        diagnosticWithModule mode' "HolBETA2-NotInScope" moduleName' source loc
             [ Z.Doc.text ("Not in scope: data constructor `" ++ showsPrec 0 con "'")
             , Z.Doc.text "Add a `type' declaration for it, or check the spelling."
             ]
@@ -328,10 +331,13 @@ checkTypeWithSource :: MonadUnique m => SourceLines -> NotationDB -> TypeEnv -> 
 checkTypeWithSource = checkTypeWithDiagnostic DiagnosticPretty
 
 checkTypeWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
-checkTypeWithDiagnostic mode source_lines db type_env term expected_typ = do
-    ((term', assumptions), used_mtvs) <- inferTypeWithDiagnostic mode source_lines db type_env term
+checkTypeWithDiagnostic mode = checkTypeWithModule mode Nothing
+
+checkTypeWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
+checkTypeWithModule mode moduleName source_lines db type_env term expected_typ = do
+    ((term', assumptions), used_mtvs) <- inferTypeWithModule mode moduleName source_lines db type_env term
     let actual_typ = snd (getAnnot term')
-    theta <- catchE (actual_typ ->> expected_typ) $ throwE . mkTyErr mode source_lines db used_mtvs (getAnnot term)
+    theta <- catchE (actual_typ ->> expected_typ) $ throwE . mkTyErr mode moduleName source_lines db used_mtvs (getAnnot term)
     let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
         assumptions' = substMTVars theta assumptions
     return (zonkMTV theta term', (used_mtvs', assumptions'))
