@@ -547,10 +547,39 @@ liftTerm t = case t of
         a' <- liftTerm a
         b' <- liftTerm b
         return (Plus a' b')
+    NApp (NApp (NCon (DC DC_mul) _) a _) b _ ->
+        case (closedNat a, closedNat b) of
+            (Just n, _) -> scaleTermRep n <$> liftTerm b
+            (_, Just n) -> scaleTermRep n <$> liftTerm a
+            _ -> fail_
     LVar lv -> do
         v <- allocL lv
         return (IVar v)
     _ -> fail_
+
+closedNat :: TermNode -> Maybe Integer
+closedNat t = case rewrite NF t of
+    NCon (DC (DC_NatL n)) _
+        | n >= 0 -> Just n
+        | otherwise -> Nothing
+    NApp (NCon (DC DC_Succ) _) a _ -> succ <$> closedNat a
+    NApp (NApp (NCon (DC DC_plus) _) a _) b _ -> (+) <$> closedNat a <*> closedNat b
+    NApp (NApp (NCon (DC DC_minus) _) a _) b _ -> do
+        x <- closedNat a
+        y <- closedNat b
+        if x >= y then Just (x - y) else Nothing
+    NApp (NApp (NCon (DC DC_mul) _) a _) b _ -> (*) <$> closedNat a <*> closedNat b
+    NApp (NApp (NCon (DC DC_div) _) a _) b _ -> do
+        x <- closedNat a
+        y <- closedNat b
+        if y == 0 then Nothing else Just (x `div` y)
+    _ -> Nothing
+
+scaleTermRep :: Integer -> PresburgerTermRep -> PresburgerTermRep
+scaleTermRep n t
+    | n <= 0 = Zero
+    | n == 1 = t
+    | otherwise = Plus t (scaleTermRep (n - 1) t)
 
 -- =============================================================
 -- renumberFormula

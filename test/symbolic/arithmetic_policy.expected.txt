@@ -1,0 +1,19 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.symbolic.arithmetic_policy ( test/symbolic/arithmetic_policy.hol, interpreted )
+test.symbolic.arithmetic_policy> Ok, one module loaded.
+test.symbolic.arithmetic_policy> test.symbolic.arithmetic_policy> yes.
+test.symbolic.arithmetic_policy> test.symbolic.arithmetic_policy> no.
+test.symbolic.arithmetic_policy> test.symbolic.arithmetic_policy> yes.
+test.symbolic.arithmetic_policy> test.symbolic.arithmetic_policy> no.
+test.symbolic.arithmetic_policy> test.symbolic.arithmetic_policy> The remaining constraints are:
+test.symbolic.arithmetic_policy> 2 * X > 5
+test.symbolic.arithmetic_policy> The binding is:
+test.symbolic.arithmetic_policy> Find more solutions? [Y/n] test.symbolic.arithmetic_policy> no.
+test.symbolic.arithmetic_policy> error: [HolBETA2-RuntimeError]
+Unsupported arithmetic constraint.
+Only ground constraints and linear Presburger constraints can be used with comparison predicates.
+Constraint: X * Y > 10
+
+test.symbolic.arithmetic_policy> Hol >>= quit

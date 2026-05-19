@@ -41,6 +41,7 @@ type Debugging = Bool
 data KernelErr
     = BadGoalGiven TermNode
     | BadFactGiven TermNode
+    | UnsupportedArithmeticConstraint TermNode
     deriving ()
 
 data Constraint
@@ -618,6 +619,10 @@ runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     , Just rhs_s <- simplifyArithmetic rhs'
     , canBindIs x rhs_s
     = let theta = VarBinding (Map.singleton x rhs_s) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+    | ArithEqTrue <- arithmeticEquality lhs' rhs'
+    = return ((ctx, cells) : stack)
+    | ArithEqFalse <- arithmeticEquality lhs' rhs'
+    = return stack
     | otherwise
     = return ((ctx { _LeftConstraints = EvalutionConstraint lhs' rhs' : _LeftConstraints ctx }, cells) : stack)
     where
@@ -684,10 +689,11 @@ evaluateA t = case reads (shows t "") of
     _ -> Left "non"
 
 evaluateB :: TermNode -> Either ErrMsg Bool
-evaluateB (NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) t1 _) t2 _) = do
-    v1 <- evaluateA t1
-    v2 <- evaluateA t2
-    return (v1 == v2)
+evaluateB (NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) t1 _) t2 _) =
+    case arithmeticEquality t1 t2 of
+        ArithEqTrue -> Right True
+        ArithEqFalse -> Right False
+        ArithEqUnknown -> Left "non"
 evaluateB (NApp (NApp (NCon (DC DC_le) _) t1 _) t2 _) = do
     v1 <- evaluateA t1
     v2 <- evaluateA t2
@@ -706,6 +712,41 @@ evaluateB (NApp (NApp (NCon (DC DC_gt) _) t1 _) t2 _) = do
     return (v1 > v2)
 evaluateB _ = Left "non"
 
+data ArithmeticEquality
+    = ArithEqTrue
+    | ArithEqFalse
+    | ArithEqUnknown
+    deriving ()
+
+arithmeticEquality :: TermNode -> TermNode -> ArithmeticEquality
+arithmeticEquality t1 t2 =
+    case (evaluateA t1', evaluateA t2') of
+        (Right v1, Right v2) -> if v1 == v2 then ArithEqTrue else ArithEqFalse
+        (Left "ill", _) -> ArithEqFalse
+        (_, Left "ill") -> ArithEqFalse
+        _ -> case (simplifyArithmetic t1', simplifyArithmetic t2') of
+            (Just s1, Just s2) | rewrite NF s1 == rewrite NF s2 -> ArithEqTrue
+            _ -> ArithEqUnknown
+    where
+        t1' = rewrite NF t1
+        t2' = rewrite NF t2
+
+mentionsArithmetic :: TermNode -> Bool
+mentionsArithmetic t = case rewrite HNF t of
+    NCon (DC (DC_NatL _)) _ -> False
+    NCon (DC DC_Succ) _ -> True
+    NCon (DC DC_plus) _ -> True
+    NCon (DC DC_minus) _ -> True
+    NCon (DC DC_mul) _ -> True
+    NCon (DC DC_div) _ -> True
+    NApp t1 t2 _ -> mentionsArithmetic t1 || mentionsArithmetic t2
+    NLam _ _ body _ -> mentionsArithmetic body
+    Susp body _ _ env -> mentionsArithmetic body || any mentionsSuspItem env
+    _ -> False
+  where
+    mentionsSuspItem (Dummy _) = False
+    mentionsSuspItem (Binds body _) = mentionsArithmetic body
+
 simplifyArithmetic :: TermNode -> Maybe TermNode
 simplifyArithmetic t = do
     (sawArithmetic, poly) <- Just (polyOf (rewrite NF t))
@@ -723,7 +764,7 @@ simplifyArithmetic t = do
         in (saw1 || saw2 || True, multiplyPoly p1 p2)
     polyOf atom = (False, [([atom], 1)])
     multiplyPoly p1 p2 =
-        [ (factors1 ++ factors2, coeff1 * coeff2)
+        [ (List.sort (factors1 ++ factors2), coeff1 * coeff2)
         | (factors1, coeff1) <- p1
         , (factors2, coeff2) <- p2
         ]
@@ -836,20 +877,31 @@ runTransition env free_lvars = go where
     arithOpCheck call_id ctx cells predicate args op
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
             Left "non" ->
-                let newCtx = Context
-                        { _TotalVarBinding = _TotalVarBinding ctx
-                        , _CurrentLabeling = _CurrentLabeling ctx
-                        , _LeftConstraints = ArithmeticConstraint (foldlNApp (mkNConLoc Nothing predicate) args) : _LeftConstraints ctx
-                        , _ContextThreadId = call_id
-                        , _debuggindModeOn = _debuggindModeOn ctx
-                        }
-                    arithTerms =
-                        [ bindVars (_TotalVarBinding newCtx) t
-                        | ArithmeticConstraint t <- _LeftConstraints newCtx
-                        ]
-                in if isInconsistent arithTerms then failure else success (newCtx, cells)
+                let candidate = foldlNApp (mkNConLoc Nothing predicate) args
+                in case liftConstraint candidate of
+                    Nothing -> throwE (UnsupportedArithmeticConstraint candidate)
+                    Just _ ->
+                        let newCtx = Context
+                                { _TotalVarBinding = _TotalVarBinding ctx
+                                , _CurrentLabeling = _CurrentLabeling ctx
+                                , _LeftConstraints = ArithmeticConstraint candidate : _LeftConstraints ctx
+                                , _ContextThreadId = call_id
+                                , _debuggindModeOn = _debuggindModeOn ctx
+                                }
+                            arithTerms =
+                                [ bindVars (_TotalVarBinding newCtx) t
+                                | ArithmeticConstraint t <- _LeftConstraints newCtx
+                                ]
+                        in if isInconsistent arithTerms then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
+    eqOpCheck :: Context -> [Cell] -> [TermNode] -> Maybe (ExceptT KernelErr m Stack)
+    eqOpCheck ctx cells [_typeArg, lhs, rhs]
+        | mentionsArithmetic lhs || mentionsArithmetic rhs = case arithmeticEquality (bindVars (_TotalVarBinding ctx) lhs) (bindVars (_TotalVarBinding ctx) rhs) of
+            ArithEqTrue -> Just (success (ctx, cells))
+            ArithEqFalse -> Just failure
+            ArithEqUnknown -> Nothing
+    eqOpCheck _ _ _ = Nothing
     primitivePrint :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
     primitivePrint ctx args cells stack | Just arg <- onePrimitiveArg args = do
         liftIO (_PrintPrimitive env ctx (bindVars (_TotalVarBinding ctx) arg))
@@ -883,13 +935,22 @@ runTransition env free_lvars = go where
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique
         let arithOpCheck' = arithOpCheck call_id ctx cells predicate args
-        ans1 <- case predicate of
-            DC DC_ge -> arithOpCheck' (>=)
-            DC DC_gt -> arithOpCheck' (>)
-            DC DC_le -> arithOpCheck' (<=)
-            DC DC_lt -> arithOpCheck' (<)
-            _ -> failure
-        ans2 <- fmap concat $ forM (Map.findWithDefault [] predicate facts) $ \fact -> do
+        ans0 <- case predicate of
+            DC DC_eq -> sequence (eqOpCheck ctx cells args)
+            DC DC_ge -> Just <$> arithOpCheck' (>=)
+            DC DC_gt -> Just <$> arithOpCheck' (>)
+            DC DC_le -> Just <$> arithOpCheck' (<=)
+            DC DC_lt -> Just <$> arithOpCheck' (<)
+            _ -> return Nothing
+        case ans0 of
+            Just ans -> return ans
+            Nothing -> searchFacts call_id
+      where
+        searchFacts call_id = do
+            ans2 <- fmap concat (forM (Map.findWithDefault [] predicate facts) (matchFact call_id))
+            ans3 <- fmap concat (forM hyps (matchFact call_id))
+            return (ans2 ++ ans3)
+        matchFact call_id fact = do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
                 (NCon predicate' _, args')
@@ -916,34 +977,6 @@ runTransition env free_lvars = go where
                                         , zonkLVar subst (mkCell facts new_hyps new_level new_goal call_id : cells)
                                         )
                 _ -> failure
-        ans3 <- fmap concat $ forM hyps $ \fact -> do
-            ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
-            case unfoldlNApp (rewrite HNF goal') of
-                (NCon predicate' _, args')
-                    | predicate == predicate' -> do
-                        hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ])) else throwE (BadFactGiven goal')
-                        let new_level = level
-                            new_hyps = hyps
-                        case hopu_output of
-                            Nothing -> failure
-                            Just (new_disagreements, HopuSol new_labeling subst) -> do
-                                let new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- zonkLVar subst (_LeftConstraints ctx) ]
-                                    new_arithmetic_constraints = [ rewrite NF arith | ArithmeticConstraint arith <- zonkLVar subst (_LeftConstraints ctx) ]
-                                if isInconsistent new_arithmetic_constraints then
-                                    failure
-                                else
-                                    success
-                                        ( Context
-                                            { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
-                                            , _CurrentLabeling = new_labeling
-                                            , _LeftConstraints = map DisagreementConstraint new_disagreements ++ [ EvalutionConstraint lhs rhs | (lhs, rhs) <- new_evaluation_constraints ] ++ [ ArithmeticConstraint arith | arith <- new_arithmetic_constraints, evaluateB (rewrite NF arith) == Left "non" ]
-                                            , _ContextThreadId = call_id
-                                            , _debuggindModeOn = _debuggindModeOn ctx
-                                            }
-                                        , zonkLVar subst (mkCell facts new_hyps new_level new_goal call_id : cells)
-                                        )
-                _ -> failure
-        return (ans1 ++ ans2 ++ ans3)
     dispatch :: Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Satisfied
     dispatch ctx facts hyps level (NCon predicate _, args) call_id cells stack
         | DC (DC_LO logical_operator) <- predicate

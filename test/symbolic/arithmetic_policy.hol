@@ -1,0 +1,4 @@
+% Arithmetic policy regression:
+% - nat equality checks closed arithmetic and symbolic polynomial equality;
+% - comparison predicates only residualize ground/linear Presburger constraints;
+% - nonlinear inequalities are reported as unsupported runtime constraints.

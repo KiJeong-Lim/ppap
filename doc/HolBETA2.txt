@@ -32,8 +32,15 @@ fragment. Thus `20 * 20` is treated as `400`, `6765 is 20 * 20` is a
 contradictory closed equality and the branch fails, and a query such as
 `Y is C * (x + 1) * (x + 2)` can bind `Y` to
 `C * x * x + 3 * C * x + 2 * C` when the contextual scope check allows
-it. Non-ground arithmetic constraints outside this fragment may still
-remain as residual answers for `presburger`/debugging workflows.
+it. In BETA2, equality at type `nat` also tries the same arithmetic
+normalisation before falling back to ordinary higher-order unification:
+closed arithmetic equality is decided immediately, and symbolic
+polynomial identities such as `C * (x + 1) = C * x + C` succeed without
+requiring a solver. Comparison predicates (`<`, `=<`, `>`, `>=`) may
+leave residual constraints only when the constraint is ground or belongs
+to the linear Presburger fragment. Nonlinear inequalities such as
+`X * Y > 10` are rejected as unsupported runtime arithmetic constraints
+rather than silently remaining in C.
 
 Primitive I/O predicates (2026-05-19). BETA2 includes two built-in
 predicates:
@@ -602,7 +609,8 @@ inherited verbatim. The runtime calculus (§2.2), arithmetic constraint
 machinery (§2.3.1-§2.3.6), `is` predicate (§2.4), answer substitution
 (§2.5), notation-preserving pretty printing (§2.6), abbreviation
 folding (§2.7), and the hybrid name-hint representation (§2.8) all
-apply unchanged.
+apply unchanged, except for the arithmetic equality/comparison
+clarification stated in the introduction of this document.
 
 Two clarifying notes about the inherited material under BETA2's
 module surface:
@@ -1086,9 +1094,11 @@ Appendix B. Feedbacks to Claude
   [Claude]
   The wrapper constructor introduced by `Arith.installPresburger`
   (§2.3.3 of BETA1, Stage 4) now carries the literal's actual
-  SLoc, not the placeholder. This is the *only* compile-time
-  effect of BETA2 on the presburger pipeline; everything else
-  in `Arith.hs` is unchanged.
+  SLoc, not the placeholder. BETA2 also extends the runtime arithmetic
+  bridge around `Arith.liftConstraint`: multiplication by a closed
+  natural coefficient is accepted as linear Presburger syntax, while
+  multiplication of two non-ground terms is outside the residual
+  comparison fragment.
 
   [B4] Are `module` headers required for files that no one imports?
   [Claude]

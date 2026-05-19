@@ -1,0 +1,11 @@
+Hol --test
+test/symbolic/arithmetic_policy.hol
+?- 400 = 20 * 20.
+?- 6765 = 20 * 20.
+?- sigma C\ pi x\ C * (x + 1) = C * x + C.
+?- sigma C\ pi x\ C * (x + 1) = C * x + 2 * C.
+?- 2 * X > 5.
+y
+?- X * Y > 10.
+:q
+

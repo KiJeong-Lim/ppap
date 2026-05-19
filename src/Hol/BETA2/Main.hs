@@ -604,6 +604,7 @@ runREPL mode program notationDB expansionDB = do
                                     Left runtime_err -> case runtime_err of
                                         BadGoalGiven _ -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad goal given."])
                                         BadFactGiven _ -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad fact given."])
+                                        UnsupportedArithmeticConstraint t -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Unsupported arithmetic constraint.", Z.Doc.text "Only ground constraints and linear Presburger constraints can be used with comparison predicates.", Z.Doc.text ("Constraint: " ++ shows t "")])
                                     Right sat -> do
                                         liftIO $ promptify (if sat then "yes." else "no.")
                                         return ()
