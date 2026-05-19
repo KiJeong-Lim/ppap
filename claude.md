@@ -23,10 +23,8 @@
    - 디버깅하는 동안, 대화형으로 flexible variable (LVar)를 instantiate할 수 있게 하는 기능도 만들고 싶다. 이는 대화형 증명보조기의 택틱을 구현하는 데 핵심이 될 기술이다.
 
 1. `Hol BETA2` (진행 중):
-   1. (완료됨) 현재 Task들:
-      1. (완료됨) (C) Multi-head: parser ampersand production + Desugarer body cloning
-      2. (완료됨) (A) Module system: module/import keywords + ModuleLoader.hs + C1-C5
-      3. (완료됨) (B) SLoc threading: _sloc field + Header module name + debug line
+   1. 발견된 버그 목록:
+      1. ★ (미해결) `Hol BETA1`과 `Hol BETA2` 모두 `fib.sh`에서 오답이 나옴. 정답은 `N := 12`; `N := 1.`; `N := 0`임. `Hol ALPHA2`는 이런 문제가 없음. 테스트 케이스를 `Test/`에 추가할 것.
    2. (진행 중) 추가적인 구현 사항:
       3번 사항과 4번 사항은 다음 버전에 구현하거나 안 구현해도 괜찮지만, 1번 사항과 2번 사항은 이번 버전에서 구현하고 싶다. 5번 사항과 6번 사항은 이번 버전에 넣을지 다음 버전(`Hol V1`)에 넣을지 고민 중이다. 각 사항에 대해 claude의 의견을 듣고 싶다.
       1. (대기 중) 다음의 primitive 술어 추가할 것: `print`, `read`.
