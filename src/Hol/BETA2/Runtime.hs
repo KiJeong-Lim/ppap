@@ -72,6 +72,8 @@ data RuntimeEnv
     = RuntimeEnv
         { _PutStr :: RuntimeEnv -> Context -> String -> IO ()
         , _Answer :: Context -> IO RunMore
+        , _PrintPrimitive :: Context -> TermNode -> IO ()
+        , _ReadPrimitive :: Context -> TermNode -> IO (Maybe TermNode)
         -- §3.4: the debugger lists each user-visible flexible variable
         -- with its inferred `MonoType`. The map is keyed by `LogicVar`
         -- so the runtime can resolve a name shown at a breakpoint back
@@ -830,6 +832,35 @@ runTransition env free_lvars = go where
                 in if isInconsistent arithTerms then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
+    primitivePrint :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+    primitivePrint ctx args cells stack | Just arg <- onePrimitiveArg args = do
+        liftIO (_PrintPrimitive env ctx (bindVars (_TotalVarBinding ctx) arg))
+        success (ctx, cells)
+    primitivePrint _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "print")) args))
+    primitiveRead :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+    primitiveRead ctx args cells stack | Just arg <- onePrimitiveArg args = do
+        mvalue <- liftIO (_ReadPrimitive env ctx arg)
+        case mvalue of
+            Nothing -> failure
+            Just value -> case rewrite NF (bindVars (_TotalVarBinding ctx) arg) of
+                LVar x
+                    | canBindPrimitive x value ->
+                        let theta = VarBinding (Map.singleton x value)
+                        in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+                arg'
+                    | rewrite NF arg' == rewrite NF value -> success (ctx, cells)
+                _ -> failure
+      where
+        canBindPrimitive x t =
+            x `Set.notMember` getLVars t
+                && let targetScope = lookupLabel x (_CurrentLabeling ctx)
+                       (badCons, badVars) = scopeEscaping (_CurrentLabeling ctx) targetScope x t
+                   in null badCons && null badVars
+    primitiveRead _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "read")) args))
+    onePrimitiveArg :: [TermNode] -> Maybe TermNode
+    onePrimitiveArg [arg] = Just arg
+    onePrimitiveArg [_typeArg, arg] = Just arg
+    onePrimitiveArg _ = Nothing
     search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique
@@ -900,6 +931,14 @@ runTransition env free_lvars = go where
         | DC (DC_LO logical_operator) <- predicate
         = do
             stack' <- runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack
+            go stack'
+        | predicate == DC (DC_Named "print")
+        = do
+            stack' <- primitivePrint ctx args cells stack
+            go stack'
+        | predicate == DC (DC_Named "read")
+        = do
+            stack' <- primitiveRead ctx args cells stack
             go stack'
         | otherwise
         = do

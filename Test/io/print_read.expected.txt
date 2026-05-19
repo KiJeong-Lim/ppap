@@ -1,0 +1,10 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.io.print_read ( Test/io/print_read.hol, interpreted )
+Test.io.print_read> Ok, one module loaded.
+Test.io.print_read> Test.io.print_read> 3
+Test.io.print_read> yes.
+Test.io.print_read> Test.io.print_read> read> Test.io.print_read> 3
+Test.io.print_read> yes.
+Test.io.print_read> Hol >>= quit

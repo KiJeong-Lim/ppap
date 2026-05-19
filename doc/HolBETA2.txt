@@ -35,6 +35,24 @@ contradictory closed equality and the branch fails, and a query such as
 it. Non-ground arithmetic constraints outside this fragment may still
 remain as residual answers for `presburger`/debugging workflows.
 
+Primitive I/O predicates (2026-05-19). BETA2 includes two built-in
+predicates:
+
+```
+type print (A -> o).
+type read (A -> o).
+```
+
+`print t` writes the current pretty-printed value of `t` and succeeds
+without changing the proof state. `read X` reads one REPL line, parses it
+as a primitive literal (`nat`, `char`, or `string`/`list char` when the
+expected type is known; otherwise natural first, then character, then
+string), and binds an unbound flexible variable `X` to that value when
+the usual occurs/scope checks pass. If the argument is already ground,
+`read t` succeeds exactly when the input parses to the same value. Failed
+parsing or mismatch makes the branch fail rather than entering debug
+mode or invoking `:assign`.
+
 
 ================================================================================
 Chapter 0. Overview

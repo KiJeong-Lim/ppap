@@ -91,8 +91,43 @@ runREPL program notationDB expansionDB = do
     mkRuntimeEnv :: IORef Debugging -> IORef Bool -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
     mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query = do
         stackRef <- newIORef []
-        return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging, _NotationDB = notationDB, _ModuleName = moduleName program })
+        return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _PrintPrimitive = primitivePrint, _ReadPrimitive = primitiveRead, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging, _NotationDB = notationDB, _ModuleName = moduleName program })
       where
+        primitivePrint :: Context -> TermNode -> IO ()
+        primitivePrint ctx term = do
+            cache <- readIORef nameCache
+            let pp = prettyTerm notationDB cache
+            _ <- promptify (pp (bindVars (_TotalVarBinding ctx) term) "")
+            return ()
+        primitiveRead :: Context -> TermNode -> IO (Maybe TermNode)
+        primitiveRead ctx term = do
+            src <- promptify "read> "
+            return (parsePrimitiveInput (expectedType ctx term) src)
+        expectedType :: Context -> TermNode -> Maybe (MonoType Int)
+        expectedType ctx term = case bindVars (_TotalVarBinding ctx) (rewrite NF term) of
+            LVar lv -> Map.lookup lv typeMap
+            _ -> Nothing
+        parsePrimitiveInput :: Maybe (MonoType Int) -> String -> Maybe TermNode
+        parsePrimitiveInput (Just ty)
+            | ty == mkTyNat = parseNat
+            | ty == mkTyChr = parseChr
+            | ty == mkTyList mkTyChr = parseStr
+        parsePrimitiveInput _ = \src -> parseNat src `mplus` parseChr src `mplus` parseStr src
+        parseNat :: String -> Maybe TermNode
+        parseNat src = case reads src of
+            [(n, "")] | n >= (0 :: Integer) -> Just (mkNCon (DC_NatL n))
+            _ -> Nothing
+        parseChr :: String -> Maybe TermNode
+        parseChr src = case reads src of
+            [(ch, "")] -> Just (mkNCon (DC_ChrL ch))
+            _ -> Nothing
+        parseStr :: String -> Maybe TermNode
+        parseStr src = case reads src of
+            [(str, "")] -> Just (stringTerm str)
+            _ -> Nothing
+        stringTerm :: String -> TermNode
+        stringTerm = foldr cons (mkNCon DC_Nil) where
+            cons ch acc = mkNApp (mkNApp (mkNCon DC_Cons) (mkNCon (DC_ChrL ch))) acc
         runInteraction :: RuntimeEnv -> Context -> String -> IO ()
         runInteraction env ctx str = do
             isDebugging <- readIORef (_debuggindModeOn ctx)
@@ -600,6 +635,8 @@ theInitialTypeDecls = Map.fromList
     , (DC_mul, Forall [] (mkTyNat `mkTyArrow` (mkTyNat `mkTyArrow` mkTyNat)))
     , (DC_div, Forall [] (mkTyNat `mkTyArrow` (mkTyNat `mkTyArrow` mkTyNat)))
     , (DC_Named "presburger", Forall [] (mkTyList mkTyChr `mkTyArrow` mkTyO))
+    , (DC_Named "print", Forall ["A"] (TyVar 0 `mkTyArrow` mkTyO))
+    , (DC_Named "read", Forall ["A"] (TyVar 0 `mkTyArrow` mkTyO))
     ]
 
 theInitialFactDecls :: [TermNode]
