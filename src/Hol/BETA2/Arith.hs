@@ -17,8 +17,10 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe (mapMaybe)
 import qualified Data.Set as Set
 import Hol.BETA2.Constant
+import Hol.BETA2.Diagnostic
 import Hol.BETA2.Header
 import Hol.BETA2.TermNode
+import qualified Z.Doc
 import Z.Utils (ErrMsg)
 
 -- =============================================================
@@ -695,7 +697,7 @@ installPresburger = go
                 r <- parsePresburger litLoc src Map.empty
                 return (NPresburgerCheck (_formula r) (_freeOfFormula r) sl)
             Nothing -> Left
-                "*** presburger: the argument must be a closed string literal."
+                (diagnosticNoLoc "HolBETA2-PresburgerError" [Z.Doc.text "The argument must be a closed string literal."])
     go (NApp t1 t2 sl) = do
         t1' <- go t1
         t2' <- go t2

@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.debug.show ( Test/debug/show.hol, interpreted )
 Test.debug.show> Ok, one module loaded.
 Test.debug.show> Test.debug.show> Debugging mode on.

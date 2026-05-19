@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.notation.typing_fold ( Test/notation/typing_fold.hol, interpreted )
 Test.notation.typing_fold> Ok, one module loaded.
 Test.notation.typing_fold> Test.notation.typing_fold> Debugging mode on.

@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/io/print_read.hol
 ?- sigma X\ X is 3, print X.
 ?- sigma X\ read X, print X.

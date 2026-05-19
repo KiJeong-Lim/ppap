@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/debug/toggle.hol
 :d
 :d

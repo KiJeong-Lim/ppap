@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/module/explicit_header.hol
 ?- marker X.
 n

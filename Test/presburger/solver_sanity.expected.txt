@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.presburger.solver_sanity ( Test/presburger/solver_sanity.hol, interpreted )
 Test.presburger.solver_sanity> Ok, one module loaded.
 Test.presburger.solver_sanity> Test.presburger.solver_sanity> no.

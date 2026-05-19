@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.debug.assign_fail_typing ( Test/debug/assign_fail_typing.hol, interpreted )
 Test.debug.assign_fail_typing> Ok, one module loaded.
 Test.debug.assign_fail_typing> Test.debug.assign_fail_typing> Debugging mode on.
@@ -22,7 +22,9 @@ Test.debug.assign_fail_typing> --------------------------------
 * The rest of the current stack is:
 --------------------------------
 
-Test.debug.assign_fail_typing> Press the enter key to go to next state: Test.debug.assign_fail_typing> *** :assign error: type mismatch for 'X' — expected nat, got list ?t4
+Test.debug.assign_fail_typing> Press the enter key to go to next state: Test.debug.assign_fail_typing> error: [HolBETA2-AssignError]
+Type mismatch for 'X'; expected nat, got list ?t4
+
 --------------------------------
 * The top of the current stack is:
     + progressings = 

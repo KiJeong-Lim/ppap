@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/notation/sym_operator.hol
 ?- Y = (1 + 2) * 3.
 

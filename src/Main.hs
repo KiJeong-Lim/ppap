@@ -38,9 +38,10 @@ ppap = do
             shelly ("ppap >>= tell (invalid-command=" ++ shows command ")")
             ppap
         Just ("", []) -> return ()
-        Just ("Hol", []) -> do
-            shelly ("ppap >>= exec (Hol.main)")
-            Hol.main
+        Just ("Hol", args)
+            | args `elem` [[], ["pretty"], ["test"]] -> do
+            shelly ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
+            Hol.mainWithArgs args
         Just ("Calc", []) -> do
             shelly ("ppap >>= exec (Calc.main)")
             Calc.main
@@ -53,6 +54,10 @@ ppap = do
         Just (cmd, args) -> do
             shelly ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
+  where
+    extraArgs :: [String] -> String
+    extraArgs [] = ""
+    extraArgs args = concat [ " --" ++ arg | arg <- args ]
 
 copyright :: IO ()
 copyright = do

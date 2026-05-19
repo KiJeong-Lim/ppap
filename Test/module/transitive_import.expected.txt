@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.module.transitive_import ( Test/module/transitive_import.hol, interpreted )
 Test.module.transitive_import> Ok, one module loaded.
 Test.module.transitive_import> Test.module.transitive_import> The answer substitution is:
@@ -8,5 +8,7 @@ Test.module.transitive_import> X := 100.
 Test.module.transitive_import> Find more solutions? [Y/n] Test.module.transitive_import> The answer substitution is:
 Test.module.transitive_import> X := 200.
 Test.module.transitive_import> Find more solutions? [Y/n] Test.module.transitive_import> no.
-Test.module.transitive_import> *** parsing error at EOF.
+Test.module.transitive_import> error: [HolBETA2-ParseError]
+Parsing failed at EOF.
+
 Test.module.transitive_import> Hol >>= quit

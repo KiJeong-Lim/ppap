@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.notation.override ( Test/notation/override.hol, interpreted )
 Test.notation.override> Ok, one module loaded.
 Test.notation.override> Test.notation.override> The answer substitution is:

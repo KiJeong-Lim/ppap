@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/multi_head/simple.hol
 ?- foo 3.
 ?- bar 3.

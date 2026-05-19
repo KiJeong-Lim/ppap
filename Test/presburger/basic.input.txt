@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/presburger/basic.hol
 ?- X is 7, presburger "X > 5".
 n

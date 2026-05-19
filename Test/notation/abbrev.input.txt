@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/notation/abbrev.hol
 ?- p Y.
 

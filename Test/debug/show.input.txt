@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/debug/show.hol
 :d
 ?- X is 3.

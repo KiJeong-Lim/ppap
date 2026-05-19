@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.debug.assign_t4 ( Test/debug/assign_t4.hol, interpreted )
 Test.debug.assign_t4> Ok, one module loaded.
 Test.debug.assign_t4> Test.debug.assign_t4> Debugging mode on.
@@ -40,7 +40,9 @@ Test.debug.assign_t4> Press the enter key to go to next state: -----------------
 * The rest of the current stack is:
 --------------------------------
 
-Test.debug.assign_t4> Press the enter key to go to next state: Test.debug.assign_t4> *** :assign error: inconsistent with arithmetic constraints for 'X'
+Test.debug.assign_t4> Press the enter key to go to next state: Test.debug.assign_t4> error: [HolBETA2-AssignError]
+inconsistent with arithmetic constraints for 'X'
+
 Test.debug.assign_t4> The remaining constraints are:
 Test.debug.assign_t4> X > 5
 Test.debug.assign_t4> The binding is:

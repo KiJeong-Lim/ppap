@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/fibonacci/fib_square.hol
 ?- main N.
 y

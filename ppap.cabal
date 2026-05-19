@@ -56,6 +56,7 @@ executable ppap
     Hol.BETA2.Constant
     Hol.BETA2.Debugger
     Hol.BETA2.Desugarer
+    Hol.BETA2.Diagnostic
     Hol.BETA2.Header
     Hol.BETA2.HOPU
     Hol.BETA2.Main

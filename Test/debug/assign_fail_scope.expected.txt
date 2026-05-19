@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.debug.assign_fail_scope ( Test/debug/assign_fail_scope.hol, interpreted )
 Test.debug.assign_fail_scope> Ok, one module loaded.
 Test.debug.assign_fail_scope> Test.debug.assign_fail_scope> Debugging mode on.
@@ -22,7 +22,9 @@ Test.debug.assign_fail_scope> --------------------------------
 * The rest of the current stack is:
 --------------------------------
 
-Test.debug.assign_fail_scope> Press the enter key to go to next state: Test.debug.assign_fail_scope> *** :assign error: scope violation for 'X' — out-of-scope: ?TV_6
+Test.debug.assign_fail_scope> Press the enter key to go to next state: Test.debug.assign_fail_scope> error: [HolBETA2-AssignError]
+scope violation for 'X' — out-of-scope: ?TV_6
+
 --------------------------------
 * The top of the current stack is:
     + progressings = 

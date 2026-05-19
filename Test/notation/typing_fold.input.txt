@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/notation/typing_fold.hol
 :d
 ?- p X.

@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/multi_head/local_imply.hol
 ?- (pi x\ p x & q x :- r x) => (p 1, q 2).
 :q

@@ -5,19 +5,21 @@ module Hol.BETA2.ModuleLoader
     ( ModuleEnv (..)
     , LoadedModule (..)
     , loadMain
+    , loadMainWithDiagnostic
     , pathDerivedName
     ) where
 
 import Hol.BETA2.Arith (installPresburger)
 import Hol.BETA2.Compiler (convertProgram)
-import Hol.BETA2.Desugarer (desugarProgram)
+import Hol.BETA2.Desugarer (desugarProgramWithDiagnostic)
+import Hol.BETA2.Diagnostic
 import Hol.BETA2.Header
 import Hol.BETA2.Notation (NotationDB, ExpansionDB)
 import qualified Hol.BETA2.Notation as Notation
 import Hol.BETA2.PlanHolLexer
 import Hol.BETA2.PlanHolParser (runHolParser)
 import Hol.BETA2.TermNode (TermNode)
-import Hol.BETA2.TypeChecker (checkType)
+import Hol.BETA2.TypeChecker (checkTypeWithDiagnostic)
 
 import Control.Monad (foldM)
 import Control.Monad.IO.Class (liftIO)
@@ -27,6 +29,7 @@ import qualified Control.Monad.Trans.State.Strict as State
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import qualified Data.List as List
+import qualified Z.Doc
 import System.Directory (canonicalizePath, doesFileExist, getCurrentDirectory)
 import System.FilePath ((</>))
 import Z.Utils
@@ -56,9 +59,14 @@ data LoaderState = LoaderState
     , lsInitialKinds   :: KindEnv
     , lsInitialTypes   :: TypeEnv
     , lsInitialFacts   :: [TermNode]
+    , lsDiagnosticMode :: DiagnosticMode
     }
 
 type Loader a = ExceptT ErrMsg (State.StateT LoaderState (UniqueT IO)) a
+
+moduleErr :: DiagnosticMode -> SourceLines -> SLoc -> String -> ErrMsg
+moduleErr mode sourceLines loc msg =
+    diagnosticWith mode "HolBETA2-ModuleError" sourceLines loc [Z.Doc.text msg]
 
 -- Turn `Example/foo/bar.hol` into `Example.foo.bar`.  We strip the trailing
 -- `.hol`, replace `/` with `.`, and use the path *relative to the project
@@ -83,7 +91,12 @@ pathDerivedName root absPath =
 loadMain
     :: KindEnv -> TypeEnv -> [TermNode] -> FilePath
     -> UniqueT IO (Either ErrMsg LoadedModule)
-loadMain initialKinds initialTypes initialFacts mainPath = do
+loadMain = loadMainWithDiagnostic DiagnosticPretty
+
+loadMainWithDiagnostic
+    :: DiagnosticMode -> KindEnv -> TypeEnv -> [TermNode] -> FilePath
+    -> UniqueT IO (Either ErrMsg LoadedModule)
+loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
     root <- liftIO getCurrentDirectory
     rootC <- liftIO (canonicalizePath root)
     canonicalMain <- liftIO (canonicalizePath mainPath)
@@ -92,6 +105,7 @@ loadMain initialKinds initialTypes initialFacts mainPath = do
             , lsInitialKinds = initialKinds
             , lsInitialTypes = initialTypes
             , lsInitialFacts = initialFacts
+            , lsDiagnosticMode = mode
             }
     (eMain, stN) <- State.runStateT
         (runExceptT (loadFile canonicalMain Nothing))
@@ -107,9 +121,10 @@ loadMain initialKinds initialTypes initialFacts mainPath = do
 -- Load (or fetch from cache) the file at `canonicalPath`.  `importSLoc`
 -- is the location of the surface `import` that requested this file (used
 -- for cycle-error attribution); `Nothing` means this is the main file.
-loadFile :: FilePath -> Maybe SLoc -> Loader ModuleEnv
-loadFile canonicalPath importSLoc = do
+loadFile :: FilePath -> Maybe (SLoc, SourceLines) -> Loader ModuleEnv
+loadFile canonicalPath importContext = do
     st <- lift State.get
+    let mode = lsDiagnosticMode st
     case Map.lookup canonicalPath (lsLoaded st) of
         Just env -> return env
         Nothing -> do
@@ -118,47 +133,50 @@ loadFile canonicalPath importSLoc = do
                 Just _ -> do
                     let cycle = reverse (mname : map fst (takeWhile ((/= mname) . fst) (lsLoading st)))
                         chain = List.intercalate " -> " (cycle ++ [mname])
-                        locStr = case importSLoc of
-                            Just l -> pprint 0 l ""
-                            Nothing -> "?:?"
-                    throwE ("*** module-error[" ++ locStr ++ "]:\n  ? import cycle detected: " ++ chain ++ ".")
+                    throwE $ case importContext of
+                        Just (loc, sourceLines) -> moduleErr mode sourceLines loc ("Import cycle detected: " ++ chain ++ ".")
+                        Nothing -> diagnosticNoLocWith mode "HolBETA2-ModuleError" [Z.Doc.text ("Import cycle detected: " ++ chain ++ ".")]
                 Nothing -> do
                     src <- liftIO (readFile canonicalPath)
+                    let sourceLines = Just (lines src)
                     case runHolLexer src of
-                        Left (row, col) -> throwE ("*** lexing-error in `" ++ canonicalPath ++ "` at row=" ++ show row ++ ", col=" ++ show col)
+                        Left (row, col) -> throwE (diagnosticWith mode "HolBETA2-LexError" sourceLines (SLoc (row, col) (row, col)) [Z.Doc.text ("Lexing failed in `" ++ canonicalPath ++ "'.")])
                         Right tokens -> case runHolParser tokens of
-                            Left _ -> throwE ("*** parsing-error in `" ++ canonicalPath ++ "`.")
-                            Right (Left _) -> throwE ("*** parsing-error in `" ++ canonicalPath ++ "`: file is a query, not a program.")
-                            Right (Right decls) -> elaborate canonicalPath mname decls
+                            Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("Parsing failed at EOF in `" ++ canonicalPath ++ "'.")])
+                            Left (Just token) -> throwE (diagnosticWith mode "HolBETA2-ParseError" sourceLines (getSLoc token) [Z.Doc.text ("Parsing failed in `" ++ canonicalPath ++ "'.")])
+                            Right (Left _) -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("File `" ++ canonicalPath ++ "' is a query, not a program.")])
+                            Right (Right decls) -> elaborate canonicalPath mname (lines src) decls
 
 -- Split decls into (optional header, imports, body), enforce header/import
 -- ordering, recursively load each import, compose the dependency envs,
 -- desugar + type-check the body against the composed env, store the
 -- resulting ModuleEnv into the loader's table.
-elaborate :: FilePath -> String -> [DeclRep] -> Loader ModuleEnv
-elaborate canonicalPath mname decls = do
-    (mHeader, imports, body) <- liftEither (extractHeaderAndImports decls)
+elaborate :: FilePath -> String -> [String] -> [DeclRep] -> Loader ModuleEnv
+elaborate canonicalPath mname sourceLines decls = do
+    st0 <- lift State.get
+    let mode = lsDiagnosticMode st0
+    (mHeader, imports, body) <- liftEither (extractHeaderAndImports mode (Just sourceLines) decls)
     case mHeader of
         Just (loc, declared) | declared /= mname ->
-            throwE ("*** desugaring-error[" ++ pprint 0 loc "]:\n  ? module header `" ++ declared ++ "' does not match file path-derived name `" ++ mname ++ "'.")
+            throwE (moduleErr mode (Just sourceLines) loc ("Module header `" ++ declared ++ "' does not match file path-derived name `" ++ mname ++ "'."))
         _ -> return ()
     lift (State.modify (\ s -> s { lsLoading = (mname, canonicalPath) : lsLoading s }))
     importedEnvsWithLocs <- mapM
-        (\imp@(_, _) -> do { env <- loadImport canonicalPath imp; return (imp, env) })
+        (\imp@(_, _) -> do { env <- loadImport canonicalPath (Just sourceLines) imp; return (imp, env) })
         imports
     lift (State.modify (\ s -> s { lsLoading = drop 1 (lsLoading s) }))
     st <- lift State.get
     let initialKinds = lsInitialKinds st
         initialFacts = lsInitialFacts st
         initialTypes = lsInitialTypes st
-    (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM combineImport
+    (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM (combineImport mode (Just sourceLines))
         (initialKinds, initialTypes, Notation.initial, Notation.initialExpansionDB, emptyOrigins)
         importedEnvsWithLocs
     let importedFacts = concatMap (drop (length initialFacts) . moduleEnvFacts . snd) importedEnvsWithLocs
-    (env1, ownNotation0, ownExpansion0) <- desugarProgram composedKinds composedTypes mname body
+    (env1, ownNotation0, ownExpansion0) <- desugarProgramWithDiagnostic mode (Just sourceLines) composedKinds composedTypes mname body
     let ownNotation  = mergeNotation composedNotation ownNotation0
         ownExpansion = mergeExpansion composedExpansion ownExpansion0
-    facts2 <- sequence [ checkType ownNotation (_TypeDecls env1) fact mkTyO | fact <- _FactDecls env1 ]
+    facts2 <- sequence [ checkTypeWithDiagnostic mode (Just sourceLines) ownNotation (_TypeDecls env1) fact mkTyO | fact <- _FactDecls env1 ]
     facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
     ownFactsR <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
     let env = ModuleEnv
@@ -177,15 +195,17 @@ elaborate canonicalPath mname decls = do
         }))
     return env
 
-loadImport :: FilePath -> (SLoc, String) -> Loader ModuleEnv
-loadImport importerPath (importLoc, importedName) = do
+loadImport :: FilePath -> SourceLines -> (SLoc, String) -> Loader ModuleEnv
+loadImport importerPath sourceLines (importLoc, importedName) = do
     st <- lift State.get
     let dir = takeDir importerPath
         root = lsRoot st
     mFound <- liftIO (resolveImport dir root importedName)
     case mFound of
-        Nothing -> throwE ("*** module-error[" ++ pprint 0 importLoc "]:\n  ? cannot resolve module `" ++ importedName ++ "' from `" ++ importerPath ++ "'.")
-        Just canonical -> loadFile canonical (Just importLoc)
+        Nothing -> do
+            st <- lift State.get
+            throwE (moduleErr (lsDiagnosticMode st) sourceLines importLoc ("Cannot resolve module `" ++ importedName ++ "' from `" ++ importerPath ++ "'."))
+        Just canonical -> loadFile canonical (Just (importLoc, sourceLines))
 
 takeDir :: FilePath -> FilePath
 takeDir p = case break (== '/') (reverse p) of
@@ -240,18 +260,20 @@ emptyOrigins = Origins Map.empty Map.empty Map.empty Map.empty Map.empty
 -- error attributed to `iloc` if any decl in `env` disagrees with the
 -- accumulator's previous content.
 combineImport
-    :: (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
+    :: DiagnosticMode
+    -> SourceLines
+    -> (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
     -> ((SLoc, String), ModuleEnv)
     -> Loader (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
-combineImport (k, t, n, e, o) ((iloc, iname), env) = do
-    (k', oK) <- liftEither (mergeKindsStrict   iloc iname (oKinds o)    k (moduleEnvKinds     env))
-    (t', oT) <- liftEither (mergeTypesStrict   iloc iname (oTypes o)    t (moduleEnvTypes     env))
-    (n', oF) <- liftEither (mergeFixityStrict  iloc iname (oFixity o)   n (moduleEnvNotation  env))
-    (e', oA, oN) <- liftEither (mergeExpStrict iloc iname (oAbbrev o) (oNotation o) e (moduleEnvExpansion env))
+combineImport mode sourceLines (k, t, n, e, o) ((iloc, iname), env) = do
+    (k', oK) <- liftEither (mergeKindsStrict   mode sourceLines iloc iname (oKinds o)    k (moduleEnvKinds     env))
+    (t', oT) <- liftEither (mergeTypesStrict   mode sourceLines iloc iname (oTypes o)    t (moduleEnvTypes     env))
+    (n', oF) <- liftEither (mergeFixityStrict  mode sourceLines iloc iname (oFixity o)   n (moduleEnvNotation  env))
+    (e', oA, oN) <- liftEither (mergeExpStrict mode sourceLines iloc iname (oAbbrev o) (oNotation o) e (moduleEnvExpansion env))
     return (k', t', n', e', Origins { oKinds = oK, oTypes = oT, oFixity = oF, oAbbrev = oA, oNotation = oN })
 
-mergeKindsStrict :: SLoc -> String -> Map.Map TypeConstructor String -> KindEnv -> KindEnv -> Either ErrMsg (KindEnv, Map.Map TypeConstructor String)
-mergeKindsStrict iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
+mergeKindsStrict :: DiagnosticMode -> SourceLines -> SLoc -> String -> Map.Map TypeConstructor String -> KindEnv -> KindEnv -> Either ErrMsg (KindEnv, Map.Map TypeConstructor String)
+mergeKindsStrict mode sourceLines iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
   where
     step (tc, k) acc = do
         (m, origin) <- acc
@@ -260,11 +282,11 @@ mergeKindsStrict iloc iname origin0 old new = foldr step (Right (old, origin0)) 
             Just k' | k == k' -> Right (m, origin)
                     | otherwise ->
                         let prior = Map.lookup tc origin
-                        in Left (inconsErr2 iloc "C1" prior iname (showTC tc) "kind"
+                        in Left (inconsErr2 mode sourceLines iloc "C1" prior iname (showTC tc) "kind"
                                    (pprint 0 k' "") (pprint 0 k ""))
 
-mergeTypesStrict :: SLoc -> String -> Map.Map DataConstructor String -> TypeEnv -> TypeEnv -> Either ErrMsg (TypeEnv, Map.Map DataConstructor String)
-mergeTypesStrict iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
+mergeTypesStrict :: DiagnosticMode -> SourceLines -> SLoc -> String -> Map.Map DataConstructor String -> TypeEnv -> TypeEnv -> Either ErrMsg (TypeEnv, Map.Map DataConstructor String)
+mergeTypesStrict mode sourceLines iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
   where
     step (dc, p) acc = do
         (m, origin) <- acc
@@ -273,7 +295,7 @@ mergeTypesStrict iloc iname origin0 old new = foldr step (Right (old, origin0)) 
             Just p' | polyTypeEq p p' -> Right (m, origin)
                     | otherwise ->
                         let prior = Map.lookup dc origin
-                        in Left (inconsErr2 iloc "C2" prior iname (showDC dc) "type"
+                        in Left (inconsErr2 mode sourceLines iloc "C2" prior iname (showDC dc) "type"
                                    "<scheme>" "<scheme>")
 
 -- §2.4 C2: universally-quantified type variables may be α-renamed.
@@ -294,8 +316,8 @@ showDC :: DataConstructor -> String
 showDC (DC_Named s) = s
 showDC dc           = show dc
 
-mergeFixityStrict :: SLoc -> String -> Map.Map SmallId String -> NotationDB -> NotationDB -> Either ErrMsg (NotationDB, Map.Map SmallId String)
-mergeFixityStrict iloc iname origin0 old new = do
+mergeFixityStrict :: DiagnosticMode -> SourceLines -> SLoc -> String -> Map.Map SmallId String -> NotationDB -> NotationDB -> Either ErrMsg (NotationDB, Map.Map SmallId String)
+mergeFixityStrict mode sourceLines iloc iname origin0 old new = do
     origin' <- foldr step (Right origin0) (Notation.fixityList new)
     Right (Notation.merge old new, origin')
   where
@@ -306,7 +328,7 @@ mergeFixityStrict iloc iname origin0 old new = do
             Just fp' | fp == fp' -> Right origin
                      | otherwise ->
                         let prior = Map.lookup name origin
-                        in Left (inconsErr2 iloc "C5" prior iname name "fixity"
+                        in Left (inconsErr2 mode sourceLines iloc "C5" prior iname name "fixity"
                                    (showFixity fp') (showFixity fp))
     lookupFixity name db = lookup name (Notation.fixityList db)
     showFixity (kind, prec) = show kind ++ " " ++ show prec
@@ -316,11 +338,11 @@ mergeFixityStrict iloc iname origin0 old new = do
 -- compiled TermNode templates so the error attributes the right SLoc
 -- chain and so we don't have to recompile the body just to compare.
 mergeExpStrict
-    :: SLoc -> String
+    :: DiagnosticMode -> SourceLines -> SLoc -> String
     -> Map.Map SmallId String -> Map.Map SmallId String
     -> ExpansionDB -> ExpansionDB
     -> Either ErrMsg (ExpansionDB, Map.Map SmallId String, Map.Map SmallId String)
-mergeExpStrict iloc iname oA0 oN0 old new = do
+mergeExpStrict mode sourceLines iloc iname oA0 oN0 old new = do
     oA <- foldr stepA (Right oA0) (Notation.typeAbbrevList new)
     oN <- foldr stepN (Right oN0) (Notation.termNotationList new)
     Right (Notation.mergeExpansion old new, oA, oN)
@@ -332,7 +354,7 @@ mergeExpStrict iloc iname oA0 oN0 old new = do
             Just (ps', rhs') | ps == ps' && typeRepEq rhs rhs' -> Right oA
                              | otherwise ->
                                 let prior = Map.lookup nm oA
-                                in Left (inconsErr2 iloc "C3" prior iname nm "abbreviation"
+                                in Left (inconsErr2 mode sourceLines iloc "C3" prior iname nm "abbreviation"
                                            "<prior body>" "<current body>")
     stepN (nm, ps, rhs) acc = do
         oN <- acc
@@ -341,25 +363,23 @@ mergeExpStrict iloc iname oA0 oN0 old new = do
             Just (ps', rhs') | ps == ps' && termRepEq rhs rhs' -> Right oN
                              | otherwise ->
                                 let prior = Map.lookup nm oN
-                                in Left (inconsErr2 iloc "C4" prior iname nm "notation"
+                                in Left (inconsErr2 mode sourceLines iloc "C4" prior iname nm "notation"
                                            "<prior body>" "<current body>")
 
 -- §2.4 error format.  If `mPrior` names an earlier import, emit the
 -- two-sided variant that pins down both M_a and M_b along with their
 -- right-hand sides.  Otherwise (the conflicting decl came from the
 -- built-in seed) emit the single-sided fallback.
-inconsErr2 :: SLoc -> String -> Maybe String -> String -> String -> String -> String -> String -> ErrMsg
-inconsErr2 iloc tag mPrior iname dname kindLabel rhsA rhsB = case mPrior of
+inconsErr2 :: DiagnosticMode -> SourceLines -> SLoc -> String -> Maybe String -> String -> String -> String -> String -> String -> ErrMsg
+inconsErr2 mode sourceLines iloc tag mPrior iname dname kindLabel rhsA rhsB =
+    moduleErr mode sourceLines iloc $ case mPrior of
     Just prior ->
-        "*** module-error[" ++ pprint 0 iloc "" ++ "]:\n"
-        ++ "  ? import inconsistency (" ++ tag ++ "): `" ++ dname
-        ++ "' is declared by both\n"
-        ++ "  ? `" ++ prior ++ "' and `" ++ iname
-        ++ "' with disagreeing " ++ kindLabel ++ ".\n"
-        ++ "  ? (`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
+        "Import inconsistency (" ++ tag ++ "): `" ++ dname
+        ++ "' is declared by both `" ++ prior ++ "' and `" ++ iname
+        ++ "' with disagreeing " ++ kindLabel ++ ". "
+        ++ "(`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
     Nothing ->
-        "*** module-error[" ++ pprint 0 iloc "" ++ "]:\n"
-        ++ "  ? import inconsistency (" ++ tag ++ "): `" ++ dname
+        "Import inconsistency (" ++ tag ++ "): `" ++ dname
         ++ "' is declared by `" ++ iname ++ "' with a different "
         ++ kindLabel ++ " than the built-in seed."
 
@@ -386,9 +406,11 @@ termRepEq (R_wc _) (R_wc _) = True
 termRepEq _ _ = False
 
 extractHeaderAndImports
-    :: [DeclRep]
+    :: DiagnosticMode
+    -> SourceLines
+    -> [DeclRep]
     -> Either ErrMsg (Maybe (SLoc, String), [(SLoc, String)], [DeclRep])
-extractHeaderAndImports decls0 = case decls0 of
+extractHeaderAndImports mode sourceLines decls0 = case decls0 of
     RModuleHeaderDecl loc n : rest -> do
         (imps, body) <- partitionImports rest
         return (Just (loc, n), imps, body)
@@ -401,9 +423,9 @@ extractHeaderAndImports decls0 = case decls0 of
         return ((loc, n) : imps, body)
     partitionImports rest =
         case [ loc | RImportDecl loc _ <- rest ] of
-            (loc : _) -> Left ("*** desugaring-error[" ++ pprint 0 loc "]:\n  ? `import' declarations must precede all other declarations.")
+            (loc : _) -> Left (moduleErr mode sourceLines loc "`import' declarations must precede all other declarations.")
             [] -> case [ loc | RModuleHeaderDecl loc _ <- rest ] of
-                (loc : _) -> Left ("*** desugaring-error[" ++ pprint 0 loc "]:\n  ? `module' header must be the first declaration of the file.")
+                (loc : _) -> Left (moduleErr mode sourceLines loc "`module' header must be the first declaration of the file.")
                 [] -> return ([], rest)
 
 liftEither :: Either ErrMsg a -> Loader a

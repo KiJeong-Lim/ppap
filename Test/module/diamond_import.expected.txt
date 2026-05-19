@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.module.diamond_import ( Test/module/diamond_import.hol, interpreted )
 Test.module.diamond_import> Ok, one module loaded.
 Test.module.diamond_import> Test.module.diamond_import> The answer substitution is:

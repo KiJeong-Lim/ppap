@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/presburger/solver_sanity.hol
 ?- presburger "forall X, X = 0".
 ?- presburger "forall X, X >= 0".

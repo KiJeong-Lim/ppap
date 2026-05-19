@@ -7,3 +7,6 @@ import Hol.V1.Main as V1
 
 main :: IO ()
 main = BETA2.main
+
+mainWithArgs :: [String] -> IO ()
+mainWithArgs = BETA2.mainWithArgs

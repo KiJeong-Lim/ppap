@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/module/transitive_import.hol
 ?- hit X.
 Y

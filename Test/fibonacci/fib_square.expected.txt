@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.fibonacci.fib_square ( Test/fibonacci/fib_square.hol, interpreted )
 Test.fibonacci.fib_square> Ok, one module loaded.
 Test.fibonacci.fib_square> Test.fibonacci.fib_square> The answer substitution is:

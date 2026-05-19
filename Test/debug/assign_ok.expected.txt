@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.debug.assign_ok ( Test/debug/assign_ok.hol, interpreted )
 Test.debug.assign_ok> Ok, one module loaded.
 Test.debug.assign_ok> Test.debug.assign_ok> Debugging mode on.

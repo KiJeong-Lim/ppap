@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.module.simple_import ( Test/module/simple_import.hol, interpreted )
 Test.module.simple_import> Ok, one module loaded.
 Test.module.simple_import> Test.module.simple_import> The answer substitution is:
@@ -8,5 +8,7 @@ Test.module.simple_import> X := 6.
 Test.module.simple_import> Find more solutions? [Y/n] Test.module.simple_import> The answer substitution is:
 Test.module.simple_import> X := 9.
 Test.module.simple_import> Find more solutions? [Y/n] Test.module.simple_import> no.
-Test.module.simple_import> *** parsing error at EOF.
+Test.module.simple_import> error: [HolBETA2-ParseError]
+Parsing failed at EOF.
+
 Test.module.simple_import> Hol >>= quit

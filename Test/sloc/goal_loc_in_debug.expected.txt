@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.sloc.goal_loc_in_debug ( Test/sloc/goal_loc_in_debug.hol, interpreted )
 Test.sloc.goal_loc_in_debug> Ok, one module loaded.
 Test.sloc.goal_loc_in_debug> Test.sloc.goal_loc_in_debug> Debugging mode on.

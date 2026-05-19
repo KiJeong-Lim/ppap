@@ -4,10 +4,11 @@ import Hol.BETA2.Arith (arithEntails, installPresburger)
 import Hol.BETA2.Compiler
 import Hol.BETA2.Constant
 import Hol.BETA2.Debugger
+import Hol.BETA2.Diagnostic
 import Hol.BETA2.Desugarer
 import Hol.BETA2.Header
 import Hol.BETA2.HOPU
-import Hol.BETA2.ModuleLoader (LoadedModule (..), ModuleEnv (..), loadMain)
+import Hol.BETA2.ModuleLoader (LoadedModule (..), ModuleEnv (..), loadMainWithDiagnostic)
 import Hol.BETA2.Notation (NotationDB, ExpansionDB)
 import qualified Hol.BETA2.Notation as Notation
 import Hol.BETA2.PlanHolLexer
@@ -27,20 +28,21 @@ import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import System.IO
+import qualified Z.Doc
 import Z.System
 import Z.Utils
 import Data.IntMap (restrictKeys)
 
 type AnalyzerOuput = Either TermRep [DeclRep]
 
-runAnalyzer :: String -> Either ErrMsg AnalyzerOuput
-runAnalyzer src0
+runAnalyzer :: DiagnosticMode -> String -> Either ErrMsg AnalyzerOuput
+runAnalyzer mode src0
     = case runHolLexer src0 of
-        Left (row, col) -> Left ("*** lexing error at { row = " ++ showsPrec 0 row (", col = " ++ showsPrec 0 col " }."))
+        Left (row, col) -> Left (diagnosticWith mode "HolBETA2-LexError" (Just (lines src0)) (SLoc (row, col) (row, col)) [Z.Doc.text "Lexing failed."])
         Right src1 -> case runHolParser src1 of
-            Left Nothing -> Left ("*** parsing error at EOF.")
+            Left Nothing -> Left (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text "Parsing failed at EOF."])
             Left (Just token) -> case getSLoc token of
-                SLoc (row1, col1) (row2, col2) -> Left ("*** parsing error at { row = " ++ showsPrec 0 row1 (", col = " ++ showsPrec 0 col1 " }."))
+                loc -> Left (diagnosticWith mode "HolBETA2-ParseError" (Just (lines src0)) loc [Z.Doc.text "Parsing failed."])
             Right output -> Right output
 
 isYES :: String -> Bool
@@ -77,8 +79,8 @@ execRuntime env isDebugging facts query = do
         initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = initialLabeling, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
     runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
-runREPL :: Program TermNode -> NotationDB -> ExpansionDB -> UniqueT IO ()
-runREPL program notationDB expansionDB = do
+runREPL :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> UniqueT IO ()
+runREPL mode program notationDB expansionDB = do
     isDebugging <- lift (newIORef False)
     verboseTyping <- lift (newIORef False)
     nameCache <- lift (newIORef initialCache)
@@ -181,7 +183,7 @@ runREPL program notationDB expansionDB = do
         handleAssign :: RuntimeEnv -> Context -> String -> IO ()
         handleAssign env ctx body = case parseAssign body of
             Nothing -> do
-                _ <- promptify "*** :assign error: expected ':assign ?X := t.'"
+                _ <- promptify (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Expected ':assign ?X := t.'."])
                 return ()
             Just (varName, tBody) -> do
                 -- §3.2.2: the user may reference other flexible variables
@@ -273,12 +275,12 @@ runREPL program notationDB expansionDB = do
                                 Nothing -> False  -- anonymous targets: fall back to HOPU/kernel
                         if not (null xconErrors)
                             then do
-                                _ <- promptify ("*** :assign error: " ++ List.intercalate "; " xconErrors)
+                                _ <- promptify (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text (List.intercalate "; " xconErrors)])
                                 return ()
                           else if badType
                             then case mexpectedTy of
                                 Just expectedTy -> do
-                                    _ <- promptify ("*** :assign error: type mismatch for '" ++ varName ++ "' — expected " ++ showsMonoType notationDB 0 expectedTy (", got " ++ showsMonoType notationDB 0 inferredTy ""))
+                                    _ <- promptify (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text ("Type mismatch for '" ++ varName ++ "'; expected " ++ showsMonoType notationDB 0 expectedTy (", got " ++ showsMonoType notationDB 0 inferredTy ""))])
                                     return ()
                                 Nothing -> return ()  -- unreachable
                             else do
@@ -292,7 +294,7 @@ runREPL program notationDB expansionDB = do
                                 result <- runRuntime (cmdAssign varName t_resolved) env
                                 case result of
                                     Left err -> do
-                                        _ <- promptify ("*** :assign error: " ++ err)
+                                        _ <- promptify (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text err])
                                         return ()
                                     Right () -> do
                                         composed_subst <- do
@@ -346,13 +348,14 @@ runREPL program notationDB expansionDB = do
         typeCompatible _ _ = False
         compileAssign :: MonadUnique m => String -> String -> ExceptT ErrMsg m (LogicVar, TermNode, MonoType Int, Map.Map LargeId (MonoType Int))
         compileAssign varName queryStr = case runHolLexer queryStr of
-            Left _ -> throwE "*** :assign error: lex failed"
+            Left (row, col) -> throwE (diagnosticWith mode "HolBETA2-AssignError" (Just (lines queryStr)) (SLoc (row, col) (row, col)) [Z.Doc.text "Lexing failed."])
             Right tokens -> case runHolParser tokens of
-                Left _ -> throwE "*** :assign error: parse failed"
-                Right (Right _) -> throwE "*** :assign error: expected a query, not a declaration"
+                Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Parsing failed at EOF."])
+                Left (Just token) -> throwE (diagnosticWith mode "HolBETA2-AssignError" (Just (lines queryStr)) (getSLoc token) [Z.Doc.text "Parsing failed."])
+                Right (Right _) -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Expected a query, not a declaration."])
                 Right (Left termRep) -> do
                     (term2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB termRep)
-                    (term3, (used_mtvs, assumptions)) <- checkType notationDB (_TypeDecls program) term2 mkTyO
+                    (term3, (used_mtvs, assumptions)) <- checkTypeWithDiagnostic mode (Just (lines queryStr)) notationDB (_TypeDecls program) term2 mkTyO
                     term4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) term3
                     term5 <- either throwE return (installPresburger term4)
                     -- The inferred type of `X` inside the synthetic query
@@ -362,7 +365,7 @@ runREPL program notationDB expansionDB = do
                     -- also the inferred type of `t`.
                     inferredTy <- case Map.lookup varName free_vars >>= \ivar -> Map.lookup ivar assumptions of
                         Just typ -> return typ
-                        Nothing -> throwE "*** :assign error: could not infer type for the binding"
+                        Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Could not infer type for the binding."])
                     -- The same lookup, but flipped to a (LargeId -> MonoType)
                     -- map covering every free name in the synthetic query.
                     -- Used by `handleAssign` to type-check `XCON_<n>`
@@ -375,8 +378,8 @@ runREPL program notationDB expansionDB = do
                     case unfoldlNApp (rewrite NF term5) of
                         (NCon (DC DC_eq) _, [_typeArg, lhs, rhs]) -> case rewrite NF lhs of
                             LVar lv -> return (lv, rhs, inferredTy, nameToType)
-                            _ -> throwE "*** :assign error: LHS did not resolve to a logic variable"
-                        _ -> throwE "*** :assign error: did not compile to an equality"
+                            _ -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "LHS did not resolve to a logic variable."])
+                        _ -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Did not compile to an equality."])
         printAnswer :: Context -> IO RunMore
         -- §2.5: when the proof search reaches success, restrict the
         -- substitution to query-relevant LVs, report the residual
@@ -553,7 +556,7 @@ runREPL program notationDB expansionDB = do
                     writeIORef verboseTyping True
                     promptify "Typing display: verbose."
                 go isDebugging verboseTyping nameCache
-            query0 -> case runAnalyzer query0 of
+            query0 -> case runAnalyzer mode query0 of
                 Left err_msg -> do
                     lift $ putStrLn err_msg
                     go isDebugging verboseTyping nameCache
@@ -561,7 +564,7 @@ runREPL program notationDB expansionDB = do
                     Left query1 -> do
                         result <- runExceptT $ do
                             (query2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB query1)
-                            (query3, (used_mtvs, assumptions)) <- checkType notationDB (_TypeDecls program) query2 mkTyO
+                            (query3, (used_mtvs, assumptions)) <- checkTypeWithDiagnostic mode (Just (lines query0)) notationDB (_TypeDecls program) query2 mkTyO
                             query4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
                             query5 <- either throwE return (installPresburger query4)
                             -- §3.4: the debugger lists every visible flexible
@@ -589,14 +592,14 @@ runREPL program notationDB expansionDB = do
                                 answer <- runExceptT (execRuntime runtime_env isDebugging (_FactDecls program) query4)
                                 case answer of
                                     Left runtime_err -> case runtime_err of
-                                        BadGoalGiven _ -> lift $ putStrLn "*** runtime-error: bad goal given!"
-                                        BadFactGiven _ -> lift $ putStrLn "*** runtime-error: bad fact given!"
+                                        BadGoalGiven _ -> lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad goal given."])
+                                        BadFactGiven _ -> lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad fact given."])
                                     Right sat -> do
                                         lift $ promptify (if sat then "yes." else "no.")
                                         return ()
                                 go isDebugging verboseTyping nameCache
                     Right src1 -> do
-                        lift $ putStrLn "*** parsing-error: it is not a query."
+                        lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text "It is not a query."])
                         go isDebugging verboseTyping nameCache
 
 theInitialKindDecls :: KindEnv
@@ -656,48 +659,72 @@ theInitialFactDecls = [eqFact] where
 theDefaultModuleName :: String
 theDefaultModuleName = "Hol"
 
-runHol :: UniqueT IO ()
-runHol = do
+runHol :: DiagnosticMode -> UniqueT IO ()
+runHol mode = do
     consistency_ptr <- lift $ newIORef ""
     file_dir <- lift $ shelly "Hol =<< "
-    maybe_file_name <- case matchFileDirWithExtension file_dir of
-        ("", "") -> return Nothing
-        (file_name, ".hol") -> return (Just file_name)
-        (file_name, "") -> return (Just file_name)
-        (file_name, '.' : wrong_extension) -> do
-            lift $ writeIORef consistency_ptr (theDefaultModuleName ++ "> " ++ shows wrong_extension " is a non-executable file extension.")
+    maybe_file_name <- case file_dir of
+        ":q" -> do
+            lift $ writeIORef consistency_ptr ":q"
             return Nothing
+        _ -> case matchFileDirWithExtension file_dir of
+            ("", "") -> return Nothing
+            (file_name, ".hol") -> return (Just file_name)
+            (file_name, "") -> return (Just file_name)
+            (file_name, '.' : wrong_extension) -> do
+                lift $ writeIORef consistency_ptr (theDefaultModuleName ++ "> " ++ shows wrong_extension " is a non-executable file extension.")
+                return Nothing
     consistency <- lift $ readIORef consistency_ptr
     case consistency of
         "" -> case maybe_file_name of
             Nothing -> do
                 lift $ shelly (theDefaultModuleName ++ "> Ok, no module loaded.")
-                runREPL (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName }) Notation.initial Notation.initialExpansionDB
+                runREPL mode (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName }) Notation.initial Notation.initialExpansionDB
             Just file_name -> do
                 let my_file_dir = file_name ++ ".hol"
                     myModuleName = modifySep '/' (const ".") id file_name
-                _ <- lift $ readFile my_file_dir
-                file_abs_dir <- fmap (fromMaybe my_file_dir) (lift $ makePathAbsolutely my_file_dir)
-                lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
-                result <- loadMain theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
-                case result of
-                    Left err_msg -> do
-                        lift $ putStrLn err_msg
-                        runHol
-                    Right loaded -> do
-                        let mainEnv = loadedMain loaded
-                            program2 = Program
-                                { _KindDecls  = moduleEnvKinds mainEnv
-                                , _TypeDecls  = moduleEnvTypes mainEnv
-                                , _FactDecls  = moduleEnvFacts mainEnv
-                                , moduleName  = moduleEnvName mainEnv
-                                }
-                        lift $ shelly (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
-                        runREPL program2 (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
+                msrc <- lift $ readFileNow my_file_dir
+                case msrc of
+                    Nothing -> do
+                        lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-FileError" [Z.Doc.text ("Cannot read file `" ++ my_file_dir ++ "'.")])
+                        runHol mode
+                    Just _ -> do
+                        file_abs_dir <- fmap (fromMaybe my_file_dir) (lift $ makePathAbsolutely my_file_dir)
+                        lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
+                        result <- loadMainWithDiagnostic mode theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
+                        case result of
+                            Left err_msg -> do
+                                lift $ putStrLn err_msg
+                                runHol mode
+                            Right loaded -> do
+                                let mainEnv = loadedMain loaded
+                                    program2 = Program
+                                        { _KindDecls  = moduleEnvKinds mainEnv
+                                        , _TypeDecls  = moduleEnvTypes mainEnv
+                                        , _FactDecls  = moduleEnvFacts mainEnv
+                                        , moduleName  = moduleEnvName mainEnv
+                                        }
+                                lift $ shelly (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
+                                runREPL mode program2 (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
         inconsistent_proof -> do
-            lift $ shelly inconsistent_proof
-            lift $ shelly ("Hol >>= quit")
-            return ()
+            if inconsistent_proof == ":q"
+                then do
+                    _ <- lift $ shelly ("Hol >>= quit")
+                    return ()
+                else do
+                    lift $ shelly inconsistent_proof
+                    lift $ shelly ("Hol >>= quit")
+                    return ()
+
+mainWithMode :: DiagnosticMode -> IO ()
+mainWithMode = execUniqueT . runHol
+
+mainWithArgs :: [String] -> IO ()
+mainWithArgs args = case args of
+    [] -> mainWithMode DiagnosticPretty
+    ["pretty"] -> mainWithMode DiagnosticPretty
+    ["test"] -> mainWithMode DiagnosticTest
+    _ -> mainWithMode DiagnosticPretty
 
 main :: IO ()
-main = execUniqueT runHol
+main = mainWithMode DiagnosticPretty

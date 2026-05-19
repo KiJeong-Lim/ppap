@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.notation.sym_operator ( Test/notation/sym_operator.hol, interpreted )
 Test.notation.sym_operator> Ok, one module loaded.
 Test.notation.sym_operator> Test.notation.sym_operator> The answer substitution is:

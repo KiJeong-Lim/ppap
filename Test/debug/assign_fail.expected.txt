@@ -1,6 +1,6 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.debug.assign_fail ( Test/debug/assign_fail.hol, interpreted )
 Test.debug.assign_fail> Ok, one module loaded.
 Test.debug.assign_fail> Test.debug.assign_fail> Debugging mode on.
@@ -22,7 +22,9 @@ Test.debug.assign_fail> --------------------------------
 * The rest of the current stack is:
 --------------------------------
 
-Test.debug.assign_fail> Press the enter key to go to next state: Test.debug.assign_fail> *** :assign error: occurs check failed for 'X'
+Test.debug.assign_fail> Press the enter key to go to next state: Test.debug.assign_fail> error: [HolBETA2-AssignError]
+occurs check failed for 'X'
+
 --------------------------------
 * The top of the current stack is:
     + progressings = 

@@ -2,6 +2,7 @@
 module Hol.BETA2.TypeChecker where
 
 import Hol.BETA2.Constant
+import Hol.BETA2.Diagnostic
 import Hol.BETA2.Header
 import Hol.BETA2.Notation (NotationDB)
 import qualified Hol.BETA2.Notation as Notation
@@ -12,7 +13,7 @@ import Control.Monad.Trans.State.Strict
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import qualified Z.Doc as Doc
+import qualified Z.Doc
 import Z.Utils
 
 infix 4 +->
@@ -236,27 +237,18 @@ zonkMTV theta = go where
     go (App (loc, typ) term1 term2) = App (loc, substMTVars theta typ) (go term1) (go term2)
     go (Lam (loc, typ) var h term) = Lam (loc, substMTVars theta typ) var h (go term)
 
-mkTyErr :: NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
-mkTyErr db used_mtvs loc ((actual_typ, expected_typ), typ_error) =
-    Doc.renderDoc $ Doc.vcat
-        [ Doc.text (ghcLoc loc ++ ": error: [HolBETA2-TypeError]")
-        , locBlock loc
-        , Doc.text ("Couldn't match expected type `" ++ ty expected_typ ++ "'")
-        , Doc.text ("            with actual type `" ++ ty actual_typ ++ "'")
-        , Doc.text ("Relevant equation: `" ++ ty lhs ++ "' ~ `" ++ ty rhs ++ "'")
-        , Doc.text ("Reason: " ++ reason)
+mkTyErr :: DiagnosticMode -> SourceLines -> NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
+mkTyErr mode source_lines db used_mtvs loc ((actual_typ, expected_typ), typ_error) =
+    diagnosticWith mode "HolBETA2-TypeError" source_lines loc
+        [ text ("Couldn't match expected type `" ++ ty expected_typ ++ "'")
+        , text ("            with actual type `" ++ ty actual_typ ++ "'")
+        , text ("Relevant equation: `" ++ ty lhs ++ "' ~ `" ++ ty rhs ++ "'")
+        , text ("Reason: " ++ reason)
         ]
   where
-    ghcLoc :: SLoc -> String
-    ghcLoc (SLoc (row, col) _) = show row ++ ":" ++ show col
+    text = Z.Doc.text
     ty :: MonoType Int -> String
     ty typ = showMonoType db used_mtvs typ ""
-    locBlock :: SLoc -> Doc.Doc
-    locBlock (SLoc (row, col) _) =
-        Doc.vcat
-            [ mconcat [Doc.text " ", Doc.ptext row, Doc.text " ", Doc.beam '|']
-            , mconcat [Doc.text " ", Doc.text (replicate (length (show row)) ' '), Doc.text " ", Doc.beam '|', Doc.text " ", Doc.text (replicate (max 0 (col - 1)) ' '), Doc.beam '^']
-            ]
     (lhs, rhs, reason) = case typ_error of
         KindsAreMismatched (typ1, kin1) (typ2, kin2) ->
             ( typ1
@@ -275,7 +267,13 @@ mkTyErr db used_mtvs loc ((actual_typ, expected_typ), typ_error) =
             )
 
 inferType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
-inferType db type_env = flip runStateT Map.empty . infer where
+inferType = inferTypeWithDiagnostic DiagnosticPretty Nothing
+
+inferTypeWithSource :: MonadUnique m => SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
+inferTypeWithSource = inferTypeWithDiagnostic DiagnosticPretty
+
+inferTypeWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
+inferTypeWithDiagnostic mode source_lines db type_env = flip runStateT Map.empty . infer where
     infer :: MonadUnique m => TermExpr DataConstructor SLoc -> StateT (Map.Map MetaTVar SmallId) (ExceptT ErrMsg m) (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int))
     infer (Var loc var) = do
         mtv <- getNewMTV "A"
@@ -290,7 +288,7 @@ inferType db type_env = flip runStateT Map.empty . infer where
         con -> do
             used_mtvs_0 <- get
             (mtvs, typ) <- case Map.lookup con type_env of
-                Nothing -> lift (throwE (mkUnknownConErr loc con))
+                Nothing -> lift (throwE (mkUnknownConErr mode source_lines loc con))
                 Just scheme -> instantiateScheme scheme
             return (Con (loc, typ) (con, map TyMTV mtvs), Map.empty)
     infer (App loc term1 term2) = do
@@ -304,7 +302,7 @@ inferType db type_env = flip runStateT Map.empty . infer where
         -- Reporting `getAnnot term2` lets the user jump to the bad
         -- subterm (e.g. the literal `7` in `appendStr "a" 7 _`) rather
         -- than the entire call.
-        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr db used_mtvs (fst (getAnnot term2'))
+        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr mode source_lines db used_mtvs (fst (getAnnot term2'))
         let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
             assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
         put used_mtvs'
@@ -316,29 +314,24 @@ inferType db type_env = flip runStateT Map.empty . infer where
                 mtv <- getNewMTV "A"
                 return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var h term', assumptions)
             Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
-    mkUnknownConErr :: SLoc -> DataConstructor -> ErrMsg
-    mkUnknownConErr loc con =
-        Doc.renderDoc $ Doc.vcat
-            [ Doc.text (ghcLoc loc ++ ": error: [HolBETA2-NotInScope]")
-            , locBlock loc
-            , Doc.text ("Not in scope: data constructor `" ++ showsPrec 0 con "'")
-            , Doc.text "Add a `type' declaration for it, or check the spelling."
+    mkUnknownConErr :: DiagnosticMode -> SourceLines -> SLoc -> DataConstructor -> ErrMsg
+    mkUnknownConErr mode' source loc con =
+        diagnosticWith mode' "HolBETA2-NotInScope" source loc
+            [ Z.Doc.text ("Not in scope: data constructor `" ++ showsPrec 0 con "'")
+            , Z.Doc.text "Add a `type' declaration for it, or check the spelling."
             ]
-      where
-        ghcLoc :: SLoc -> String
-        ghcLoc (SLoc (row, col) _) = show row ++ ":" ++ show col
-        locBlock :: SLoc -> Doc.Doc
-        locBlock (SLoc (row, col) _) =
-            Doc.vcat
-                [ mconcat [Doc.text " ", Doc.ptext row, Doc.text " ", Doc.beam '|']
-                , mconcat [Doc.text " ", Doc.text (replicate (length (show row)) ' '), Doc.text " ", Doc.beam '|', Doc.text " ", Doc.text (replicate (max 0 (col - 1)) ' '), Doc.beam '^']
-                ]
 
 checkType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
-checkType db type_env term expected_typ = do
-    ((term', assumptions), used_mtvs) <- inferType db type_env term
+checkType = checkTypeWithDiagnostic DiagnosticPretty Nothing
+
+checkTypeWithSource :: MonadUnique m => SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
+checkTypeWithSource = checkTypeWithDiagnostic DiagnosticPretty
+
+checkTypeWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -> NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
+checkTypeWithDiagnostic mode source_lines db type_env term expected_typ = do
+    ((term', assumptions), used_mtvs) <- inferTypeWithDiagnostic mode source_lines db type_env term
     let actual_typ = snd (getAnnot term')
-    theta <- catchE (actual_typ ->> expected_typ) $ throwE . mkTyErr db used_mtvs (getAnnot term)
+    theta <- catchE (actual_typ ->> expected_typ) $ throwE . mkTyErr mode source_lines db used_mtvs (getAnnot term)
     let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
         assumptions' = substMTVars theta assumptions
     return (zonkMTV theta term', (used_mtvs', assumptions'))

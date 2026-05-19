@@ -666,7 +666,8 @@ Type-checking diagnostics are rendered through `Z.Doc` (not
 `Z.Text.Doc`) and use a GHC-like layout:
 
   <line>:<col>: error: [HolBETA2-TypeError]
-   <line> |
+          |
+   <line> | <source line>
           |    ^
   Couldn't match expected type `<expected>'
               with actual type `<actual>'

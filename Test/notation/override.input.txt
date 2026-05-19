@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/notation/override.hol
 ?- mylist Y.
 

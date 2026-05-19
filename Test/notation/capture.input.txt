@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/notation/capture.hol
 ?- p (W\ cnst 8).
 

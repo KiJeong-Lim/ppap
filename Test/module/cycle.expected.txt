@@ -1,7 +1,11 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main)
+ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling Test.module.cycle ( Test/module/cycle.hol, interpreted )
-*** module-error[1:1-1:27]:
-  ? import cycle detected: Test.module.cycle_b -> Test.module.cycle_a -> Test.module.cycle_a.
-Hol =<< ppap: :q.hol: openFile: does not exist (No such file or directory)
+1:1: error: [HolBETA2-ModuleError]
+   |                            
+ 1 | import Test.module.cycle_a.
+   | ^                          
+Import cycle detected: Test.module.cycle_b -> Test.module.cycle_a -> Test.module.cycle_a.
+
+Hol =<< Hol >>= quit

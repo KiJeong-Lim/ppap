@@ -1,4 +1,4 @@
-Hol
+Hol --test
 Test/debug/assign_fail_scope.hol
 :d
 ?- X = X.
