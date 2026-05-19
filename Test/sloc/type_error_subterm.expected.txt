@@ -2,8 +2,12 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main)
 Hol =<< Hol> Compiling Test.sloc.type_error_subterm ( Test/sloc/type_error_subterm.hol, interpreted )
-*** typechecking-error[8:15-8:15]:
-  ? expected_typ = `nat -> myStr -> o', actual_typ = `string -> myStr -> o'.
-  ? couldn't solve the equation `string' ~ `nat',
-  ? because the types `string' and `nat' are non-unifiable.
+8:15: error: [HolBETA2-TypeError]
+ 8 [1m|[0m
+   [1m|[0m               [1m^[0m
+Couldn't match expected type `nat -> myStr -> o'
+            with actual type `string -> myStr -> o'
+Relevant equation: `string' ~ `nat'
+Reason: the two types are not unifiable.
+
 Hol =<< ppap: :q.hol: openFile: does not exist (No such file or directory)

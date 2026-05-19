@@ -12,6 +12,7 @@ import Control.Monad.Trans.State.Strict
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
+import qualified Z.Doc as Doc
 import Z.Utils
 
 infix 4 +->
@@ -236,25 +237,42 @@ zonkMTV theta = go where
     go (Lam (loc, typ) var h term) = Lam (loc, substMTVars theta typ) var h (go term)
 
 mkTyErr :: NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
-mkTyErr db used_mtvs loc ((actual_typ, expected_typ), typ_error) = case typ_error of
-    KindsAreMismatched (typ1, kin1) (typ2, kin2) -> concat
-        [ "*** typechecking-error[" ++ pprint 0 loc "]:\n"
-        , "  ? expected_typ = `" ++ showMonoType db used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType db used_mtvs actual_typ "\'.\n")
-        , "  ? couldn't solve the equation `" ++ showMonoType db used_mtvs typ1 ("\' ~ `" ++ showMonoType db used_mtvs typ2 "\',\n")
-        , "  ? because the kind of the L.H.S. is `" ++ pprint 0 kin1 ("\' but the kind of the R.H.S. is `" ++ pprint 0 kin2 "\'.")
+mkTyErr db used_mtvs loc ((actual_typ, expected_typ), typ_error) =
+    Doc.renderDoc $ Doc.vcat
+        [ Doc.text (ghcLoc loc ++ ": error: [HolBETA2-TypeError]")
+        , locBlock loc
+        , Doc.text ("Couldn't match expected type `" ++ ty expected_typ ++ "'")
+        , Doc.text ("            with actual type `" ++ ty actual_typ ++ "'")
+        , Doc.text ("Relevant equation: `" ++ ty lhs ++ "' ~ `" ++ ty rhs ++ "'")
+        , Doc.text ("Reason: " ++ reason)
         ]
-    OccursCheckFailed mtv1 typ2 -> concat
-        [ "*** typechecking-error[" ++ pprint 0 loc "]:\n"
-        , "  ? expected_typ = `" ++ showMonoType db used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType db used_mtvs actual_typ "\'.\n")
-        , "  ? couldn't solve the equation `" ++ showMonoType db used_mtvs (TyMTV mtv1) ("\' ~ `" ++ showMonoType db used_mtvs typ2 "\',\n")
-        , "  ? because occurs check failed."
-        ]
-    TypesAreMismatched typ1 typ2 -> concat
-        [ "*** typechecking-error[" ++ pprint 0 loc "]:\n"
-        , "  ? expected_typ = `" ++ showMonoType db used_mtvs expected_typ ("\', actual_typ = `" ++ showMonoType db used_mtvs actual_typ "\'.\n")
-        , "  ? couldn't solve the equation `" ++ showMonoType db used_mtvs typ1 ("\' ~ `" ++ showMonoType db used_mtvs typ2 "\',\n")
-        , "  ? because the types `" ++ showMonoType db used_mtvs typ1 ("\' and `" ++ showMonoType db used_mtvs typ2 "\' are non-unifiable.")
-        ]
+  where
+    ghcLoc :: SLoc -> String
+    ghcLoc (SLoc (row, col) _) = show row ++ ":" ++ show col
+    ty :: MonoType Int -> String
+    ty typ = showMonoType db used_mtvs typ ""
+    locBlock :: SLoc -> Doc.Doc
+    locBlock (SLoc (row, col) _) =
+        Doc.vcat
+            [ mconcat [Doc.text " ", Doc.ptext row, Doc.text " ", Doc.beam '|']
+            , mconcat [Doc.text " ", Doc.text (replicate (length (show row)) ' '), Doc.text " ", Doc.beam '|', Doc.text " ", Doc.text (replicate (max 0 (col - 1)) ' '), Doc.beam '^']
+            ]
+    (lhs, rhs, reason) = case typ_error of
+        KindsAreMismatched (typ1, kin1) (typ2, kin2) ->
+            ( typ1
+            , typ2
+            , "kind mismatch: `" ++ pprint 0 kin1 "' vs `" ++ pprint 0 kin2 "'."
+            )
+        OccursCheckFailed mtv1 typ2 ->
+            ( TyMTV mtv1
+            , typ2
+            , "occurs check failed; `" ++ ty (TyMTV mtv1) ++ "' would contain itself."
+            )
+        TypesAreMismatched typ1 typ2 ->
+            ( typ1
+            , typ2
+            , "the two types are not unifiable."
+            )
 
 inferType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
 inferType db type_env = flip runStateT Map.empty . infer where
@@ -272,7 +290,7 @@ inferType db type_env = flip runStateT Map.empty . infer where
         con -> do
             used_mtvs_0 <- get
             (mtvs, typ) <- case Map.lookup con type_env of
-                Nothing -> lift (throwE ("*** tc-error[" ++ pprint 0 loc ("]:\n  ? the data constructor `" ++ showsPrec 0 con "\' hasn't declared yet.")))
+                Nothing -> lift (throwE (mkUnknownConErr loc con))
                 Just scheme -> instantiateScheme scheme
             return (Con (loc, typ) (con, map TyMTV mtvs), Map.empty)
     infer (App loc term1 term2) = do
@@ -298,6 +316,23 @@ inferType db type_env = flip runStateT Map.empty . infer where
                 mtv <- getNewMTV "A"
                 return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var h term', assumptions)
             Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
+    mkUnknownConErr :: SLoc -> DataConstructor -> ErrMsg
+    mkUnknownConErr loc con =
+        Doc.renderDoc $ Doc.vcat
+            [ Doc.text (ghcLoc loc ++ ": error: [HolBETA2-NotInScope]")
+            , locBlock loc
+            , Doc.text ("Not in scope: data constructor `" ++ showsPrec 0 con "'")
+            , Doc.text "Add a `type' declaration for it, or check the spelling."
+            ]
+      where
+        ghcLoc :: SLoc -> String
+        ghcLoc (SLoc (row, col) _) = show row ++ ":" ++ show col
+        locBlock :: SLoc -> Doc.Doc
+        locBlock (SLoc (row, col) _) =
+            Doc.vcat
+                [ mconcat [Doc.text " ", Doc.ptext row, Doc.text " ", Doc.beam '|']
+                , mconcat [Doc.text " ", Doc.text (replicate (length (show row)) ' '), Doc.text " ", Doc.beam '|', Doc.text " ", Doc.text (replicate (max 0 (col - 1)) ' '), Doc.beam '^']
+                ]
 
 checkType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
 checkType db type_env term expected_typ = do

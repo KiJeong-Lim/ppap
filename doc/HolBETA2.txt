@@ -662,6 +662,21 @@ Bare locations (without a module prefix) are reserved for diagnostics
 that genuinely have no module context (e.g., REPL command-line parse
 errors, which originate from stdin rather than a file).
 
+Type-checking diagnostics are rendered through `Z.Doc` (not
+`Z.Text.Doc`) and use a GHC-like layout:
+
+  <line>:<col>: error: [HolBETA2-TypeError]
+   <line> |
+          |    ^
+  Couldn't match expected type `<expected>'
+              with actual type `<actual>'
+  Relevant equation: `<lhs>' ~ `<rhs>'
+  Reason: <why unification failed>
+
+The type printer still folds user abbreviations through `NotationDB`,
+so the improved layout does not regress the abbreviation-aware messages
+from §2.7.1 (T) of BETA1.
+
 
 3.3 Inheritance of BETA1 Debugger Semantics
 --------------------------------------------------------------------------------
@@ -722,7 +737,9 @@ place; no `Hol.BETA2` module imports a `Hol.BETA1` module.
     TypeChecker.hs
       copied; receives SLocs on every inferred
       sub-term and uses them in error attribution
-      (§2.6.3).
+      (§2.6.3). Type errors are rendered through
+      `Z.Doc` with a GHC-style expected/actual
+      layout.
     HOPU.hs
       copied; passes SLoc through disagreement
       reports (§2.6.3).
