@@ -586,16 +586,30 @@ runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack
                 Nothing -> labeling0
         return ((ctx { _CurrentLabeling = labeling1 }, mkCell facts hyps (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
 runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
-    | Left "ill" == evaluateA (rewrite NF rhs)
+    | Left "ill" == rhsValue
     = return stack
     | LVar x <- rewrite NF lhs
-    , Right v <- evaluateA (rewrite NF rhs)
+    , Right v <- rhsValue
     = let theta = VarBinding (Map.singleton x (NCon (DC (DC_NatL v)))) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
-    | Right v <- evaluateA (rewrite NF rhs)
-    , rewrite NF lhs == NCon (DC (DC_NatL v))
-    = return ((ctx, cells) : stack)
+    | Right v <- rhsValue
+    , Right lhs_v <- lhsValue
+    = if lhs_v == v then return ((ctx, cells) : stack) else return stack
+    | LVar x <- lhs'
+    , Just rhs_s <- simplifyArithmetic rhs'
+    , canBindIs x rhs_s
+    = let theta = VarBinding (Map.singleton x rhs_s) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
     | otherwise
-    = return ((ctx { _LeftConstraints = EvalutionConstraint (rewrite NF lhs) (rewrite NF rhs) : _LeftConstraints ctx }, cells) : stack)
+    = return ((ctx { _LeftConstraints = EvalutionConstraint lhs' rhs' : _LeftConstraints ctx }, cells) : stack)
+    where
+        lhs' = rewrite NF lhs
+        rhs' = rewrite NF rhs
+        lhsValue = evaluateA lhs'
+        rhsValue = evaluateA rhs'
+        canBindIs x t =
+            x `Set.notMember` getLVars t
+                && let targetScope = lookupLabel x (_CurrentLabeling ctx)
+                       (badCons, badVars) = scopeEscaping (_CurrentLabeling ctx) targetScope x t
+                   in null badCons && null badVars
 runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack
     = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
 
@@ -654,6 +668,48 @@ evaluateB (NApp (NApp (NCon (DC DC_gt)) t1) t2) = do
     v2 <- evaluateA t2
     return (v1 > v2)
 evaluateB _ = Left "non"
+
+simplifyArithmetic :: TermNode -> Maybe TermNode
+simplifyArithmetic t = do
+    (sawArithmetic, poly) <- Just (polyOf (rewrite NF t))
+    if sawArithmetic then renderPoly (combinePoly poly) else Nothing
+  where
+    polyOf :: TermNode -> (Bool, [([TermNode], Integer)])
+    polyOf (NCon (DC (DC_NatL n))) = (True, [([], n)])
+    polyOf (NApp (NApp (NCon (DC DC_plus)) t1) t2) =
+        let (saw1, p1) = polyOf t1
+            (saw2, p2) = polyOf t2
+        in (saw1 || saw2 || True, p1 ++ p2)
+    polyOf (NApp (NApp (NCon (DC DC_mul)) t1) t2) =
+        let (saw1, p1) = polyOf t1
+            (saw2, p2) = polyOf t2
+        in (saw1 || saw2 || True, multiplyPoly p1 p2)
+    polyOf atom = (False, [([atom], 1)])
+    multiplyPoly p1 p2 =
+        [ (factors1 ++ factors2, coeff1 * coeff2)
+        | (factors1, coeff1) <- p1
+        , (factors2, coeff2) <- p2
+        ]
+    combinePoly = foldl insertTerm [] where
+        insertTerm [] term = [term]
+        insertTerm ((factors, coeff) : rest) term@(factors', coeff')
+            | factors == factors' =
+                let coeff'' = coeff + coeff'
+                in if coeff'' == 0 then rest else (factors, coeff'') : rest
+            | otherwise = (factors, coeff) : insertTerm rest term
+    renderPoly poly0 = case filter ((/= 0) . snd) poly0 of
+        [] -> Just (mkNCon (DC_NatL 0))
+        terms
+            | all ((>= 0) . snd) terms -> Just (foldl1 add (map renderTerm terms))
+            | otherwise -> Nothing
+    renderTerm (factors, coeff) = case (coeff, factors) of
+        (0, _) -> mkNCon (DC_NatL 0)
+        (1, []) -> mkNCon (DC_NatL 1)
+        (1, factor : rest) -> foldl mul factor rest
+        (_, []) -> mkNCon (DC_NatL coeff)
+        (_, _) -> foldl mul (mkNCon (DC_NatL coeff)) factors
+    add t1 t2 = mkNApp (mkNApp (mkNCon DC_plus) t1) t2
+    mul t1 t2 = mkNApp (mkNApp (mkNCon DC_mul) t1) t2
 
 runDebugger :: TermNode -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
 runDebugger loc_str ctx facts hyps level call_id cells stack = do

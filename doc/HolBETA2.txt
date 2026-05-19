@@ -25,6 +25,16 @@ cases (`Test/debug/*.hol`), whose expected sidecars are updated to include
 the new SLoc line of §3.1 (see §4.4.1). The Example/ acceptance set
 (einstein, fibonacci, lbeta) inherits the same obligation.
 
+Inherited arithmetic clarification (2026-05-19). BETA2 keeps BETA1's
+`is` symbolic-calculus semantics: before suspending an
+`EvaluationConstraint`, the runtime normalises the `+`/`*` arithmetic
+fragment. Thus `20 * 20` is treated as `400`, `6765 is 20 * 20` is a
+contradictory closed equality and the branch fails, and a query such as
+`Y is C * (x + 1) * (x + 2)` can bind `Y` to
+`C * x * x + 3 * C * x + 2 * C` when the contextual scope check allows
+it. Non-ground arithmetic constraints outside this fragment may still
+remain as residual answers for `presburger`/debugging workflows.
+
 
 ================================================================================
 Chapter 0. Overview

@@ -505,6 +505,34 @@ of `ArithmeticConstraint` (only when both sides of an equality fully
 reduce to closed naturals). BETA1 keeps this collection but adds a way
 to *query* it.
 
+`is` also performs a small symbolic-calculus step before deciding
+whether to suspend. The arithmetic fragment currently normalised is
+natural-number addition and multiplication. The normaliser distributes
+`*` over `+`, combines equal monomials by adding their natural
+coefficients, and renders the result back as a Hol term. For example,
+
+  `C * (x + 1) * (x + 2)`
+
+normalises to
+
+  `C * x * x + 3 * C * x + 2 * C`.
+
+If the right-hand side reduces to a closed natural, then:
+
+  - `X is e` binds `X` to that natural when `X` is flexible;
+  - `n is e` succeeds exactly when the evaluated left-hand side is the
+  same natural;
+  - `n is e` fails immediately when both sides are closed naturals but
+  unequal (equivalently, the branch has produced a contradictory
+  arithmetic equality such as `6765 = 400`);
+  - only genuinely non-ground cases remain as `EvaluationConstraint`s.
+
+This preserves residual constraints containing flexible variables while
+preventing closed false arithmetic from being reported as an answer.
+If the right-hand side is a non-ground polynomial and the left-hand side
+is a flexible variable whose scope can see every variable/constant in
+the normal form, `is` binds the left-hand side to that normal form.
+
 2.3.2 The special form
 
 Surface syntax (see the §1.4 grammar):

@@ -365,6 +365,7 @@ runREPL program notationDB expansionDB = do
                     | (v, t) <- theAnswerSubst
                     ]
                 askToRunMore
+            | hasGroundContradiction = return True
             | otherwise = do
                 printDisagreements
                 askToRunMore
@@ -443,6 +444,19 @@ runREPL program notationDB expansionDB = do
                 isShort = Set.null (getLVars query)
                 isClear :: Bool
                 isClear = List.null (_LeftConstraints final_ctx)
+                hasGroundContradiction :: Bool
+                hasGroundContradiction = any contradicts (_LeftConstraints final_ctx)
+                contradicts :: Constraint -> Bool
+                contradicts (ArithmeticConstraint b) = case evaluateB b of
+                    Right False -> True
+                    Left "ill" -> True
+                    _ -> False
+                contradicts (EvalutionConstraint lhs rhs) = case (evaluateA lhs, evaluateA rhs) of
+                    (Right x, Right y) -> x /= y
+                    (Left "ill", _) -> True
+                    (_, Left "ill") -> True
+                    _ -> False
+                contradicts _ = False
                 askToRunMore :: IO RunMore
                 askToRunMore = do
                     str <- promptify "Find more solutions? [Y/n] "

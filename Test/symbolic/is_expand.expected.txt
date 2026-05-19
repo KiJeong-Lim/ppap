@@ -1,0 +1,7 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main)
+Hol =<< Hol> Compiling Test.symbolic.is_expand ( Test/symbolic/is_expand.hol, interpreted )
+Test.symbolic.is_expand> Ok, one module loaded.
+Test.symbolic.is_expand> Test.symbolic.is_expand> yes.
+Test.symbolic.is_expand> Hol >>= quit

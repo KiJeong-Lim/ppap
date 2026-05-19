@@ -1,0 +1,5 @@
+type fib_memo (nat -> ((nat -> nat -> o) -> o) -> o).
+type main (nat -> o).
+
+fib_memo N G :- pi memo\ pi loop\ memo 0 0 => memo 1 1 => (pi F1\ pi F2\ pi F3\ pi C\ pi C1\ (loop C F1 F2 :- (C > N, G memo); (C =< N, C1 is C + 1, F3 is F1 + F2, (memo C F3 => loop C1 F2 F3)))) => loop 2 0 1.
+main N :- fib_memo 20 (fib\ sigma M\ fib N M, M is N * N).
