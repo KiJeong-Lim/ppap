@@ -1,0 +1,7 @@
+% Section 2.2: main file that triggers the cycle by importing one end
+% of the cycle.  Loading must fail with a `module-error` before any
+% body is desugared.
+import test.module.cycle_a.
+
+type top (nat -> o).
+top 0.

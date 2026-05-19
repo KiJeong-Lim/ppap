@@ -1,7 +1,0 @@
-ppap> Copyright (c) 2021-2026, Kijeong Lim
-ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling Test.presburger.consistency ( Test/presburger/consistency.hol, interpreted )
-Test.presburger.consistency> Ok, one module loaded.
-Test.presburger.consistency> Test.presburger.consistency> no.
-Test.presburger.consistency> Hol >>= quit

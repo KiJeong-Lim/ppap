@@ -1,3 +1,0 @@
-Hol --test
-Test/module/inconsistent_abbrev.hol
-:q

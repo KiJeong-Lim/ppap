@@ -1,4 +1,0 @@
-import Test.module.cycle_a.
-
-type cb (nat -> o).
-cb 2.

@@ -1,8 +1,0 @@
-Hol --test
-Test/multi_head/simple.hol
-?- foo 3.
-?- bar 3.
-?- foo 4.
-?- bar 4.
-:q
-

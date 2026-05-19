@@ -1,9 +1,0 @@
-ppap> Copyright (c) 2021-2026, Kijeong Lim
-ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling Test.notation.override ( Test/notation/override.hol, interpreted )
-Test.notation.override> Ok, one module loaded.
-Test.notation.override> Test.notation.override> The answer substitution is:
-Test.notation.override> Y := [1, 2, 3].
-Test.notation.override> Find more solutions? [Y/n] Test.notation.override> Find more solutions? [Y/n] Test.notation.override> yes.
-Test.notation.override> Hol >>= quit

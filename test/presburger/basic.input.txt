@@ -1,0 +1,7 @@
+Hol --test
+test/presburger/basic.hol
+?- X is 7, presburger "X > 5".
+n
+?- X is 3, presburger "X > 5".
+:q
+

@@ -1,7 +1,0 @@
-ppap> Copyright (c) 2021-2026, Kijeong Lim
-ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling Test.multi_head.local_imply ( Test/multi_head/local_imply.hol, interpreted )
-Test.multi_head.local_imply> Ok, one module loaded.
-Test.multi_head.local_imply> Test.multi_head.local_imply> yes.
-Test.multi_head.local_imply> Hol >>= quit

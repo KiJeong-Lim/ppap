@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.notation.typing_error_fold ( test/notation/typing_error_fold.hol, interpreted )
+10:3: error: [HolBETA2-TypeError]
+    |     
+ 10 | p 7.
+    |   ^ 
+Couldn't match expected type `nat -> o'
+            with actual type `pp -> o'
+Relevant equation: `pp' ~ `nat'
+Reason: the two types are not unifiable.
+
+Hol =<< Hol >>= quit

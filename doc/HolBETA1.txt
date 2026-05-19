@@ -12,9 +12,9 @@ This document specifies the syntax and semantics of `Hol BETA1`, a dialect of λ
 
 Compatibility minimum: the test scripts
 
-    einstein.sh   ( Example/einstein.hol )
-    fi.sh         ( Example/fibonacci.hol )
-    lbeta.sh      ( Example/test.hol )
+    einstein.sh   ( example/einstein.hol )
+    fi.sh         ( example/fibonacci.hol )
+    lbeta.sh      ( example/test.hol )
 
 must continue to pass with the same answer set.
 
@@ -229,7 +229,7 @@ Implementation status (2026-05-17):
   - The lexer reserves all four keywords (`infixl`/`infixr`/`infix`/`prefix`) plus `abbrev`/`notation` (§1.6). `presburger` remains intentionally non-reserved (§2.3.3).
   - The parser accepts the four fixity-declaration forms above and produces a `RFixityDecl SLoc FixityForm SmallId Integer` constructor on `DeclRep`.
   - **Semantics are wired (2026-05-17)**: `Desugarer.collectNotation` folds every `RFixityDecl` into the per-program `NotationDB` seeded by `Notation.initial`. `desugarProgram` returns the DB alongside the `Program`; `Main.runREPL` threads it into `RuntimeEnv._NotationDB`; `Notation.constructViewerWithDB` (via `Debugger.prettyTerm`) consumes it, so answer substitutions, `:assign`/`:show` output, and residual constraints all honour user-declared fixity. "Last declared wins" follows from `Map.insert` semantics.
-  - **Symbolic operator override is wired (2026-05-17)**: the parser now accepts the built-in symbolic operators (`+`, `-`, `*`, `/`, `=`, `=<`, `<`, `>=`, `>`, `::`) in the `<op>` slot of every fixity declaration form, via the `$SymOp` helper non-terminal. Because all of these names are pre-seeded in `Notation.initial`, a user re-declaration (e.g. `infixl + 8.`) simply overwrites the seed under "last declared wins" and the change is immediately visible in the viewer. Regression guard: `Test/notation/sym_operator.hol` re-precedences `+` above `*` and confirms `(1 + 2) * 3` prints as `1 + 2 * 3` (parens dropped because the inner `+` now binds tighter than the outer `*`).
+  - **Symbolic operator override is wired (2026-05-17)**: the parser now accepts the built-in symbolic operators (`+`, `-`, `*`, `/`, `=`, `=<`, `<`, `>=`, `>`, `::`) in the `<op>` slot of every fixity declaration form, via the `$SymOp` helper non-terminal. Because all of these names are pre-seeded in `Notation.initial`, a user re-declaration (e.g. `infixl + 8.`) simply overwrites the seed under "last declared wins" and the change is immediately visible in the viewer. Regression guard: `test/notation/sym_operator.hol` re-precedences `+` above `*` and confirms `(1 + 2) * 3` prints as `1 + 2 * 3` (parens dropped because the inner `+` now binds tighter than the outer `*`).
 
 The built-in fixity table (the BETA1 defaults, user-redefinable):
 
@@ -371,7 +371,7 @@ Implementation status (2026-05-17):
   whenever its bound name would shadow a free variable of the
   substituted-in argument. `TypeRep` has no binders, so `substTypeRep`
   is trivially capture-free. Regression guard:
-  `Test/notation/capture.hol` (a `lift F := Y\ cnst (F Y)` body called
+  `test/notation/capture.hol` (a `lift F := Y\ cnst (F Y)` body called
   with `(Z\ Y)` where outer `Y` is a free fact variable).
   - **Display-direction fold (§2.7) — fully wired (2026-05-18)**:
   Two pieces seed `NotationDB._entries` from the program's
@@ -406,10 +406,10 @@ Implementation status (2026-05-17):
   In every case the kernel `TermNode` / `MonoType` is *never*
   rewritten — the fold is purely a printer concern, satisfying
   §1.6's core invariant. Regression guards:
-  `Test/notation/typing_fold.hol` (debugger `_typing` prints
-  `X : pp`), `Test/notation/notation.hol` (the answer prints
+  `test/notation/typing_fold.hol` (debugger `_typing` prints
+  `X : pp`), `test/notation/notation.hol` (the answer prints
   `Y := duplo 7.` instead of `Y := pair 7 7.`), and
-  `Test/notation/typing_error_fold.hol` (type-checker error
+  `test/notation/typing_error_fold.hol` (type-checker error
   prints `pp -> o` / `pp ~ nat` instead of the kernel form).
 
 
@@ -1268,7 +1268,7 @@ The `NotationDB` is *not* re-dumped each step (it would be noise);
 Environment notion: "the main file". The Hol REPL is launched with a
 file path:
 
-    Hol =<< Example/einstein.hol
+    Hol =<< example/einstein.hol
 
 This file is the *main file*. The environment in effect at any
 breakpoint is the environment accumulated by elaborating the main
@@ -1757,12 +1757,12 @@ key of `NameCache._fromDisplay`); it is never a lambda-binder
 display name. Lambda binders are not addressable by `:assign`.
 
 
-4.6 Test Compatibility and the `Test/` Directory
+4.6 Test Compatibility and the `test/` Directory
 --------------------------------------------------------------------------------
 
 4.6.1 ALPHA2 parity
 
-  - For every file in `Example/*.hol` the answer set produced by
+  - For every file in `example/*.hol` the answer set produced by
   BETA1 must be identical to the answer set produced by ALPHA2.
   Differences in pretty-printed form are tolerated only insofar as
   they reflect the user's notation/abbreviation declarations
@@ -1772,11 +1772,11 @@ display name. Lambda binders are not addressable by `:assign`.
 
 4.6.2 BETA1-only tests
 
-A new top-level directory `Test/` (sibling to `Example/`) holds
+A new top-level directory `test/` (sibling to `example/`) holds
 test programs that exercise BETA1's additions and are not expected
 to run under ALPHA2.
 
-  Test/
+  test/
     presburger/
       basic.hol           -- `?- X is 7, presburger "X > 5".` (yes) +
                             same with `X is 3` (no): closed-formula
@@ -1868,7 +1868,7 @@ to run under ALPHA2.
                             prints the mismatch as `pp -> o` / `pp ~ nat`,
                             confirming `TypeChecker.showMonoType` /
                             `mkTyErr` thread the NotationDB
-    smoke.sh              -- runs every `Test/**/*.hol` through
+    smoke.sh              -- runs every `test/**/*.hol` through
                             BETA1 with a scripted REPL transcript
                             alongside.
 
@@ -1877,7 +1877,7 @@ to feed on stdin (starting from the top-level `ppap` menu, i.e. the
 first line is `Hol` and the second line is the `.hol` path), and
 `*.expected.txt` is the captured stdout+stderr. The runner diffs
 byte-for-byte; any mismatch fails the suite. Re-record after an
-intentional change with `./Test/smoke.sh --update`.
+intentional change with `./test/smoke.sh --update`.
 
 Status (2026-05-18): twenty-two cases authored — six presburger, seven
 debug, one kind, eight notation. `solver_sanity.hol`, `residual.hol`,
@@ -1917,9 +1917,9 @@ interval, but choosing a canonical (e.g. tightest) representative
 would require either a normalisation pass or a richer entailment
 heuristic — punted to a future round.
 
-4.6.3 No changes to `Example/`
+4.6.3 No changes to `example/`
 
-The existing `Example/*.hol` files are *not* touched. ALPHA2 keeps
+The existing `example/*.hol` files are *not* touched. ALPHA2 keeps
 them as its acceptance set; BETA1 inherits that obligation through
 the parity rule of §4.6.1.
 
@@ -1946,9 +1946,9 @@ changes are intended; the user applies them manually.
       (`HOL_VERSION=BETA1`). Useful if the user wants to keep
       one binary, accepting one branch at startup.
 
-  (3) Add a `test-suite` stanza for the `Test/` tree of §4.6.2, if
+  (3) Add a `test-suite` stanza for the `test/` tree of §4.6.2, if
       the test runner is to be cabal-driven. Otherwise the bash
-      script `Test/smoke.sh` runs independently.
+      script `test/smoke.sh` runs independently.
 
 The user retains the choice.
 

@@ -1,0 +1,16 @@
+Hol --test
+test/multi_head/type_unification.hol
+?- p X.
+
+n
+?- q X.
+
+n
+?- r X.
+
+n
+?- p 7.
+?- q 8.
+?- r 6.
+:q
+

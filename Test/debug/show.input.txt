@@ -1,9 +1,0 @@
-Hol --test
-Test/debug/show.hol
-:d
-?- X is 3.
-:show X
-:show X
-n
-:q
-

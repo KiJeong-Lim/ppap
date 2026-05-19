@@ -1,0 +1,50 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.debug.assign_t4 ( test/debug/assign_t4.hol, interpreted )
+test.debug.assign_t4> Ok, one module loaded.
+test.debug.assign_t4> test.debug.assign_t4> Debugging mode on.
+test.debug.assign_t4> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- X > 5 ] # call_id = 4
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 4
+        , _sloc = `[test.debug.assign_t4]:1:4-1:8'
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_t4> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = []
+        , _constraints = 
+            [ X > 5
+            ]
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 5
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_t4> Press the enter key to go to next state: test.debug.assign_t4> error: [HolBETA2-AssignError]
+inconsistent with arithmetic constraints for 'X'
+
+test.debug.assign_t4> The remaining constraints are:
+test.debug.assign_t4> X > 5
+test.debug.assign_t4> The binding is:
+test.debug.assign_t4> Find more solutions? [Y/n] test.debug.assign_t4> yes.
+test.debug.assign_t4> Hol >>= quit

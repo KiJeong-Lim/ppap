@@ -1,0 +1,7 @@
+Hol --test
+test/notation/abbrev.hol
+?- p Y.
+
+n
+:q
+

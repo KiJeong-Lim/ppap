@@ -1,0 +1,5 @@
+Hol --test
+test/presburger/consistency.hol
+?- X > 5, X < 3.
+:q
+

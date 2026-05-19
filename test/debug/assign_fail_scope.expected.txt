@@ -1,0 +1,75 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.debug.assign_fail_scope ( test/debug/assign_fail_scope.hol, interpreted )
+test.debug.assign_fail_scope> Ok, one module loaded.
+test.debug.assign_fail_scope> test.debug.assign_fail_scope> Debugging mode on.
+test.debug.assign_fail_scope> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- X = X ] # call_id = 7
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            ]
+        , _thread_id = 7
+        , _sloc = `[test.debug.assign_fail_scope]:1:4-1:8'
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_fail_scope> Press the enter key to go to next state: test.debug.assign_fail_scope> error: [HolBETA2-AssignError]
+scope violation for 'X' — out-of-scope: ?TV_6
+
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 8
+        ]
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := ?V_12
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            , ?V_12 : ?TV_9
+            ]
+        , _thread_id = 8
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_fail_scope> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := ?V_12
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            , ?V_12 : ?TV_9
+            ]
+        , _thread_id = 8
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_fail_scope> Press the enter key to go to next state: test.debug.assign_fail_scope> The answer substitution is:
+test.debug.assign_fail_scope> X := ?V_12.
+test.debug.assign_fail_scope> Find more solutions? [Y/n] test.debug.assign_fail_scope> yes.
+test.debug.assign_fail_scope> Hol >>= quit

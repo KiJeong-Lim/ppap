@@ -1,0 +1,10 @@
+Hol --test
+test/presburger/entailment_drop.hol
+?- X > 5, X > 3.
+n
+?- X > 5, X > 5.
+n
+?- X > 5, X < 10, X > 6.
+n
+:q
+

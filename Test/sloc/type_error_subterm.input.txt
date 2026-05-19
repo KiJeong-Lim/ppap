@@ -1,4 +1,0 @@
-Hol --test
-Test/sloc/type_error_subterm.hol
-:q
-

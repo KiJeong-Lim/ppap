@@ -1,3 +1,0 @@
-Hol --test
-Test/module/cycle.hol
-:q

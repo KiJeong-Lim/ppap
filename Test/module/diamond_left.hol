@@ -1,5 +1,0 @@
-% Left arm of the diamond.
-import Test.module.diamond_bot.
-
-type d_left (nat -> o).
-d_left X :- d_bot X.

@@ -1,6 +1,0 @@
-module Example.Nat where
-
-from Base import Arith.Nat
-
-lessThan3 : i:Nat -> Prop
-lessThan3 N :- N < 3

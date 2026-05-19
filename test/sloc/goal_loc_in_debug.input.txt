@@ -1,0 +1,10 @@
+Hol --test
+test/sloc/goal_loc_in_debug.hol
+:d
+?- p X.
+
+
+
+n
+:q
+

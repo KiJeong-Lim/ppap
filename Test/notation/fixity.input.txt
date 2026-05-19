@@ -1,7 +1,0 @@
-Hol --test
-Test/notation/fixity.hol
-?- p Y.
-
-n
-:q
-

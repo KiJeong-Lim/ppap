@@ -1,7 +1,0 @@
-Hol --test
-Test/notation/override.hol
-?- mylist Y.
-
-n
-:q
-

@@ -1,0 +1,6 @@
+Hol --test
+test/module/diamond_import.hol
+?- d_top X.
+Y
+n
+:q

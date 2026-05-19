@@ -1,0 +1,7 @@
+Hol --test
+test/module/simple_import.hol
+?- drop_one X.
+Y
+Y
+n
+:q

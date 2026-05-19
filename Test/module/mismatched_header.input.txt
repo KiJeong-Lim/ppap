@@ -1,3 +1,0 @@
-Hol --test
-Test/module/mismatched_header.hol
-:q

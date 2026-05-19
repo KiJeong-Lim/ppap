@@ -1,4 +1,0 @@
-Hol --test
-Test/notation/typing_error_fold.hol
-:q
-

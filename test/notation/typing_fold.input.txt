@@ -1,0 +1,10 @@
+Hol --test
+test/notation/typing_fold.hol
+:d
+?- p X.
+
+
+
+n
+:q
+

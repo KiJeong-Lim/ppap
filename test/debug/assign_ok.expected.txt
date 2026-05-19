@@ -1,0 +1,71 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.debug.assign_ok ( test/debug/assign_ok.hol, interpreted )
+test.debug.assign_ok> Ok, one module loaded.
+test.debug.assign_ok> test.debug.assign_ok> Debugging mode on.
+test.debug.assign_ok> --------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- X = X ] # call_id = 7
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            ]
+        , _thread_id = 7
+        , _sloc = `[test.debug.assign_ok]:1:4-1:8'
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_ok> Press the enter key to go to next state: test.debug.assign_ok> *** :assign: X := 7.
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 8
+        ]
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := 7
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            ]
+        , _thread_id = 8
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_ok> Press the enter key to go to next state: --------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ ?TV_6 := ?TV_11
+            , X := 7
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : ?t4
+            , ?V_10 : ?TV_9
+            ]
+        , _thread_id = 8
+        , _sloc = (none)
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_ok> Press the enter key to go to next state: test.debug.assign_ok> The answer substitution is:
+test.debug.assign_ok> X := 7.
+test.debug.assign_ok> Find more solutions? [Y/n] test.debug.assign_ok> yes.
+test.debug.assign_ok> Hol >>= quit

@@ -1,0 +1,8 @@
+Hol --test
+test/fibonacci/fib_square.hol
+?- main N.
+y
+y
+y
+:q
+

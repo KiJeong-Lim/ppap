@@ -1,0 +1,13 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.fibonacci.fib_square ( test/fibonacci/fib_square.hol, interpreted )
+test.fibonacci.fib_square> Ok, one module loaded.
+test.fibonacci.fib_square> test.fibonacci.fib_square> The answer substitution is:
+test.fibonacci.fib_square> N := 12.
+test.fibonacci.fib_square> Find more solutions? [Y/n] test.fibonacci.fib_square> The answer substitution is:
+test.fibonacci.fib_square> N := 1.
+test.fibonacci.fib_square> Find more solutions? [Y/n] test.fibonacci.fib_square> The answer substitution is:
+test.fibonacci.fib_square> N := 0.
+test.fibonacci.fib_square> Find more solutions? [Y/n] test.fibonacci.fib_square> no.
+test.fibonacci.fib_square> Hol >>= quit

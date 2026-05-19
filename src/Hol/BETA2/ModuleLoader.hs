@@ -69,7 +69,7 @@ moduleErr :: DiagnosticMode -> SourceLines -> SLoc -> String -> ErrMsg
 moduleErr mode sourceLines loc msg =
     diagnosticWith mode "HolBETA2-ModuleError" sourceLines loc [Z.Doc.text msg]
 
--- Turn `Example/foo/bar.hol` into `Example.foo.bar`.  We strip the trailing
+-- Turn `example/foo/bar.hol` into `example.foo.bar`.  We strip the trailing
 -- `.hol`, replace `/` with `.`, and use the path *relative to the project
 -- root* (i.e., the working directory at REPL launch) so that diamonds
 -- through different relative paths still collapse onto one module name.

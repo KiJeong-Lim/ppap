@@ -1,6 +1,0 @@
-Hol --test
-Test/presburger/residual.hol
-?- X > 5.
-n
-:q
-

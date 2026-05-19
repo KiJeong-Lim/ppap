@@ -1,0 +1,5 @@
+Hol --test
+test/symbolic/is_expand.hol
+?- sigma C\ pi x\ sigma Y\ Y is C * (x + 1) * (x + 2), Y = C * x * x + 3 * C * x + 2 * C.
+:q
+

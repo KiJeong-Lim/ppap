@@ -1,0 +1,7 @@
+Hol --test
+test/module/transitive_import.hol
+?- hit X.
+Y
+Y
+n
+:q

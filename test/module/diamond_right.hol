@@ -1,0 +1,5 @@
+% Right arm of the diamond.
+import test.module.diamond_bot.
+
+type d_right (nat -> o).
+d_right X :- d_bot X.

@@ -1,0 +1,7 @@
+Hol --test
+test/notation/notation.hol
+?- q Y.
+
+n
+:q
+

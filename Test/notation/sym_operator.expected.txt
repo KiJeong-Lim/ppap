@@ -1,9 +1,0 @@
-ppap> Copyright (c) 2021-2026, Kijeong Lim
-ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling Test.notation.sym_operator ( Test/notation/sym_operator.hol, interpreted )
-Test.notation.sym_operator> Ok, one module loaded.
-Test.notation.sym_operator> Test.notation.sym_operator> The answer substitution is:
-Test.notation.sym_operator> Y := 1 + 2 * 3.
-Test.notation.sym_operator> Find more solutions? [Y/n] Test.notation.sym_operator> Find more solutions? [Y/n] Test.notation.sym_operator> yes.
-Test.notation.sym_operator> Hol >>= quit

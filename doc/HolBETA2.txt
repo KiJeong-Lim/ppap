@@ -18,11 +18,11 @@ BETA1 working and additionally provides:
   (C) Multi-head clauses `h_1 & ... & h_n :- body.` that desugar to `n`
   independent clauses sharing the body (Appendix B [1] of BETA1).
 
-Compatibility minimum: every `Test/*.hol` smoke case from BETA1 (twenty-two
+Compatibility minimum: every `test/*.hol` smoke case from BETA1 (twenty-two
 cases as of 2026-05-18) must continue to pass with byte-identical output
 after BETA2's additions are wired, with the sole exception of debug-mode
-cases (`Test/debug/*.hol`), whose expected sidecars are updated to include
-the new SLoc line of §3.1 (see §4.4.1). The Example/ acceptance set
+cases (`test/debug/*.hol`), whose expected sidecars are updated to include
+the new SLoc line of §3.1 (see §4.4.1). The example/ acceptance set
 (einstein, fibonacci, lbeta) inherits the same obligation.
 
 Inherited arithmetic clarification (2026-05-19). BETA2 keeps BETA1's
@@ -99,7 +99,7 @@ tie-breaker for design decisions.
 Inherited verbatim from §0.3 of BETA1. In addition:
 
   - `M`, `N`     : module names (dotted identifier paths, e.g.
-  `Stdlib.list`, `Test.module.util`)
+  `Stdlib.list`, `test.module.util`)
   - `μ`          : a single module's *exported environment*
   - `ℒ`          : a multiset of import edges (used during loading)
 
@@ -118,7 +118,7 @@ words and one new token class for dotted identifiers.
   - reserved words (kept): everything from BETA1 §1.1, plus `presburger`
   still intentionally non-reserved (§2.3.3).
   - new token         : `<qid>`, a dotted identifier of two or more
-  segments (`foo.bar`, `Test.module.util`), each segment a BETA1
+  segments (`foo.bar`, `test.module.util`), each segment a BETA1
   identifier.
 
 A module name is a `'.'`-separated sequence of identifiers:
@@ -127,7 +127,7 @@ A module name is a `'.'`-separated sequence of identifiers:
   ident       ::= letter ( letter | digit | '_' )*
 
 The first character of each segment is any ASCII letter (upper or
-lower case), so that path-derived names such as `Example.foo.bar`
+lower case), so that path-derived names such as `example.foo.bar`
 (§2.1) round-trip through the surface unchanged. The lexer emits
 `<id>` when the name has a single segment and `<qid>` when it has
 two or more — both forms are accepted in module/import positions.
@@ -138,7 +138,7 @@ Module names do not appear in expression position; they appear only inside
 Lexer caveat. Because `<qid>` is matched greedily by the lexer, a
 two-fact sequence written on a single line with no whitespace
 (`foo.bar.`) would be misread as a single `<qid>` followed by `.`.
-Programs in `Test/**.hol` and `Example/**.hol` avoid this corner;
+Programs in `test/**.hol` and `example/**.hol` avoid this corner;
 authors are advised to place declarations on separate lines or to
 insert whitespace around a terminating period if they wish to keep a
 single-line layout.
@@ -305,8 +305,8 @@ is derived as follows.
   (a) If the file `<path>.hol` opens with `module N.`, then the module
   name is exactly `N`. (The compiler then checks that `N` matches
   the file path; see §1.2.)
-  (b) Otherwise, `<path>.hol` (e.g. `Example/foo/bar.hol`) becomes
-  `Example.foo.bar` — `/` replaced by `.`, the trailing `.hol`
+  (b) Otherwise, `<path>.hol` (e.g. `example/foo/bar.hol`) becomes
+  `example.foo.bar` — `/` replaced by `.`, the trailing `.hol`
   stripped, no case change.
 
 Lookup direction. An import `import M.` issued from a file at
@@ -927,18 +927,18 @@ arithmetic install pass — which are not hot.
 
 4.4.1 BETA1 parity
 
-Every test case under `Test/` (twenty-two cases as of BETA1's close-
+Every test case under `test/` (twenty-two cases as of BETA1's close-
 out) must continue to pass with byte-identical output. BETA2's new
 debug-output line (the SLoc, §3.1) is *not* emitted on BETA1 test
 inputs that do not enable debug mode. For the debug cases
-(`Test/debug/*.hol`), the expected output is updated to include the
+(`test/debug/*.hol`), the expected output is updated to include the
 new SLoc line.
 
 4.4.2 BETA2-only tests
 
-A new sub-tree of `Test/` exercises BETA2's additions.
+A new sub-tree of `test/` exercises BETA2's additions.
 
-  Test/
+  test/
     module/
       simple_import.hol
         main file imports one module;
@@ -968,7 +968,7 @@ A new sub-tree of `Test/` exercises BETA2's additions.
         Expected: §2.4 (C5) error.
       explicit_header.hol
         the main file opens with
-        `module Test.module.explicit_header.`
+        `module test.module.explicit_header.`
         matching its file path.
         Loads cleanly.
       mismatched_header.hol
@@ -1005,7 +1005,7 @@ A new sub-tree of `Test/` exercises BETA2's additions.
 
 Each `.hol` file has the same sidecar pair (`.input.txt`,
 `.expected.txt`) as BETA1's existing tests. The runner reuses
-`Test/smoke.sh` from BETA1 directly; no script change.
+`test/smoke.sh` from BETA1 directly; no script change.
 
 Initial status: not yet authored; this section describes the target.
 

@@ -1,0 +1,10 @@
+Hol --test
+test/debug/assign_fail_scope.hol
+:d
+?- X = X.
+:assign ?X := [].
+
+
+n
+:q
+

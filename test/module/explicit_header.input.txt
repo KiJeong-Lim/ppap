@@ -1,0 +1,5 @@
+Hol --test
+test/module/explicit_header.hol
+?- marker X.
+n
+:q

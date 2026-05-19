@@ -1,0 +1,7 @@
+% Section 2.2: a back-edge (`cycle_a -> cycle_b -> cycle_a`) must be
+% rejected by the loader.  The error attributes to the import that
+% closed the cycle (`cycle_b`'s `import test.module.cycle_a.`).
+import test.module.cycle_b.
+
+type ca (nat -> o).
+ca 1.

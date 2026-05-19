@@ -1,0 +1,10 @@
+Hol --test
+test/multi_head/cut_in_body.hol
+?- p Z.
+
+n
+?- q Z.
+
+n
+:q
+

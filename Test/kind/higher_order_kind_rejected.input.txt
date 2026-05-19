@@ -1,5 +1,0 @@
-Hol --test
-Test/kind/higher_order_kind_rejected.hol
-
-:q
-

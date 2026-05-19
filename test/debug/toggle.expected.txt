@@ -1,0 +1,10 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< ppap >>= exec (Hol.main --test)
+Hol =<< Hol> Compiling test.debug.toggle ( test/debug/toggle.hol, interpreted )
+test.debug.toggle> Ok, one module loaded.
+test.debug.toggle> test.debug.toggle> Debugging mode on.
+test.debug.toggle> test.debug.toggle> Debugging mode off.
+test.debug.toggle> test.debug.toggle> Typing display: verbose.
+test.debug.toggle> test.debug.toggle> Typing display: short.
+test.debug.toggle> Hol >>= quit
