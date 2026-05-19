@@ -112,4 +112,7 @@ executable ppap
     Z.Utils
   c-sources:
     src/X/machine.c
-    src/X/machine.h
+  include-dirs:
+    src/X
+  includes:
+    machine.h

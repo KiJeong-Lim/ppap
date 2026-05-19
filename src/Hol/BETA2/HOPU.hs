@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Hol.BETA2.HOPU where
 
 import Hol.BETA2.TermNode
@@ -330,9 +331,9 @@ ts `up` y = if upable then fmap findVisibles get else lift (throwE UpFail) where
     findVisibles :: Labeling -> [TermNode]
     findVisibles labeling = [ mkNCon c | NCon c _ <- ts, lookupLabel c labeling <= lookupLabel y labeling ]
 
-bind :: [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
+bind :: UniqueM m => [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail m) (LogicVarSubst, TermNode)
 bind outerHints var = go . rewrite HNF where
-    go :: TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
+    go :: UniqueM m => TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail m) (LogicVarSubst, TermNode)
     go (NLam mhint mty rhs' _) parameters bindHints = do
         (subst, lhs') <- go rhs' parameters (bindHints ++ [mhint])
         return (subst, mkNLamHintTy mhint mty lhs')
@@ -433,9 +434,9 @@ paramHint outerHints (NIdx i)
         n = length outerHints
 paramHint _ _ = Nothing
 
-mksubst :: [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
+mksubst :: UniqueM m => [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail m (Maybe HopuSol)
 mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr where
-    dispatch :: TermNode -> [TermNode] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) LogicVarSubst
+    dispatch :: UniqueM m => TermNode -> [TermNode] -> StateT Labeling (ExceptT HopuFail m) LogicVarSubst
     dispatch rhs parameters
         | (rhsLamHints, rhs') <- viewNestedNLamH rhs
         , (LVar var', rhs_tail) <- unfoldlNApp rhs'
@@ -477,7 +478,7 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
             theta <- lift $ var +-> makeNestedNLamH (map (paramHint outerHints) lhs_arguments) lhs
             modify (zonkLVar theta)
             return (theta <> subst)
-    handleErr :: HopuFail -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
+    handleErr :: UniqueM m => HopuFail -> ExceptT HopuFail m (Maybe HopuSol)
     handleErr NotAPattern = return Nothing
     handleErr err = throwE err
     canView :: Labeling -> TermNode -> Bool
@@ -488,12 +489,12 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
         go (NCon c _) = lookupLabel var labeling >= lookupLabel c labeling
         go (LVar x) = lookupLabel var labeling >= lookupLabel x labeling
 
-simplify :: [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+simplify :: UniqueM m => [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
 simplify = flip loop mempty . zip (repeat []) where
-    loop :: [([Maybe SmallId], Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+    loop :: UniqueM m => [([Maybe SmallId], Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
     loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
-        dispatch :: [Maybe SmallId] -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+        dispatch :: UniqueM m => [Maybe SmallId] -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
         dispatch l lhs rhs
             | (lhsHints, lhs') <- viewNestedNLamH lhs
             , (rhsHints, rhs') <- viewNestedNLamH rhs
@@ -552,14 +553,14 @@ simplify = flip loop mempty . zip (repeat []) where
                 loop disagreements subst labeling
             | otherwise
             = solveNext
-        solveNext :: StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+        solveNext :: UniqueM m => StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
         solveNext = do
             (disagreements', HopuSol labeling' subst') <- loop disagreements mempty labeling
             return (bindVars subst' (makeNestedNLamH l lhs :=?=: makeNestedNLamH l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
 
-runHOPU :: Labeling -> [Disagreement] -> UniqueT IO (Maybe ([Disagreement], HopuSol))
+runHOPU :: UniqueM m => Labeling -> [Disagreement] -> m (Maybe ([Disagreement], HopuSol))
 runHOPU = go where
-    loop :: ([Disagreement], HopuSol) -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+    loop :: UniqueM m => ([Disagreement], HopuSol) -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
     loop (disagreements, HopuSol labeling subst)
         | null disagreements = return (disagreements, HopuSol labeling subst)
         | otherwise = do
@@ -567,7 +568,7 @@ runHOPU = go where
             let result = (disagreements', HopuSol labeling' (subst' <> subst))
             has_changed <- get
             if has_changed then put False >> loop result else return result
-    go :: Labeling -> [Disagreement] -> UniqueT IO (Maybe ([Disagreement], HopuSol))
+    go :: UniqueM m => Labeling -> [Disagreement] -> m (Maybe ([Disagreement], HopuSol))
     go labeling disagreements = do
         output <- runExceptT (runStateT (loop (disagreements, HopuSol labeling mempty)) False)
         case output of

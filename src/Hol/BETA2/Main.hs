@@ -58,7 +58,7 @@ addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <
         (NCon (DC (DC_LO LO_if)) _, [t, _]) -> hd t
         (NCon c _, _) -> c
 
-execRuntime :: RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr (UniqueT IO) Satisfied
+execRuntime :: UniqueM m => RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr m Satisfied
 execRuntime env isDebugging facts query = do
     call_id <- getUnique
     -- §3.4 CMTT: seed `_NamedTypes` with the typechecker's inferences
@@ -79,17 +79,19 @@ execRuntime env isDebugging facts query = do
         initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = initialLabeling, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
     runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
-runREPL :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> UniqueT IO ()
+runREPL :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> UniqueT ShellyT ()
 runREPL mode program notationDB expansionDB = do
-    isDebugging <- lift (newIORef False)
-    verboseTyping <- lift (newIORef False)
-    nameCache <- lift (newIORef initialCache)
+    isDebugging <- liftIO (newIORef False)
+    verboseTyping <- liftIO (newIORef False)
+    nameCache <- liftIO (newIORef initialCache)
     go isDebugging verboseTyping nameCache
   where
     myTabs :: String
     myTabs = ""
     promptify :: String -> IO String
     promptify str = shelly (moduleName program ++ "> " ++ str)
+    promptifyM :: String -> ShellyT String
+    promptifyM str = shellyM (moduleName program ++ "> " ++ str)
     mkRuntimeEnv :: IORef Debugging -> IORef Bool -> IORef NameCache -> IORef LogicVarSubst -> Map.Map LogicVar (MonoType Int) -> TermNode -> IO RuntimeEnv
     mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query = do
         stackRef <- newIORef []
@@ -530,35 +532,35 @@ runREPL mode program notationDB expansionDB = do
                     ]
                 consistent :: Bool
                 consistent = evalokay && arithokay 
-    go :: IORef Debugging -> IORef Bool -> IORef NameCache -> UniqueT IO ()
+    go :: IORef Debugging -> IORef Bool -> IORef NameCache -> UniqueT ShellyT ()
     go isDebugging verboseTyping nameCache = do
-        query <- lift $ promptify ""
+        query <- lift $ promptifyM ""
         case query of
             "" -> do
-                lift $ shelly "Hol >>= quit"
+                lift $ shellyM "Hol >>= quit"
                 return ()
             ":q" -> do
-                lift $ shelly "Hol >>= quit"
+                lift $ shellyM "Hol >>= quit"
                 return ()
             ":d" -> do
                 lift $ do
-                    modifyIORef isDebugging not
-                    debugging <- readIORef isDebugging
-                    promptify ("Debugging mode " ++ (if debugging then "on" else "off") ++ ".")
+                    liftIO $ modifyIORef isDebugging not
+                    debugging <- liftIO $ readIORef isDebugging
+                    shellyM (moduleName program ++ "> " ++ "Debugging mode " ++ (if debugging then "on" else "off") ++ ".")
                 go isDebugging verboseTyping nameCache
             ":short" -> do
                 lift $ do
-                    writeIORef verboseTyping False
-                    promptify "Typing display: short."
+                    liftIO $ writeIORef verboseTyping False
+                    shellyM (moduleName program ++ "> " ++ "Typing display: short.")
                 go isDebugging verboseTyping nameCache
             ":verbose" -> do
                 lift $ do
-                    writeIORef verboseTyping True
-                    promptify "Typing display: verbose."
+                    liftIO $ writeIORef verboseTyping True
+                    shellyM (moduleName program ++ "> " ++ "Typing display: verbose.")
                 go isDebugging verboseTyping nameCache
             query0 -> case runAnalyzer mode query0 of
                 Left err_msg -> do
-                    lift $ putStrLn err_msg
+                    liftIO $ putStrLn err_msg
                     go isDebugging verboseTyping nameCache
                 Right output -> case output of
                     Left query1 -> do
@@ -584,22 +586,22 @@ runREPL mode program notationDB expansionDB = do
                             return (query5, typeMap)
                         case result of
                             Left err_msg -> do
-                                lift $ putStrLn err_msg
+                                liftIO $ putStrLn err_msg
                                 go isDebugging verboseTyping nameCache
                             Right (query4, typeMap) -> do
-                                pendingSubst <- lift $ newIORef (VarBinding Map.empty)
-                                runtime_env <- lift $ mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query4
+                                pendingSubst <- liftIO $ newIORef (VarBinding Map.empty)
+                                runtime_env <- liftIO $ mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query4
                                 answer <- runExceptT (execRuntime runtime_env isDebugging (_FactDecls program) query4)
                                 case answer of
                                     Left runtime_err -> case runtime_err of
-                                        BadGoalGiven _ -> lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad goal given."])
-                                        BadFactGiven _ -> lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad fact given."])
+                                        BadGoalGiven _ -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad goal given."])
+                                        BadFactGiven _ -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-RuntimeError" [Z.Doc.text "Bad fact given."])
                                     Right sat -> do
-                                        lift $ promptify (if sat then "yes." else "no.")
+                                        liftIO $ promptify (if sat then "yes." else "no.")
                                         return ()
                                 go isDebugging verboseTyping nameCache
                     Right src1 -> do
-                        lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text "It is not a query."])
+                        liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text "It is not a query."])
                         go isDebugging verboseTyping nameCache
 
 theInitialKindDecls :: KindEnv
@@ -659,42 +661,42 @@ theInitialFactDecls = [eqFact] where
 theDefaultModuleName :: String
 theDefaultModuleName = "Hol"
 
-runHol :: DiagnosticMode -> UniqueT IO ()
+runHol :: DiagnosticMode -> UniqueT ShellyT ()
 runHol mode = do
-    consistency_ptr <- lift $ newIORef ""
-    file_dir <- lift $ shelly "Hol =<< "
+    consistency_ptr <- liftIO $ newIORef ""
+    file_dir <- lift $ shellyM "Hol =<< "
     maybe_file_name <- case file_dir of
         ":q" -> do
-            lift $ writeIORef consistency_ptr ":q"
+            liftIO $ writeIORef consistency_ptr ":q"
             return Nothing
         _ -> case matchFileDirWithExtension file_dir of
             ("", "") -> return Nothing
             (file_name, ".hol") -> return (Just file_name)
             (file_name, "") -> return (Just file_name)
             (file_name, '.' : wrong_extension) -> do
-                lift $ writeIORef consistency_ptr (theDefaultModuleName ++ "> " ++ shows wrong_extension " is a non-executable file extension.")
+                liftIO $ writeIORef consistency_ptr (theDefaultModuleName ++ "> " ++ shows wrong_extension " is a non-executable file extension.")
                 return Nothing
-    consistency <- lift $ readIORef consistency_ptr
+    consistency <- liftIO $ readIORef consistency_ptr
     case consistency of
         "" -> case maybe_file_name of
             Nothing -> do
-                lift $ shelly (theDefaultModuleName ++ "> Ok, no module loaded.")
+                lift $ shellyM (theDefaultModuleName ++ "> Ok, no module loaded.")
                 runREPL mode (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName }) Notation.initial Notation.initialExpansionDB
             Just file_name -> do
                 let my_file_dir = file_name ++ ".hol"
                     myModuleName = modifySep '/' (const ".") id file_name
-                msrc <- lift $ readFileNow my_file_dir
+                msrc <- liftIO $ readFileNow my_file_dir
                 case msrc of
                     Nothing -> do
-                        lift $ putStrLn (diagnosticNoLocWith mode "HolBETA2-FileError" [Z.Doc.text ("Cannot read file `" ++ my_file_dir ++ "'.")])
+                        liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA2-FileError" [Z.Doc.text ("Cannot read file `" ++ my_file_dir ++ "'.")])
                         runHol mode
                     Just _ -> do
-                        file_abs_dir <- fmap (fromMaybe my_file_dir) (lift $ makePathAbsolutely my_file_dir)
-                        lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
+                        file_abs_dir <- fmap (fromMaybe my_file_dir) (liftIO $ makePathAbsolutely my_file_dir)
+                        lift $ shellyM (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
                         result <- loadMainWithDiagnostic mode theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
                         case result of
                             Left err_msg -> do
-                                lift $ putStrLn err_msg
+                                liftIO $ putStrLn err_msg
                                 runHol mode
                             Right loaded -> do
                                 let mainEnv = loadedMain loaded
@@ -704,27 +706,33 @@ runHol mode = do
                                         , _FactDecls  = moduleEnvFacts mainEnv
                                         , moduleName  = moduleEnvName mainEnv
                                         }
-                                lift $ shelly (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
+                                lift $ shellyM (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
                                 runREPL mode program2 (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
         inconsistent_proof -> do
             if inconsistent_proof == ":q"
                 then do
-                    _ <- lift $ shelly ("Hol >>= quit")
+                    _ <- lift $ shellyM ("Hol >>= quit")
                     return ()
                 else do
-                    lift $ shelly inconsistent_proof
-                    lift $ shelly ("Hol >>= quit")
+                    lift $ shellyM inconsistent_proof
+                    lift $ shellyM ("Hol >>= quit")
                     return ()
 
+mainWithModeM :: DiagnosticMode -> ShellyT ()
+mainWithModeM = execUniqueT . runHol
+
 mainWithMode :: DiagnosticMode -> IO ()
-mainWithMode = execUniqueT . runHol
+mainWithMode = runShellyT . mainWithModeM
+
+mainWithArgsM :: [String] -> ShellyT ()
+mainWithArgsM args = case args of
+    [] -> mainWithModeM DiagnosticPretty
+    ["pretty"] -> mainWithModeM DiagnosticPretty
+    ["test"] -> mainWithModeM DiagnosticTest
+    _ -> mainWithModeM DiagnosticPretty
 
 mainWithArgs :: [String] -> IO ()
-mainWithArgs args = case args of
-    [] -> mainWithMode DiagnosticPretty
-    ["pretty"] -> mainWithMode DiagnosticPretty
-    ["test"] -> mainWithMode DiagnosticTest
-    _ -> mainWithMode DiagnosticPretty
+mainWithArgs = runShellyT . mainWithArgsM
 
 main :: IO ()
 main = mainWithMode DiagnosticPretty

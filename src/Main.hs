@@ -42,7 +42,7 @@ ppap = do
         Just ("Hol", args)
             | args `elem` [[], ["pretty"], ["test"]] -> do
             shellyM ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
-            liftIO (Hol.mainWithArgs args)
+            Hol.mainWithArgsM args
         Just ("Calc", []) -> do
             shellyM ("ppap >>= exec (Calc.main)")
             liftIO Calc.main

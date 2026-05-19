@@ -32,6 +32,7 @@ import qualified Data.List as List
 import qualified Z.Doc
 import System.Directory (canonicalizePath, doesFileExist, getCurrentDirectory)
 import System.FilePath ((</>))
+import Z.System.File (readFileNow)
 import Z.Utils
 
 data ModuleEnv = ModuleEnv
@@ -62,7 +63,7 @@ data LoaderState = LoaderState
     , lsDiagnosticMode :: DiagnosticMode
     }
 
-type Loader a = ExceptT ErrMsg (State.StateT LoaderState (UniqueT IO)) a
+type Loader m a = ExceptT ErrMsg (State.StateT LoaderState m) a
 
 moduleErr :: DiagnosticMode -> SourceLines -> SLoc -> String -> ErrMsg
 moduleErr mode sourceLines loc msg =
@@ -89,13 +90,15 @@ pathDerivedName root absPath =
         | otherwise = path
 
 loadMain
-    :: KindEnv -> TypeEnv -> [TermNode] -> FilePath
-    -> UniqueT IO (Either ErrMsg LoadedModule)
+    :: UniqueM m
+    => KindEnv -> TypeEnv -> [TermNode] -> FilePath
+    -> m (Either ErrMsg LoadedModule)
 loadMain = loadMainWithDiagnostic DiagnosticPretty
 
 loadMainWithDiagnostic
-    :: DiagnosticMode -> KindEnv -> TypeEnv -> [TermNode] -> FilePath
-    -> UniqueT IO (Either ErrMsg LoadedModule)
+    :: UniqueM m
+    => DiagnosticMode -> KindEnv -> TypeEnv -> [TermNode] -> FilePath
+    -> m (Either ErrMsg LoadedModule)
 loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
     root <- liftIO getCurrentDirectory
     rootC <- liftIO (canonicalizePath root)
@@ -121,7 +124,7 @@ loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
 -- Load (or fetch from cache) the file at `canonicalPath`.  `importSLoc`
 -- is the location of the surface `import` that requested this file (used
 -- for cycle-error attribution); `Nothing` means this is the main file.
-loadFile :: FilePath -> Maybe (SLoc, SourceLines) -> Loader ModuleEnv
+loadFile :: UniqueM m => FilePath -> Maybe (SLoc, SourceLines) -> Loader m ModuleEnv
 loadFile canonicalPath importContext = do
     st <- lift State.get
     let mode = lsDiagnosticMode st
@@ -137,21 +140,24 @@ loadFile canonicalPath importContext = do
                         Just (loc, sourceLines) -> moduleErr mode sourceLines loc ("Import cycle detected: " ++ chain ++ ".")
                         Nothing -> diagnosticNoLocWith mode "HolBETA2-ModuleError" [Z.Doc.text ("Import cycle detected: " ++ chain ++ ".")]
                 Nothing -> do
-                    src <- liftIO (readFile canonicalPath)
-                    let sourceLines = Just (lines src)
-                    case runHolLexer src of
-                        Left (row, col) -> throwE (diagnosticWith mode "HolBETA2-LexError" sourceLines (SLoc (row, col) (row, col)) [Z.Doc.text ("Lexing failed in `" ++ canonicalPath ++ "'.")])
-                        Right tokens -> case runHolParser tokens of
-                            Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("Parsing failed at EOF in `" ++ canonicalPath ++ "'.")])
-                            Left (Just token) -> throwE (diagnosticWith mode "HolBETA2-ParseError" sourceLines (getSLoc token) [Z.Doc.text ("Parsing failed in `" ++ canonicalPath ++ "'.")])
-                            Right (Left _) -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("File `" ++ canonicalPath ++ "' is a query, not a program.")])
-                            Right (Right decls) -> elaborate canonicalPath mname (lines src) decls
+                    msrc <- liftIO (readFileNow canonicalPath)
+                    case msrc of
+                        Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-FileError" [Z.Doc.text ("Cannot read file `" ++ canonicalPath ++ "'.")])
+                        Just src -> do
+                            let sourceLines = Just (lines src)
+                            case runHolLexer src of
+                                Left (row, col) -> throwE (diagnosticWith mode "HolBETA2-LexError" sourceLines (SLoc (row, col) (row, col)) [Z.Doc.text ("Lexing failed in `" ++ canonicalPath ++ "'.")])
+                                Right tokens -> case runHolParser tokens of
+                                    Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("Parsing failed at EOF in `" ++ canonicalPath ++ "'.")])
+                                    Left (Just token) -> throwE (diagnosticWith mode "HolBETA2-ParseError" sourceLines (getSLoc token) [Z.Doc.text ("Parsing failed in `" ++ canonicalPath ++ "'.")])
+                                    Right (Left _) -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("File `" ++ canonicalPath ++ "' is a query, not a program.")])
+                                    Right (Right decls) -> elaborate canonicalPath mname (lines src) decls
 
 -- Split decls into (optional header, imports, body), enforce header/import
 -- ordering, recursively load each import, compose the dependency envs,
 -- desugar + type-check the body against the composed env, store the
 -- resulting ModuleEnv into the loader's table.
-elaborate :: FilePath -> String -> [String] -> [DeclRep] -> Loader ModuleEnv
+elaborate :: UniqueM m => FilePath -> String -> [String] -> [DeclRep] -> Loader m ModuleEnv
 elaborate canonicalPath mname sourceLines decls = do
     st0 <- lift State.get
     let mode = lsDiagnosticMode st0
@@ -195,7 +201,7 @@ elaborate canonicalPath mname sourceLines decls = do
         }))
     return env
 
-loadImport :: FilePath -> SourceLines -> (SLoc, String) -> Loader ModuleEnv
+loadImport :: UniqueM m => FilePath -> SourceLines -> (SLoc, String) -> Loader m ModuleEnv
 loadImport importerPath sourceLines (importLoc, importedName) = do
     st <- lift State.get
     let dir = takeDir importerPath
@@ -260,11 +266,12 @@ emptyOrigins = Origins Map.empty Map.empty Map.empty Map.empty Map.empty
 -- error attributed to `iloc` if any decl in `env` disagrees with the
 -- accumulator's previous content.
 combineImport
-    :: DiagnosticMode
+    :: Monad m
+    => DiagnosticMode
     -> SourceLines
     -> (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
     -> ((SLoc, String), ModuleEnv)
-    -> Loader (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
+    -> Loader m (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
 combineImport mode sourceLines (k, t, n, e, o) ((iloc, iname), env) = do
     (k', oK) <- liftEither (mergeKindsStrict   mode sourceLines iloc iname (oKinds o)    k (moduleEnvKinds     env))
     (t', oT) <- liftEither (mergeTypesStrict   mode sourceLines iloc iname (oTypes o)    t (moduleEnvTypes     env))
@@ -428,5 +435,5 @@ extractHeaderAndImports mode sourceLines decls0 = case decls0 of
                 (loc : _) -> Left (moduleErr mode sourceLines loc "`module' header must be the first declaration of the file.")
                 [] -> return ([], rest)
 
-liftEither :: Either ErrMsg a -> Loader a
+liftEither :: Monad m => Either ErrMsg a -> Loader m a
 liftEither = either throwE return

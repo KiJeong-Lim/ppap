@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Hol.BETA2.Runtime where
 
 import Calc.Presburger.Internal
@@ -529,7 +530,7 @@ showsCurrentState mname db verbose fvs typeMap ctx cells stack = strcat
     , strstr "--------------------------------" . nl
     ]
 
-instantiateFact :: Fact -> ScopeLevel -> StateT Labeling (ExceptT KernelErr (UniqueT IO)) (TermNode, TermNode)
+instantiateFact :: UniqueM m => Fact -> ScopeLevel -> StateT Labeling (ExceptT KernelErr m) (TermNode, TermNode)
 instantiateFact fact level
     = case unfoldlNApp (rewrite HNF fact) of
         (NCon (DC (DC_LO LO_ty_pi)) _, [fact1]) -> do
@@ -565,7 +566,7 @@ instantiateFact fact level
         (NCon (DC (DC_LO logical_operator)) _, args) -> lift (throwE (BadFactGiven (foldlNApp (mkNCon logical_operator) args)))
         (t, ts) -> return (foldlNApp t ts, mkNCon LO_true)
 
-runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+runLogicalOperator :: UniqueM m => LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Stack
 runLogicalOperator LO_true [] ctx facts hyps level call_id cells stack
     = return ((ctx, cells) : stack)
 runLogicalOperator LO_fail [] ctx facts hyps level call_id cells stack
@@ -747,7 +748,7 @@ simplifyArithmetic t = do
     add t1 t2 = mkNApp (mkNApp (mkNCon DC_plus) t1) t2
     mul t1 t2 = mkNApp (mkNApp (mkNCon DC_mul) t1) t2
 
-runDebugger :: TermNode -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+runDebugger :: UniqueM m => TermNode -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Stack
 runDebugger loc_str ctx facts hyps level call_id cells stack = do
     liftIO $ writeIORef (_debuggindModeOn ctx) True
     liftIO $ putStrLn ("*** debugger called with " ++ shows loc_str "")
@@ -825,13 +826,13 @@ isInconsistent arithTerms
     compiledHyps :: [MyPresburgerFormula]
     compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
-runTransition :: RuntimeEnv -> Set.Set LogicVar -> Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
+runTransition :: forall m. UniqueM m => RuntimeEnv -> Set.Set LogicVar -> Stack -> ExceptT KernelErr m Satisfied
 runTransition env free_lvars = go where
-    failure :: ExceptT KernelErr (UniqueT IO) Stack
+    failure :: ExceptT KernelErr m Stack
     failure = return []
-    success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueT IO) Stack
+    success :: (Context, [Cell]) -> ExceptT KernelErr m Stack
     success with = return [with]
-    arithOpCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr (UniqueT IO) Stack
+    arithOpCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr m Stack
     arithOpCheck call_id ctx cells predicate args op
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
             Left "non" ->
@@ -849,12 +850,12 @@ runTransition env free_lvars = go where
                 in if isInconsistent arithTerms then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
-    primitivePrint :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+    primitivePrint :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
     primitivePrint ctx args cells stack | Just arg <- onePrimitiveArg args = do
         liftIO (_PrintPrimitive env ctx (bindVars (_TotalVarBinding ctx) arg))
         success (ctx, cells)
     primitivePrint _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "print")) args))
-    primitiveRead :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
+    primitiveRead :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
     primitiveRead ctx args cells stack | Just arg <- onePrimitiveArg args = do
         mvalue <- liftIO (_ReadPrimitive env ctx arg)
         case mvalue of
@@ -878,7 +879,7 @@ runTransition env free_lvars = go where
     onePrimitiveArg [arg] = Just arg
     onePrimitiveArg [_typeArg, arg] = Just arg
     onePrimitiveArg _ = Nothing
-    search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
+    search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr m Stack
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique
         let arithOpCheck' = arithOpCheck call_id ctx cells predicate args
@@ -943,7 +944,7 @@ runTransition env free_lvars = go where
                                         )
                 _ -> failure
         return (ans1 ++ ans2 ++ ans3)
-    dispatch :: Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
+    dispatch :: Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Satisfied
     dispatch ctx facts hyps level (NCon predicate _, args) call_id cells stack
         | DC (DC_LO logical_operator) <- predicate
         = do
@@ -972,7 +973,7 @@ runTransition env free_lvars = go where
     -- `_WantedGoal` / `_GivenHypos`, and the labelling map (via the
     -- `Context` instance). The IORef is reset to `mempty` once
     -- consumed so subsequent steps see no further mutation.
-    applyPending :: Stack -> ExceptT KernelErr (UniqueT IO) Stack
+    applyPending :: Stack -> ExceptT KernelErr m Stack
     applyPending [] = return []
     applyPending st@((ctx, cells) : rest) = liftIO $ do
         pending <- readIORef (_PendingSubst env)
@@ -982,7 +983,7 @@ runTransition env free_lvars = go where
                 writeIORef (_PendingSubst env) (VarBinding Map.empty)
                 let zonkFrame (c, cs) = (zonkLVar pending c, map (zonkLVar pending) cs)
                 return (zonkFrame (ctx, cells) : map zonkFrame rest)
-    go :: Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
+    go :: Stack -> ExceptT KernelErr m Satisfied
     go raw_stack = do
         stack0 <- applyPending raw_stack
         case stack0 of

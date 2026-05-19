@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Hol.BETA2.Header where
 
 import Control.Monad.IO.Class
@@ -9,6 +11,14 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Z.Utils
+
+class (MonadUnique m, MonadIO m) => UniqueM m
+
+instance MonadIO m => UniqueM (UniqueT m)
+
+instance UniqueM m => UniqueM (ExceptT e m)
+
+instance UniqueM m => UniqueM (StateT s m)
 
 type SPos = (Int, Int)
 
