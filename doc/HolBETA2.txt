@@ -218,31 +218,51 @@ BETA2 accepts the multi-head clause form (Appendix B [1] of BETA1):
     | <atom> ( '&' <atom> )+ ':-' <body> '.'
     | <atom> ( '&' <atom> )+ '.'
 
-The `&` is a *declaration-level* separator. It binds tighter than `:-`
-but it is *not* a body connective — it must not appear inside the body
-of a clause, only between heads.
+The `&` token is parsed as a term-level `LO_and` connective at a precedence
+between `,` and the comparison/arithmetic predicates. In fact position,
+`&` still has the multi-head meaning: it binds tighter than `:-`, so the
+conclusion of the fact is an `&`-chain. The same shape is accepted inside
+the left-hand side of local implication when it is parenthesised:
 
-Desugaring. The clause
+  (h_1 & h_2 & ... & h_n :- body) => goal
+
+This local form is not a goal connective at fact-install time. It is
+syntactic sugar for installing several temporary clauses before proving
+`goal`.
+
+Expansion. The clause
 
   h_1 & h_2 & ... & h_n :- body.
 
-desugars to `n` independent clauses
+expands to `n` independent clauses
 
   h_1 :- body.
   h_2 :- body.
   ...
   h_n :- body.
 
-The body is *cloned* for each head, with logic variables renamed under the
-clause-level freshening invariant of §4.5.1. The clauses are emitted in
-declaration order, so the search tries them in the same order as the user
-wrote the `&` chain.
+The body is *cloned* for each head at fact installation/instantiation
+time, with logic variables renamed under the clause-level freshening
+invariant of §4.5.1. The clauses are emitted in declaration order, so the
+search tries them in the same order as the user wrote the `&` chain.
 
 The unit form
 
   h_1 & h_2 & ... & h_n.
 
-desugars analogously to `n` unit facts.
+expands analogously to `n` unit facts.
+
+The local implication form
+
+  (pi x\ h_1 & h_2 :- body) => goal
+
+is interpreted as
+
+  (pi x\ h_1 :- body) => ((pi x\ h_2 :- body) => goal)
+
+and similarly for longer head chains. The `pi` prefix is shared by the
+local heads, so variables introduced by the prefix may occur in every
+head and in the shared body.
 
 Sharing semantics. Two heads `h_i` and `h_j` of the same multi-head clause
 do *not* share any runtime state: each cloned body has its own logic
@@ -250,10 +270,10 @@ variables, its own cut scope, and its own constraint accumulation. Cut
 (`!`) inside the shared body is local to one cloned clause, not committed
 across all of them.
 
-Why declaration-level, not body-level. The original λProlog convention
-treats `&` strictly as syntactic sugar for "write the same body twice";
-attempting to give it a semantics as a body connective collides with
-λProlog's `,`/`;`/`=>` calculus (§2.2). BETA2 follows the convention.
+Display. Since `&` is now the canonical surface spelling of `LO_and` in
+BETA2, TermNode viewers print that logical operator as `&`. The comma
+syntax remains accepted for inherited goal conjunctions, but the rendered
+form is `&`.
 
 
 1.5 Source-Location Annotations
@@ -454,11 +474,12 @@ abbreviations, notations, and fixities with its own declarations.
 2.5 Multi-Head Clause Expansion
 --------------------------------------------------------------------------------
 
-The desugarer expands a multi-head clause
+The fact installer expands a multi-head clause
 
   h_1 & ... & h_n :- body.
 
-in three steps.
+in three steps after the parser has represented the head chain as
+`LO_and`.
 
   (i)   Type-check the body once under a fresh logic-variable map,
   producing a typed body `body_T` along with its monotype
@@ -468,22 +489,21 @@ in three steps.
   the multi-head clause's heads share the same logic-variable
   types — the heads are *the same proposition* up to syntactic
   spelling.
-  (iii) Emit `n` clauses `h_i' :- body_T'` where `body_T'` is the
-  result of freshening every internal logic variable in `body_T`
-  for clause `i`. `h_i'` uses the freshened versions of variables
-  that occur both in the head and the body, and uses the original
-  names for variables that occur only in the head — but, per (ii),
-  the *types* of those head-only variables are inherited from the
-  shared type unification.
+  (iii) At fact indexing time, split the compiled `LO_and` conclusion
+  into `n` clauses `h_i' :- body_T'`. Each clause is instantiated
+  independently when searched, so internal logic variables are fresh
+  per head. Variables that occur only in a head keep the types inferred
+  by the shared type unification in (ii).
 
 Equivalent surface fact. The user is free to write the desugared form
 by hand:
 
   h_1 :- body.   h_2 :- body.   ...   h_n :- body.
 
-The result of compiling this surface is identical to the result of
-compiling the `&`-form, modulo source ordering. The `&` form is
-purely surface sugar.
+The observable search result is identical to compiling the `&`-form,
+modulo source ordering. The `&` form is surface sugar for the installed
+fact set, even though the parser now keeps it as `LO_and` until fact
+installation.
 
 Diagnostics. A type error inside `body` reports a single error
 (attributed to `body`'s SLoc), not `n` errors. A type error inside a
@@ -694,10 +714,9 @@ place; no `Hol.BETA2` module imports a `Hol.BETA1` module.
       LGS regen.
     PlanHolParser.hs
       copied; `module` header, `import` block, and
-      `&`-multi-head clause productions. PGS regen.
+      `&` as an infix `LO_and` term production. PGS regen.
     Desugarer.hs
-      copied; SLoc threading per §2.6.1; multi-
-      head expansion per §2.5. `desugarProgram`
+      copied; SLoc threading per §2.6.1. `desugarProgram`
       now returns a `ModuleEnv` (per-import)
       rather than a single composed environment.
     TypeChecker.hs
@@ -1008,12 +1027,11 @@ inherited "last declared wins" rule of BETA1 §2.7.4.
 New open questions introduced by BETA2:
 
   [Q9] Multi-head clauses inside the body of a clause (e.g.,
-  `(p X & q X) :- body` *inside* an outer body)?
-  [A] Rejected. The `&` connective is declaration-level only
-  (§1.4). A user wanting "this fact holds in two forms"
-  writes two clauses; a user wanting "this body proves two
-  conjuncts" writes `body_1, body_2`. The two are not the
-  same operation.
+  `(p X & q X :- body) => goal` inside an outer body)?
+  [A] Accepted only as the parenthesised left-hand side of `=>`
+  (§1.4). It expands to several temporary local clauses. `&` is
+  still not a general goal connective; a user wanting "prove both
+  goals" writes `body_1, body_2`.
 
   [Q10] What is the SLoc-attribution policy for HOPU-introduced
   sub-terms (`_sloc = Nothing`)?

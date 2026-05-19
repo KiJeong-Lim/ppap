@@ -50,7 +50,7 @@
         "T_prefix loc": $prefix 0 none
         "T_abbrev loc": $abbrev 0 none
         "T_notation loc": $notation 0 none
-        "T_amp loc": $amp 0 none
+        "T_amp loc": $amp 75 left
         "T_module loc": $module 0 none
         "T_import loc": $import 0 none
         "T_qid loc contents": $qid 0 none
@@ -119,17 +119,6 @@
         RNotationDecl ($1.loc <> $6.loc) $2.contents $3 $5
     95 [$TermRep0, $dot]:
         RFactDecl (getSLoc $1 <> $2.loc) $1
-    95 [$TermRep1L1, $amp, $MultiHeadTail, $dot]:
-        RMultiHeadFactDecl (getSLoc $1 <> $4.loc) ($1 : fst $3) (snd $3)
-}
-
-\define $MultiHeadTail : "([TermRep], Maybe TermRep)" {
-    10 [$TermRep1L1]:
-        ([$1], Nothing)
-    10 [$TermRep1L1, $if, $TermRep1L1]:
-        ([$1], Just $3)
-    10 [$TermRep1L1, $amp, $MultiHeadTail]:
-        ($1 : fst $3, snd $3)
 }
 
 \define $IdElem : "LargeId" {
@@ -231,48 +220,50 @@
 }
 
 \define $TermRep1L4 : "TermRep" {
-    70 [$TermRep1L5, $is, $TermRep1L5]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_is)) $1) $3
-    70 [$TermRep1L5, $eq, $TermRep1L5]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_eq) $1) $3
-    70 [$TermRep1L5, $le, $TermRep1L5]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_le) $1) $3
-    70 [$TermRep1L5, $lt, $TermRep1L5]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_lt) $1) $3
-    70 [$TermRep1L5, $ge, $TermRep1L5]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_ge) $1) $3
-    70 [$TermRep1L5, $gt, $TermRep1L5]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_gt) $1) $3
+    70 [$TermRep1L4, $amp, $TermRep1L5]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_and)) $1) $3
     70 [$TermRep1L5]:
         $1
 }
 
 \define $TermRep1L5 : "TermRep" {
-    70 [$TermRep1L6, $cons, $TermRep1L5]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_Cons) $1) $3
+    70 [$TermRep1L6, $is, $TermRep1L6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_is)) $1) $3
+    70 [$TermRep1L6, $eq, $TermRep1L6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_eq) $1) $3
+    70 [$TermRep1L6, $le, $TermRep1L6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_le) $1) $3
+    70 [$TermRep1L6, $lt, $TermRep1L6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_lt) $1) $3
+    70 [$TermRep1L6, $ge, $TermRep1L6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_ge) $1) $3
+    70 [$TermRep1L6, $gt, $TermRep1L6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_gt) $1) $3
     70 [$TermRep1L6]:
         $1
 }
 
 \define $TermRep1L6 : "TermRep" {
-    70 [$TermRep1L6, $plus, $TermRep1L7]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_plus) $1) $3
-    70 [$TermRep1L6, $minus, $TermRep1L7]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_minus) $1) $3
+    70 [$TermRep1L7, $cons, $TermRep1L6]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_Cons) $1) $3
     70 [$TermRep1L7]:
         $1
 }
 
 \define $TermRep1L7 : "TermRep" {
-    70 [$TermRep1L7, $star, $TermRep1L8]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_mul) $1) $3
-    70 [$TermRep1L7, $slash, $TermRep1L8]:
-        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_div) $1) $3
+    70 [$TermRep1L7, $plus, $TermRep1L8]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_plus) $1) $3
+    70 [$TermRep1L7, $minus, $TermRep1L8]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_minus) $1) $3
     70 [$TermRep1L8]:
         $1
 }
 
 \define $TermRep1L8 : "TermRep" {
+    70 [$TermRep1L8, $star, $TermRep1L9]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_mul) $1) $3
+    70 [$TermRep1L8, $slash, $TermRep1L9]:
+        RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_div) $1) $3
     70 [$TermRep1L9]:
         $1
 }

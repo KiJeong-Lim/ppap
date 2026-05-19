@@ -171,7 +171,7 @@ instance Show LogicalOperator where
         LO_fail -> strstr "fail"
         LO_is -> strstr "is"
         LO_cut -> strstr "!"
-        LO_and -> strstr ","
+        LO_and -> strstr "&"
         LO_or -> strstr ";"
         LO_imply -> strstr "=>"
         LO_pi -> strstr "pi"

@@ -47,7 +47,7 @@ isYES :: String -> Bool
 isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
 
 addIndex :: [Fact] -> Map.Map Constant [Fact]
-addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, let f' = rewrite NF f ] where
+addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, f0 <- expandAssumptions f, let f' = rewrite NF f0 ] where
     hd :: Fact -> Constant
     hd t = case unfoldlNApp t of
         (NLam _ _ t _, _) -> hd t

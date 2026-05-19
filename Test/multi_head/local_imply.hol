@@ -1,0 +1,6 @@
+type p (nat -> o).
+type q (nat -> o).
+type r (nat -> o).
+
+r 1.
+r 2.

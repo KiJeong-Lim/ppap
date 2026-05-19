@@ -83,7 +83,6 @@ data DeclRep
     = RKindDecl SLoc TypeConstructor KindRep
     | RTypeDecl SLoc DataConstructor TypeRep
     | RFactDecl SLoc TermRep
-    | RMultiHeadFactDecl SLoc [TermRep] (Maybe TermRep)
     | RFixityDecl SLoc FixityForm SmallId Integer
     | RAbbrevDecl SLoc SmallId [LargeId] TypeRep
     | RNotationDecl SLoc SmallId [LargeId] TermRep

@@ -579,7 +579,7 @@ runLogicalOperator LO_and [goal1, goal2] ctx facts hyps level call_id cells stac
 runLogicalOperator LO_or [goal1, goal2] ctx facts hyps level call_id cells stack
     = return ((ctx, mkCell facts hyps level goal1 call_id : cells) : (ctx, mkCell facts hyps level goal2 call_id : cells) : stack)
 runLogicalOperator LO_imply [fact1, goal2] ctx facts hyps level call_id cells stack
-    = return ((ctx, mkCell facts (fact1 : hyps) level goal2 call_id : cells) : stack)
+    = return ((ctx, mkCell facts (expandAssumptions fact1 ++ hyps) level goal2 call_id : cells) : stack)
 runLogicalOperator LO_sigma [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
@@ -631,6 +631,23 @@ runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
                    in null badCons && null badVars
 runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack
     = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
+
+expandAssumptions :: Fact -> [Fact]
+expandAssumptions fact = case unfoldlNApp (rewrite HNF fact) of
+    (NCon (DC (DC_LO LO_and)) _, [fact1, fact2]) -> expandAssumptions fact1 ++ expandAssumptions fact2
+    (NCon (DC (DC_LO LO_if)) _, [conclusion, premise]) ->
+        [ foldlNApp (mkNCon LO_if) [conclusion', premise]
+        | conclusion' <- expandAssumptions conclusion
+        ]
+    (NCon (DC (DC_LO LO_pi)) _, [NLam mhint lam_ty body loc]) ->
+        [ mkNApp (mkNCon LO_pi) (NLam mhint lam_ty body' loc)
+        | body' <- expandAssumptions body
+        ]
+    (NCon (DC (DC_LO LO_ty_pi)) _, [NLam mhint lam_ty body loc]) ->
+        [ mkNApp (mkNCon LO_ty_pi) (NLam mhint lam_ty body' loc)
+        | body' <- expandAssumptions body
+        ]
+    _ -> [fact]
 
 execIs :: MonadUnique m => Context -> [Cell] -> Stack -> m Stack
 execIs ctx cells stack

@@ -131,7 +131,7 @@ initial = addAbbrev "string" [] stringRhs seededFixity
         , (":-", (FK_InfixR, 0))
         , (";", (FK_InfixL, 1))
         , ("=>", (FK_InfixR, 2))
-        , (",", (FK_InfixL, 3))
+        , ("&", (FK_InfixL, 3))
         , ("->", (FK_InfixR, 4))
         , ("::", (FK_InfixR, 4))
         , ("pi", (FK_Prefix, 5))
