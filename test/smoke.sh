@@ -6,10 +6,9 @@
 # output against the sibling *.expected.txt. Exits 0 iff every case
 # matches byte-for-byte.
 #
-# Invocation:  ./test/smoke.sh              (runs from project root)
-#              ./test/smoke.sh --update     (rewrites *.expected.txt
-#                                            instead of diffing — for
-#                                            authoring new cases.)
+# Invocation:
+#  ./test/smoke.sh          (runs from project root)
+#  ./test/smoke.sh --update (rewrites *.expected.txt instead of diffing — for authoring new cases.)
 
 set -u
 
@@ -23,13 +22,13 @@ if [ "${1-}" = "--update" ]; then
 fi
 
 cabal build ppap >/dev/null 2>&1 || {
-    echo "smoke: cabal build ppap failed"
+    echo "smoke.sh: cabal build ppap failed"
     exit 2
 }
 
 mapfile -t CASES < <(find test -name '*.hol' | sort)
 if [ ${#CASES[@]} -eq 0 ]; then
-    echo "smoke: no test/**/*.hol cases found"
+    echo "smoke.sh: no test/**/*.hol cases found"
     exit 2
 fi
 
@@ -59,14 +58,14 @@ for hol in "${CASES[@]}"; do
     fi
 
     if [ ! -f "$expected" ]; then
-        echo "MISS  $hol  (no sibling .expected.txt; run with --update to seed)"
+        echo "MISS   $hol  (no sibling .expected.txt; run with --update to seed)"
         missing=$((missing + 1))
         continue
     fi
 
     expected_content="$(cat "$expected")"
     if [ "$actual" = "$expected_content" ]; then
-        echo "PASS  $hol"
+        echo "PASS   $hol"
         pass=$((pass + 1))
     else
         echo "FAIL  $hol  (exit=$actual_exit)"

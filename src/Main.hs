@@ -4,6 +4,7 @@ import qualified Calc.Main as Calc
 import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
+import qualified TEST.Main as TEST
 import Control.Monad.IO.Class
 import Z.Algo.Function
 import Z.System.Shelly
@@ -41,8 +42,8 @@ ppap = do
         Just ("", []) -> return ()
         Just ("Hol", args)
             | args `elem` [[], ["pretty"], ["test"]] -> do
-            shellyM ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
-            Hol.mainWithArgsM args
+                shellyM ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
+                Hol.mainWithArgsM args
         Just ("Calc", []) -> do
             shellyM ("ppap >>= exec (Calc.main)")
             liftIO Calc.main
@@ -52,6 +53,9 @@ ppap = do
         Just ("PGS", []) -> do
             shellyM ("ppap >>= exec (PGS.main)")
             liftIO PGS.main
+        Just ("TEST", []) -> do
+            shellyM ("ppap >>= exec (TEST.main)")
+            liftIO TEST.main
         Just (cmd, args) -> do
             shellyM ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
