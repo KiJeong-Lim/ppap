@@ -5,7 +5,7 @@ import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
-import qualified GoCRIS.Main as GoCRIS
+import qualified Project.Main as Project
 import Control.Monad.IO.Class
 import Z.Algo.Function
 import Z.System.Shelly
@@ -35,6 +35,8 @@ matchCommand str
 
 ppap :: ShellyT ()
 ppap = do
+    let extraArgs [] = ""
+        extraArgs args = concat [ " --" ++ arg | arg <- args ]
     cmd <- shellyM ("ppap =<< ")
     case matchCommand cmd of
         Nothing -> do
@@ -57,16 +59,12 @@ ppap = do
         Just ("TEST", []) -> do
             shellyM ("ppap >>= exec (TEST.main)")
             liftIO TEST.main
-        Just ("GoCRIS", []) -> do
-            shellyM ("ppap >>= exec (GoCRIS.main)")
-            liftIO GoCRIS.main
+        Just ("Project", []) -> do
+            shellyM ("ppap >>= exec (Project.main)")
+            liftIO Project.main
         Just (cmd, args) -> do
             shellyM ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
-  where
-    extraArgs :: [String] -> String
-    extraArgs [] = ""
-    extraArgs args = concat [ " --" ++ arg | arg <- args ]
 
 copyright :: ShellyT ()
 copyright = do

@@ -28,7 +28,7 @@ executable ppap
     Calc.Tools.Fuzzy
     Calc.Tools.FuzzyExample1
     Calc.Main
-    GoCRIS.Main
+    Project.Main
     Hol.ALPHA2.Header
     Hol.ALPHA2.PlanHolLexer
     Hol.ALPHA2.PlanHolParser
