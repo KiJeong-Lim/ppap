@@ -28,7 +28,6 @@ executable ppap
     Calc.Tools.Fuzzy
     Calc.Tools.FuzzyExample1
     Calc.Main
-    Project.Main
     Hol.ALPHA2.Header
     Hol.ALPHA2.PlanHolLexer
     Hol.ALPHA2.PlanHolParser
@@ -70,8 +69,8 @@ executable ppap
     Hol.BETA2.Runtime
     Hol.BETA2.TermNode
     Hol.BETA2.TypeChecker
-    Hol.Main
     Hol.V1.Main
+    Hol.Main
     IsabelleHol.Dependecies
     Json.JsonAst
     Json.JsonLexer
@@ -83,6 +82,7 @@ executable ppap
     PGS.Alpha1
     PGS.LALR
     PGS.Main
+    Project.Main
     Z.Algorithms
     Z.Doc
     Z.OldPC
