@@ -82,6 +82,7 @@ executable ppap
     PGS.Alpha1
     PGS.LALR
     PGS.Main
+    Project.A.Main
     Project.Main
     Z.Algorithms
     Z.Doc

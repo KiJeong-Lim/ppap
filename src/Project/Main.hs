@@ -1,8 +1,6 @@
 module Project.Main where
 
-import Z.Utils
+import qualified Project.A.Main as A
 
 main :: IO ()
-main = do
-    putStrLn "WIP..."
-    return ()
+main = A.main
