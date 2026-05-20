@@ -25,6 +25,7 @@ executable ppap
     Calc.Presburger.Internal
     Calc.Presburger.Test
     Calc.Runtime.Executor
+    Calc.Tools.Fuzzy
     Calc.Main
     Hol.ALPHA2.Header
     Hol.ALPHA2.PlanHolLexer

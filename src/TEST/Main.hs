@@ -24,8 +24,8 @@ streamOutput prefix h = do
         putStrLn $ prefix ++ line
         streamOutput prefix h
 
-smoke :: IO ()
-smoke = do
+holsmoke :: IO ()
+holsmoke = do
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
     rawPath <- readProcess "stack" ["path", "--project-root"] ""
@@ -46,4 +46,10 @@ smoke = do
             exitFailure
 
 main :: IO ()
-main = smoke
+main = do
+    q <- shelly ("TEST =<< ")
+    case q of
+        "holsmoke" -> holsmoke
+        _ -> do
+            shelly ("TEST >>= quit")
+            return ()
