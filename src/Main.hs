@@ -1,4 +1,4 @@
-module Main where
+module Main (main) where
 
 import qualified Calc.Main as Calc
 import qualified Hol.Main as Hol
@@ -26,7 +26,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = takeFirstOf matchPrefix ["Hol", "Calc", "LGS", "PGS", "TEST"]
+    | otherwise = takeFirstOf matchPrefix ["Hol", "Calc", "LGS", "PGS", "TEST", "Project"]
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix cmd = go (splitAt (length cmd) str) where
