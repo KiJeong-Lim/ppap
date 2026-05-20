@@ -1,6 +1,6 @@
 # Project A
 
-## 대화
+## Forethought
 
 ### 1st turn
 
