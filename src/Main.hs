@@ -47,21 +47,26 @@ ppap = do
             | args `elem` [[], ["pretty"], ["test"]] -> do
                 shellyM ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
                 Hol.mainWithArgsM args
-        Just ("Calc", []) -> do
-            shellyM ("ppap >>= exec (Calc.main)")
-            liftIO Calc.main
-        Just ("LGS", []) -> do
-            shellyM ("ppap >>= exec (LGS.main)")
-            liftIO LGS.main
-        Just ("PGS", []) -> do
-            shellyM ("ppap >>= exec (PGS.main)")
-            liftIO PGS.main
-        Just ("TEST", []) -> do
-            shellyM ("ppap >>= exec (TEST.main)")
-            liftIO TEST.main
-        Just ("Project", []) -> do
-            shellyM ("ppap >>= exec (Project.main)")
-            liftIO Project.main
+        Just ("Calc", args)
+            | null args -> do
+                shellyM ("ppap >>= exec (Calc.main)")
+                liftIO Calc.main
+        Just ("LGS", args)
+            | null args -> do
+                shellyM ("ppap >>= exec (LGS.main)")
+                liftIO LGS.main
+        Just ("PGS", args)
+            | null args -> do
+                shellyM ("ppap >>= exec (PGS.main)")
+                liftIO PGS.main
+        Just ("TEST", args)
+            | null args -> do
+                shellyM ("ppap >>= exec (TEST.main)")
+                liftIO TEST.main
+        Just ("Project", args)
+            | null args -> do
+                shellyM ("ppap >>= exec (Project.main)")
+                liftIO Project.main
         Just (cmd, args) -> do
             shellyM ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
