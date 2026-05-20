@@ -43,7 +43,7 @@ for hol in "${CASES[@]}"; do
     expected="$base.expected.txt"
 
     if [ ! -f "$input" ]; then
-        echo "MISS  $hol  (no sibling .input.txt)"
+        echo "MISS   $hol  (no sibling .input.txt)"
         missing=$((missing + 1))
         continue
     fi
@@ -68,7 +68,7 @@ for hol in "${CASES[@]}"; do
         echo "PASS   $hol"
         pass=$((pass + 1))
     else
-        echo "FAIL  $hol  (exit=$actual_exit)"
+        echo "FAIL   $hol  (exit=$actual_exit)"
         diff -u <(printf '%s\n' "$expected_content") <(printf '%s\n' "$actual") | sed 's/^/      /'
         fail=$((fail + 1))
         failing_cases+=("$hol")
