@@ -45,8 +45,8 @@
       7. (완료됨) shelly 입력을 `ShellyT` 기반으로 정리하여 unsafe류 없이 좌/우 커서 이동과 위/아래 히스토리 탐색을 지원한다. `Hol` 프롬프트도 같은 입력 상태를 공유한다.
       8. (완료됨) `Hol BETA2`의 unique 생성 의존성을 `Header.hs`의 `UniqueM` 타입클래스로 추상화했다. 별도 `Monad.hs` 모듈은 두지 않는다.
       9. (대기 중) `Hol BETA2` 에러 메세지 개선점:
-         - 에러 메세지에 출력되는 코드에서 에러가 있는 부분에 빨간색 하이라이팅이 적용이 안 됨.
-         - `[example.stlc]:9:15-9:15: error: [HolBETA2-ParseError]`이 아니라, `/home/lim/portfolio/ppap/example/stlc.hol:9:15-9:15: error: [HolBETA2-ParseError]`처럼 출력되었으면 좋겠음. 이때 `error`에 빨간색 볼드체 하이라이팅이 들어가고 `example/stlc.hol:9:15-9:15`는 볼드체로 출력할 것.
+         - 먼저, 에러 메세지에 출력되는 코드에서 에러가 있는 부분에 빨간색 하이라이팅이 적용이 안 되는데, 이를 고칠 것.
+         - 또한, 예를 들어, `[example.stlc]:9:15-9:15: error: [HolBETA2-ParseError]`이 아니라, `/home/lim/portfolio/ppap/example/stlc.hol:9:15-9:15: error: [HolBETA2-ParseError]`처럼 출력되었으면 좋겠음. 이때 `error`에 빨간색 볼드체 하이라이팅이 들어가고 `example/stlc.hol:9:15-9:15`는 볼드체로 출력할 것.
    3. (대기 중) 확인할 점:
       - (완료됨) `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       - (대기 중) 위 사항 이외의 Multi-head에서 발생할 수 있는 문제점 생각하기.
