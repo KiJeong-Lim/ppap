@@ -1,7 +1,7 @@
 name: ppap
 version: 1.0.0
-synopsis: Project Putting All Power!
-description: Please see README.md
+synopsis: Project Pouring All Power
+description: lexer generator, parser generator, interpreter of (a dialect of) λProlog, etc.
 homepage: https://github.com/KiJeong-Lim/ppap
 license: BSD3
 license-file: LICENSE
