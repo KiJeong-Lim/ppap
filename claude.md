@@ -44,6 +44,9 @@
       6. (완료됨) `Hol` 또는 `Hol --pretty`는 유저용 컬러 진단을, `Hol --test`는 테스트용 무색 진단을 출력하도록 옵션을 분리했다.
       7. (완료됨) shelly 입력을 `ShellyT` 기반으로 정리하여 unsafe류 없이 좌/우 커서 이동과 위/아래 히스토리 탐색을 지원한다. `Hol` 프롬프트도 같은 입력 상태를 공유한다.
       8. (완료됨) `Hol BETA2`의 unique 생성 의존성을 `Header.hs`의 `UniqueM` 타입클래스로 추상화했다. 별도 `Monad.hs` 모듈은 두지 않는다.
+      9. (대기 중) ppap hol 에러 메세지 개선점:
+         1. 에러가 있는 부분에 빨간색 하이라이팅이 적용이 안 됨.
+         2. `[example.stlc]:9:15-9:15: error: [HolBETA2-ParseError]`이 아니라, `/home/lim/portfolio/ppap/example/stlc.hol:9:15-9:15: error: [HolBETA2-ParseError]`처럼 출력되었으면 좋겠음. 이때 `error:`에 빨간색 하이라이팅이 들어갈 것.
    3. (대기 중) 확인할 점:
       - (완료됨) `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       - (대기 중) 위 사항 이외의 Multi-head에서 발생할 수 있는 문제점 생각하기.
