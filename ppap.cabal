@@ -1,7 +1,7 @@
 name: ppap
 version: 1.0.0
 synopsis: Project Pouring All Power
-description: lexer generator, parser generator, interpreter of (a dialect of) λProlog, etc.
+description: The collection of my Haskell projects including a lexer generator, a parser generator, an interpreter of (a dialect of) λProlog, etc.
 homepage: https://github.com/KiJeong-Lim/ppap
 license: BSD3
 license-file: LICENSE
@@ -84,11 +84,6 @@ executable ppap
     PGS.Main
     Project.A.Main
     Project.Main
-    Z.Algorithms
-    Z.Doc
-    Z.OldPC
-    Z.PC
-    Z.System
     TEST.Main
     X.Machine
     Y.Text.Ppr.Viewer
@@ -113,6 +108,11 @@ executable ppap
     Z.Text.Doc
     Z.Text.PC
     Z.Text.PM
+    Z.Algorithms
+    Z.Doc
+    Z.OldPC
+    Z.PC
+    Z.System
     Z.Utils
   c-sources:
     src/X/machine.c
