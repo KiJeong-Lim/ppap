@@ -16,7 +16,7 @@ executable ppap
   default-language: Haskell2010
   main-is: Main.hs
   ghc-options: -O2 -funbox-strict-fields -fspec-constr -fexpose-all-unfoldings -fspecialise-aggressively
-  build-depends: base >= 4.7 && < 5, array >= 0.5, containers >= 0.6, transformers >= 0.5, pretty-terminal >= 0.1, QuickCheck >= 2.13, checkers >= 0.5, directory >= 1.3, vector >= 0.12, math-functions >= 0.3, extra >= 1.7, filepath >= 1.5, process >= 1.0
+  build-depends: base >= 4.7 && < 5, array >= 0.5, containers >= 0.6, transformers >= 0.5, pretty-terminal >= 0.1, QuickCheck >= 2.13, checkers >= 0.5, directory >= 1.3, vector >= 0.12, math-functions >= 0.3, extra >= 1.7, filepath >= 1.5, process >= 1.0, random >= 1.0
   other-modules:
     Calc.ControlSystem.Diagram.Solver
     Calc.ControlSystem.Export
@@ -26,6 +26,7 @@ executable ppap
     Calc.Presburger.Test
     Calc.Runtime.Executor
     Calc.Tools.Fuzzy
+    Calc.Tools.FuzzyExample1
     Calc.Main
     Hol.ALPHA2.Header
     Hol.ALPHA2.PlanHolLexer
