@@ -1,10 +1,7 @@
-module Project.A.Pipeline.NativeGo
-    ( NativeOutcome (..)
-    , runNativeGo
-    ) where
+module Project.A.Pipeline.NativeGo where
 
-import System.FilePath
 import System.Directory
+import System.FilePath
 
 import Project.A.Pipeline.Config
 import Project.A.Types
@@ -22,49 +19,15 @@ runNativeGo config caseDir input = do
     let timeouts = cfgTimeouts config
     goEnv <- nativeToolEnv caseDir
     gofmtResult <- runTimedProcess (timeoutGofmt timeouts) (Just caseDir) goEnv "gofmt" ["-w", "gofile.go"] ""
-    if not (processSucceeded gofmtResult)
-        then
-            return
-                NativeOutcome
-                    { noGofmtLog = processLog gofmtResult
-                    , noBuildLog = processLog gofmtResult
-                    , noRunLog = Nothing
-                    , noResult = Left (processLog gofmtResult)
-                    }
+    if not (processSucceeded gofmtResult) then
+        return NativeOutcome { noGofmtLog = processLog gofmtResult, noBuildLog = processLog gofmtResult, noRunLog = Nothing, noResult = Left (processLog gofmtResult) }
+    else do
+        buildResult <- runTimedProcess (timeoutGoBuild timeouts) (Just caseDir) goEnv "go" ["build", "-o", "native" </> "gofile-bin", "gofile.go"] ""
+        if not (processSucceeded buildResult) then
+            return NativeOutcome { noGofmtLog = processLog gofmtResult, noBuildLog = processLog buildResult, noRunLog = Nothing, noResult = Left (processLog buildResult) }
         else do
-            buildResult <-
-                runTimedProcess
-                    (timeoutGoBuild timeouts)
-                    (Just caseDir)
-                    goEnv
-                    "go"
-                    ["build", "-o", "native" </> "gofile-bin", "gofile.go"]
-                    ""
-            if not (processSucceeded buildResult)
-                then
-                    return
-                        NativeOutcome
-                            { noGofmtLog = processLog gofmtResult
-                            , noBuildLog = processLog buildResult
-                            , noRunLog = Nothing
-                            , noResult = Left (processLog buildResult)
-                            }
-                else do
-                    runResult <-
-                        runTimedProcess
-                            (timeoutNativeRun timeouts)
-                            (Just caseDir)
-                            (riEnv input)
-                            ("." </> "native" </> "gofile-bin")
-                            (riArgs input)
-                            (riStdin input)
-                    return
-                        NativeOutcome
-                            { noGofmtLog = processLog gofmtResult
-                            , noBuildLog = processLog buildResult
-                            , noRunLog = Just (processLog runResult)
-                            , noResult = Right (obsFromProcess runResult)
-                            }
+            runResult <- runTimedProcess (timeoutNativeRun timeouts) (Just caseDir) (riEnv input) ("." </> "native" </> "gofile-bin") (riArgs input) (riStdin input)
+            return NativeOutcome { noGofmtLog = processLog gofmtResult, noBuildLog = processLog buildResult, noRunLog = Just (processLog runResult), noResult = Right (obsFromProcess runResult) }
 
 nativeToolEnv :: FilePath -> IO [(String, String)]
 nativeToolEnv caseDir = do

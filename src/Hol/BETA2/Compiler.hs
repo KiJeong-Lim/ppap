@@ -41,15 +41,10 @@ convertWithoutChecking var_name_env = go where
     loop env (Var _ var) = convertVar var_name_env env var
     loop env (Con (loc, _) (data_constructor, tapps)) = convertCon var_name_env env (Just loc) data_constructor tapps
     loop env (App (loc, _) term1 term2) = mkNAppLoc (Just loc) (loop env term1) (loop env term2)
-    -- §3.4 CMTT: the typechecker annotates each `Lam` with the lambda's
-    -- full type (`T1 -> T2`). The bound variable's type is the domain
-    -- `T1`. We thread it through so the runtime can recover the type
-    -- of any LV/DC introduced by `pi`/`sigma`/`ty_pi` elimination.
-    loop env (Lam (loc, lamTy) var1 hint term2) =
-        let domTy = case lamTy of
-                TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) _ -> LamType (Just t1)
-                _ -> noLamType
-        in mkNLamLoc (Just loc) hint domTy (loop (var1 : env) term2)
+    loop env (Lam (loc, lamTy) var1 hint term2) = mkNLamLoc (Just loc) hint domTy (loop (var1 : env) term2) where
+        domTy = case lamTy of
+            TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) _ -> LamType (Just t1)
+            _ -> noLamType
     go :: MonadUnique m => DeBruijnIndicesEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
     go env = return . loop env . reduceTermExpr
 
@@ -57,22 +52,12 @@ convertProgram :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (Mon
 convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithoutChecking Map.empty initialEnv where
     initialEnv :: DeBruijnIndicesEnv
     initialEnv = Set.toList (Map.keysSet assumptions `Set.union` Map.keysSet used_mtvs)
-    -- §3.4 CMTT: wrap `body` in n `LO_pi` lambdas (one per assumption)
-    -- with the assumption's type, then m `LO_ty_pi` lambdas (one per
-    -- used_mtv). Innermost lambda binds the smallest IVar so de Bruijn
-    -- indices line up with `initialEnv`'s ascending key order. `foldr`
-    -- over `toDescList` puts the smallest key last, which becomes the
-    -- innermost binder. Each `LO_ty_pi` binder carries `TyMTV mtv` in
-    -- its LamType slot as a marker — `Runtime.instantiateFact` reads
-    -- this key when peeling the binder and rewrites every `TyMTV mtv`
-    -- reference in the body to point at the freshly minted `LV_ty_var`.
-    -- The marker means runtime D/G are monotyped (no `TyMTV` left).
+
     makeUniversalClosure :: TermNode -> TermNode
-    makeUniversalClosure body =
-        let wrapAssumption (_, ty) acc = mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType ty) acc)
-            wrapTyVar (mtv, _) acc = mkNApp (mkNCon LO_ty_pi) (mkNLamHintTy Nothing (mkLamType (TyMTV mtv)) acc)
-            afterAssumed = foldr wrapAssumption body (Map.toDescList assumptions)
-        in foldr wrapTyVar afterAssumed (Map.toDescList used_mtvs)
+    makeUniversalClosure body = foldr wrapTyVar afterAssumed (Map.toDescList used_mtvs) where
+        wrapAssumption (_, ty) acc = mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType ty) acc)
+        wrapTyVar (mtv, _) acc = mkNApp (mkNCon LO_ty_pi) (mkNLamHintTy Nothing (mkLamType (TyMTV mtv)) acc)
+        afterAssumed = foldr wrapAssumption body (Map.toDescList assumptions)
 
 replaceWildcards :: MonadUnique m => TermNode -> m TermNode
 replaceWildcards (NCon (DC DC_wc) _) = fmap (\u -> mkLVar (LV_Unique u noHint)) getUnique
@@ -85,14 +70,6 @@ convertQuery used_mtvs assumptions var_name_env query = do
     node <- if Map.null used_mtvs then
             convertWithoutChecking var_name_env [] query
         else do
-            -- §3.4 CMTT: each unsolved meta is bound to a fresh
-            -- `LV_ty_var uni` so type-level occurrences in the query
-            -- get reified through `convertType`. The same `(mtv, uni)`
-            -- pairs also drive `substTyMTV` over the converted body
-            -- so polymorphic pi/sigma binders' LamType annotations
-            -- carry monotyped `TC_Unique uni` instead of `TyMTV mtv`.
-            -- This mirrors the fact side's `instantiateFact LO_ty_pi`
-            -- treatment — both paths produce monotyped runtime terms.
             extra_env <- sequence
                 [ do
                     uni <- getUnique

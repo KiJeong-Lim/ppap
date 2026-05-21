@@ -1,20 +1,4 @@
-module Project.A.Types
-    ( Seed
-    , Size
-    , CaseId
-    , RuntimeInput (..)
-    , TestCase (..)
-    , Termination (..)
-    , Obs (..)
-    , ProcessLog (..)
-    , PipelineResult (..)
-    , Failure (..)
-    , CaseStatus (..)
-    , CaseReport (..)
-    , exitCodeNumber
-    , obsEqual
-    , classifyResult
-    ) where
+module Project.A.Types where
 
 import System.Exit
 
@@ -24,13 +8,15 @@ type Size = Int
 
 type CaseId = Int
 
-data RuntimeInput = RuntimeInput
+data RuntimeInput
+    = RuntimeInput
     { riArgs :: [String]
     , riStdin :: String
     , riEnv :: [(String, String)]
     } deriving (Eq, Ord, Show)
 
-data TestCase program = TestCase
+data TestCase program
+    = TestCase
     { tcCaseId :: CaseId
     , tcSeed :: Seed
     , tcSize :: Size
@@ -44,14 +30,16 @@ data Termination
     | RuntimeFailed
     deriving (Eq, Ord, Show)
 
-data Obs = Obs
+data Obs
+    = Obs
     { obsTermination :: Termination
     , obsExitCode :: Maybe Int
     , obsStdout :: String
     , obsTimedOut :: Bool
     } deriving (Eq, Ord, Show)
 
-data ProcessLog = ProcessLog
+data ProcessLog
+    = ProcessLog
     { plCommand :: String
     , plExitCode :: Maybe Int
     , plTimedOut :: Bool
@@ -86,7 +74,8 @@ data CaseStatus
     | CaseInconclusive
     deriving (Eq, Ord, Show)
 
-data CaseReport program = CaseReport
+data CaseReport program
+    = CaseReport
     { crCaseDir :: FilePath
     , crTestCase :: TestCase program
     , crResult :: PipelineResult
@@ -98,44 +87,28 @@ exitCodeNumber ExitSuccess = 0
 exitCodeNumber (ExitFailure n) = n
 
 obsEqual :: Obs -> Obs -> Bool
-obsEqual lhs rhs =
-    obsTermination lhs == obsTermination rhs
-        && obsExitCode lhs == obsExitCode rhs
-        && obsStdout lhs == obsStdout rhs
-        && obsTimedOut lhs == obsTimedOut rhs
+obsEqual lhs rhs = obsTermination lhs == obsTermination rhs && obsExitCode lhs == obsExitCode rhs && obsStdout lhs == obsStdout rhs && obsTimedOut lhs == obsTimedOut rhs
 
 classifyResult :: PipelineResult -> CaseStatus
-classifyResult result =
-    case result of
-        InvalidGo _ ->
-            CaseDiscard
-        TranslatorError _ ->
-            CaseFail TranslatorCompletenessBug
-        CoqError _ ->
-            CaseFail IllTypedGeneratedCoq
-        ExtractionError _ ->
-            CaseFail ExtractionSetupBug
-        HaskellCompileError _ ->
-            CaseFail HaskellRuntimeIntegrationBug
-        NativeRunError obs ->
-            CaseFail (TerminationMismatch obs timeoutObs)
-        ExtractedRunError obs ->
-            CaseFail (TerminationMismatch timeoutObs obs)
-        RanBoth obsGo obsHs
-            | obsTimedOut obsGo && obsTimedOut obsHs ->
-                CaseInconclusive
-            | obsEqual obsGo obsHs ->
-                CasePass
-            | obsTermination obsGo /= obsTermination obsHs || obsTimedOut obsGo /= obsTimedOut obsHs ->
-                CaseFail (TerminationMismatch obsGo obsHs)
-            | otherwise ->
-                CaseFail (ObservableMismatch obsGo obsHs)
-  where
-    timeoutObs :: Obs
-    timeoutObs =
-        Obs
-            { obsTermination = TimedOut
-            , obsExitCode = Nothing
-            , obsStdout = ""
-            , obsTimedOut = True
-            }
+classifyResult (InvalidGo _)
+    = CaseDiscard
+classifyResult (TranslatorError _)
+    = CaseFail TranslatorCompletenessBug
+classifyResult (CoqError _)
+    = CaseFail IllTypedGeneratedCoq
+classifyResult (ExtractionError _)
+    = CaseFail ExtractionSetupBug
+classifyResult (HaskellCompileError _)
+    = CaseFail HaskellRuntimeIntegrationBug
+classifyResult (NativeRunError obs)
+    = CaseFail (TerminationMismatch obs timeoutObs)
+classifyResult (ExtractedRunError obs)
+    = CaseFail (TerminationMismatch timeoutObs obs)
+classifyResult (RanBoth obsGo obsHs)
+    | obsTimedOut obsGo && obsTimedOut obsHs = CaseInconclusive
+    | obsEqual obsGo obsHs = CasePass
+    | obsTermination obsGo /= obsTermination obsHs || obsTimedOut obsGo /= obsTimedOut obsHs = CaseFail (TerminationMismatch obsGo obsHs)
+    | otherwise = CaseFail (ObservableMismatch obsGo obsHs)
+
+timeoutObs :: Obs
+timeoutObs = Obs { obsTermination = TimedOut, obsExitCode = Nothing, obsStdout = "", obsTimedOut = True }

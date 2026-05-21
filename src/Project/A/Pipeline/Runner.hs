@@ -1,7 +1,4 @@
-module Project.A.Pipeline.Runner
-    ( runCase
-    , runGeneratedCase
-    ) where
+module Project.A.Pipeline.Runner where
 
 import System.FilePath
 
@@ -14,39 +11,25 @@ import Project.A.Pipeline.NativeGo
 import Project.A.Types
 
 runGeneratedCase :: RunConfig -> CaseId -> Seed -> Size -> IO (CaseReport Program)
-runGeneratedCase config caseId seed size =
-    runCase config (genTestCase caseId seed size)
+runGeneratedCase config caseId seed size = runCase config (genTestCase caseId seed size)
 
 runCase :: RunConfig -> TestCase Program -> IO (CaseReport Program)
 runCase config tc = do
     caseDir <- prepareCaseDirectory (cfgWorkDir config) (tcCaseId tc)
     writeInitialArtifacts caseDir tc
-
     native <- runNativeGo config caseDir (tcInput tc)
     writeProcessLog (caseDir </> "native" </> "gofmt.log") (noGofmtLog native)
     writeProcessLog (caseDir </> "native" </> "build.log") (noBuildLog native)
     maybe (return ()) (writeProcessLog (caseDir </> "native" </> "run.log")) (noRunLog native)
-
-    result <-
-        case noResult native of
-            Left buildLog ->
-                return (InvalidGo buildLog)
-            Right obsGo -> do
-                extraction <- runCoqExtraction config caseDir (tcInput tc)
-                writeExtractionLogs caseDir extraction
-                case eoResult extraction of
-                    Left failure ->
-                        return failure
-                    Right obsHs ->
-                        return (RanBoth obsGo obsHs)
-
-    let report =
-            CaseReport
-                { crCaseDir = caseDir
-                , crTestCase = tc
-                , crResult = result
-                , crStatus = classifyResult result
-                }
+    result <- case noResult native of
+        Left buildLog -> return (InvalidGo buildLog)
+        Right obsGo -> do
+            extraction <- runCoqExtraction config caseDir (tcInput tc)
+            writeExtractionLogs caseDir extraction
+            case eoResult extraction of
+                Left failure -> return failure
+                Right obsHs -> return (RanBoth obsGo obsHs)
+    let report = CaseReport { crCaseDir = caseDir, crTestCase = tc, crResult = result, crStatus = classifyResult result }
     writeResult caseDir report
     return report
 

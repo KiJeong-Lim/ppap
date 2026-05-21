@@ -170,21 +170,15 @@ lhs ->> rhs
                 Right theta -> return theta
         go typ1 typ2 = Left (TypesAreMismatched typ1 typ2)
 
--- §2.7.1 (T): the type-checker calls this when assembling user-facing
--- error messages. Per §1.6 the kernel never sees abbreviations, so we
--- apply the same write-boundary fold the runtime renderer uses
--- (`Notation.tryFoldType`) before falling back to the structural
--- printer. The MTV name table is only consulted in the leaf case, so
--- folded abbreviations carry through to the message unchanged.
 showMonoType :: NotationDB -> Map.Map MetaTVar LargeId -> MonoType Int -> String -> String
 showMonoType db name_env = go 0 where
     go :: Precedence -> MonoType Int -> String -> String
     go prec t = case Notation.tryFoldType db t of
         Just (name, []) -> strstr name
-        Just (name, args) ->
-            let inner = strstr name . List.foldr (.) id [ strstr " " . go 2 a | a <- args ]
-            in if prec > 1 then strstr "(" . inner . strstr ")" else inner
+        Just (name, args) -> if prec > 1 then strstr "(" . inner name args . strstr ")" else inner name args
         Nothing -> raw prec t
+    inner :: LargeId -> [MonoType Int] -> String -> String
+    inner name args = strstr name . List.foldr (.) id [ strstr " " . go 2 a | a <- args ]
     raw :: Precedence -> MonoType Int -> String -> String
     raw prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) typ1) typ2)
         | prec <= 0 = go 1 typ1 . strstr " -> " . go 0 typ2
@@ -300,11 +294,6 @@ inferTypeWithModule mode moduleName source_lines db type_env = flip runStateT Ma
         mtv <- getNewMTV "A"
         used_mtvs <- get
         let disagrees = (snd (getAnnot term1'), snd (getAnnot term2') `mkTyArrow` TyMTV mtv) : [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
-        -- §2.6.1 (T3): the smallest enclosing annotated construct is
-        -- the offending argument `term2`, not the whole application.
-        -- Reporting `getAnnot term2` lets the user jump to the bad
-        -- subterm (e.g. the literal `7` in `appendStr "a" 7 _`) rather
-        -- than the entire call.
         theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr mode moduleName source_lines db used_mtvs (fst (getAnnot term2'))
         let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
             assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2

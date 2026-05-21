@@ -1,10 +1,4 @@
-module Project.A.Go.AST
-    ( Ty (..)
-    , Expr (..)
-    , Stmt (..)
-    , Program (..)
-    , exprTy
-    ) where
+module Project.A.Go.AST where
 
 data Ty
     = TInt
@@ -47,23 +41,21 @@ newtype Program
     deriving (Eq, Ord, Show)
 
 exprTy :: Expr -> Ty
-exprTy expr =
-    case expr of
-        EInt _ -> TInt
-        EBool _ -> TBool
-        EString _ -> TString
-        EVar ty _ -> ty
-        EAdd _ _ -> TInt
-        ESub _ _ -> TInt
-        EMul _ _ -> TInt
-        EDiv _ _ -> TInt
-        EMod _ _ -> TInt
-        EEq _ _ -> TBool
-        ENe _ _ -> TBool
-        ELt _ _ -> TBool
-        ELe _ _ -> TBool
-        EGt _ _ -> TBool
-        EGe _ _ -> TBool
-        ENot _ -> TBool
-        EAnd _ _ -> TBool
-        EOr _ _ -> TBool
+exprTy (EInt _) = TInt
+exprTy (EBool _) = TBool
+exprTy (EString _) = TString
+exprTy (EVar ty _) = ty
+exprTy (EAdd _ _) = TInt
+exprTy (ESub _ _) = TInt
+exprTy (EMul _ _) = TInt
+exprTy (EDiv _ _) = TInt
+exprTy (EMod _ _) = TInt
+exprTy (EEq _ _) = TBool
+exprTy (ENe _ _) = TBool
+exprTy (ELt _ _) = TBool
+exprTy (ELe _ _) = TBool
+exprTy (EGt _ _) = TBool
+exprTy (EGe _ _) = TBool
+exprTy (ENot _) = TBool
+exprTy (EAnd _ _) = TBool
+exprTy (EOr _ _) = TBool

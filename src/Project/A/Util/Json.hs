@@ -1,30 +1,20 @@
-module Project.A.Util.Json
-    ( Json
-    , object
-    , array
-    , field
-    , string
-    , int
-    , bool
-    , nullable
-    , list
-    ) where
+module Project.A.Util.Json where
+
+import Z.Utils
 
 type Json = String
 
 object :: [(String, Json)] -> Json
-object fields =
-    "{\n" ++ indentBlock (commaLines [quote key ++ ": " ++ value | (key, value) <- fields]) ++ "\n}"
+object = withZero . showObject
 
 array :: [Json] -> Json
-array values =
-    "[" ++ commaInline values ++ "]"
+array = withZero . showArray
 
 field :: String -> Json -> (String, Json)
 field = (,)
 
 string :: String -> Json
-string = quote
+string = withZero . showStringLit
 
 int :: Int -> Json
 int = show
@@ -40,44 +30,24 @@ nullable f (Just x) = f x
 list :: (a -> Json) -> [a] -> Json
 list f = array . map f
 
-quote :: String -> String
-quote str =
-    "\"" ++ concatMap escape str ++ "\""
+showObject :: [(String, Json)] -> ShowS
+showObject fields = strstr "{" . nl . pindent 2 . ppunc (withZero (strstr "," . nl . pindent 2)) [showStringLit key . strstr ": " . strstr value | (key, value) <- fields] . nl . strstr "}"
 
-escape :: Char -> String
-escape ch =
-    case ch of
-        '\"' -> "\\\""
-        '\\' -> "\\\\"
-        '\n' -> "\\n"
-        '\r' -> "\\r"
-        '\t' -> "\\t"
-        c
-            | c < ' ' -> "\\u" ++ pad4 (showHex4 (fromEnum c))
-            | otherwise -> [c]
+showArray :: [Json] -> ShowS
+showArray values = strstr "[" . ppunc ", " (map strstr values) . strstr "]"
+
+showStringLit :: String -> ShowS
+showStringLit str = strstr "\"" . strcat (map showEscapedChar str) . strstr "\""
+
+showEscapedChar :: Char -> ShowS
+showEscapedChar '\"' = strstr "\\\""
+showEscapedChar '\\' = strstr "\\\\"
+showEscapedChar '\n' = strstr "\\n"
+showEscapedChar '\r' = strstr "\\r"
+showEscapedChar '\t' = strstr "\\t"
+showEscapedChar ch = if ch < ' ' then strstr "\\u" . strstr (showHex4 (fromEnum ch)) else strstr [ch]
 
 showHex4 :: Int -> String
-showHex4 n =
-    let digits = "0123456789abcdef"
-        a = digits !! ((n `div` 4096) `mod` 16)
-        b = digits !! ((n `div` 256) `mod` 16)
-        c = digits !! ((n `div` 16) `mod` 16)
-        d = digits !! (n `mod` 16)
-     in [a, b, c, d]
-
-pad4 :: String -> String
-pad4 str = replicate (max 0 (4 - length str)) '0' ++ str
-
-commaInline :: [String] -> String
-commaInline [] = ""
-commaInline [x] = x
-commaInline (x : xs) = x ++ concatMap (", " ++) xs
-
-commaLines :: [String] -> String
-commaLines [] = ""
-commaLines [x] = x
-commaLines (x : xs) = x ++ concatMap (",\n" ++) xs
-
-indentBlock :: String -> String
-indentBlock =
-    unlines . map ("  " ++) . lines
+showHex4 n = [digit 4096, digit 256, digit 16, digit 1] where
+    digit :: Int -> Char
+    digit k = "0123456789abcdef" !! ((n `div` k) `mod` 16)

@@ -168,21 +168,15 @@ lhs ->> rhs
                 Right theta -> return theta
         go typ1 typ2 = Left (TypesAreMismatched typ1 typ2)
 
--- §2.7.1 (T): the type-checker calls this when assembling user-facing
--- error messages. Per §1.6 the kernel never sees abbreviations, so we
--- apply the same write-boundary fold the runtime renderer uses
--- (`Notation.tryFoldType`) before falling back to the structural
--- printer. The MTV name table is only consulted in the leaf case, so
--- folded abbreviations carry through to the message unchanged.
 showMonoType :: NotationDB -> Map.Map MetaTVar LargeId -> MonoType Int -> String -> String
 showMonoType db name_env = go 0 where
     go :: Precedence -> MonoType Int -> String -> String
     go prec t = case Notation.tryFoldType db t of
         Just (name, []) -> strstr name
-        Just (name, args) ->
-            let inner = strstr name . List.foldr (.) id [ strstr " " . go 2 a | a <- args ]
-            in if prec > 1 then strstr "(" . inner . strstr ")" else inner
+        Just (name, args) -> if prec > 1 then strstr "(" . inner name args . strstr ")" else inner name args
         Nothing -> raw prec t
+    inner :: LargeId -> [MonoType Int] -> String -> String
+    inner name args = strstr name . List.foldr (.) id [ strstr " " . go 2 a | a <- args ]
     raw :: Precedence -> MonoType Int -> String -> String
     raw prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) typ1) typ2)
         | prec <= 0 = go 1 typ1 . strstr " -> " . go 0 typ2

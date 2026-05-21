@@ -57,9 +57,6 @@ makeKindEnvInModule mode moduleName sourceLines = go where
                 kin <- unRep krep
                 go triples (Map.insert tcon kin kind_env)
 
--- §2.7 fold table population also needs to lift a TypeRep into a
--- (KindExpr, MonoType LargeId) pair; that path is shared with
--- makeTypeEnv via this top-level helper.
 typeRepToMono :: DiagnosticMode -> SourceLines -> KindEnv -> TypeRep -> Either ErrMsg (KindExpr, MonoType LargeId)
 typeRepToMono mode = typeRepToMonoInModule mode Nothing
 
@@ -136,13 +133,6 @@ makeTypeEnvInModule mode moduleName sourceLines kind_env = go where
                     Left (desugarErrInModule mode moduleName sourceLines loc ("Couldn't solve `" ++ pprint 0 kin "' ~ `type'."))
             _ -> Left (desugarErrInModule mode moduleName sourceLines loc ("It is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "'."))
 
--- §4.5.1: the `live` argument tracks the *stored hints* of every
--- enclosing binder at the current desugaring position. A fresh
--- binder may reuse its source name only when that name does not
--- collide with `live`; otherwise the stored hint is freshened via
--- `freshenName` (§4.5.2). Source-name resolution still binds the
--- original spelling — only the stored hint changes — so the
--- name-resolution `Map.Map LargeId IVar` keeps using `var_rep`.
 desugarTerm :: MonadUnique m => [SmallId] -> TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
 desugarTerm _    (R_wc loc1) = do
     return (Con loc1 DC_wc)
@@ -193,63 +183,41 @@ desugarProgramWithDiagnostic mode sourceLines kind_env type_env file_name progra
 
 desugarProgramWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
 desugarProgramWithModule mode moduleName sourceLines kind_env type_env file_name program0
-    = let program = program0
-          expansion_db = collectExpansions program
-          notation_db0 = collectNotation program
-          expandedTypes = [ (loc, (con, Notation.expandTypeRep expansion_db trep)) | RTypeDecl loc con trep <- program ]
-          expandedFacts = [ Notation.expandTermRep expansion_db fact_rep | RFactDecl _ fact_rep <- program ]
-      in case makeKindEnvInModule mode moduleName sourceLines [ (loc, (tcon, krep)) | RKindDecl loc tcon krep <- program ] kind_env of
+    = case makeKindEnvInModule mode moduleName sourceLines [ (loc, (tcon, krep)) | RKindDecl loc tcon krep <- program ] kind_env of
+        Left err_msg -> throwE err_msg
+        Right kind_env' -> case makeTypeEnvInModule mode moduleName sourceLines kind_env' expandedTypes type_env of
             Left err_msg -> throwE err_msg
-            Right kind_env' -> case makeTypeEnvInModule mode moduleName sourceLines kind_env' expandedTypes type_env of
+            Right type_env' -> case populateTypeFoldTableInModule mode moduleName sourceLines kind_env' expansion_db notation_db0 of
                 Left err_msg -> throwE err_msg
-                Right type_env' -> case populateTypeFoldTableInModule mode moduleName sourceLines kind_env' expansion_db notation_db0 of
-                    Left err_msg -> throwE err_msg
-                    Right notation_db1 -> do
-                        notation_db <- populateTermFoldTableInModule mode moduleName sourceLines type_env' expansion_db notation_db1
-                        facts' <- lift (mapM (fmap fst . flip runStateT Map.empty . desugarTerm []) expandedFacts)
-                        return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name }, notation_db, expansion_db)
+                Right notation_db1 -> do
+                    notation_db <- populateTermFoldTableInModule mode moduleName sourceLines type_env' expansion_db notation_db1
+                    facts' <- lift (mapM (fmap fst . flip runStateT Map.empty . desugarTerm []) expandedFacts)
+                    return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name }, notation_db, expansion_db)
+    where
+        program = program0
+        expansion_db = collectExpansions program
+        notation_db0 = collectNotation program
+        expandedTypes = [ (loc, (con, Notation.expandTypeRep expansion_db trep)) | RTypeDecl loc con trep <- program ]
+        expandedFacts = [ Notation.expandTermRep expansion_db fact_rep | RFactDecl _ fact_rep <- program ]
 
--- §2.7 fold table seeding (type level only — term level needs the
--- type checker for RHS desugaring and is deferred). For every type
--- abbreviation registered in the ExpansionDB, we expand its RHS
--- (so a chained `abbrev wider := list nested.` resolves down to
--- kernel constructors) then lift it through `typeRepToMono` so the
--- result lives in `MonoType LargeId`. `Notation.addAbbrev` compiles
--- that into a TermNode template via `compileTypeTemplate` and
--- appends it to `NotationDB._entries`. The viewer's fold pre-pass
--- (`Notation.foldTermAsNode`) then re-folds expanded subterms back
--- to the user-declared head at display time.
 populateTypeFoldTable :: DiagnosticMode -> SourceLines -> KindEnv -> ExpansionDB -> NotationDB -> Either ErrMsg NotationDB
 populateTypeFoldTable mode = populateTypeFoldTableInModule mode Nothing
 
 populateTypeFoldTableInModule :: DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> ExpansionDB -> NotationDB -> Either ErrMsg NotationDB
 populateTypeFoldTableInModule mode moduleName sourceLines kind_env expansion_db = go (Notation.typeAbbrevList expansion_db)
-  where
+    where
     go [] db = Right db
     go ((name, params, rhs) : rest) db = do
         let expanded = Notation.expandTypeRep expansion_db rhs
         (_, monoType) <- typeRepToMonoInModule mode moduleName sourceLines kind_env expanded
         go rest (Notation.addAbbrev name params monoType db)
 
--- §2.7 fold table seeding, term level. For every `notation` declaration
--- registered in the ExpansionDB, we run the same pipeline that compiles
--- a query: expand → desugar (with the declared parameters pre-bound to
--- fresh IVars so they survive name resolution) → `inferType` (the RHS
--- type is free, so we never commit it to a specific shape) → `convertQuery`
--- with each parameter IVar mapped to `LV_Named <param>`. The resulting
--- TermNode template carries the parameters as `LV_Named` leaves, which
--- is exactly the shape `Notation.matchTerm` looks for at fold time.
--- A notation whose RHS fails any of these steps (ill-typed body, unknown
--- constructor, etc.) is silently dropped from the fold table — the
--- §1.6.3 expander still expands the body at use sites, so the only loss
--- is a missing display-direction fold. Logging that to the user is a
--- TODO once we have a less invasive surface for "warning, but not error".
 populateTermFoldTable :: MonadUnique m => DiagnosticMode -> SourceLines -> TypeEnv -> ExpansionDB -> NotationDB -> ExceptT ErrMsg m NotationDB
 populateTermFoldTable mode = populateTermFoldTableInModule mode Nothing
 
 populateTermFoldTableInModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> TypeEnv -> ExpansionDB -> NotationDB -> ExceptT ErrMsg m NotationDB
 populateTermFoldTableInModule mode moduleName sourceLines type_env expansion_db db0 = go (Notation.termNotationList expansion_db) db0
-  where
+    where
     go [] db = return db
     go ((name, params, rhs) : rest) db = do
         let expanded = Notation.expandTermRep expansion_db rhs
@@ -273,21 +241,9 @@ compileNotationRHS mode moduleName sourceLines db type_env params body = do
     let initialNameEnv = Map.fromList (zip params paramIVars)
     (typedTerm, freeVars) <- runStateT (desugarTerm [] body) initialNameEnv
     ((typedExpr, assumptions), used_mtvs) <- inferTypeWithModule mode moduleName sourceLines db type_env typedTerm
-    let nameEnv = Map.fromList
-            [ (ivar, mkLVar (LV_Named pname))
-            | (pname, ivar) <- Map.toList freeVars
-            , pname `elem` params
-            ]
+    let nameEnv = Map.fromList [ (ivar, mkLVar (LV_Named pname)) | (pname, ivar) <- Map.toList freeVars, pname `elem` params ]
     convertQuery used_mtvs assumptions nameEnv typedExpr
 
--- §1.5: walk the program top-to-bottom, folding every `RFixityDecl`
--- into the `NotationDB`. Order matters — "last declared wins"
--- (§2.7.4) — so a later infixl that shadows an earlier infixr at
--- the same name simply overwrites the entry in `_fixity`. The
--- seed comes from `Notation.initial`, which carries the BETA1
--- built-in defaults (§1.5's fixity table) and the built-in
--- `string := list char` abbreviation. The desugarer's other passes
--- continue to ignore `RFixityDecl` (it is consumed only here).
 collectNotation :: [DeclRep] -> NotationDB
 collectNotation = List.foldl' step Notation.initial where
     step db (RFixityDecl _ form name prec) = Notation.addFixity name (toKind form) (fromInteger prec) db
@@ -297,13 +253,6 @@ collectNotation = List.foldl' step Notation.initial where
     toKind FF_InfixN = FK_InfixN
     toKind FF_Prefix = FK_Prefix
 
--- §1.6: collect every `abbrev`/`notation` declaration into the
--- ExpansionDB so `Notation.expandTermRep` / `expandTypeRep` can
--- splice their bodies into call sites during desugaring.
--- "Last declared wins" mirrors §2.7.4 — a later `addTypeAbbrevDecl`
--- simply replaces the earlier entry under the same `Map.insert`
--- semantics. The seed is `initialExpansionDB`, which carries the
--- built-in `string := list char` abbreviation (§1.6.5).
 collectExpansions :: [DeclRep] -> ExpansionDB
 collectExpansions = List.foldl' step Notation.initialExpansionDB where
     step db (RAbbrevDecl _ name params body) = Notation.addTypeAbbrevDecl name params body db
