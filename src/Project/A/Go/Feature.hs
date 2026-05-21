@@ -18,16 +18,46 @@ data Feature
     | UsesNegativeLiteral
     deriving (Eq, Ord, Show)
 
-featuresOf :: Program -> [Feature]
-featuresOf (Program stmts) = List.nub (concatMap stmtFeatures stmts)
+allFeatures :: [Feature]
+allFeatures =
+    [ UsesIf
+    , UsesFor
+    , UsesDivision
+    , UsesModulo
+    , UsesShortCircuit
+    , UsesNestedBlock
+    , UsesShadowing
+    , UsesString
+    , UsesMultiplePrint
+    , UsesZeroLiteral
+    , UsesNegativeLiteral
+    ]
 
-stmtFeatures :: Stmt -> [Feature]
-stmtFeatures (SVar _ _ expr) = exprFeatures expr
-stmtFeatures (SAssign _ expr) = exprFeatures expr
-stmtFeatures (SBlock stmts) = UsesNestedBlock : concatMap stmtFeatures stmts
-stmtFeatures (SIf cond thn els) = UsesIf : exprFeatures cond ++ concatMap stmtFeatures (thn ++ els)
-stmtFeatures (SForBounded _ _ body) = UsesFor : concatMap stmtFeatures body
-stmtFeatures (SPrintln exprs) = (if length exprs > 1 then [UsesMultiplePrint] else []) ++ concatMap exprFeatures exprs
+featuresOf :: Program -> [Feature]
+featuresOf (Program stmts) = List.nub (fst (stmtListFeatures [] [] stmts))
+
+stmtListFeatures :: [[String]] -> [String] -> [Stmt] -> ([Feature], [String])
+stmtListFeatures _ current [] = ([], current)
+stmtListFeatures outers current (stmt : rest) = (features ++ restFeatures, finalCurrent) where
+    (features, nextCurrent) = stmtFeatures outers current stmt
+    (restFeatures, finalCurrent) = stmtListFeatures outers nextCurrent rest
+
+stmtFeatures :: [[String]] -> [String] -> Stmt -> ([Feature], [String])
+stmtFeatures outers current (SVar _ name expr) = (exprFeatures expr ++ shadowFeatures outers current name, name : current)
+stmtFeatures _ current (SAssign _ expr) = (exprFeatures expr, current)
+stmtFeatures outers current (SBlock stmts) = (UsesNestedBlock : features, current) where
+    (features, _) = stmtListFeatures (current : outers) [] stmts
+stmtFeatures outers current (SIf cond thn els) = (UsesIf : exprFeatures cond ++ thnFeatures ++ elsFeatures, current) where
+    (thnFeatures, _) = stmtListFeatures (current : outers) [] thn
+    (elsFeatures, _) = stmtListFeatures (current : outers) [] els
+stmtFeatures outers current (SForBounded name _ body) = (UsesFor : shadowFeatures outers current name ++ bodyFeatures, current) where
+    (bodyFeatures, _) = stmtListFeatures (current : outers) [name] body
+stmtFeatures _ current (SPrintln exprs) = ((if length exprs > 1 then [UsesMultiplePrint] else []) ++ concatMap exprFeatures exprs, current)
+
+shadowFeatures :: [[String]] -> [String] -> String -> [Feature]
+shadowFeatures outers current name
+    | name `elem` concat (current : outers) = [UsesShadowing]
+    | otherwise = []
 
 exprFeatures :: Expr -> [Feature]
 exprFeatures (EInt n)

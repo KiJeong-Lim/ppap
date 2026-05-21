@@ -1,6 +1,7 @@
 module Project.A.Fuzz.Summary where
 
 import Project.A.Go.AST
+import Project.A.Go.Feature
 import Project.A.Types
 import Z.Utils
 
@@ -11,10 +12,11 @@ data Summary
     , summaryDiscard :: Int
     , summaryFail :: Int
     , summaryInconclusive :: Int
+    , summaryFeatures :: [(Feature, Int)]
     } deriving (Eq, Ord, Show)
 
 emptySummary :: Summary
-emptySummary = Summary { summaryCases = 0, summaryPass = 0, summaryDiscard = 0, summaryFail = 0, summaryInconclusive = 0 }
+emptySummary = Summary { summaryCases = 0, summaryPass = 0, summaryDiscard = 0, summaryFail = 0, summaryInconclusive = 0, summaryFeatures = [(feature, 0) | feature <- allFeatures] }
 
 addReport :: Summary -> CaseReport Program -> Summary
 addReport summary report
@@ -24,7 +26,7 @@ addReport summary report
         CaseFail _ -> bump (\s -> s { summaryFail = summaryFail s + 1 })
         CaseInconclusive -> bump (\s -> s { summaryInconclusive = summaryInconclusive s + 1 })
     where
-        bump f = f (summary { summaryCases = summaryCases summary + 1 })
+        bump f = f (summary { summaryCases = summaryCases summary + 1, summaryFeatures = addFeatures (featuresOf (tcProgram (crTestCase report))) (summaryFeatures summary) })
 
 renderSummary :: Summary -> String
 renderSummary = withZero . showSummary
@@ -36,4 +38,32 @@ showSummary summary = strcat
     , strstr "discard: " . shows (summaryDiscard summary) . nl
     , strstr "fail: " . shows (summaryFail summary) . nl
     , strstr "inconclusive: " . shows (summaryInconclusive summary) . nl
+    , nl
+    , strstr "feature coverage:" . nl
+    , strcat [ showFeatureLine (summaryCases summary) feature count | (feature, count) <- summaryFeatures summary ]
     ]
+
+addFeatures :: [Feature] -> [(Feature, Int)] -> [(Feature, Int)]
+addFeatures features = map bump where
+    bump (feature, count)
+        | feature `elem` features = (feature, count + 1)
+        | otherwise = (feature, count)
+
+showFeatureLine :: Int -> Feature -> Int -> ShowS
+showFeatureLine total feature count = strcat
+    [ strstr "  "
+    , shows feature
+    , strstr ": "
+    , shows count
+    , strstr "/"
+    , shows total
+    , strstr " ("
+    , shows (percentage total count)
+    , strstr "%)"
+    , nl
+    ]
+
+percentage :: Int -> Int -> Int
+percentage total count
+    | total <= 0 = 0
+    | otherwise = (100 * count) `div` total
