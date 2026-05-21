@@ -397,8 +397,7 @@ parseAtomFormula = do
 
 
 zonkPresburger :: (LogicVar -> Maybe TermNode) -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-zonkPresburger theta freeOf = goFormula Set.empty
-    where
+zonkPresburger theta freeOf = goFormula Set.empty where
     goFormula bound (ValF b) = ValF b
     goFormula bound (EqnF t1 t2) = EqnF (goTerm bound t1) (goTerm bound t2)
     goFormula bound (LtnF t1 t2) = LtnF (goTerm bound t1) (goTerm bound t2)
@@ -451,10 +450,11 @@ data LiftState
     { lsFreeMap :: !(Map.Map MyVar LogicVar)
     , lsInverse :: !(Map.Map LogicVar MyVar)
     , lsNextVar :: !MyVar
-    }
+    } deriving ()
 
 newtype L a
     = L { runLift :: LiftState -> Maybe (a, LiftState) }
+    deriving ()
 
 instance Functor L where
     fmap f (L g) = L $ \s -> case g s of
@@ -491,18 +491,29 @@ allocL lv
                 }
 
 liftFormula :: TermNode -> L MyPresburgerFormulaRep
-liftFormula t = case t of
-    NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) a _) b _ ->
-        do { a' <- liftTerm a; b' <- liftTerm b; return (EqnF a' b') }
-    NApp (NApp (NCon (DC DC_lt) _) a _) b _ ->
-        do { a' <- liftTerm a; b' <- liftTerm b; return (LtnF a' b') }
-    NApp (NApp (NCon (DC DC_le) _) a _) b _ ->
-        do { a' <- liftTerm a; b' <- liftTerm b; return (LeqF a' b') }
-    NApp (NApp (NCon (DC DC_gt) _) a _) b _ ->
-        do { a' <- liftTerm a; b' <- liftTerm b; return (GtnF a' b') }
-    NApp (NApp (NCon (DC DC_ge) _) a _) b _ ->
-        do { a' <- liftTerm a; b' <- liftTerm b; return (NegF (LtnF a' b')) }
-    _ -> fail_
+liftFormula t
+    = case t of
+        NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) a _) b _ -> do 
+            a' <- liftTerm a
+            b' <- liftTerm b
+            return (EqnF a' b')
+        NApp (NApp (NCon (DC DC_lt) _) a _) b _ -> do
+            a' <- liftTerm a
+            b' <- liftTerm b
+            return (LtnF a' b')
+        NApp (NApp (NCon (DC DC_le) _) a _) b _ -> do
+            a' <- liftTerm a
+            b' <- liftTerm b
+            return (LeqF a' b')
+        NApp (NApp (NCon (DC DC_gt) _) a _) b _ -> do
+            a' <- liftTerm a
+            b' <- liftTerm b
+            return (GtnF a' b')
+        NApp (NApp (NCon (DC DC_ge) _) a _) b _ -> do
+            a' <- liftTerm a
+            b' <- liftTerm b
+            return (NegF (LtnF a' b'))
+        _ -> fail_
 
 liftTerm :: TermNode -> L PresburgerTermRep
 liftTerm t = case t of
@@ -552,75 +563,57 @@ scaleTermRep n t
 
 
 renumberFormula :: Map.Map LogicVar MyVar -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-renumberFormula shared local rep
-    = fst (goFormula startFresh Map.empty rep)
-    where
+renumberFormula shared local rep = fst (goFormula startFresh Map.empty rep) where
     startFresh = maxMyVar (Map.elems shared) + 1
 
     maxMyVar :: [MyVar] -> MyVar
     maxMyVar = foldr max (theMinNumOfMyVar - 1)
 
     goFormula :: MyVar -> Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> (MyPresburgerFormulaRep, MyVar)
-    goFormula n _ (ValF b)
-        = (ValF b, n)
-    goFormula n env (EqnF t1 t2)
-        = (EqnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (LtnF t1 t2)
-        = (LtnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (LeqF t1 t2)
-        = (LeqF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (GtnF t1 t2)
-        = (GtnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (ModF t1 r t2)
-        = (ModF (goTerm env t1) r (goTerm env t2), n)
-    goFormula n env (NegF f1)
-        = (NegF f1', n1)
-        where
-            (f1', n1) = goFormula n env f1
-    goFormula n env (DisF f1 f2)
-        = (DisF f1' f2', n2)
-        where
-            (f1', n1) = goFormula n env f1
-            (f2', n2) = goFormula n1 env f2
-    goFormula n env (ConF f1 f2)
-        = (ConF f1' f2', n2)
-        where
-            (f1', n1) = goFormula n env f1
-            (f2', n2) = goFormula n1 env f2
-    goFormula n env (ImpF f1 f2)
-        = (ImpF f1' f2', n2)
-        where
-            (f1', n1) = goFormula n env f1
-            (f2', n2) = goFormula n1 env f2
-    goFormula n env (IffF f1 f2)
-        = (IffF f1' f2', n2)
-        where
-            (f1', n1) = goFormula n env f1
-            (f2', n2) = goFormula n1 env f2
-    goFormula n env (AllF y f1)
-        = (AllF y' f1', n1)
-        where
-            y' = n
-            env' = Map.insert y y' env
-            (f1', n1) = goFormula (n + 1) env' f1
-    goFormula n env (ExsF y f1)
-        = (ExsF y' f1', n1)
-        where
-            y' = n
-            env' = Map.insert y y' env
-            (f1', n1) = goFormula (n + 1) env' f1
+    goFormula n _ (ValF b) = (ValF b, n)
+    goFormula n env (EqnF t1 t2) = (EqnF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (LtnF t1 t2) = (LtnF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (LeqF t1 t2) = (LeqF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (GtnF t1 t2) = (GtnF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (ModF t1 r t2) = (ModF (goTerm env t1) r (goTerm env t2), n)
+    goFormula n env (NegF f1) = (NegF f1', n1) where
+        (f1', n1) = goFormula n env f1
+    goFormula n env (DisF f1 f2) = (DisF f1' f2', n2) where
+        (f1', n1) = goFormula n env f1
+        (f2', n2) = goFormula n1 env f2
+    goFormula n env (ConF f1 f2) = (ConF f1' f2', n2) where
+        (f1', n1) = goFormula n env f1
+        (f2', n2) = goFormula n1 env f2
+    goFormula n env (ImpF f1 f2) = (ImpF f1' f2', n2) where
+        (f1', n1) = goFormula n env f1
+        (f2', n2) = goFormula n1 env f2
+    goFormula n env (IffF f1 f2) = (IffF f1' f2', n2) where
+        (f1', n1) = goFormula n env f1
+        (f2', n2) = goFormula n1 env f2
+    goFormula n env (AllF y f1) = (AllF y' f1', n1) where
+        y' = n
+        env' = Map.insert y y' env
+        (f1', n1) = goFormula (n + 1) env' f1
+    goFormula n env (ExsF y f1) = (ExsF y' f1', n1) where
+        y' = n
+        env' = Map.insert y y' env
+        (f1', n1) = goFormula (n + 1) env' f1
 
     goTerm :: Map.Map MyVar MyVar -> PresburgerTermRep -> PresburgerTermRep
-    goTerm env (IVar v) = case Map.lookup v env of
-        Just v' -> IVar v'                  -- bound; α-renamed
-        Nothing -> case Map.lookup v local of
-            Just lv -> case Map.lookup lv shared of
-                Just v' -> IVar v'          -- free; mapped via shared
-                Nothing -> IVar v           -- fallback: leave as-is
-            Nothing -> IVar v               -- unknown; leave as-is
-    goTerm _ Zero = Zero
-    goTerm env (Succ t) = Succ (goTerm env t)
-    goTerm env (Plus t1 t2) = Plus (goTerm env t1) (goTerm env t2)
+    goTerm env (IVar v)
+        = case Map.lookup v env of
+            Just v' -> IVar v'                  -- bound; α-renamed
+            Nothing -> case Map.lookup v local of
+                Just lv -> case Map.lookup lv shared of
+                    Just v' -> IVar v'          -- free; mapped via shared
+                    Nothing -> IVar v           -- fallback: leave as-is
+                Nothing -> IVar v               -- unknown; leave as-is
+    goTerm _ Zero
+        = Zero
+    goTerm env (Succ t)
+        = Succ (goTerm env t)
+    goTerm env (Plus t1 t2)
+        = Plus (goTerm env t1) (goTerm env t2)
 
 
 entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
@@ -634,8 +627,8 @@ entails phis phi
         eliminated = eliminateQuantifierReferringToTheBookWrittenByPeterHinman closed
 
 arithEntails :: [TermNode] -> TermNode -> Bool
-arithEntails hyps phi =
-    case liftConstraint phi of
+arithEntails hyps phi
+    = case liftConstraint phi of
         Nothing -> False
         Just lrPhi -> entails compiledHyps compiledPhi where
             liftedHs = mapMaybe liftConstraint hyps
