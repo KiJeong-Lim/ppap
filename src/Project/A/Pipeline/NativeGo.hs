@@ -7,7 +7,8 @@ import Project.A.Pipeline.Config
 import Project.A.Types
 import Project.A.Util.Process
 
-data NativeOutcome = NativeOutcome
+data NativeOutcome
+    = NativeOutcome
     { noGofmtLog :: ProcessLog
     , noBuildLog :: ProcessLog
     , noRunLog :: Maybe ProcessLog

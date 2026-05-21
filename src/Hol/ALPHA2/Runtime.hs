@@ -177,12 +177,17 @@ runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     = return stack
     | LVar x <- rewrite NF lhs
     , Right v <- evaluateA (rewrite NF rhs)
-    = let theta = VarBinding (Map.singleton x (NCon (DC (DC_NatL v)))) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+    = bindIs x (NCon (DC (DC_NatL v)))
     | Right v <- evaluateA (rewrite NF rhs)
     , rewrite NF lhs == NCon (DC (DC_NatL v))
     = return ((ctx, cells) : stack)
     | otherwise
     = return ((ctx { _LeftConstraints = EvalutionConstraint (rewrite NF lhs) (rewrite NF rhs) : _LeftConstraints ctx }, cells) : stack)
+    where
+        bindIs x rhs_s
+            = execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+            where
+                theta = VarBinding (Map.singleton x rhs_s)
 runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack
     = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
 
@@ -369,7 +374,6 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
     dispatch :: LogicVar -> LogicVar -> Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
     dispatch v1 v2
         | v1 == v2 = loop . Map.delete v1
-        -- overkill: | hasName v1 && not (hasName v2) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v2
         | not (hasName v1) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
         | otherwise = id
     tryMatchLVar :: TermNode -> Maybe LogicVar

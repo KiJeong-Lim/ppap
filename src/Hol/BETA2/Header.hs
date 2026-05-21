@@ -64,10 +64,6 @@ data LogicalOperator
     | LO_is
     deriving (Eq, Ord)
 
--- Display-only name hint for fresh binders introduced by pi-elimination
--- (LO_pi / LO_sigma) or by HOPU eta-expansion. Eq and Ord are TRIVIAL
--- so derived instances on DC_Unique / LV_Unique automatically ignore
--- the hint, keeping α-equivalence and substitution kernels intact.
 newtype DispHint = DispHint { unDispHint :: Maybe SmallId }
 
 instance Eq DispHint where
@@ -165,10 +161,6 @@ instance Outputable SLoc where
         , showsPrec 0 col2
         ]
 
--- §3.2 module-aware diagnostic format: `[<module-name>]:<l>:<c>-<l>:<c>`.
--- Used by the debugger's per-step `_sloc` line (§3.1) and by every
--- diagnostic that names a position; falls back to the bare BETA1 form
--- when the module context is unknown (e.g., REPL command-line errors).
 pprintMSLoc :: Maybe String -> SLoc -> ShowS
 pprintMSLoc Nothing  loc = pprint 0 loc
 pprintMSLoc (Just m) loc = strstr "[" . strstr m . strstr "]:" . pprint 0 loc

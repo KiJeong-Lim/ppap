@@ -16,7 +16,8 @@ import Hol.BETA2.Notation (NotationDB, constructViewerWithDB)
 import Hol.BETA2.TermNode
 import Z.Utils
 
-data NameCache = NameCache
+data NameCache
+    = NameCache
     { _toDisplay :: !(Map.Map LogicVar SmallId)
     , _fromDisplay :: !(Map.Map SmallId LogicVar)
     }
@@ -25,12 +26,17 @@ initialCache :: NameCache
 initialCache = NameCache { _toDisplay = Map.empty, _fromDisplay = Map.empty }
 
 recordRename :: LogicVar -> SmallId -> NameCache -> NameCache
-recordRename lv name nc = NameCache { _toDisplay = Map.insert lv name (evictOldOwner (_toDisplay nc)), _fromDisplay = Map.insert name lv (evictOldDisplay (_fromDisplay nc)) } where
-    evictOldDisplay m = case Map.lookup lv (_toDisplay nc) of
+recordRename lv name nc
+    = NameCache
+    { _toDisplay = Map.insert lv name (evictOldOwner (_toDisplay nc))
+    , _fromDisplay = Map.insert name lv (evictOldDisplay (_fromDisplay nc))
+    }
+    where
+        evictOldDisplay m = case Map.lookup lv (_toDisplay nc) of
             Just oldName -> Map.delete oldName m
             Nothing -> m
 
-    evictOldOwner m = case Map.lookup name (_fromDisplay nc) of
+        evictOldOwner m = case Map.lookup name (_fromDisplay nc) of
             Just oldLv -> Map.delete oldLv m
             Nothing -> m
 
@@ -44,7 +50,11 @@ viewerLookup :: NameCache -> LogicVar -> Maybe SmallId
 viewerLookup nc lv = toDisplay lv nc
 
 mergeKeepingNewEntries :: NameCache -> NameCache -> NameCache
-mergeKeepingNewEntries old new = NameCache { _toDisplay = Map.union (_toDisplay new) (_toDisplay old), _fromDisplay = Map.union (_fromDisplay new) (_fromDisplay old) }
+mergeKeepingNewEntries old new
+    = NameCache
+    { _toDisplay = Map.union (_toDisplay new) (_toDisplay old)
+    , _fromDisplay = Map.union (_fromDisplay new) (_fromDisplay old)
+    }
 
 parseAnonymousLV :: String -> Maybe LogicVar
 parseAnonymousLV nm = case nm of

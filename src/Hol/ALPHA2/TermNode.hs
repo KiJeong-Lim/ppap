@@ -119,7 +119,10 @@ mkNIdx i = NIdx i
 
 {-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (NCon (DC (DC_Succ))) (NCon (DC (DC_NatL n))) = let n' = n + 1  in n' `seq` mkNCon (DC_NatL n')
+mkNApp (NCon (DC (DC_Succ))) (NCon (DC (DC_NatL n)))
+    = n' `seq` mkNCon (DC_NatL n')
+    where
+        n' = n + 1
 mkNApp t1 t2 = NApp t1 t2
 
 {-# INLINE mkNLam #-}
@@ -185,8 +188,10 @@ unfoldlNApp = flip go [] where
     go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
     go (NCon (DC (DC_NatL n))) ts
         | n == 0 = (mkNCon (DC_NatL 0), ts)
-        | n > 0 = let n' = n - 1 in n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
+        | n > 0 = n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
         | otherwise = error "`unfoldlNApp\': negative integer"
+        where
+            n' = n - 1
     go (NApp t1 t2) ts = go t1 (t2 : ts)
     go t ts = (t, ts)
 

@@ -33,34 +33,10 @@ data Labeling
     = Labeling
         { _ConLabel :: IntMap.IntMap ScopeLevel
         , _VarLabel :: IntMap.IntMap ScopeLevel
-        -- §3.4 CMTT: types of pi/sigma/ty_pi-introduced constants and
-        -- variables. Populated by `Runtime.runLogicalOperator` and
-        -- `Runtime.instantiateFact` from the `LamType` annotation on
-        -- the surrounding lambda (see `Compiler.convertWithoutChecking`
-        -- and `Compiler.makeUniversalClosure`). The kernel never reads
-        -- these maps — they exist purely for debugger display and for
-        -- `:assign`'s contextual type check.
-        --
-        -- `_VarTypes` only covers anonymous LVs (`LV_Unique`/`LV_ty_var`,
-        -- which have an `Int` key). User-query variables `LV_Named` are
-        -- stored in `_NamedTypes` (initialised at `execRuntime` from
-        -- the typechecker's `assumptions`). `lookupLVarType` unifies
-        -- the two so HOPU can ask "what is the type of this LV" without
-        -- caring which constructor it was.
         , _ConTypes :: IntMap.IntMap (MonoType Int)
         , _VarTypes :: IntMap.IntMap (MonoType Int)
         , _NamedTypes :: Map.Map LargeId (MonoType Int)
-        -- §3.4 CMTT: marks which `_VarLabel` entries are `LV_ty_var`s
-        -- (the rest are `LV_Unique`s). Lets the debugger pick `?TV_<n>`
-        -- vs `?V_<n>` for display even for LVs introduced by HOPU's
-        -- `getNewLVar` (where the type-level flag is the only way to
-        -- distinguish the two).
         , _TyVarKeys :: IntMap.IntMap ()
-        -- §3.4 CMTT: the program's declared-constant type environment,
-        -- stashed in `Labeling` so HOPU's type-inference helpers can
-        -- look up `DC_Named c` types without threading `TypeEnv` through
-        -- every HOPU entry point. Initialised once at `execRuntime` and
-        -- never updated during search.
         , _TypeEnv :: TypeEnv
         }
 
@@ -128,22 +104,11 @@ lvKey (LV_Unique u _) = unUnique u
 lvKey (LV_ty_var u) = unUnique u
 lvKey (LV_Named _) = error "lvKey: LV_Named has no Int key"
 
--- §3.4 CMTT: unified `LogicVar -> Maybe MonoType` lookup. Bridges
--- `_NamedTypes` (LV_Named, populated once at `execRuntime`) and
--- `_VarTypes` (LV_Unique/LV_ty_var, populated as the runtime introduces
--- fresh LVs at pi/sigma/ty_pi sites or via `getNewLVar`). Returns
--- `Nothing` for LVs the system has no type record for (e.g. an LV
--- introduced by HOPU before plan-1 type-threading is complete).
 lookupLVarType :: LogicVar -> Labeling -> Maybe (MonoType Int)
 lookupLVarType (LV_Named nm) lbl = Map.lookup nm (_NamedTypes lbl)
 lookupLVarType v lbl = IntMap.lookup (lvKey v) (_VarTypes lbl)
 
--- §3.4 CMTT helpers for computing the type of a freshly minted
--- `common_head` in HOPU's pruning rules.
 
--- Strip `n` `(A -> B)` arrows from the front of a `MonoType`,
--- returning the stripped argument types and the residual result.
--- Returns `Nothing` if the type doesn't have enough arrows.
 splitArrowsHOPU :: Int -> MonoType Int -> Maybe ([MonoType Int], MonoType Int)
 splitArrowsHOPU 0 t = Just ([], t)
 splitArrowsHOPU n (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2)
@@ -152,15 +117,9 @@ splitArrowsHOPU n (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2)
         return (t1 : params, result)
 splitArrowsHOPU _ _ = Nothing
 
--- Build `arg1 -> arg2 -> ... -> result`.
 mkArrowsHOPU :: [MonoType Int] -> MonoType Int -> MonoType Int
 mkArrowsHOPU args result = foldr mkTyArrow result args
 
--- Look up the type of any constant the typechecker or runtime knows
--- about. Polymorphic constants (`Forall vars t`) return their inner
--- `MonoType` with `TyVar i` left intact — the debugger displays such
--- type variables as `a_i`, accepting the small inaccuracy in exchange
--- for not threading a `Unique` source into pure code.
 lookupConType :: Constant -> Labeling -> Maybe (MonoType Int)
 lookupConType (DC (DC_Unique uni _)) lbl = IntMap.lookup (unUnique uni) (_ConTypes lbl)
 lookupConType (DC dc) lbl = case Map.lookup dc (_TypeEnv lbl) of
@@ -168,12 +127,6 @@ lookupConType (DC dc) lbl = case Map.lookup dc (_TypeEnv lbl) of
     Nothing -> Nothing
 lookupConType _ _ = Nothing
 
--- Best-effort type of a `TermNode`. Used by HOPU to populate the type
--- of a fresh `common_head` so the debugger can show it with the right
--- CMTT signature. `env` is a stack of binder types (innermost first)
--- accumulated as we descend through `NLam`s. Returns `Nothing` when
--- the term references something we don't have type info for (e.g. an
--- LV introduced by an earlier `getNewLVar` that itself was given `Nothing`).
 typeOfTerm :: Labeling -> [MonoType Int] -> TermNode -> Maybe (MonoType Int)
 typeOfTerm lbl env t = case t of
     LVar v -> lookupLVarType v lbl
@@ -193,23 +146,10 @@ typeOfTerm lbl env t = case t of
     Susp body _ _ _ -> typeOfTerm lbl env body
     NPresburgerCheck _ _ _ -> Just mkTyO
 
--- The HOPU pruning sites construct a substitution shaped like
---   var := \b_1 \b_2 ... \b_k. common_head a_1 a_2 ... a_m
--- where the lambda binders `b_1..b_k` come from `var`'s argument types.
--- `commonHeadType labeling var k args` computes the type
---   common_head : type(a_1) -> ... -> type(a_m) -> R
--- where `R` is `var`'s result type after stripping `k` arrows.
--- Args may be `NIdx i` (the deBruijn index of one of the introduced
--- lambdas, innermost first), a constant, an LVar, or an application —
--- `typeOfTerm` handles them uniformly using `_TypeEnv` for declared
--- constants and `_ConTypes`/`_VarTypes`/`_NamedTypes` for the rest.
 commonHeadType :: Labeling -> LogicVar -> Int -> [TermNode] -> Maybe (MonoType Int)
 commonHeadType labeling var k args = do
     varTy <- lookupLVarType var labeling
     (paramTypes, resultTy) <- splitArrowsHOPU k varTy
-    -- Inner-most binder = last paramType; an `NIdx i` argument refers
-    -- to `paramTypes !! (n - 1 - i)`. `typeOfTerm` follows the same
-    -- convention with its `env` parameter.
     let env = reverse paramTypes
     argTypes <- traverse (typeOfTerm labeling env) args
     return (mkArrowsHOPU argTypes resultTy)
@@ -341,11 +281,6 @@ bind outerHints var = go . rewrite HNF where
         | (NCon (DC DC_wc) _, _) <- unfoldlNApp rhs
         = do
             labeling <- get
-            -- §3.4 CMTT: the wildcard's type would equal `var`'s result
-            -- type stripped by `length parameters` (we can't easily
-            -- recover what arguments it stands in for here), so we err
-            -- on the side of silence and leave the fresh LV's type
-            -- unknown rather than risk recording a wrong one.
             h <- getNewLVar (isTyLVar var) (lookupLabel var labeling) Nothing
             return (mempty, h)
         | (rhs_head, rhs_tail) <- unfoldlNApp rhs
@@ -391,10 +326,6 @@ bind outerHints var = go . rewrite HNF where
                         return (selected_lhs_parameters, selected_rhs_parameters)
                 lhs_outer <- common_arguments `down` lhs_arguments
                 rhs_outer <- common_arguments `down` rhs_arguments
-                -- §3.4 CMTT: `common_head` is applied to (rhs_inner ++ rhs_outer)
-                -- under `length rhs_arguments` lambdas whose binder types come
-                -- from `var'`. `commonHeadType` derives the function type so
-                -- the renderer can display the fresh LV with full CMTT context.
                 let mCommonTy = commonHeadType labeling var' (length rhs_arguments) (rhs_inner ++ rhs_outer)
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling) mCommonTy
                 theta <- lift $ var' +-> makeNestedNLamH (map (paramHint hints) rhs_arguments) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
@@ -417,14 +348,6 @@ bind outerHints var = go . rewrite HNF where
         | otherwise
         = lift (throwE BindFail)
 
--- Pull a display hint out of a rigid parameter, so that lambdas
--- synthesized by `mksubst` can recover source names from pi/sigma
--- instantiations and from outer lambdas peeled by `simplify`.
--- `outerHints` is the in-scope lambda hints (outermost first); a
--- `NIdx i` parameter refers to outerHints[length - 1 - i] when in
--- range. Returns `Nothing` for parameters that have no hint (e.g.
--- anonymous logic variables, type variables, applied terms, or
--- NIdx whose binder is out of `outerHints` reach).
 paramHint :: [Maybe SmallId] -> TermNode -> Maybe SmallId
 paramHint _ (NCon (DC (DC_Unique _ (DispHint mh))) _) = mh
 paramHint _ (LVar (LV_Unique _ (DispHint mh))) = mh
@@ -453,9 +376,6 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
                 return mempty
             else do
                 unless (isPatternRespectTo var' rhs_arguments labeling) $ lift (throwE NotAPattern)
-                -- §3.4 CMTT: the substitution wraps `common_head common_arguments`
-                -- in `length normalizedParams + length rhsLamHints` lambdas whose
-                -- binder types come from `var`'s type (var == var' here).
                 let mCommonTy = commonHeadType labeling var' (length normalizedParams + length rhsLamHints) common_arguments
                 common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling) mCommonTy
                 theta <- lift $ var' +-> makeNestedNLamH (map (paramHint outerHints) normalizedParams ++ rhsLamHints) (List.foldl' mkNApp common_head common_arguments)
@@ -605,10 +525,6 @@ v +-> t
         fvs :: Set.Set LogicVar
         fvs = getLVars t'
 
--- §3.4 CMTT: caller passes the (best-effort) inferred type of the
--- new LV. `Nothing` means "type unknown", which the CMTT renderer
--- shows as `?`. Records `IsTypeLevel` into `_TyVarKeys` so the
--- renderer can pick `?TV_<n>` vs `?V_<n>` later.
 getNewLVar :: MonadUnique m => IsTypeLevel -> ScopeLevel -> Maybe (MonoType Int) -> StateT Labeling m TermNode
 getNewLVar is_ty label mty = do
     u <- getUnique

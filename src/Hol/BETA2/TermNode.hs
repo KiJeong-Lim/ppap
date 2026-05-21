@@ -24,13 +24,6 @@ data LogicVar
     | LV_Named LargeId
     deriving (Eq, Ord)
 
--- §2.6.1 (c): NCon / NApp / NLam / NPresburgerCheck each carry an
--- optional surface SLoc as their LAST positional field.  The kernel
--- ignores it for α-equivalence / reduction (Eq / Ord below); it is
--- consumed only by diagnostics and the per-step debug `_sloc` line
--- (§3.1).  Existing call sites use the `mkN*` smart constructors,
--- which thread `Nothing` by default; SLoc-aware sites use the
--- `mkN*Loc` variants.
 data TermNode
     = LVar !LogicVar
     | NCon !Constant !(Maybe SLoc)
@@ -45,12 +38,6 @@ data TermNode
         }
     | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar) !(Maybe SLoc)
 
--- §3.4 CMTT: the type of the bound variable of a lambda, as inferred by
--- the type checker. Carried only so that the runtime can recover the
--- type of a freshly introduced LV/DC at `pi`/`sigma`/`ty_pi` elimination.
--- `Nothing` means "unknown" — the kernel never relies on this field for
--- correctness. Eq/Ord are trivial so α-equivalence (which already
--- ignores `_hint`) stays insensitive to the type annotation.
 newtype LamType = LamType { unLamType :: Maybe (MonoType Int) }
 
 instance Eq LamType where
@@ -65,10 +52,6 @@ noLamType = LamType Nothing
 mkLamType :: MonoType Int -> LamType
 mkLamType = LamType . Just
 
--- §2.8.1: kernel operations are insensitive to the `_hint` field of
--- `NLam`. The `Eq` and `Ord` instances therefore compare the bodies
--- of two `NLam`s but ignore their hints, so that α-equivalent terms
--- stay equal regardless of which surface name happened to flow in.
 instance Eq TermNode where
     LVar v1 == LVar v2 = v1 == v2
     NCon c1 _ == NCon c2 _ = c1 == c2
@@ -190,12 +173,18 @@ mkNIdx i = NIdx i
 
 {-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = let n' = n + 1  in n' `seq` mkNCon (DC_NatL n')
+mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
+    = n' `seq` mkNCon (DC_NatL n')
+    where
+        n' = n + 1
 mkNApp t1 t2 = NApp t1 t2 Nothing
 
 {-# INLINE mkNAppLoc #-}
 mkNAppLoc :: Maybe SLoc -> TermNode -> TermNode -> TermNode
-mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = let n' = n + 1 in n' `seq` mkNConLoc sl (DC_NatL n')
+mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
+    = n' `seq` mkNConLoc sl (DC_NatL n')
+    where
+        n' = n + 1
 mkNAppLoc sl t1 t2 = NApp t1 t2 sl
 
 {-# INLINE mkNLam #-}
@@ -214,9 +203,6 @@ mkNLamHintTy h ty t = NLam h ty t Nothing
 mkNLamLoc :: Maybe SLoc -> Maybe SmallId -> LamType -> TermNode -> TermNode
 mkNLamLoc sl h ty t = NLam h ty t sl
 
--- §2.6 advisory accessor: extract the recorded surface position of a
--- TermNode, if any.  NIdx / LVar / Susp never carry one (binders and
--- substitutions are introduced by the kernel, not by the surface).
 getNodeSLoc :: TermNode -> Maybe SLoc
 getNodeSLoc (NCon _ sl) = sl
 getNodeSLoc (NApp _ _ sl) = sl
@@ -237,14 +223,6 @@ mkDummy l = Dummy l
 mkBinds :: TermNode -> Int -> SuspItem
 mkBinds t l = Binds t l
 
--- §3.4 CMTT: walk `t` and rewrite every `TyMTV mtv` inside any NLam
--- LamType annotation to `TyCon (TCon (TC_Unique uni) Star)`. Used by
--- both `Runtime.instantiateFact LO_ty_pi` (fact side, after a fresh
--- `LV_ty_var uni` is minted to instantiate the ty_pi binder) and
--- `Compiler.convertQuery` (query side, when `used_mtvs` is non-empty
--- so each MTV gets bound to a fresh `LV_ty_var uni`). Both call sites
--- guarantee that after substitution the visible D/G carry concrete
--- TC_Unique references — no `TyMTV` reaches the debugger.
 substTyMTV :: MetaTVar -> Unique -> TermNode -> TermNode
 substTyMTV mtv uni = go where
     refTy :: MonoType Int
@@ -316,8 +294,10 @@ unfoldlNApp = flip go [] where
     go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
     go (NCon (DC (DC_NatL n)) _) ts
         | n == 0 = (mkNCon (DC_NatL 0), ts)
-        | n > 0 = let n' = n - 1 in n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
+        | n > 0 = n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
         | otherwise = error "`unfoldlNApp\': negative integer"
+        where
+            n' = n - 1
     go (NApp t1 t2 _) ts = go t1 (t2 : ts)
     go t ts = (t, ts)
 
@@ -336,18 +316,10 @@ makeNestedNLam n
     | n > 0 = makeNestedNLam (n - 1) . mkNLam
     | otherwise = undefined
 
--- Like `makeNestedNLam`, but each binder carries its hint from the list.
--- Outermost binder is the head of the list. Used by HOPU's `mksubst` to
--- propagate display names from rigid parameters (e.g. DC_Unique from
--- pi-elimination) into the lambdas it synthesizes.
 makeNestedNLamH :: [Maybe SmallId] -> TermNode -> TermNode
 makeNestedNLamH [] t = t
 makeNestedNLamH (h : hs) t = mkNLamHint h (makeNestedNLamH hs t)
 
--- §4.5.2: choose a display name not already in `live`. If `h`
--- has a trailing digit run, that suffix is stripped first so that
--- `freshenName "X1" ["X1"]` returns `"X2"` (not `"X11"`). The
--- function is total — the digit pool is infinite.
 freshenName :: SmallId -> [SmallId] -> SmallId
 freshenName h live
     | h `notElem` live = h
@@ -357,9 +329,11 @@ freshenName h live
     rev_rest = dropWhile isDigitChar (reverse h)
     base = if null rev_rest then h else reverse rev_rest
     pickFresh = go (1 :: Int)
-    go i =
-        let cand = base ++ show i
-        in if cand `notElem` live then cand else go (i + 1)
+    go i
+        | cand `notElem` live = cand
+        | otherwise = go (i + 1)
+        where
+            cand = base ++ show i
 
 viewNestedNLam :: TermNode -> (Int, TermNode)
 viewNestedNLam = go 0 where
@@ -367,9 +341,6 @@ viewNestedNLam = go 0 where
     go n (NLam _ _ t _) = go (n + 1) t
     go n t = (n, t)
 
--- Like `viewNestedNLam`, but also returns the hint of each peeled
--- binder. Outermost binder is the head of the list, matching
--- `makeNestedNLamH`'s input convention.
 viewNestedNLamH :: TermNode -> ([Maybe SmallId], TermNode)
 viewNestedNLamH = go [] where
     go :: [Maybe SmallId] -> TermNode -> ([Maybe SmallId], TermNode)
@@ -379,21 +350,9 @@ viewNestedNLamH = go [] where
 constructViewer :: TermNode -> ViewNode
 constructViewer = constructViewerWith (const Nothing)
 
--- Like `constructViewer`, but consults `lookupName` first when rendering
--- a `LogicVar`. Used by the debugger (`Debugger.NameCache`) to pin down
--- user-chosen display names — e.g. after a `:assign ?V_5 Z` the next
--- printout shows `Z` instead of `?V_5`. The callback is read-only; the
--- viewer never mutates the cache. If `lookupName lv == Nothing`, falls
--- back to the original policy: hint if present, otherwise `?V_<unique>`.
 constructViewerWith :: (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
 constructViewerWith = constructViewerCustom defaultCheckOper
 
--- §1.5 fixity table for the built-in operators of BETA1. Identical
--- to the table specified at the bottom of §1.5; carried here so that
--- `Show TermNode` (and any debug path that has no `NotationDB` in
--- hand) keeps producing the same output it always did. The
--- NotationDB-aware path lives in `Hol.BETA2.Viewer` and consults
--- `NotationDB.lookupFixity` via `constructViewerCustom`.
 defaultCheckOper :: String -> Maybe (Fixity (), Precedence)
 defaultCheckOper "->" = Just (InfixR () " -> " (), 4)
 defaultCheckOper "::" = Just (InfixR () " :: " (), 4)
@@ -416,13 +375,6 @@ defaultCheckOper "*" = Just (InfixN () " * " (), 7)
 defaultCheckOper "/" = Just (InfixN () " / " (), 7)
 defaultCheckOper _ = Nothing
 
--- The most general viewer entry point: accepts both a fixity-resolver
--- (for §1.5 user-defined notation) and a logic-var renamer. The two
--- thin wrappers above (`constructViewer`, `constructViewerWith`) bake
--- in `defaultCheckOper` so the legacy callers and `Show TermNode`
--- stay byte-identical. `Hol.BETA2.Viewer` exposes the user-facing
--- spelling — `constructViewerWith db = constructViewerCustom
--- (notationCheckOper db)`.
 constructViewerCustom :: (String -> Maybe (Fixity (), Precedence)) -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
 constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runStateT . formatView . eraseType) . runIdentity . flip runStateT 1 . makeView [] . rewrite NF where
     isType :: ViewNode -> Bool

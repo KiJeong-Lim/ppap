@@ -17,20 +17,18 @@ gofile.v를 매번 생성하고 coqc 컴파일하고 extraction하여 비교하�
 핵심 property는 다음입니다.
 
 ```text
-obs(run(go build gofile.go))
-=
-obs(run(ghc gofile.hs))
+obs(run(go build gofile.go)) = obs(run(ghc gofile.hs))
 ```
 
 여기서 `gofile.hs`는
 
 ```text
 gofile.go
-  -- translator -->
+  --[ translator ]->
 gofile.v
-  -- coqc -->
+  --[ coqc ]->
 extracted Haskell
-  -- ghc/runhaskell -->
+  --[ ghc/runhaskell ]->
 observable behavior
 ```
 
@@ -121,7 +119,8 @@ cases/
 추천하는 관찰값은 다음입니다.
 
 ```hs
-data Obs = Obs
+data Obs
+  = Obs
   { exitCode :: ExitCodeLike
   , stdout   :: ByteString
   , stderr   :: Maybe ByteString
@@ -135,8 +134,7 @@ data Obs = Obs
 즉, 1차 버전은 다음 정도가 적절합니다.
 
 ```text
-observable behavior =
-  (termination class, exit code, stdout bytes)
+observable behavior = (termination class, exit code, stdout bytes)
 ```
 
 termination class는 다음처럼 나눕니다.
@@ -172,10 +170,7 @@ prop_go_coq_extraction_equiv tc = do
     InvalidGoProgram -> pure Discard
     ValidGo obs1 -> do
       obsHs <- runCoqExtractionPath tc
-      pure $
-        if comparable obs1 obsHs && obs1 == obsHs
-        then Pass
-        else Fail obs1 obsHs
+      pure $ if comparable obs1 obsHs && obs1 == obsHs then Pass else Fail obs1 obsHs
 ```
 
 그러나 Koen Claessen식으로 가려면 이걸 곧장 `Bool`로 끝내지 말고, 다음처럼 **failure를 향한 objective**를 둡니다.
@@ -246,7 +241,8 @@ fuzz-one --seed 12345
 그다음 Haskell 쪽에 generator를 둡니다.
 
 ```hs
-data TestCase = TestCase
+data TestCase
+  = TestCase
   { tcSeed  :: Seed
   , tcProg  :: GoProgram
   , tcInput :: RuntimeInput
@@ -591,23 +587,17 @@ scoreCase :: TestCase -> IO Score
 scoreCase tc = do
   r <- runPipeline tc
   pure $ case r of
-    InvalidGo ->
-      Irrelevant
+    InvalidGo -> Irrelevant
 
-    TranslatorFailed ->
-      FoundCounterexample TranslatorCrash
+    TranslatorFailed -> FoundCounterexample TranslatorCrash
 
-    CoqFailed ->
-      FoundCounterexample IllTypedCoq
+    CoqFailed -> FoundCounterexample IllTypedCoq
 
-    HaskellCompileFailed ->
-      FoundCounterexample BadExtraction
+    HaskellCompileFailed -> FoundCounterexample BadExtraction
 
     Ran obsGo obsHs
-      | obsGo /= obsHs ->
-          FoundCounterexample (ObsMismatch obsGo obsHs)
-      | otherwise ->
-          Score (interestingness tc obsGo obsHs)
+      | obsGo /= obsHs -> FoundCounterexample (ObsMismatch obsGo obsHs)
+      | otherwise -> Score (interestingness tc obsGo obsHs)
 ```
 
 여기서 `interestingness`를 잘 설계해야 합니다.
@@ -645,12 +635,10 @@ interestingness tc obsGo obsHs =
 
 ```hs
 distanceOutput :: Obs -> Obs -> Double
-distanceOutput obsGo obsHs =
-  case (parseInt (stdout obsGo), parseInt (stdout obsHs)) of
-    (Just x, Just y) ->
-      if x == y then 10 else 0
-    _ ->
-      if stdout obsGo == stdout obsHs then 10 else 0
+distanceOutput obsGo obsHs
+  = case (parseInt (stdout obsGo), parseInt (stdout obsHs)) of
+    (Just x, Just y) -> if x == y then 10 else 0
+    _ -> if stdout obsGo == stdout obsHs then 10 else 0
 ```
 
 하지만 이것은 mismatch가 이미 나와야 0입니다.
@@ -669,22 +657,18 @@ overflow boundary에 가까울수록 score를 낮춤
 
 ```hs
 riskExpr :: Expr ty -> Double
-riskExpr expr =
-  minimum
-    [ distanceToZeroDivisor expr
-    , distanceToNegativeModulo expr
-    , distanceToOverflow expr
-    , distanceToShortCircuitBoundary expr
-    ]
+riskExpr expr = minimum
+  [ distanceToZeroDivisor expr
+  , distanceToNegativeModulo expr
+  , distanceToOverflow expr
+  , distanceToShortCircuitBoundary expr
+  ]
 ```
 
 그리고 전체 score:
 
 ```hs
-interestingness tc obsGo obsHs =
-  min
-    (riskExprs tc)
-    (coverageNoveltyPenalty tc)
+interestingness tc obsGo obsHs = min (riskExprs tc) (coverageNoveltyPenalty tc)
 ```
 
 목표는 `interestingness`를 minimize하는 것입니다.
@@ -720,14 +704,10 @@ loop corpus = do
       saveFailure small fail
       loop corpus
 
-    Irrelevant ->
-      loop corpus
+    Irrelevant -> loop corpus
 
     Score d -> do
-      let corpus' =
-            if isInteresting d child corpus
-            then insert child d corpus
-            else corpus
+      let corpus' = if isInteresting d child corpus then insert child d corpus else corpus
       loop corpus'
 ```
 
@@ -947,7 +927,8 @@ fuzzer/
 핵심 타입은 다음 정도입니다.
 
 ```hs
-data TestCase = TestCase
+data TestCase
+  = TestCase
   { tcProgram :: GoProgram
   , tcInput   :: RuntimeInput
   , tcSeed    :: Int

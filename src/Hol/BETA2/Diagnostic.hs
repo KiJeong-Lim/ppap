@@ -78,11 +78,12 @@ locBlockWith mode sourceLines (SLoc (row, col) (endRow, endCol)) =
     focusWidth = max 1 (if row == endRow then endCol - col + 1 else 1)
     sourceDoc = Doc.text " " <> maybe mempty highlightedLine (sourceLines >>= lineAt row)
     caretDoc = Doc.text " " <> Doc.text (replicate (max 0 (col - 1)) ' ') <> colorCaret (Doc.textbf (replicate focusWidth '^'))
-    highlightedLine line =
-        let beforeLen = max 0 (col - 1)
+    highlightedLine line
+        = Doc.text before <> colorSource (Doc.textbf focus) <> Doc.text after
+        where
+            beforeLen = max 0 (col - 1)
             (before, rest) = splitAt beforeLen line
             (focus, after) = splitAt focusWidth rest
-        in Doc.text before <> colorSource (Doc.textbf focus) <> Doc.text after
     lineAt :: Int -> [String] -> Maybe String
     lineAt n xs
         | n <= 0 = Nothing

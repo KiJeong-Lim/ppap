@@ -76,66 +76,18 @@ data RuntimeEnv
         , _Answer :: Context -> IO RunMore
         , _PrintPrimitive :: Context -> TermNode -> IO ()
         , _ReadPrimitive :: Context -> TermNode -> IO (Maybe TermNode)
-        -- §3.4: the debugger lists each user-visible flexible variable
-        -- with its inferred `MonoType`. The map is keyed by `LogicVar`
-        -- so the runtime can resolve a name shown at a breakpoint back
-        -- to its type without dragging the type-check pipeline into
-        -- `Runtime.hs`. It is set once per query (in `Main.mkRuntimeEnv`)
-        -- and is read-only for the duration of the search.
         , _TypeInfo :: Map.Map LogicVar (MonoType Int)
-        -- §3.2 `:assign`: the substitution accumulated by `:assign` between
-        -- step boundaries. The REPL callback (`_PutStr`) writes a single
-        -- `?V := t` binding into this IORef; the next entry to `go` reads
-        -- it, applies `zonkLVar` to the entire stack (current `ctx`/cells
-        -- plus every saved frame), and clears it. This decouples the IO
-        -- callback (which has no `Stack` in scope) from the kernel loop
-        -- that does. The IORef is created once per query in `Main`.
         , _PendingSubst :: IORef LogicVarSubst
-        -- §3.4 CMTT: the program's declared-constant types, passed
-        -- through to `Labeling._TypeEnv` at `execRuntime` start so
-        -- HOPU's `typeOfTerm` can resolve `DC_Named`/`DC_LO`/etc.
         , _ProgramTypeEnv :: TypeEnv
-        -- §3.4 CMTT: when `True`, `_typing` entries render with the full
-        -- recursive CMTT context `(Γ |- τ)`. When `False` (default), only
-        -- the type itself is shown. Toggled by `:verbose` at the debug
-        -- prompt; the IORef is shared with the REPL so the next step
-        -- reflects the new mode.
         , _VerboseTyping :: IORef Bool
-        -- §4.4: the kernel's `go` loop publishes the live stack here
-        -- before invoking the debug callback. `cmd*` functions read it
-        -- to inspect the current state, and may write it to mutate the
-        -- search frontier (e.g. `cmdQuit` empties it). The very next
-        -- iteration of `go` reads back from this IORef.
         , _StackRef :: IORef Stack
-        -- §4.4.4: the REPL's display-name cache. Lives in RuntimeEnv so
-        -- that `cmd*` functions in the `Runtime` monad can update it
-        -- (e.g. `cmdAssign` may introduce a new display name) without
-        -- the REPL having to thread it manually.
         , _NameCacheRef :: IORef NameCache
-        -- §4.4: a sibling reference to the same IORef stored as
-        -- `Context._debuggindModeOn` in every Context. Kept on the env
-        -- so that `cmdDebugToggle` works even when the goal stack is
-        -- empty (post-`cmdQuit`, post-search-completion).
         , _DebuggingRef :: IORef Debugging
-        -- §1.5 / §2.6: the program's notation database, built by the
-        -- desugarer from the `infix*`/`prefix` declarations in the
-        -- source file. Read by every viewer call so that user-defined
-        -- fixity (and the built-in seed table) shows up in answer
-        -- substitutions, `:show`/`:assign` output, and the residual
-        -- constraint listing of §2.5.
         , _NotationDB :: NotationDB
-        -- §3.2 module-aware diagnostics: the main module's path-derived
-        -- (or header-declared) name, used to prefix every debug `_sloc`
-        -- line with `[<mod>]`. Set once by `Main.mkRuntimeEnv` from
-        -- `Program.moduleName`.
         , _ModuleName :: String
         }
     deriving ()
 
--- §4.4: Public Haskell API surface. Library callers (notably the
--- future `LoL`) invoke `cmd*` functions inside this monad rather
--- than fork-execing the REPL and scraping stdout. The single
--- reader environment carries every IORef the commands may touch.
 newtype Runtime a = Runtime { unRuntime :: ReaderT RuntimeEnv IO a }
 
 instance Functor Runtime where
@@ -158,13 +110,6 @@ runRuntime (Runtime m) = runReaderT m
 askRuntimeEnv :: Runtime RuntimeEnv
 askRuntimeEnv = Runtime ask
 
--- §4.4.1: opaque transaction handle. Captures every piece of mutable
--- state the kernel uses to decide success/failure: the full goal
--- stack (which carries θ, C, the HOPU disagreement set as a subset
--- of C, and every saved frame), the pending substitution staged for
--- the next iteration, and the display-name cache at the moment of
--- the snapshot. `cmdAssign` calls `snapshot` before applying its
--- preconditions and `restore` if any of them fails.
 data Snapshot
     = Snapshot
         { _SnapStack :: Stack
@@ -181,11 +126,6 @@ snapshot = do
         nc <- readIORef (_NameCacheRef env)
         return (Snapshot { _SnapStack = st, _SnapPendingSubst = ps, _SnapNameCache = nc })
 
--- §3.5 / §4.4.4 policy override: rollback restores the saved θ, C,
--- stack, and pending substitution, but does *not* discard cache
--- entries introduced *after* the snapshot was taken. The user's
--- display names should not jitter between two consecutive prompts
--- merely because the assignment that revealed a name failed.
 restore :: Snapshot -> Runtime ()
 restore snap = do
     env <- askRuntimeEnv
@@ -195,19 +135,11 @@ restore snap = do
         currentCache <- readIORef (_NameCacheRef env)
         writeIORef (_NameCacheRef env) (mergeKeepingNewEntries (_SnapNameCache snap) currentCache)
 
--- §3.1, §4.4.2: flip the debug-mode bit. Idempotent across two calls.
--- Works whether or not a goal is currently on the stack — the IORef
--- itself lives on the env, not on a Context.
 cmdDebugToggle :: Runtime ()
 cmdDebugToggle = do
     env <- askRuntimeEnv
     liftIO $ modifyIORef (_DebuggingRef env) not
 
--- §3.1, §4.4.2: drop the goal stack and any pending substitution so
--- the next iteration of the kernel loop sees no more work. The REPL
--- typically follows up by exiting its own loop, but the runtime
--- state is self-consistent on its own — a subsequent call to e.g.
--- `cmdShow` on a cleared state will simply see an empty stack.
 cmdQuit :: Runtime ()
 cmdQuit = do
     env <- askRuntimeEnv
@@ -215,13 +147,6 @@ cmdQuit = do
         writeIORef (_StackRef env) []
         writeIORef (_PendingSubst env) (VarBinding Map.empty)
 
--- §3.3, §4.4.2: format and return the current value of the variable
--- named `name`. Read-only — no snapshot needed. The name is taken
--- without a leading `?` (the REPL is responsible for stripping it).
--- Resolution tries the display-name cache first, then falls back to
--- the viewer's anonymous-LV convention (`V_n`/`LV_n`/`TV_n`). The
--- returned string is the formatted value (or `unbound`); the message
--- prefix is the REPL's responsibility.
 cmdShow :: SmallId -> Runtime String
 cmdShow name = do
     env <- askRuntimeEnv
@@ -239,13 +164,6 @@ cmdShow name = do
                     Nothing -> return "unbound"
                     Just t -> return (prettyTerm (_NotationDB env) cache t "")
 
--- §3.4 CMTT scope check: a binding `?V := t` respects the contextual
--- type iff every rigid constant and every other flexible variable
--- inside `t` is visible at `?V`'s scope level (i.e. its scope level
--- is ≤ `targetScope`). HOPU normally enforces this through
--- `isPatternRespectTo` and the up/down rules; we replicate the check
--- here so `cmdAssign` rejects out-of-scope bindings before they
--- pollute the kernel.
 scopeEscaping :: Labeling -> ScopeLevel -> LogicVar -> TermNode -> ([Constant], [LogicVar])
 scopeEscaping labeling targetScope targetLV = walk where
     walk :: TermNode -> ([Constant], [LogicVar])
@@ -262,14 +180,6 @@ scopeEscaping labeling targetScope targetLV = walk where
     walk _ = ([], [])
     combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
 
--- §3.2, §4.4.2: the binding-commit step of `:assign`. The TermNode
--- argument is already lexed/parsed/desugared/type-checked by the
--- caller (the REPL, or a library client that builds TermNodes
--- directly). cmdAssign takes a snapshot, runs the runtime-side
--- preconditions of §3.2.2 — occurs (4), pattern/scope (5),
--- consistency (6) — and either commits the binding by staging it
--- into _PendingSubst or restores the snapshot on failure. Session
--- (1), flexibility (2), and typing (3) are caller responsibilities.
 cmdAssign :: SmallId -> TermNode -> Runtime (Either ErrMsg ())
 cmdAssign name term = do
     snap <- snapshot
@@ -305,7 +215,6 @@ cmdAssign name term = do
                                     items = map renderCon escapedCons ++ map renderVar escapedVars
                                 return (Left ("scope violation for '" ++ name ++ "' — out-of-scope: " ++ List.intercalate ", " items))
                             else do
-                                -- §2.3.6 (T4): consistency under the candidate substitution.
                                 let new_binding = VarBinding (Map.singleton targetLV t_zonked)
                                     composedAfter = new_binding <> existingPending <> _TotalVarBinding ctx
                                     arithTermsAfter =
@@ -359,20 +268,6 @@ showsvdash space [] goal = strstr "|- " . shows goal
 showsvdash space [hyp] goal = shows hyp . strstr " |- " . shows goal
 showsvdash space (hyp : hyps) goal = shows hyp . strstr ", " . showsvdash space hyps goal
 
--- §3.4: render a `MonoType Int` in a form the user can read at a
--- breakpoint. Free type variables (`TyVar i`) are printed as `a_i`;
--- TyMTV is shown as `?t<unique>`; `TC_Arrow` is treated as a
--- right-associative infix `->`. Precedences mirror those used by
--- `Outputable KindExpr` so the output is consistent. `TC_Unique uni`
--- is reserved for runtime-introduced ty_var references (produced by
--- `instantiateFact LO_ty_pi`'s `substTyMTV` pass) and renders as
--- `?TV_<n>` so it lines up with the CMTT context's bare-name form.
--- §1.6/§2.7 (W) write boundary: type-level fold runs immediately
--- before the structural printer touches a `MonoType Int`. The kernel
--- value itself is never rewritten — `tryFoldType` only inspects it
--- and, on match, hands back a `(name, args)` view that the printer
--- renders as `name arg1 arg2 ...`. Args are themselves passed back
--- through `showsMonoType` so nested abbreviations fold uniformly.
 showsMonoType :: NotationDB -> Int -> MonoType Int -> ShowS
 showsMonoType db prec t = case Notation.tryFoldType db t of
     Just (name, []) -> strstr name
@@ -381,9 +276,6 @@ showsMonoType db prec t = case Notation.tryFoldType db t of
         in if prec > 6 then strstr "(" . inner . strstr ")" else inner
     Nothing -> showsMonoTypeRaw db prec t
 
--- Structural printer used when no abbreviation matches at this node.
--- Subterms are recursed through `showsMonoType` so a deeper match
--- (e.g. inside an `->`) still folds.
 showsMonoTypeRaw :: NotationDB -> Int -> MonoType Int -> ShowS
 showsMonoTypeRaw _  _    (TyVar i) = strstr "a_" . shows i
 showsMonoTypeRaw _  _    (TyMTV mtv) = strstr "?t" . shows mtv
@@ -396,28 +288,12 @@ showsMonoTypeRaw db prec (TyApp t1 t2) =
     let inner = showsMonoType db 6 t1 . strstr " " . showsMonoType db 7 t2
     in if prec > 6 then strstr "(" . inner . strstr ")" else inner
 
--- Render a `LogicVar` using the same convention as `TermNode`'s viewer
--- (`?V_n` for anonymous term-level, `?TV_n` for type-level, hint when
--- available, name when LV_Named). Diverges from the raw `Show LogicVar`
--- on `LV_Unique` (raw uses `?LV_<n>`), so the debugger output stays
--- consistent across `_substitution`, `_typing`, and the current goal.
 showLVarVN :: LogicVar -> ShowS
 showLVarVN (LV_ty_var uni) = strstr "?TV_" . shows (unUnique uni)
 showLVarVN (LV_Unique uni (DispHint (Just s))) = strstr s
 showLVarVN (LV_Unique uni (DispHint Nothing)) = strstr "?V_" . shows (unUnique uni)
 showLVarVN (LV_Named name) = strstr name
 
--- §3.4 CMTT: render `lv : t` with `lv`'s typing context inlined as
--- `(c_i : ti, ?V_j : tj, ... |- t)`. The context is everything visible
--- to `lv` (i.e. scope ≤ scope(lv)) found in the runtime's `Labeling`:
---   • rigid constants from `_ConTypes` — atomic, no further unfolding;
---   • flexible variables from `_VarTypes` with strictly smaller
---     `Unique` than `lv` itself, recursively rendered the same way.
--- The `Unique <` guard guarantees termination (Unique IDs form a strict
--- partial order matching introduction time, so a context cannot loop
--- back into a younger variable). Empty contexts still render as
--- `(|- t)` so the CMTT shape is uniform across all LVs (including
--- `LV_Named` query variables at scope 0).
 showsMonoTypeIn :: NotationDB -> Bool -> Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
 showsMonoTypeIn db False _ _ mtyp = case mtyp of
     Just t -> showsMonoType db 0 t
@@ -432,12 +308,6 @@ showsMonoTypeIn db True labeling lv mtyp = render lv mtyp where
                    | (uni, cTyp) <- IntMap.toAscList (_ConTypes labeling)
                    , IntMap.findWithDefault maxBound uni (_ConLabel labeling) <= scope_v
                    ]
-            -- Iterate `_VarLabel` (not `_VarTypes`) so HOPU-introduced
-            -- LVs without a recorded type still appear in the context.
-            -- Their type renders as `?`. `?TV_<n>` (kind-level ty-vars)
-            -- appear here as bare names — they are part of the typing
-            -- environment a `?V` can refer to, but they have no MonoType
-            -- so no `: τ` annotation is shown for them.
             vars = [ renderVar uni
                    | (uni, scp) <- IntMap.toAscList (_VarLabel labeling)
                    , uni < myK
@@ -453,10 +323,6 @@ showsMonoTypeIn db True labeling lv mtyp = render lv mtyp where
         in prefix . strstr "|- " . renderedTy . strstr ")"
     renderCon :: Int -> MonoType Int -> ShowS
     renderCon uni cTyp = strstr "c_" . shows uni . strstr " : " . showsMonoType db 0 cTyp
-    -- `?TV_<n>` (LV_ty_var, kind-level) appears as a bare name —
-    -- no `: τ` since its sort lives one level up (Star/kind), which
-    -- the MonoType-based renderer can't express. `?V_<n>` is rendered
-    -- with its CMTT type, recursing through `render`.
     renderVar :: Int -> ShowS
     renderVar uni
         | IntMap.member uni (_TyVarKeys labeling) = strstr "?TV_" . shows uni
@@ -475,36 +341,20 @@ showStackItem mname db verbose fvs typeMap space (ctx, cells) = strcat
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
-    -- §3.4 typing judgments: each flexible variable in scope with its
-    -- inferred type, rendered in CMTT form `?V : (Γ |- τ)` where Γ
-    -- lists every visible rigid constant and flexible variable. The
-    -- set comes from `_TypeInfo` (built in `Main.mkRuntimeEnv` from
-    -- the type-checker's `assumptions`) for `LV_Named` query vars,
-    -- and from `_VarTypes` in the runtime `Labeling` for runtime-
-    -- introduced anonymous vars; both are merged here.
-    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) (
+    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) (concat
+        [
         [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (Just typ)
         | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
         ]
-        ++
-        -- §3.4 CMTT: iterate `_VarLabel` (not `_VarTypes`) so HOPU-
-        -- introduced LVs without a recorded type still appear.
-        -- `lookupLVarType` returns `Nothing` for them; the renderer
-        -- shows `?` in that case. Skip `_TyVarKeys` entries — their
-        -- "type" is kind-level (`*`), not a `MonoType`, so the line
-        -- would carry no useful information.
+        ,
         [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
         | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
         , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
         , let v = LV_Unique (Unique uni) noHint
         ]
+        ]
       ) . nl
     , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
-    -- §3.1 / §3.4 BETA1: the source location of the current goal, where
-    -- known. Surface-visible only when the topmost cell's goal carries
-    -- an `_sloc` (§2.6.1 (c)).  Goals introduced by the runtime
-    -- (cut frames, conjuncts of an `LO_and`) have no SLoc and the
-    -- line shows `(none)` rather than a fabricated position.
     , pindent (space + 4) . strstr ", " . strstr "_sloc = " . slocLine cells . nl
     , pindent (space + 4) . strstr "}" . nl
     ]
@@ -537,10 +387,6 @@ instantiateFact fact level
         (NCon (DC (DC_LO LO_ty_pi)) _, [fact1]) -> do
             uni <- getUnique
             let var = LV_ty_var uni
-                -- The `LO_ty_pi` binder's LamType slot carries the MTV
-                -- key (see `Compiler.makeUniversalClosure.wrapTyVar` and
-                -- `Main.eqFact`). Recovering it lets us rewrite every
-                -- `TyMTV mtv` in the body to point at `uni`.
                 mtvKey = case rewrite HNF fact1 of
                     NLam _ (LamType (Just (TyMTV mtv))) _ _ -> Just mtv
                     _ -> Nothing
@@ -548,8 +394,6 @@ instantiateFact fact level
                     Just mtv -> substTyMTV mtv uni fact1
                     Nothing -> fact1
             modify (enrollLabel var level)
-            -- `_TyVarKeys` flags this Unique as kind-level so the
-            -- debugger picks `?TV_<n>` over `?V_<n>`.
             modify (\lbl -> lbl { _TyVarKeys = IntMap.insert (unUnique uni) () (_TyVarKeys lbl) })
             instantiateFact (mkNApp fact1' (mkLVar var)) level
         (NCon (DC (DC_LO LO_pi)) _, [fact1]) -> do
@@ -611,14 +455,14 @@ runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     = return stack
     | LVar x <- rewrite NF lhs
     , Right v <- rhsValue
-    = let theta = VarBinding (Map.singleton x (mkNCon (DC (DC_NatL v)))) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+    = bindIs x (mkNCon (DC (DC_NatL v)))
     | Right v <- rhsValue
     , Right lhs_v <- lhsValue
     = if lhs_v == v then return ((ctx, cells) : stack) else return stack
     | LVar x <- lhs'
     , Just rhs_s <- simplifyArithmetic rhs'
     , canBindIs x rhs_s
-    = let theta = VarBinding (Map.singleton x rhs_s) in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+    = bindIs x rhs_s
     | ArithEqTrue <- arithmeticEquality lhs' rhs'
     = return ((ctx, cells) : stack)
     | ArithEqFalse <- arithmeticEquality lhs' rhs'
@@ -630,11 +474,15 @@ runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
         rhs' = rewrite NF rhs
         lhsValue = evaluateA lhs'
         rhsValue = evaluateA rhs'
+        bindIs x rhs_s
+            = execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
+            where
+                theta = VarBinding (Map.singleton x rhs_s)
         canBindIs x t =
-            x `Set.notMember` getLVars t
-                && let targetScope = lookupLabel x (_CurrentLabeling ctx)
-                       (badCons, badVars) = scopeEscaping (_CurrentLabeling ctx) targetScope x t
-                   in null badCons && null badVars
+            x `Set.notMember` getLVars t && null badCons && null badVars
+            where
+                targetScope = lookupLabel x (_CurrentLabeling ctx)
+                (badCons, badVars) = scopeEscaping (_CurrentLabeling ctx) targetScope x t
 runLogicalOperator logical_operator args ctx facts hyps level call_id cells stack
     = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
 
@@ -795,10 +643,6 @@ runDebugger loc_str ctx facts hyps level call_id cells stack = do
     liftIO $ putStrLn ("*** debugger called with " ++ shows loc_str "")
     return ((ctx, cells) : stack)
 
--- Decide a `presburger "..."` goal (§2.3.5). Walks current
--- arithmetic constraints, lifts them, renumbers everything onto a
--- shared MyVar space, and asks the solver. Succeeds by pushing the
--- continuation cells; fails by returning the bare stack.
 runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar LogicVar -> Context -> [Cell] -> Stack -> Stack
 runPresburger rep freeOf ctx cells stack =
     if entails compiledHyps compiledPhi
@@ -836,13 +680,6 @@ runPresburger rep freeOf ctx cells stack =
     compiledHyps :: [MyPresburgerFormula]
     compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
--- §2.3.6: True iff the given (zonked) arithmetic constraints are
--- unsatisfiable. Two-tier evaluation: the cheap `evaluateB`
--- pre-filter is consulted first; only if it cannot decide does the
--- Presburger solver get called with `entails Φ ⊥`. Conjuncts that
--- fail to lift into the linear-integer fragment are dropped — by
--- soundness (§4.2.4) dropping can only weaken the antecedent,
--- never declare false consistency.
 isInconsistent :: [TermNode] -> Bool
 isInconsistent arithTerms
     | cheapKill = True
@@ -998,14 +835,6 @@ runTransition env free_lvars = go where
     dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf _, []) _call_id cells stack
         = go (runPresburger rep freeOf ctx cells stack)
     dispatch ctx facts hyps level (t, ts) call_id cells stack = throwE (BadGoalGiven (foldlNApp t ts))
-    -- §3.2.4: drain any `:assign` substitution before each step. The
-    -- map is keyed by `LogicVar`, so applying `zonkLVar` to `ctx`,
-    -- the active cells, and every saved frame is sufficient to
-    -- propagate `?V := t` everywhere a term currently lives —
-    -- including `_TotalVarBinding`, `_LeftConstraints`, every cell's
-    -- `_WantedGoal` / `_GivenHypos`, and the labelling map (via the
-    -- `Context` instance). The IORef is reset to `mempty` once
-    -- consumed so subsequent steps see no further mutation.
     applyPending :: Stack -> ExceptT KernelErr m Stack
     applyPending [] = return []
     applyPending st@((ctx, cells) : rest) = liftIO $ do
@@ -1022,19 +851,12 @@ runTransition env free_lvars = go where
         case stack0 of
             [] -> return False
             (ctx, cells) : stack -> do
-                -- §4.4: publish the live stack so the debug callback (and
-                -- any `cmd*` function it invokes) can observe and mutate
-                -- it. We re-read it after the callback returns so that
-                -- e.g. `cmdQuit` (which empties `_StackRef`) takes effect.
                 liftIO $ writeIORef (_StackRef env) ((ctx, cells) : stack)
                 liftIO $ do
                     dbg <- readIORef (_debuggindModeOn ctx)
                     verbose <- readIORef (_VerboseTyping env)
                     when dbg $ _PutStr env env ctx (showsCurrentState (_ModuleName env) (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
                 stackAfterCb <- liftIO (readIORef (_StackRef env))
-                -- The user's `:assign` (entered via `_PutStr`) may have
-                -- arrived during the debug prompt. Re-drain so the very
-                -- next dispatch sees the propagated substitution.
                 stack1 <- applyPending stackAfterCb
                 case stack1 of
                     [] -> return False
@@ -1057,7 +879,6 @@ eraseTrivialBinding = VarBinding . loop . unVarBinding where
     dispatch :: LogicVar -> LogicVar -> Map.Map LogicVar TermNode -> Map.Map LogicVar TermNode
     dispatch v1 v2
         | v1 == v2 = loop . Map.delete v1
-        -- overkill: | hasName v1 && not (hasName v2) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v2 (LVar v1) })) . Map.delete v2
         | not (hasName v1) = loop . Map.map (flatten (VarBinding { unVarBinding = Map.singleton v1 (LVar v2) })) . Map.delete v1
         | otherwise = id
     tryMatchLVar :: TermNode -> Maybe LogicVar

@@ -63,11 +63,6 @@ addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <
 execRuntime :: UniqueM m => RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr m Satisfied
 execRuntime env isDebugging facts query = do
     call_id <- getUnique
-    -- §3.4 CMTT: seed `_NamedTypes` with the typechecker's inferences
-    -- for `LV_Named` query variables so HOPU's `lookupLVarType` covers
-    -- them uniformly with `_VarTypes`. `_TypeEnv` stashes the program's
-    -- declared-constant types so HOPU's `typeOfTerm` resolves DC_Named
-    -- (and DC_LO/arithmetic) constants without re-plumbing TypeEnv.
     let namedTypes = Map.fromList [ (nm, ty) | (LV_Named nm, ty) <- Map.toList (_TypeInfo env) ]
         initialLabeling = Labeling
             { _ConLabel = IntMap.empty
@@ -169,12 +164,6 @@ runREPL mode program notationDB expansionDB = do
                         _ <- promptify ("*** :show: ?" ++ varName ++ " = " ++ result)
                         return ()
                     _ -> return ()
-        -- §3.2 `:assign ?V := t.` parsing: strip the literal `?` from the
-        -- variable name and split on ` := `. The body is re-assembled as
-        -- the ordinary query `?- V = t.` so the existing lex+parse+desugar
-        -- +typecheck+convert pipeline does the heavy lifting (including
-        -- type-coherence: `DC_eq : forall A. A -> A -> o` forces `V`'s
-        -- inferred type and `t`'s inferred type to unify).
         parseAssign :: String -> Maybe (String, String)
         parseAssign body0 =
             let body = dropWhile (== ' ') body0
@@ -193,26 +182,10 @@ runREPL mode program notationDB expansionDB = do
                 _ <- promptify (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Expected ':assign ?X := t.'."])
                 return ()
             Just (varName, tBody) -> do
-                -- §3.2.2: the user may reference other flexible variables
-                -- inside `t` (e.g. `:assign ?F := ?V_17.`). Both the
-                -- viewer's `?V_<n>` display and `LV_Named` user variables
-                -- carry a literal `?` only in front of the *single*
-                -- variable name. We strip every `?` that immediately
-                -- precedes an identifier character so that the synthetic
-                -- query `?- X = ...` lexes cleanly; `nameSwap` below
-                -- restores the resolved LogicVar for each such name.
                 let stripQuests :: String -> String
                     stripQuests [] = []
                     stripQuests ('?' : cs) = stripQuests cs
                     stripQuests (c : cs) = c : stripQuests cs
-                    -- §3.4 CMTT: rigid constants introduced by pi/sigma
-                    -- have viewer name `c_<n>`. The lexer treats `c_<n>`
-                    -- as a `DC_Named` constant (lowercase head), and the
-                    -- typechecker rejects unknown names. We pre-rename
-                    -- `c_<n>` → `XCON_<n>` so it parses as an LV_Named
-                    -- (uppercase head), then post-substitute the actual
-                    -- DC_Unique back in. `XCON_` is unlikely to collide
-                    -- with real user variable names.
                     queryStr = "?- " ++ varName ++ " = " ++ mapConToLVar (stripQuests tBody)
                 cache <- readIORef nameCache
                 result <- execUniqueT $ runExceptT (compileAssign varName queryStr)
@@ -221,18 +194,6 @@ runREPL mode program notationDB expansionDB = do
                         _ <- promptify err
                         return ()
                     Right (compiledLV, t_compiled, inferredTy, nameToType) -> do
-                        -- §3.5: resolve user-input display names back to the
-                        -- real LogicVar each refers to. If a name is in
-                        -- `NameCache.fromDisplay`, the user *meant* that
-                        -- anonymous variable (LV_Unique/LV_ty_var); the
-                        -- compiler had to produce a fresh `LV_Named` because
-                        -- it has no knowledge of the cache. We patch this up
-                        -- on both sides:
-                        --   • `targetLV` — the LHS the user typed
-                        --   • `nameSwap` — every other LV_Named appearing in
-                        --     `t_compiled` whose name happens to be a cached
-                        --     display name (the user can refer to anonymous
-                        --     variables anywhere inside `t`).
                         let resolveDisplayName :: String -> Maybe LogicVar
                             resolveDisplayName nm = case fromDisplay nm cache of
                                 Just r -> Just r
@@ -246,11 +207,6 @@ runREPL mode program notationDB expansionDB = do
                                 | LV_Named nm <- Set.toList (getLVars t_compiled)
                                 , Just uni <- [parseXcon nm]
                                 ]
-                            -- Validate each `XCON_<n>` placeholder: the
-                            -- referenced rigid constant must (i) exist in
-                            -- the current `_ConTypes` and (ii) carry a
-                            -- type compatible with what the typechecker
-                            -- inferred for that position.
                             xconErrors = concat
                                 [ case IntMap.lookup uni (_ConTypes labelingForCheck) of
                                     Nothing -> ["'c_" ++ show uni ++ "' is not a known rigid constant in this state"]
@@ -258,9 +214,11 @@ runREPL mode program notationDB expansionDB = do
                                         Nothing -> []  -- typechecker didn't constrain it; trust the runtime type
                                         Just inferred
                                             | typeCompatible actual inferred -> []
-                                            | otherwise -> ["type mismatch for 'c_" ++ show uni
-                                                    ++ "' — runtime type is " ++ showsMonoType notationDB 0 actual
-                                                        (", but context requires " ++ showsMonoType notationDB 0 inferred "")]
+                                            | otherwise -> [concat
+                                                [ "type mismatch for 'c_" ++ show uni
+                                                , "' — runtime type is " ++ showsMonoType notationDB 0 actual
+                                                    (", but context requires " ++ showsMonoType notationDB 0 inferred "")
+                                                ]]
                                 | (nm, uni) <- xconNames
                                 ]
                             xconSwap = Map.fromList
@@ -291,13 +249,6 @@ runREPL mode program notationDB expansionDB = do
                                     return ()
                                 Nothing -> return ()  -- unreachable
                             else do
-                                -- §4.4.2: hand off to the library API. cmdAssign owns
-                                -- the snapshot/restore, occurs check, scope check,
-                                -- and the (T4) consistency check. We retain the
-                                -- caller-side type check above (since cmdAssign's
-                                -- signature deliberately takes an already-checked
-                                -- TermNode), and render the success message here
-                                -- because cmdAssign returns just `Right ()`.
                                 result <- runRuntime (cmdAssign varName t_resolved) env
                                 case result of
                                     Left err -> do
@@ -311,12 +262,6 @@ runREPL mode program notationDB expansionDB = do
                                             pp = prettyTerm notationDB cache
                                         _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
                                         return ()
-        -- §3.4 CMTT: rewrite each `c_<digits>` identifier in a `:assign`
-        -- input string to `XCON_<digits>` so the lexer/parser treats it
-        -- as an LV_Named placeholder (uppercase head). After compilation
-        -- those placeholders are swapped for the actual `DC_Unique`.
-        -- Identifier boundaries are detected by `isIdChar` so we don't
-        -- mangle the middle of unrelated tokens.
         mapConToLVar :: String -> String
         mapConToLVar = go where
             isIdChar c = c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "_")
@@ -329,22 +274,12 @@ runREPL mode program notationDB expansionDB = do
             rewrite ident = case ident of
                 'c' : '_' : ds | not (null ds) && all isDigitC ds -> "XCON_" ++ ds
                 _ -> ident
-        -- Inverse of `mapConToLVar`'s renaming: a `LargeId` of the form
-        -- `XCON_<digits>` is a placeholder for `DC_Unique (Unique n)`.
-        -- Returns `Just n` on match, `Nothing` otherwise.
         parseXcon :: LargeId -> Maybe Int
         parseXcon nm = case nm of
             'X' : 'C' : 'O' : 'N' : '_' : rest -> case reads rest of
                 [(n, "")] -> Just n
                 _ -> Nothing
             _ -> Nothing
-        -- Structural compatibility: `TyMTV` (unresolved metatype variable)
-        -- and `TyVar` (rigid type parameter introduced by `Forall`) are
-        -- treated as wildcards on either side; everything else must agree
-        -- pointwise. This is conservative — it admits anything the real
-        -- HOPU layer would have accepted, and rejects obviously
-        -- incompatible shapes (function vs. nat) before the propagation
-        -- so the user gets a focused error rather than a silent failure.
         typeCompatible :: MonoType Int -> MonoType Int -> Bool
         typeCompatible (TyMTV _) _ = True
         typeCompatible _ (TyMTV _) = True
@@ -365,18 +300,9 @@ runREPL mode program notationDB expansionDB = do
                     (term3, (used_mtvs, assumptions)) <- checkTypeWithDiagnostic mode (Just (lines queryStr)) notationDB (_TypeDecls program) term2 mkTyO
                     term4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) term3
                     term5 <- either throwE return (installPresburger term4)
-                    -- The inferred type of `X` inside the synthetic query
-                    -- `?- X = t.` is recovered via `free_vars[varName] -> IVar`
-                    -- then `assumptions[IVar] -> MonoType Int`. `DC_eq`
-                    -- forces both sides to share that type, so this is
-                    -- also the inferred type of `t`.
                     inferredTy <- case Map.lookup varName free_vars >>= \ivar -> Map.lookup ivar assumptions of
                         Just typ -> return typ
                         Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Could not infer type for the binding."])
-                    -- The same lookup, but flipped to a (LargeId -> MonoType)
-                    -- map covering every free name in the synthetic query.
-                    -- Used by `handleAssign` to type-check `XCON_<n>`
-                    -- placeholders against the runtime's `_ConTypes`.
                     let nameToType = Map.fromList
                             [ (nm, ty)
                             | (nm, ivar) <- Map.toList free_vars
@@ -388,17 +314,6 @@ runREPL mode program notationDB expansionDB = do
                             _ -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "LHS did not resolve to a logic variable."])
                         _ -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Did not compile to an equality."])
         printAnswer :: Context -> IO RunMore
-        -- §2.5: when the proof search reaches success, restrict the
-        -- substitution to query-relevant LVs, report the residual
-        -- constraint set, and pretty-print the bindings. The
-        -- "consistency" check that used to gate this branch was
-        -- unsound: it asked every ArithmeticConstraint to evaluate
-        -- to ground `Right True`, but post-fix `arithOpCheck` now
-        -- legitimately leaves constraints with unbound LVs in
-        -- `_LeftConstraints` (the Presburger solver having already
-        -- ruled out the inconsistent ones via §2.3.6's hooks). Those
-        -- residual constraints are part of the answer the user must
-        -- see, not a reason to silently backtrack.
         printAnswer ctx
             | isShort && isClear = return False
             | isClear && List.null theAnswerSubst = return False
@@ -441,20 +356,6 @@ runREPL mode program notationDB expansionDB = do
                     , _ContextThreadId = _ContextThreadId ctx
                     , _debuggindModeOn = _debuggindModeOn ctx
                     }
-                -- §2.5 pruning. Stage (a) drops constraints that are
-                -- *ground* and trivially true under the current binding
-                -- (`X is 7, X > 5` → no residual). Stage (b) walks the
-                -- surviving ArithmeticConstraints sequentially and asks
-                -- the Presburger solver whether each `c` is entailed by
-                -- the other kept Arithmetic hypotheses; if so `c` is
-                -- redundant (e.g. `X > 3` given `X > 5`) and dropped.
-                -- Sequential traversal makes duplicate constraints
-                -- collapse to a single survivor: the first copy enters
-                -- `kept`, and every later identical copy is entailed by
-                -- it. Stage (c) sorts the final list by its rendered
-                -- form so that successive runs (or runs from
-                -- transposed source orderings) print constraints in a
-                -- stable order.
                 groundDropped :: [Constraint]
                 groundDropped = do
                     it <- _LeftConstraints ctx
@@ -479,12 +380,6 @@ runREPL mode program notationDB expansionDB = do
                 prunedConstraints :: [Constraint]
                 prunedConstraints = List.sortOn (\c -> shows c "") entailmentDropped
                 theAnswerSubst :: [(LargeId, TermNode)]
-                -- §3.2.4: after `:assign ?V_n := t.`, the kernel ctx holds
-                -- both `?V_n := t` and any HOPU-derived `F := ?V_n`. The
-                -- naive `eraseTrivialBinding` only normalises *trivial*
-                -- LV-to-LV pairs and won't follow `F → ?V_n → t`. We zonk
-                -- each RHS through the full ctx binding once so the user
-                -- sees the resolved value rather than the indirected one.
                 theAnswerSubst = [ (v, bindVars (_TotalVarBinding final_ctx) t) | (LV_Named v, t) <- Map.toList (unVarBinding (eraseTrivialBinding (_TotalVarBinding final_ctx))) ]
                 isShort :: Bool
                 isShort = Set.null (getLVars query)
@@ -577,15 +472,6 @@ runREPL mode program notationDB expansionDB = do
                             (query3, (used_mtvs, assumptions)) <- checkTypeWithDiagnostic mode (Just (lines query0)) notationDB (_TypeDecls program) query2 mkTyO
                             query4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
                             query5 <- either throwE return (installPresburger query4)
-                            -- §3.4: the debugger lists every visible flexible
-                            -- variable with its inferred type. The query
-                            -- type-checker is the only point in the pipeline
-                            -- that *knows* these types — `assumptions` carries
-                            -- (IVar -> MonoType Int) and `free_vars` maps each
-                            -- user-visible `LargeId` to its IVar. We lift both
-                            -- to `LogicVar`-keyed form so the runtime can hand
-                            -- the data to `showsCurrentState` without ever
-                            -- looking back through compilation state.
                             let typeMap = Map.fromList
                                     [ (LV_Named name, typ)
                                     | (name, ivar) <- Map.toList free_vars
@@ -655,13 +541,6 @@ theInitialTypeDecls = Map.fromList
 
 theInitialFactDecls :: [TermNode]
 theInitialFactDecls = [eqFact] where
-    -- §3.4 CMTT: the outer `ty_pi` binder carries `TyMTV mtv_eq` in
-    -- its LamType marker slot (matching `Compiler.makeUniversalClosure`'s
-    -- convention for compiled facts). The inner `pi (x : A)` reuses the
-    -- same MTV key so `Runtime.instantiateFact` rewrites both occurrences
-    -- to the same fresh `LV_ty_var` when peeling the outer binder.
-    -- A negative `Unique` is safe: `getUnique` only mints non-negative
-    -- IDs, so this key never collides with a runtime-allocated MTV.
     mtv_eq :: MetaTVar
     mtv_eq = Unique (-1)
     eqFact :: TermNode

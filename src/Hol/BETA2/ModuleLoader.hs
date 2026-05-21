@@ -1,6 +1,3 @@
--- §4.2: the BETA2 module loader.  Implements the topological load of §2.2,
--- the import composition of §2.3, and (in a follow-up step) the consistency
--- rules of §2.4.  This module has no BETA1 counterpart.
 module Hol.BETA2.ModuleLoader
     ( ModuleEnv (..)
     , LoadedModule (..)
@@ -35,35 +32,38 @@ import System.FilePath ((</>))
 import Z.System.File (readFileNow)
 import Z.Utils
 
-data ModuleEnv = ModuleEnv
-    { moduleEnvName       :: String
-    , moduleEnvPath       :: FilePath
-    , moduleEnvKinds      :: KindEnv
-    , moduleEnvTypes      :: TypeEnv
-    , moduleEnvFacts      :: [TermNode]
-    , moduleEnvNotation   :: NotationDB
-    , moduleEnvExpansion  :: ExpansionDB
-    , moduleEnvImports    :: [String]
-    , moduleEnvWarnings   :: [ErrMsg]
+data ModuleEnv
+    = ModuleEnv
+    { moduleEnvName :: String
+    , moduleEnvPath :: FilePath
+    , moduleEnvKinds :: KindEnv
+    , moduleEnvTypes :: TypeEnv
+    , moduleEnvFacts :: [TermNode]
+    , moduleEnvNotation :: NotationDB
+    , moduleEnvExpansion :: ExpansionDB
+    , moduleEnvImports :: [String]
+    , moduleEnvWarnings :: [ErrMsg]
     } deriving ()
 
-data LoadedModule = LoadedModule
-    { loadedMain   :: ModuleEnv
-    , loadedAll    :: Map String ModuleEnv
-    , loadedOrder  :: [String]
+data LoadedModule
+    = LoadedModule
+    { loadedMain :: ModuleEnv
+    , loadedAll :: Map String ModuleEnv
+    , loadedOrder :: [String]
     , loadedWarnings :: [ErrMsg]
     } deriving ()
 
-data LoaderState = LoaderState
-    { lsLoaded         :: Map FilePath ModuleEnv
-    , lsLoading        :: [(String, FilePath)]
-    , lsOrder          :: [String]
-    , lsRoot           :: FilePath
-    , lsInitialKinds   :: KindEnv
-    , lsInitialTypes   :: TypeEnv
-    , lsInitialFacts   :: [TermNode]
+data LoaderState
+    = LoaderState
+    { lsLoaded :: Map FilePath ModuleEnv
+    , lsLoading :: [(String, FilePath)]
+    , lsOrder :: [String]
+    , lsRoot :: FilePath
+    , lsInitialKinds :: KindEnv
+    , lsInitialTypes :: TypeEnv
+    , lsInitialFacts :: [TermNode]
     , lsDiagnosticMode :: DiagnosticMode
-    , lsWarnings       :: [ErrMsg]
+    , lsWarnings :: [ErrMsg]
     }
 
 type Loader m a = ExceptT ErrMsg (State.StateT LoaderState m) a
@@ -76,16 +76,12 @@ moduleWarning :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String
 moduleWarning mode moduleName sourceLines loc msg =
     diagnosticWarningWithModule mode "HolBETA2-ModuleWarning" moduleName sourceLines loc [Z.Doc.text msg]
 
--- Turn `example/foo/bar.hol` into `example.foo.bar`.  We strip the trailing
--- `.hol`, replace `/` with `.`, and use the path *relative to the project
--- root* (i.e., the working directory at REPL launch) so that diamonds
--- through different relative paths still collapse onto one module name.
 pathDerivedName :: FilePath -> FilePath -> String
-pathDerivedName root absPath =
-    let rel = makeRel root absPath
-        stripped = dropDotHol rel
-    in map dotSep stripped
+pathDerivedName root absPath
+    = map dotSep stripped
   where
+    rel = makeRel root absPath
+    stripped = dropDotHol rel
     dotSep '/' = '.'
     dotSep c   = c
     dropDotHol p
@@ -130,9 +126,6 @@ loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
             , loadedWarnings = reverse (lsWarnings stN)
             }
 
--- Load (or fetch from cache) the file at `canonicalPath`.  `importContext`
--- is the location of the surface `import` that requested this file (used
--- for cycle-error attribution); `Nothing` means this is the main file.
 loadFile :: UniqueM m => FilePath -> Maybe (FilePath, SLoc, SourceLines) -> Loader m ModuleEnv
 loadFile canonicalPath importContext = do
     st <- lift State.get
@@ -162,10 +155,6 @@ loadFile canonicalPath importContext = do
                                     Right (Left _) -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("File `" ++ canonicalPath ++ "' is a query, not a program.")])
                                     Right (Right decls) -> elaborate canonicalPath mname (lines src) decls
 
--- Split decls into (optional header, imports, body), enforce header/import
--- ordering, recursively load each import, compose the dependency envs,
--- desugar + type-check the body against the composed env, store the
--- resulting ModuleEnv into the loader's table.
 elaborate :: UniqueM m => FilePath -> String -> [String] -> [DeclRep] -> Loader m ModuleEnv
 elaborate canonicalPath mname sourceLines decls = do
     st0 <- lift State.get
@@ -198,15 +187,15 @@ elaborate canonicalPath mname sourceLines decls = do
     facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
     ownFactsR <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
     let env = ModuleEnv
-            { moduleEnvName      = mname
-            , moduleEnvPath      = canonicalPath
-            , moduleEnvKinds     = _KindDecls env1
-            , moduleEnvTypes     = _TypeDecls env1
-            , moduleEnvFacts     = initialFacts ++ importedFacts ++ ownFactsR
-            , moduleEnvNotation  = ownNotation
+            { moduleEnvName = mname
+            , moduleEnvPath = canonicalPath
+            , moduleEnvKinds = _KindDecls env1
+            , moduleEnvTypes = _TypeDecls env1
+            , moduleEnvFacts = initialFacts ++ importedFacts ++ ownFactsR
+            , moduleEnvNotation = ownNotation
             , moduleEnvExpansion = ownExpansion
-            , moduleEnvImports   = [ m | (_, m) <- importsUnique ]
-            , moduleEnvWarnings  = importWarnings
+            , moduleEnvImports = [ m | (_, m) <- importsUnique ]
+            , moduleEnvWarnings = importWarnings
             }
     lift (State.modify (\ s -> s
         { lsLoaded = Map.insert canonicalPath env (lsLoaded s)
@@ -266,36 +255,24 @@ duplicateImportWarnings mode moduleName sourceLines = go []
             : go seen rest
         | otherwise = go (name : seen) rest
 
--- §2.3 composition: kinds/types use Map.union (left-biased, but imports
--- agreeing on a name will collide on identical RHSs — §2.4 will reject
--- disagreement as inconsistency; for the time being, last writer wins).
--- Notations / expansions merge component-wise, again last-writer-wins
--- pending §2.4.
 mergeNotation :: NotationDB -> NotationDB -> NotationDB
 mergeNotation = Notation.merge
 
 mergeExpansion :: ExpansionDB -> ExpansionDB -> ExpansionDB
 mergeExpansion = Notation.mergeExpansion
 
--- §2.4 origin tracking: a per-name sidecar that records *which* import
--- contributed each declaration, so the two-sided inconsistency report
--- can name M_a alongside the offending M_b.
-data Origins = Origins
-    { oKinds    :: !(Map.Map TypeConstructor String)
-    , oTypes    :: !(Map.Map DataConstructor String)
-    , oFixity   :: !(Map.Map SmallId String)
-    , oAbbrev   :: !(Map.Map SmallId String)
+data Origins
+    = Origins
+    { oKinds :: !(Map.Map TypeConstructor String)
+    , oTypes :: !(Map.Map DataConstructor String)
+    , oFixity :: !(Map.Map SmallId String)
+    , oAbbrev :: !(Map.Map SmallId String)
     , oNotation :: !(Map.Map SmallId String)
     }
 
 emptyOrigins :: Origins
 emptyOrigins = Origins Map.empty Map.empty Map.empty Map.empty Map.empty
 
--- §2.4 consistency checks.  `combineImport (k, t, n, e, o) ((iloc, iname), env)`
--- merges `env` into the accumulator, threads `Origins` so the error
--- message can name the *prior* import, and fails with a §2.4 C1-C5
--- error attributed to `iloc` if any decl in `env` disagrees with the
--- accumulator's previous content.
 combineImport
     :: Monad m
     => DiagnosticMode
@@ -316,32 +293,27 @@ mergeKindsStrict mode moduleName sourceLines iloc iname origin0 old new = foldr 
   where
     step (tc, k) acc = do
         (m, origin) <- acc
+        let prior = Map.lookup tc origin
         case Map.lookup tc m of
             Nothing -> Right (Map.insert tc k m, Map.insert tc iname origin)
             Just k' | k == k' -> Right (m, origin)
-                    | otherwise ->
-                        let prior = Map.lookup tc origin
-                        in Left (inconsErr2 mode moduleName sourceLines iloc "C1" prior iname (showTC tc) "kind"
-                                   (pprint 0 k' "") (pprint 0 k ""))
+                    | otherwise -> Left
+                        (inconsErr2 mode moduleName sourceLines iloc "C1" prior iname (showTC tc) "kind"
+                            (pprint 0 k' "") (pprint 0 k ""))
 
 mergeTypesStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map DataConstructor String -> TypeEnv -> TypeEnv -> Either ErrMsg (TypeEnv, Map.Map DataConstructor String)
 mergeTypesStrict mode moduleName sourceLines iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
   where
     step (dc, p) acc = do
         (m, origin) <- acc
+        let prior = Map.lookup dc origin
         case Map.lookup dc m of
             Nothing -> Right (Map.insert dc p m, Map.insert dc iname origin)
             Just p' | polyTypeEq p p' -> Right (m, origin)
-                    | otherwise ->
-                        let prior = Map.lookup dc origin
-                        in Left (inconsErr2 mode moduleName sourceLines iloc "C2" prior iname (showDC dc) "type"
-                                   "<scheme>" "<scheme>")
+                    | otherwise -> Left
+                        (inconsErr2 mode moduleName sourceLines iloc "C2" prior iname (showDC dc) "type"
+                            "<scheme>" "<scheme>")
 
--- §2.4 C2: universally-quantified type variables may be α-renamed.
--- `Forall xs t` and `Forall ys u` are α-equivalent iff they bind the
--- same number of variables AND their bodies agree pointwise — since
--- `TyVar` is a de-Bruijn-like Int index into the binder list, syntactic
--- equality of bodies suffices once the arities match.
 polyTypeEq :: PolyType -> PolyType -> Bool
 polyTypeEq (Forall xs t) (Forall ys u)
     | length xs /= length ys = False
@@ -362,20 +334,16 @@ mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new = do
   where
     step (name, fp) acc = do
         origin <- acc
+        let prior = Map.lookup name origin
         case lookupFixity name old of
             Nothing -> Right (Map.insert name iname origin)
             Just fp' | fp == fp' -> Right origin
-                     | otherwise ->
-                        let prior = Map.lookup name origin
-                        in Left (inconsErr2 mode moduleName sourceLines iloc "C5" prior iname name "fixity"
-                                   (showFixity fp') (showFixity fp))
+                     | otherwise -> Left
+                        (inconsErr2 mode moduleName sourceLines iloc "C5" prior iname name "fixity"
+                            (showFixity fp') (showFixity fp))
     lookupFixity name db = lookup name (Notation.fixityList db)
     showFixity (kind, prec) = show kind ++ " " ++ show prec
 
--- §2.4 C3/C4: surface-level abbreviation/notation conflicts.  We compare
--- against the ExpansionDB (TypeRep/TermRep) bodies rather than the
--- compiled TermNode templates so the error attributes the right SLoc
--- chain and so we don't have to recompile the body just to compare.
 mergeExpStrict
     :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String
     -> Map.Map SmallId String -> Map.Map SmallId String
@@ -388,44 +356,38 @@ mergeExpStrict mode moduleName sourceLines iloc iname oA0 oN0 old new = do
   where
     stepA (nm, ps, rhs) acc = do
         oA <- acc
+        let prior = Map.lookup nm oA
         case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.typeAbbrevList old ] of
             Nothing -> Right (Map.insert nm iname oA)
             Just (ps', rhs') | ps == ps' && typeRepEq rhs rhs' -> Right oA
-                             | otherwise ->
-                                let prior = Map.lookup nm oA
-                                in Left (inconsErr2 mode moduleName sourceLines iloc "C3" prior iname nm "abbreviation"
-                                           "<prior body>" "<current body>")
+                             | otherwise -> Left
+                                (inconsErr2 mode moduleName sourceLines iloc "C3" prior iname nm "abbreviation"
+                                    "<prior body>" "<current body>")
     stepN (nm, ps, rhs) acc = do
         oN <- acc
+        let prior = Map.lookup nm oN
         case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.termNotationList old ] of
             Nothing -> Right (Map.insert nm iname oN)
             Just (ps', rhs') | ps == ps' && termRepEq rhs rhs' -> Right oN
-                             | otherwise ->
-                                let prior = Map.lookup nm oN
-                                in Left (inconsErr2 mode moduleName sourceLines iloc "C4" prior iname nm "notation"
-                                           "<prior body>" "<current body>")
+                             | otherwise -> Left
+                                (inconsErr2 mode moduleName sourceLines iloc "C4" prior iname nm "notation"
+                                    "<prior body>" "<current body>")
 
--- §2.4 error format.  If `mPrior` names an earlier import, emit the
--- two-sided variant that pins down both M_a and M_b along with their
--- right-hand sides.  Otherwise (the conflicting decl came from the
--- built-in seed) emit the single-sided fallback.
 inconsErr2 :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Maybe String -> String -> String -> String -> String -> String -> ErrMsg
 inconsErr2 mode moduleName sourceLines iloc tag mPrior iname dname kindLabel rhsA rhsB =
     moduleErr mode moduleName sourceLines iloc $ case mPrior of
-    Just prior ->
-        "Import inconsistency (" ++ tag ++ "): `" ++ dname
-        ++ "' is declared by both `" ++ prior ++ "' and `" ++ iname
-        ++ "' with disagreeing " ++ kindLabel ++ ". "
-        ++ "(`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
-    Nothing ->
-        "Import inconsistency (" ++ tag ++ "): `" ++ dname
-        ++ "' is declared by `" ++ iname ++ "' with a different "
-        ++ kindLabel ++ " than the built-in seed."
+    Just prior -> concat
+        [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
+        , "' is declared by both `" ++ prior ++ "' and `" ++ iname
+        , "' with disagreeing " ++ kindLabel ++ ". "
+        , "(`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
+        ]
+    Nothing -> concat
+        [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
+        , "' is declared by `" ++ iname ++ "' with a different "
+        , kindLabel ++ " than the built-in seed."
+        ]
 
--- SLoc-blind structural equality on surface TypeRep / TermRep.  Two
--- imports declaring the same abbreviation/notation should be considered
--- equal even if their source positions differ.  Parenthesis nodes
--- (`RPrn`, `RTyPrn`) are transparent.
 typeRepEq :: TypeRep -> TypeRep -> Bool
 typeRepEq (RTyPrn _ a) b = typeRepEq a b
 typeRepEq a (RTyPrn _ b) = typeRepEq a b

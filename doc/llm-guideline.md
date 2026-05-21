@@ -47,6 +47,8 @@ configFromOptions options = defaultRunConfig { cfgWorkDir = optWorkDir options }
 
 `where`를 선호한다. `let ... in`은 되도록 피한다. do 안의 짧은 `let`은 허용한다.
 
+줄바꿈이 필요한 `++` 체인은 `++`로 계속 잇지 말고 `concat [...]`으로 묶는다. 한 줄에 자연스럽게 들어가는 짧은 `++` 체인은 그대로 둘 수 있다.
+
 ```hs
 stringOptionMaybe :: String -> [String] -> Maybe String
 stringOptionMaybe key rawArgs = go (map normalizeArg rawArgs) where

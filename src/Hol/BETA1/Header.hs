@@ -54,10 +54,6 @@ data LogicalOperator
     | LO_is
     deriving (Eq, Ord)
 
--- Display-only name hint for fresh binders introduced by pi-elimination
--- (LO_pi / LO_sigma) or by HOPU eta-expansion. Eq and Ord are TRIVIAL
--- so derived instances on DC_Unique / LV_Unique automatically ignore
--- the hint, keeping α-equivalence and substitution kernels intact.
 newtype DispHint = DispHint { unDispHint :: Maybe SmallId }
 
 instance Eq DispHint where

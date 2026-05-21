@@ -23,9 +23,6 @@ import Hol.BETA2.TermNode
 import qualified Z.Doc
 import Z.Utils (ErrMsg)
 
--- =============================================================
--- Public types
--- =============================================================
 
 data ParseResult
     = ParseResult
@@ -40,9 +37,6 @@ data LiftResult
         , _freeOfLifted :: Map.Map MyVar LogicVar
         }
 
--- =============================================================
--- parsePresburger
--- =============================================================
 
 parsePresburger
     :: SLoc
@@ -75,7 +69,6 @@ parsePresburger sloc src env0 =
             then return f
             else throwP ("unexpected trailing input: " ++ shows (take 20 leftover) "")
 
--- -- internal parser monad ----------------------------------------------------
 
 data PState = PState
     { psInput :: !String
@@ -193,8 +186,6 @@ natToTermRep n
     | n <= 0 = Zero
     | otherwise = Succ (natToTermRep (n - 1))
 
--- Resolve an identifier inside the literal.
--- Quantifier-bound names take precedence over outer free names.
 resolveVar :: LargeId -> P MyVar
 resolveVar name = do
     st <- getState
@@ -234,7 +225,6 @@ withBound name v action = do
     modify $ \s -> s { psBoundStack = drop 1 (psBoundStack s) }
     return r
 
--- -- arithmetic terms ---------------------------------------------------------
 
 parseArith :: P PresburgerTermRep
 parseArith = do
@@ -272,14 +262,6 @@ parseArithAtom = do
             return (IVar v)
         _ -> throwP ("expected arithmetic atom, got: " ++ shows (take 20 inp) "")
 
--- -- formula grammar ----------------------------------------------------------
---
--- Precedence (lowest first):
---   level 0 : -> , <->      (right-associative)
---   level 1 : \/            (left-associative)
---   level 2 : /\            (left-associative)
---   level 3 : ~, forall, exists  (extend right)
---   level 4 : atoms, parenthesised formula
 
 parseFormula :: P MyPresburgerFormulaRep
 parseFormula = parseLevel0
@@ -370,7 +352,6 @@ parseLevel4 = do
             setInput rest
             return (ValF False)
         ('(' : _) -> do
-            -- try parenthesised formula first, fall back to arith atom for "(arith) <op> arith"
             mResult <- tryP $ do
                 mustLiteral "("
                 f <- parseFormula
@@ -410,7 +391,6 @@ parseAtomFormula = do
         ('>' : '=' : rest) -> do
             setInput rest
             t2 <- parseArith
-            -- surface sugar: a >= b == ~ (a < b)
             return (NegF (LtnF t1 t2))
         ('>' : rest) -> do
             setInput rest
@@ -418,9 +398,6 @@ parseAtomFormula = do
             return (GtnF t1 t2)
         _ -> throwP ("expected a relational operator, got: " ++ shows (take 20 inp) "")
 
--- =============================================================
--- zonkPresburger
--- =============================================================
 
 zonkPresburger
     :: (LogicVar -> Maybe TermNode)
@@ -460,9 +437,6 @@ zonkPresburger theta freeOf = goFormula Set.empty
     asClosedNatLit (NCon (DC (DC_NatL n)) _) = Just n
     asClosedNatLit _ = Nothing
 
--- =============================================================
--- liftConstraint
--- =============================================================
 
 liftConstraint :: TermNode -> Maybe LiftResult
 liftConstraint t =
@@ -581,24 +555,20 @@ scaleTermRep n t
     | n == 1 = t
     | otherwise = Plus t (scaleTermRep (n - 1) t)
 
--- =============================================================
--- renumberFormula
--- =============================================================
 
 renumberFormula
     :: Map.Map LogicVar MyVar
     -> Map.Map MyVar LogicVar
     -> MyPresburgerFormulaRep
     -> MyPresburgerFormulaRep
-renumberFormula shared local rep =
-    let startFresh = maxMyVar (Map.elems shared) + 1
-    in fst (goFormula startFresh Map.empty rep)
+renumberFormula shared local rep
+    = fst (goFormula startFresh Map.empty rep)
   where
+    startFresh = maxMyVar (Map.elems shared) + 1
+
     maxMyVar :: [MyVar] -> MyVar
     maxMyVar = foldr max (theMinNumOfMyVar - 1)
 
-    -- Maintains a renaming for *bound* MyVars currently in scope.
-    -- `nextFresh` is the next α-rename target, kept above the shared range.
     goFormula :: MyVar -> Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> (MyPresburgerFormulaRep, MyVar)
     goFormula n _ (ValF b) = (ValF b, n)
     goFormula n env (EqnF t1 t2) = (EqnF (goTerm env t1) (goTerm env t2), n)
@@ -606,34 +576,42 @@ renumberFormula shared local rep =
     goFormula n env (LeqF t1 t2) = (LeqF (goTerm env t1) (goTerm env t2), n)
     goFormula n env (GtnF t1 t2) = (GtnF (goTerm env t1) (goTerm env t2), n)
     goFormula n env (ModF t1 r t2) = (ModF (goTerm env t1) r (goTerm env t2), n)
-    goFormula n env (NegF f1) =
-        let (f1', n1) = goFormula n env f1 in (NegF f1', n1)
-    goFormula n env (DisF f1 f2) =
-        let (f1', n1) = goFormula n env f1
+    goFormula n env (NegF f1)
+        = (NegF f1', n1)
+        where
+            (f1', n1) = goFormula n env f1
+    goFormula n env (DisF f1 f2)
+        = (DisF f1' f2', n2)
+        where
+            (f1', n1) = goFormula n env f1
             (f2', n2) = goFormula n1 env f2
-        in (DisF f1' f2', n2)
-    goFormula n env (ConF f1 f2) =
-        let (f1', n1) = goFormula n env f1
+    goFormula n env (ConF f1 f2)
+        = (ConF f1' f2', n2)
+        where
+            (f1', n1) = goFormula n env f1
             (f2', n2) = goFormula n1 env f2
-        in (ConF f1' f2', n2)
-    goFormula n env (ImpF f1 f2) =
-        let (f1', n1) = goFormula n env f1
+    goFormula n env (ImpF f1 f2)
+        = (ImpF f1' f2', n2)
+        where
+            (f1', n1) = goFormula n env f1
             (f2', n2) = goFormula n1 env f2
-        in (ImpF f1' f2', n2)
-    goFormula n env (IffF f1 f2) =
-        let (f1', n1) = goFormula n env f1
+    goFormula n env (IffF f1 f2)
+        = (IffF f1' f2', n2)
+        where
+            (f1', n1) = goFormula n env f1
             (f2', n2) = goFormula n1 env f2
-        in (IffF f1' f2', n2)
-    goFormula n env (AllF y f1) =
-        let y' = n
+    goFormula n env (AllF y f1)
+        = (AllF y' f1', n1)
+        where
+            y' = n
             env' = Map.insert y y' env
             (f1', n1) = goFormula (n + 1) env' f1
-        in (AllF y' f1', n1)
-    goFormula n env (ExsF y f1) =
-        let y' = n
+    goFormula n env (ExsF y f1)
+        = (ExsF y' f1', n1)
+        where
+            y' = n
             env' = Map.insert y y' env
             (f1', n1) = goFormula (n + 1) env' f1
-        in (ExsF y' f1', n1)
 
     goTerm :: Map.Map MyVar MyVar -> PresburgerTermRep -> PresburgerTermRep
     goTerm env (IVar v) = case Map.lookup v env of
@@ -647,27 +625,17 @@ renumberFormula shared local rep =
     goTerm env (Succ t) = Succ (goTerm env t)
     goTerm env (Plus t1 t2) = Plus (goTerm env t1) (goTerm env t2)
 
--- =============================================================
--- entails
--- =============================================================
 
 entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
-entails phis phi =
-    let hyp = foldr ConF (ValF True) phis
+entails phis phi
+    = checkTruthValueOfMyPresburgerFormula eliminated == Just True
+    where
+        hyp = foldr ConF (ValF True) phis
         body = ImpF hyp phi
         fvs = Set.toAscList (freeMyVarsF body)
         closed = foldr AllF body fvs
         eliminated = eliminateQuantifierReferringToTheBookWrittenByPeterHinman closed
-    in checkTruthValueOfMyPresburgerFormula eliminated == Just True
 
--- §2.5 syntactic concession: returns True iff the lifted form of
--- `phi` is entailed by the lifted forms of `hyps`, in a shared
--- LogicVar-to-MyVar numbering that pins same-spelled LVs across
--- hypotheses and goal. Constraints whose `liftConstraint` returns
--- Nothing are dropped from `hyps` (best-effort, like `isInconsistent`);
--- if `phi` itself fails to lift, the function is conservative and
--- returns False. Used by `printAnswer` to prune ArithmeticConstraint
--- entries that follow from the rest of the residual constraint set.
 arithEntails :: [TermNode] -> TermNode -> Bool
 arithEntails hyps phi =
     case liftConstraint phi of
@@ -703,14 +671,6 @@ freeMyVarsT :: PresburgerTerm -> Set.Set MyVar
 freeMyVarsT (PresburgerTerm _ coeffs) =
     Map.keysSet (Map.filter (/= 0) coeffs)
 
--- =============================================================
--- installPresburger
--- =============================================================
---
--- Post-compilation pass: walks a TermNode and replaces every
--- `NApp (NCon (DC (DC_Named "presburger"))) <closed-string-literal>`
--- with `NPresburgerCheck rep freeOf`. A non-literal argument is a
--- compile-time error (§2.3.2). Other subterms are left structural.
 
 installPresburger :: TermNode -> Either ErrMsg TermNode
 installPresburger = go
@@ -746,11 +706,6 @@ installPresburger = go
         t' <- go t
         return (Binds t' l)
 
-    -- Data constructors carry their type instantiation as the first
-    -- argument (Compiler.convertCon). So `[]` over `char` arrives as
-    --   NApp (NCon DC_Nil) <type-arg>
-    -- and `c :: rest` arrives as
-    --   NApp (NApp (NApp (NCon DC_Cons) <type-arg>) (NCon (DC_ChrL c))) rest
     extractString :: TermNode -> Maybe String
     extractString (NApp (NCon (DC DC_Nil) _) _ _) = Just ""
     extractString
