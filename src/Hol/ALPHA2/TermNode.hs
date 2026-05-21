@@ -123,7 +123,8 @@ mkNApp (NCon (DC (DC_Succ))) (NCon (DC (DC_NatL n)))
     = n' `seq` mkNCon (DC_NatL n')
     where
         n' = n + 1
-mkNApp t1 t2 = NApp t1 t2
+mkNApp t1 t2
+    = NApp t1 t2
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode

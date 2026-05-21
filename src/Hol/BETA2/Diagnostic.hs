@@ -65,31 +65,31 @@ locBlockWith mode sourceLines (SLoc (row, col) (endRow, endCol)) =
         , colorLineNo (Doc.beam '|')
         , Doc.vcat [Doc.text "", sourceDoc, caretDoc]
         ]
-  where
-    colorLineNo = case mode of
-        DiagnosticPretty -> Doc.blue
-        DiagnosticTest -> id
-    colorCaret = case mode of
-        DiagnosticPretty -> Doc.red
-        DiagnosticTest -> id
-    colorSource = case mode of
-        DiagnosticPretty -> Doc.red
-        DiagnosticTest -> id
-    focusWidth = max 1 (if row == endRow then endCol - col + 1 else 1)
-    sourceDoc = Doc.text " " <> maybe mempty highlightedLine (sourceLines >>= lineAt row)
-    caretDoc = Doc.text " " <> Doc.text (replicate (max 0 (col - 1)) ' ') <> colorCaret (Doc.textbf (replicate focusWidth '^'))
-    highlightedLine line
-        = Doc.text before <> colorSource (Doc.textbf focus) <> Doc.text after
-        where
-            beforeLen = max 0 (col - 1)
-            (before, rest) = splitAt beforeLen line
-            (focus, after) = splitAt focusWidth rest
-    lineAt :: Int -> [String] -> Maybe String
-    lineAt n xs
-        | n <= 0 = Nothing
-        | otherwise = case drop (n - 1) xs of
-            line : _ -> Just line
-            [] -> Nothing
+    where
+        colorLineNo = case mode of
+            DiagnosticPretty -> Doc.blue
+            DiagnosticTest -> id
+        colorCaret = case mode of
+            DiagnosticPretty -> Doc.red
+            DiagnosticTest -> id
+        colorSource = case mode of
+            DiagnosticPretty -> Doc.red
+            DiagnosticTest -> id
+        focusWidth = max 1 (if row == endRow then endCol - col + 1 else 1)
+        sourceDoc = Doc.text " " <> maybe mempty highlightedLine (sourceLines >>= lineAt row)
+        caretDoc = Doc.text " " <> Doc.text (replicate (max 0 (col - 1)) ' ') <> colorCaret (Doc.textbf (replicate focusWidth '^'))
+        highlightedLine line
+            = Doc.text before <> colorSource (Doc.textbf focus) <> Doc.text after
+            where
+                beforeLen = max 0 (col - 1)
+                (before, rest) = splitAt beforeLen line
+                (focus, after) = splitAt focusWidth rest
+        lineAt :: Int -> [String] -> Maybe String
+        lineAt n xs
+            | n <= 0 = Nothing
+            | otherwise = case drop (n - 1) xs of
+                line : _ -> Just line
+                [] -> Nothing
 
 ghcLoc :: SLoc -> String
 ghcLoc (SLoc (row, col) (endRow, endCol)) = show row ++ ":" ++ show col ++ "-" ++ show endRow ++ ":" ++ show endCol

@@ -39,9 +39,7 @@ data TermNode
     | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar) !(Maybe SLoc)
 
 newtype LamType
-    = LamType
-    { unLamType :: Maybe (MonoType Int)
-    }
+    = LamType { unLamType :: Maybe (MonoType Int) }
 
 instance Eq LamType where
     _ == _ = True
@@ -67,26 +65,26 @@ instance Eq TermNode where
 
 instance Ord TermNode where
     compare = cmpTerm
-      where
-        ctorIdx :: TermNode -> Int
-        ctorIdx (LVar _) = 0
-        ctorIdx (NCon _ _) = 1
-        ctorIdx (NIdx _) = 2
-        ctorIdx (NApp _ _ _) = 3
-        ctorIdx (NLam _ _ _ _) = 4
-        ctorIdx (Susp {}) = 5
-        ctorIdx (NPresburgerCheck _ _ _) = 6
-        cmpTerm :: TermNode -> TermNode -> Ordering
-        cmpTerm (LVar v1) (LVar v2) = compare v1 v2
-        cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
-        cmpTerm (NIdx i) (NIdx j) = compare i j
-        cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = compare a1 a2 <> compare b1 b2
-        cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = compare b1 b2
-        cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
-            compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
-        cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
-            compare f1 f2 <> compare m1 m2
-        cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
+        where
+            ctorIdx :: TermNode -> Int
+            ctorIdx (LVar _) = 0
+            ctorIdx (NCon _ _) = 1
+            ctorIdx (NIdx _) = 2
+            ctorIdx (NApp _ _ _) = 3
+            ctorIdx (NLam _ _ _ _) = 4
+            ctorIdx (Susp {}) = 5
+            ctorIdx (NPresburgerCheck _ _ _) = 6
+            cmpTerm :: TermNode -> TermNode -> Ordering
+            cmpTerm (LVar v1) (LVar v2) = compare v1 v2
+            cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
+            cmpTerm (NIdx i) (NIdx j) = compare i j
+            cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = compare a1 a2 <> compare b1 b2
+            cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = compare b1 b2
+            cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
+                compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
+            cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
+                compare f1 f2 <> compare m1 m2
+            cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
 
 data SuspItem
     = Dummy {-# UNPACK #-} !Int
@@ -180,7 +178,8 @@ mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
     = n' `seq` mkNCon (DC_NatL n')
     where
         n' = n + 1
-mkNApp t1 t2 = NApp t1 t2 Nothing
+mkNApp t1 t2
+    = NApp t1 t2 Nothing
 
 {-# INLINE mkNAppLoc #-}
 mkNAppLoc :: Maybe SLoc -> TermNode -> TermNode -> TermNode
@@ -188,7 +187,8 @@ mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
     = n' `seq` mkNConLoc sl (DC_NatL n')
     where
         n' = n + 1
-mkNAppLoc sl t1 t2 = NApp t1 t2 sl
+mkNAppLoc sl t1 t2
+    = NApp t1 t2 sl
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
@@ -327,16 +327,16 @@ freshenName :: SmallId -> [SmallId] -> SmallId
 freshenName h live
     | h `notElem` live = h
     | otherwise = pickFresh
-  where
-    isDigitChar c = c >= '0' && c <= '9'
-    rev_rest = dropWhile isDigitChar (reverse h)
-    base = if null rev_rest then h else reverse rev_rest
-    pickFresh = go (1 :: Int)
-    go i
-        | cand `notElem` live = cand
-        | otherwise = go (i + 1)
-        where
-            cand = base ++ show i
+    where
+        isDigitChar c = c >= '0' && c <= '9'
+        rev_rest = dropWhile isDigitChar (reverse h)
+        base = if null rev_rest then h else reverse rev_rest
+        pickFresh = go (1 :: Int)
+        go i
+            | cand `notElem` live = cand
+            | otherwise = go (i + 1)
+            where
+                cand = base ++ show i
 
 viewNestedNLam :: TermNode -> (Int, TermNode)
 viewNestedNLam = go 0 where

@@ -49,7 +49,7 @@ parsePresburger sloc src env0 =
             , _freeOfFormula = psFreeMap st'
             , _updatedEnv = psNameToVar st'
             }
-  where
+    where
     locPrefix = "presburger[" ++ shows (_BegPos sloc) "]: "
     initState = PState
         { psInput = src
@@ -79,9 +79,7 @@ data PState
     }
 
 newtype P a
-    = P
-    { runP :: PState -> Either ErrMsg (a, PState)
-    }
+    = P { runP :: PState -> Either ErrMsg (a, PState) }
 
 instance Functor P where
     fmap f (P g) = P $ \s -> case g s of
@@ -158,11 +156,10 @@ upperIdent = do
     skipWS
     inp <- getInput
     case inp of
-        (c : cs) | isIdentStart c ->
+        (c : cs) | isIdentStart c -> do
             let (rest, more) = span isIdentCont cs
-            in do
-                setInput more
-                return (Just (c : rest))
+            setInput more
+            return (Just (c : rest))
         _ -> return Nothing
 
 mustUpperIdent :: P LargeId
@@ -199,7 +196,7 @@ resolveVar name = do
                 let lv = LV_Named name
                 modify $ \s -> s { psNameToVar = Map.insert name lv (psNameToVar s) }
                 reuseOrAlloc lv
-  where
+    where
     reuseOrAlloc lv = do
         st <- getState
         case Map.lookup lv (psInverseFree st) of
@@ -232,7 +229,7 @@ parseArith :: P PresburgerTermRep
 parseArith = do
     t1 <- parseArithAtom
     parseArithRest t1
-  where
+    where
     parseArithRest acc = do
         skipWS
         inp <- getInput
@@ -288,7 +285,7 @@ parseLevel1 :: P MyPresburgerFormulaRep
 parseLevel1 = do
     f1 <- parseLevel2
     rest f1
-  where
+    where
     rest acc = do
         skipWS
         inp <- getInput
@@ -303,7 +300,7 @@ parseLevel2 :: P MyPresburgerFormulaRep
 parseLevel2 = do
     f1 <- parseLevel3
     rest f1
-  where
+    where
     rest acc = do
         skipWS
         inp <- getInput
@@ -330,7 +327,7 @@ parseLevel3 = do
             setInput (drop 6 inp)
             parseQuantifierBody ExsF
         _ -> parseLevel4
-  where
+    where
     keywordAt kw s =
         kw `List.isPrefixOf` s &&
         case drop (length kw) s of
@@ -407,7 +404,7 @@ zonkPresburger
     -> MyPresburgerFormulaRep
     -> MyPresburgerFormulaRep
 zonkPresburger theta freeOf = goFormula Set.empty
-  where
+    where
     goFormula bound (ValF b) = ValF b
     goFormula bound (EqnF t1 t2) = EqnF (goTerm bound t1) (goTerm bound t2)
     goFormula bound (LtnF t1 t2) = LtnF (goTerm bound t1) (goTerm bound t2)
@@ -448,7 +445,7 @@ liftConstraint t =
             , _freeOfLifted = lsFreeMap st
             }
         Nothing -> Nothing
-  where
+    where
     emptyLS = LiftState
         { lsFreeMap = Map.empty
         , lsInverse = Map.empty
@@ -463,9 +460,7 @@ data LiftState
     }
 
 newtype L a
-    = L
-    { runLift :: LiftState -> Maybe (a, LiftState)
-    }
+    = L { runLift :: LiftState -> Maybe (a, LiftState) }
 
 instance Functor L where
     fmap f (L g) = L $ \s -> case g s of
@@ -492,14 +487,13 @@ fail_ = L $ \_ -> Nothing
 allocL :: LogicVar -> L MyVar
 allocL lv = L $ \s -> case Map.lookup lv (lsInverse s) of
     Just v -> Just (v, s)
-    Nothing ->
-        let v = lsNextVar s
-            s' = s
-                { lsFreeMap = Map.insert v lv (lsFreeMap s)
-                , lsInverse = Map.insert lv v (lsInverse s)
-                , lsNextVar = v + 1
-                }
-        in Just (v, s')
+    Nothing -> Just (v, s') where
+        v = lsNextVar s
+        s' = s
+            { lsFreeMap = Map.insert v lv (lsFreeMap s)
+            , lsInverse = Map.insert lv v (lsInverse s)
+            , lsNextVar = v + 1
+            }
 
 liftFormula :: TermNode -> L MyPresburgerFormulaRep
 liftFormula t = case t of
@@ -540,19 +534,25 @@ renumberFormula
     -> MyPresburgerFormulaRep
 renumberFormula shared local rep
     = fst (goFormula startFresh Map.empty rep)
-  where
+    where
     startFresh = maxMyVar (Map.elems shared) + 1
 
     maxMyVar :: [MyVar] -> MyVar
     maxMyVar = foldr max (theMinNumOfMyVar - 1)
 
     goFormula :: MyVar -> Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> (MyPresburgerFormulaRep, MyVar)
-    goFormula n _ (ValF b) = (ValF b, n)
-    goFormula n env (EqnF t1 t2) = (EqnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (LtnF t1 t2) = (LtnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (LeqF t1 t2) = (LeqF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (GtnF t1 t2) = (GtnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (ModF t1 r t2) = (ModF (goTerm env t1) r (goTerm env t2), n)
+    goFormula n _ (ValF b)
+        = (ValF b, n)
+    goFormula n env (EqnF t1 t2)
+        = (EqnF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (LtnF t1 t2)
+        = (LtnF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (LeqF t1 t2)
+        = (LeqF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (GtnF t1 t2)
+        = (GtnF (goTerm env t1) (goTerm env t2), n)
+    goFormula n env (ModF t1 r t2)
+        = (ModF (goTerm env t1) r (goTerm env t2), n)
     goFormula n env (NegF f1)
         = (NegF f1', n1)
         where
@@ -617,17 +617,14 @@ arithEntails :: [TermNode] -> TermNode -> Bool
 arithEntails hyps phi =
     case liftConstraint phi of
         Nothing -> False
-        Just lrPhi ->
-            let liftedHs = mapMaybe liftConstraint hyps
-                allLVs = Set.toAscList $ Set.union
-                    (Set.fromList (Map.elems (_freeOfLifted lrPhi)))
-                    (Set.unions [ Set.fromList (Map.elems (_freeOfLifted h)) | h <- liftedHs ])
-                shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
-                phiRep = renumberFormula shared (_freeOfLifted lrPhi) (_liftedFormula lrPhi)
-                hypReps = [ renumberFormula shared (_freeOfLifted h) (_liftedFormula h) | h <- liftedHs ]
-                compiledPhi = fmap compilePresburgerTerm phiRep
-                compiledHyps = map (fmap compilePresburgerTerm) hypReps
-            in entails compiledHyps compiledPhi
+        Just lrPhi -> entails compiledHyps compiledPhi where
+            liftedHs = mapMaybe liftConstraint hyps
+            allLVs = Set.toAscList $ Set.union (Set.fromList (Map.elems (_freeOfLifted lrPhi))) (Set.unions [ Set.fromList (Map.elems (_freeOfLifted h)) | h <- liftedHs ])
+            shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+            phiRep = renumberFormula shared (_freeOfLifted lrPhi) (_liftedFormula lrPhi)
+            hypReps = [ renumberFormula shared (_freeOfLifted h) (_liftedFormula h) | h <- liftedHs ]
+            compiledPhi = fmap compilePresburgerTerm phiRep
+            compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 freeMyVarsF :: MyPresburgerFormula -> Set.Set MyVar
 freeMyVarsF (ValF _) = Set.empty
@@ -651,7 +648,7 @@ freeMyVarsT (PresburgerTerm _ coeffs) =
 
 installPresburger :: TermNode -> Either ErrMsg TermNode
 installPresburger = go
-  where
+    where
     placeholderSLoc :: SLoc
     placeholderSLoc = SLoc (0, 0) (0, 0)
 

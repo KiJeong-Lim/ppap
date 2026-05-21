@@ -78,7 +78,7 @@ compileTypeTemplate (TyMTV m) = mkLVar (LV_ty_var m)
 
 initial :: NotationDB
 initial = addAbbrev "string" [] stringRhs seededFixity
-  where
+    where
     stringRhs :: MonoType LargeId
     stringRhs =
         TyApp
@@ -126,8 +126,12 @@ addNotation :: SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
 addNotation name ps rhs = addEntry EK_Term name ps rhs
 
 addEntry :: EntryKind -> SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
-addEntry kind name ps rhs db =
-    let n = _nextSeq db
+addEntry kind name ps rhs db = db
+    { _entries = entry : _entries db
+    , _nextSeq = n + 1
+    }
+    where
+        n = _nextSeq db
         entry = FoldEntry
             { _feName = name
             , _feParams = ps
@@ -135,10 +139,6 @@ addEntry kind name ps rhs db =
             , _feSeq = n
             , _feKind = kind
             }
-    in db
-        { _entries = entry : _entries db
-        , _nextSeq = n + 1
-        }
 
 lookupFixity :: SmallId -> NotationDB -> Maybe (FixityKind, Precedence)
 lookupFixity name db = Map.lookup name (_fixity db)
@@ -150,11 +150,10 @@ viewerFixity op (FK_InfixR, p) = (InfixR () (" " ++ op ++ " ") (), p)
 viewerFixity op (FK_InfixN, p) = (InfixN () (" " ++ op ++ " ") (), p)
 
 notationCheckOper :: NotationDB -> SmallId -> Maybe (Fixity (), Precedence)
-notationCheckOper db con =
-    let stripped = case con of
-            '_' : '_' : rest -> rest
-            _ -> con
-    in fmap (viewerFixity stripped) (lookupFixity stripped db)
+notationCheckOper db con = fmap (viewerFixity stripped) (lookupFixity stripped db) where
+    stripped = case con of
+        '_' : '_' : rest -> rest
+        _ -> con
 
 constructViewerWithDB :: NotationDB -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
 constructViewerWithDB db lookupName t =
@@ -166,14 +165,13 @@ foldType db = foldTerm db . compileTypeTemplate
 
 foldTerm :: NotationDB -> TermNode -> ViewNode
 foldTerm db t = case tryMatch (_entries db) t of
-    Just (kind, name, args) ->
-        let head_ = case kind of
-                EK_Type -> ViewTCon name
-                EK_Term -> ViewDCon name
-            app = case kind of
-                EK_Type -> ViewTApp
-                EK_Term -> ViewIApp
-        in List.foldl' app head_ (map (foldTerm db) args)
+    Just (kind, name, args) -> List.foldl' app head_ (map (foldTerm db) args) where
+        head_ = case kind of
+            EK_Type -> ViewTCon name
+            EK_Term -> ViewDCon name
+        app = case kind of
+            EK_Type -> ViewTApp
+            EK_Term -> ViewIApp
     Nothing -> renderTerm db t
 
 renderTerm :: NotationDB -> TermNode -> ViewNode
@@ -184,11 +182,10 @@ renderTerm _ (NCon (DC d)) = ViewDCon (show d)
 renderTerm _ (NCon (TC t)) = ViewTCon (show t)
 renderTerm _ (NIdx i) = ViewIVar ("W_" ++ show i)
 renderTerm db (NApp t1 t2) = ViewIApp (foldTerm db t1) (foldTerm db t2)
-renderTerm db (NLam mhint _ t) =
-    let name = case mhint of
-            Just s -> s
-            Nothing -> "x"
-    in ViewIAbs name (foldTerm db t)
+renderTerm db (NLam mhint _ t) = ViewIAbs name (foldTerm db t) where
+    name = case mhint of
+        Just s -> s
+        Nothing -> "x"
 renderTerm db (Susp body _ _ _) = foldTerm db body
 
 tryMatch
@@ -209,7 +206,7 @@ tryFoldType db t = case tryMatch typeEntries (monoTypeIntToNode t) of
         args <- traverse nodeToMonoTypeInt argNodes
         return (name, args)
     _ -> Nothing
-  where
+    where
     typeEntries = filter (\e -> _feKind e == EK_Type) (_entries db)
 
 monoTypeIntToNode :: MonoType Int -> TermNode
@@ -232,11 +229,10 @@ foldTermAsNode db = go where
         Susp body env_n env_l mtv -> Susp (go body) env_n env_l mtv
         _ -> t
     tryHere t = case tryMatch (_entries db) t of
-        Just (kind, name, args) ->
-            let head_ = case kind of
-                    EK_Type -> mkNCon (TC_Named name)
-                    EK_Term -> mkNCon (DC_Named name)
-            in List.foldl' mkNApp head_ (map go args)
+        Just (kind, name, args) -> List.foldl' mkNApp head_ (map go args) where
+            head_ = case kind of
+                EK_Type -> mkNCon (TC_Named name)
+                EK_Term -> mkNCon (DC_Named name)
         Nothing -> t
 
 matchTerm
@@ -245,16 +241,17 @@ matchTerm
     -> TermNode
     -> Maybe (Map.Map LargeId TermNode)
 matchTerm params tmpl cand = go tmpl cand Map.empty
-  where
+    where
     isParam (LV_Named n) = n `elem` params
     isParam _ = False
 
     go (LVar lv) c env
-        | isParam lv =
-            let LV_Named n = lv
-            in case Map.lookup n env of
-                Nothing -> Just (Map.insert n c env)
-                Just prev -> if prev == c then Just env else Nothing
+        | isParam lv
+        = case Map.lookup n env of
+            Nothing -> Just (Map.insert n c env)
+            Just prev -> if prev == c then Just env else Nothing
+        where
+            LV_Named n = lv
     go (LVar lv1) (LVar lv2) env = if lv1 == lv2 then Just env else Nothing
     go (NCon c1) (NCon c2) env = if c1 == c2 then Just env else Nothing
     go (NIdx i) (NIdx j) env = if i == j then Just env else Nothing
@@ -337,10 +334,9 @@ freshNameAvoiding :: Set.Set LargeId -> LargeId -> LargeId
 freshNameAvoiding avoid base
     | not (Set.member base avoid) = base
     | otherwise = go (1 :: Int)
-  where
-    go n =
-        let candidate = base ++ "_" ++ show n
-        in if Set.member candidate avoid then go (n + 1) else candidate
+    where
+        go n = if Set.member candidate avoid then go (n + 1) else candidate where
+            candidate = base ++ "_" ++ show n
 
 substTermRep :: Map.Map LargeId TermRep -> TermRep -> TermRep
 substTermRep env t = case t of
@@ -353,16 +349,15 @@ substTermRep env t = case t of
     RAbs loc x body
         | Map.member x env ->
             RAbs loc x (substTermRep (Map.delete x env) body)
-        | Set.member x rhsFV ->
-            let bodyFV = freeVarsOfTermRep body
-                avoid = Set.unions [rhsFV, bodyFV, Map.keysSet env]
-                x' = freshNameAvoiding avoid x
-                renamed = substTermRep (Map.singleton x (RVar loc x')) body
-            in RAbs loc x' (substTermRep env renamed)
+        | Set.member x rhsFV -> RAbs loc x' (substTermRep env renamed)
         | otherwise ->
             RAbs loc x (substTermRep env body)
-      where
-        rhsFV = Set.unions (map freeVarsOfTermRep (Map.elems env))
+        where
+            rhsFV = Set.unions (map freeVarsOfTermRep (Map.elems env))
+            bodyFV = freeVarsOfTermRep body
+            avoid = Set.unions [rhsFV, bodyFV, Map.keysSet env]
+            x' = freshNameAvoiding avoid x
+            renamed = substTermRep (Map.singleton x (RVar loc x')) body
     RPrn loc t' -> RPrn loc (substTermRep env t')
 
 substTypeRep :: Map.Map LargeId TypeRep -> TypeRep -> TypeRep
@@ -377,28 +372,28 @@ substTypeRep env t = case t of
 expandTermRep :: ExpansionDB -> TermRep -> TermRep
 expandTermRep db = go where
     go t = case t of
-        RApp loc _ _ ->
-            let (head_, args) = unfoldlTermApp t
-                args' = map go args
-            in case head_ of
+        RApp loc _ _ -> case head_ of
                 RCon hloc (DC_Named name) -> case lookupTermNotation name db of
                     Just (params, body)
-                        | length args' >= length params ->
-                            let (consumed, remaining) = splitAt (length params) args'
-                                env = Map.fromList (zip params consumed)
-                                expanded = go (substTermRep env body)
-                            in reapplyTerm loc expanded remaining
-                        | otherwise ->
-                            let n = length args'
-                                consumed = args'
-                                taken = take n params
-                                remaining = drop n params
-                                env = Map.fromList (zip taken consumed)
-                                substituted = substTermRep env body
-                                inner = go substituted
-                            in List.foldr (\p acc -> RAbs loc p acc) inner remaining
+                        | length args' >= length params -> expandFull loc params body args'
+                        | otherwise -> expandPartial loc params body args'
                     Nothing -> reapplyTerm loc head_ args'
                 _ -> reapplyTerm loc (go head_) args'
+            where
+                (head_, args) = unfoldlTermApp t
+                args' = map go args
+                expandFull loc params body args' = reapplyTerm loc expanded remaining where
+                    (consumed, remaining) = splitAt (length params) args'
+                    env = Map.fromList (zip params consumed)
+                    expanded = go (substTermRep env body)
+                expandPartial loc params body args' = List.foldr (\p acc -> RAbs loc p acc) inner remaining where
+                    n = length args'
+                    consumed = args'
+                    taken = take n params
+                    remaining = drop n params
+                    env = Map.fromList (zip taken consumed)
+                    substituted = substTermRep env body
+                    inner = go substituted
         RCon loc (DC_Named name) -> case lookupTermNotation name db of
             Just (params, body)
                 | List.null params -> go body
@@ -412,21 +407,21 @@ expandTermRep db = go where
 expandTypeRep :: ExpansionDB -> TypeRep -> TypeRep
 expandTypeRep db = go where
     go t = case t of
-        RTyApp loc _ _ ->
-            let (head_, args) = unfoldlTypeApp t
-                args' = map go args
-            in case head_ of
+        RTyApp loc _ _ -> case head_ of
                 RTyCon hloc (TC_Named name) -> case lookupTypeAbbrev name db of
                     Just (params, body)
-                        | length args' >= length params ->
-                            let (consumed, remaining) = splitAt (length params) args'
-                                env = Map.fromList (zip params consumed)
-                                expanded = go (substTypeRep env body)
-                            in reapplyType loc expanded remaining
+                        | length args' >= length params -> expandFull loc params body args'
                         | otherwise ->
                             reapplyType loc head_ args'
                     Nothing -> reapplyType loc head_ args'
                 _ -> reapplyType loc (go head_) args'
+            where
+                (head_, args) = unfoldlTypeApp t
+                args' = map go args
+                expandFull loc params body args' = reapplyType loc expanded remaining where
+                    (consumed, remaining) = splitAt (length params) args'
+                    env = Map.fromList (zip params consumed)
+                    expanded = go (substTypeRep env body)
         RTyCon loc (TC_Named name) -> case lookupTypeAbbrev name db of
             Just (params, body)
                 | List.null params -> go body

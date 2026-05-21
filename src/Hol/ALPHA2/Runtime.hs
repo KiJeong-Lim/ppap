@@ -69,7 +69,8 @@ data RuntimeEnv
     deriving ()
 
 instance ZonkLVar Context where
-    zonkLVar theta ctx = Context
+    zonkLVar theta ctx
+        = Context
         { _TotalVarBinding = theta <> _TotalVarBinding ctx
         , _CurrentLabeling = zonkLVar theta (_CurrentLabeling ctx)
         , _LeftConstraints = zonkLVar theta (_LeftConstraints ctx)
@@ -89,7 +90,8 @@ instance ZonkLVar Constraint where
         = ArithmeticConstraint (bindVars theta arith)
 
 instance ZonkLVar Cell where
-    zonkLVar theta (Cell facts hyps level goal call_id) = mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
+    zonkLVar theta (Cell facts hyps level goal call_id)
+        = mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
 
 instance Show Constraint where
     showsPrec prec (DisagreementConstraint eqn) = showsPrec prec eqn

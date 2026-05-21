@@ -55,9 +55,7 @@ data LogicalOperator
     deriving (Eq, Ord)
 
 newtype DispHint
-    = DispHint
-    { unDispHint :: Maybe SmallId
-    }
+    = DispHint { unDispHint :: Maybe SmallId }
 
 instance Eq DispHint where
     _ == _ = True

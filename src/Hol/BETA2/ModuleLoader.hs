@@ -69,17 +69,13 @@ data LoaderState
 type Loader m a = ExceptT ErrMsg (State.StateT LoaderState m) a
 
 moduleErr :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> ErrMsg
-moduleErr mode moduleName sourceLines loc msg =
-    diagnosticWithModule mode "HolBETA2-ModuleError" moduleName sourceLines loc [Z.Doc.text msg]
+moduleErr mode moduleName sourceLines loc msg = diagnosticWithModule mode "HolBETA2-ModuleError" moduleName sourceLines loc [Z.Doc.text msg]
 
 moduleWarning :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> ErrMsg
-moduleWarning mode moduleName sourceLines loc msg =
-    diagnosticWarningWithModule mode "HolBETA2-ModuleWarning" moduleName sourceLines loc [Z.Doc.text msg]
+moduleWarning mode moduleName sourceLines loc msg = diagnosticWarningWithModule mode "HolBETA2-ModuleWarning" moduleName sourceLines loc [Z.Doc.text msg]
 
 pathDerivedName :: FilePath -> FilePath -> String
-pathDerivedName root absPath
-    = map dotSep stripped
-  where
+pathDerivedName root absPath = map dotSep stripped where
     rel = makeRel root absPath
     stripped = dropDotHol rel
     dotSep '/' = '.'
@@ -114,17 +110,10 @@ loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
             , lsDiagnosticMode = mode
             , lsWarnings = []
             }
-    (eMain, stN) <- State.runStateT
-        (runExceptT (loadFile canonicalMain Nothing))
-        st0
-    return $ case eMain of
-        Left err -> Left err
-        Right env -> Right LoadedModule
-            { loadedMain  = env
-            , loadedAll   = Map.fromList [ (moduleEnvName e, e) | e <- Map.elems (lsLoaded stN) ]
-            , loadedOrder = reverse (lsOrder stN)
-            , loadedWarnings = reverse (lsWarnings stN)
-            }
+    (eMain, stN) <- State.runStateT (runExceptT (loadFile canonicalMain Nothing)) st0
+    case eMain of
+        Left err -> return (Left err)
+        Right env -> return (Right (LoadedModule { loadedMain  = env , loadedAll   = Map.fromList [ (moduleEnvName e, e) | e <- Map.elems (lsLoaded stN) ] , loadedOrder = reverse (lsOrder stN) , loadedWarnings = reverse (lsWarnings stN) }))
 
 loadFile :: UniqueM m => FilePath -> Maybe (FilePath, SLoc, SourceLines) -> Loader m ModuleEnv
 loadFile canonicalPath importContext = do
@@ -134,7 +123,7 @@ loadFile canonicalPath importContext = do
         Just env -> return env
         Nothing -> do
             let mname = pathDerivedName (lsRoot st) canonicalPath
-            case List.lookup mname (map (\ (n, p) -> (n, p)) (lsLoading st)) of
+            case List.lookup mname (lsLoading st) of
                 Just _ -> do
                     let cycle = reverse (mname : map fst (takeWhile ((/= mname) . fst) (lsLoading st)))
                         chain = List.intercalate " -> " (cycle ++ [mname])
@@ -166,19 +155,18 @@ elaborate canonicalPath mname sourceLines decls = do
         _ -> return ()
     let importWarnings = duplicateImportWarnings mode canonicalPath (Just sourceLines) imports
         importsUnique = uniqueImports imports
-    lift (State.modify (\ s -> s { lsWarnings = reverse importWarnings ++ lsWarnings s }))
-    lift (State.modify (\ s -> s { lsLoading = (mname, canonicalPath) : lsLoading s }))
-    importedEnvsWithLocs <- mapM
-        (\imp@(_, _) -> do { env <- loadImport mname canonicalPath (Just sourceLines) imp; return (imp, env) })
-        importsUnique
+        go imp = do
+            env <- loadImport mname canonicalPath (Just sourceLines) imp
+            return (imp, env)
+    lift (State.modify (\s -> s { lsWarnings = reverse importWarnings ++ lsWarnings s }))
+    lift (State.modify (\s -> s { lsLoading = (mname, canonicalPath) : lsLoading s }))
+    importedEnvsWithLocs <- mapM go importsUnique
     lift (State.modify (\ s -> s { lsLoading = drop 1 (lsLoading s) }))
     st <- lift State.get
     let initialKinds = lsInitialKinds st
         initialFacts = lsInitialFacts st
         initialTypes = lsInitialTypes st
-    (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM (combineImport mode (Just canonicalPath) (Just sourceLines))
-        (initialKinds, initialTypes, Notation.initial, Notation.initialExpansionDB, emptyOrigins)
-        importedEnvsWithLocs
+    (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM (combineImport mode (Just canonicalPath) (Just sourceLines)) (initialKinds, initialTypes, Notation.initial, Notation.initialExpansionDB, emptyOrigins) importedEnvsWithLocs
     let importedFacts = concatMap (drop (length initialFacts) . moduleEnvFacts . snd) importedEnvsWithLocs
     (env1, ownNotation0, ownExpansion0) <- desugarProgramWithModule mode (Just canonicalPath) (Just sourceLines) composedKinds composedTypes mname body
     let ownNotation  = mergeNotation composedNotation ownNotation0
@@ -197,10 +185,7 @@ elaborate canonicalPath mname sourceLines decls = do
             , moduleEnvImports = [ m | (_, m) <- importsUnique ]
             , moduleEnvWarnings = importWarnings
             }
-    lift (State.modify (\ s -> s
-        { lsLoaded = Map.insert canonicalPath env (lsLoaded s)
-        , lsOrder  = mname : lsOrder s
-        }))
+    lift (State.modify (\s -> s { lsLoaded = Map.insert canonicalPath env (lsLoaded s), lsOrder  = mname : lsOrder s }))
     return env
 
 loadImport :: UniqueM m => String -> FilePath -> SourceLines -> (SLoc, String) -> Loader m ModuleEnv
@@ -221,16 +206,17 @@ takeDir p = case break (== '/') (reverse p) of
     _ -> "."
 
 resolveImport :: FilePath -> FilePath -> String -> IO (Maybe FilePath)
-resolveImport dir root mname = do
-    let rel = foldr (</>) (last segs ++ ".hol") (init segs)
-          where segs = splitOn '.' mname
-        candidates = [dir </> rel, root </> rel]
-    tryCandidates candidates
-  where
-    tryCandidates [] = return Nothing
-    tryCandidates (p : ps) = do
-        ok <- doesFileExist p
-        if ok then Just <$> canonicalizePath p else tryCandidates ps
+resolveImport dir root mname
+    = do
+        let segs = splitOn '.' mname
+            rel = foldr (</>) (last segs ++ ".hol") (init segs)
+            candidates = [dir </> rel, root </> rel]
+        tryCandidates candidates
+    where
+        tryCandidates [] = return Nothing
+        tryCandidates (p : ps) = do
+            ok <- doesFileExist p
+            if ok then Just <$> canonicalizePath p else tryCandidates ps
 
 splitOn :: Char -> String -> [String]
 splitOn c s = case break (== c) s of
@@ -238,22 +224,15 @@ splitOn c s = case break (== c) s of
     (a, _ : rest) -> a : splitOn c rest
 
 uniqueImports :: [(SLoc, String)] -> [(SLoc, String)]
-uniqueImports = reverse . snd . List.foldl' step ([], [])
-  where
+uniqueImports = reverse . snd . List.foldl' step ([], []) where
     step (seen, acc) imp@(_, name)
         | name `elem` seen = (seen, acc)
         | otherwise = (name : seen, imp : acc)
 
 duplicateImportWarnings :: DiagnosticMode -> String -> SourceLines -> [(SLoc, String)] -> [ErrMsg]
-duplicateImportWarnings mode moduleName sourceLines = go []
-  where
+duplicateImportWarnings mode moduleName sourceLines = go [] where
     go _ [] = []
-    go seen ((loc, name) : rest)
-        | name `elem` seen =
-            moduleWarning mode (Just moduleName) sourceLines loc
-                ("Duplicate import `" ++ name ++ "' ignored.")
-            : go seen rest
-        | otherwise = go (name : seen) rest
+    go seen ((loc, name) : rest) = if name `elem` seen then moduleWarning mode (Just moduleName) sourceLines loc ("Duplicate import `" ++ name ++ "' ignored.") : go seen rest else go (name : seen) rest
 
 mergeNotation :: NotationDB -> NotationDB -> NotationDB
 mergeNotation = Notation.merge
@@ -289,30 +268,26 @@ combineImport mode moduleName sourceLines (k, t, n, e, o) ((iloc, iname), env) =
     return (k', t', n', e', Origins { oKinds = oK, oTypes = oT, oFixity = oF, oAbbrev = oA, oNotation = oN })
 
 mergeKindsStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map TypeConstructor String -> KindEnv -> KindEnv -> Either ErrMsg (KindEnv, Map.Map TypeConstructor String)
-mergeKindsStrict mode moduleName sourceLines iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
-  where
+mergeKindsStrict mode moduleName sourceLines iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new) where
     step (tc, k) acc = do
         (m, origin) <- acc
         let prior = Map.lookup tc origin
         case Map.lookup tc m of
             Nothing -> Right (Map.insert tc k m, Map.insert tc iname origin)
-            Just k' | k == k' -> Right (m, origin)
-                    | otherwise -> Left
-                        (inconsErr2 mode moduleName sourceLines iloc "C1" prior iname (showTC tc) "kind"
-                            (pprint 0 k' "") (pprint 0 k ""))
+            Just k'
+                | k == k' -> Right (m, origin)
+                | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C1" prior iname (showTC tc) "kind" (pprint 0 k' "") (pprint 0 k ""))
 
 mergeTypesStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map DataConstructor String -> TypeEnv -> TypeEnv -> Either ErrMsg (TypeEnv, Map.Map DataConstructor String)
-mergeTypesStrict mode moduleName sourceLines iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new)
-  where
+mergeTypesStrict mode moduleName sourceLines iloc iname origin0 old new = foldr step (Right (old, origin0)) (Map.toList new) where
     step (dc, p) acc = do
         (m, origin) <- acc
         let prior = Map.lookup dc origin
         case Map.lookup dc m of
             Nothing -> Right (Map.insert dc p m, Map.insert dc iname origin)
-            Just p' | polyTypeEq p p' -> Right (m, origin)
-                    | otherwise -> Left
-                        (inconsErr2 mode moduleName sourceLines iloc "C2" prior iname (showDC dc) "type"
-                            "<scheme>" "<scheme>")
+            Just p'
+                | polyTypeEq p p' -> Right (m, origin)
+                | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C2" prior iname (showDC dc) "type" "<scheme>" "<scheme>")
 
 polyTypeEq :: PolyType -> PolyType -> Bool
 polyTypeEq (Forall xs t) (Forall ys u)
@@ -328,65 +303,68 @@ showDC (DC_Named s) = s
 showDC dc           = show dc
 
 mergeFixityStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map SmallId String -> NotationDB -> NotationDB -> Either ErrMsg (NotationDB, Map.Map SmallId String)
-mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new = do
-    origin' <- foldr step (Right origin0) (Notation.fixityList new)
-    Right (Notation.merge old new, origin')
-  where
-    step (name, fp) acc = do
-        origin <- acc
-        let prior = Map.lookup name origin
-        case lookupFixity name old of
-            Nothing -> Right (Map.insert name iname origin)
-            Just fp' | fp == fp' -> Right origin
-                     | otherwise -> Left
+mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new
+    = do
+        origin' <- foldr step (Right origin0) (Notation.fixityList new)
+        Right (Notation.merge old new, origin')
+    where
+        step (name, fp) acc = do
+            origin <- acc
+            let prior = Map.lookup name origin
+            case lookupFixity name old of
+                Nothing -> Right (Map.insert name iname origin)
+                Just fp'
+                    | fp == fp' -> Right origin
+                    | otherwise -> Left
                         (inconsErr2 mode moduleName sourceLines iloc "C5" prior iname name "fixity"
                             (showFixity fp') (showFixity fp))
-    lookupFixity name db = lookup name (Notation.fixityList db)
-    showFixity (kind, prec) = show kind ++ " " ++ show prec
+        lookupFixity name db = lookup name (Notation.fixityList db)
+        showFixity (kind, prec) = show kind ++ " " ++ show prec
 
 mergeExpStrict
     :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String
     -> Map.Map SmallId String -> Map.Map SmallId String
     -> ExpansionDB -> ExpansionDB
     -> Either ErrMsg (ExpansionDB, Map.Map SmallId String, Map.Map SmallId String)
-mergeExpStrict mode moduleName sourceLines iloc iname oA0 oN0 old new = do
-    oA <- foldr stepA (Right oA0) (Notation.typeAbbrevList new)
-    oN <- foldr stepN (Right oN0) (Notation.termNotationList new)
-    Right (Notation.mergeExpansion old new, oA, oN)
-  where
-    stepA (nm, ps, rhs) acc = do
-        oA <- acc
-        let prior = Map.lookup nm oA
-        case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.typeAbbrevList old ] of
-            Nothing -> Right (Map.insert nm iname oA)
-            Just (ps', rhs') | ps == ps' && typeRepEq rhs rhs' -> Right oA
-                             | otherwise -> Left
-                                (inconsErr2 mode moduleName sourceLines iloc "C3" prior iname nm "abbreviation"
-                                    "<prior body>" "<current body>")
-    stepN (nm, ps, rhs) acc = do
-        oN <- acc
-        let prior = Map.lookup nm oN
-        case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.termNotationList old ] of
-            Nothing -> Right (Map.insert nm iname oN)
-            Just (ps', rhs') | ps == ps' && termRepEq rhs rhs' -> Right oN
-                             | otherwise -> Left
-                                (inconsErr2 mode moduleName sourceLines iloc "C4" prior iname nm "notation"
-                                    "<prior body>" "<current body>")
+mergeExpStrict mode moduleName sourceLines iloc iname oA0 oN0 old new
+    = do
+        oA <- foldr stepA (Right oA0) (Notation.typeAbbrevList new)
+        oN <- foldr stepN (Right oN0) (Notation.termNotationList new)
+        Right (Notation.mergeExpansion old new, oA, oN)
+    where
+        stepA (nm, ps, rhs) acc = do
+            oA <- acc
+            let prior = Map.lookup nm oA
+            case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.typeAbbrevList old ] of
+                Nothing -> Right (Map.insert nm iname oA)
+                Just (ps', rhs')
+                    | ps == ps' && typeRepEq rhs rhs' -> Right oA
+                    | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C3" prior iname nm "abbreviation" "<prior body>" "<current body>")
+        stepN (nm, ps, rhs) acc = do
+            oN <- acc
+            let prior = Map.lookup nm oN
+            case lookup nm [ (n', (p', r')) | (n', p', r') <- Notation.termNotationList old ] of
+                Nothing -> Right (Map.insert nm iname oN)
+                Just (ps', rhs')
+                    | ps == ps' && termRepEq rhs rhs' -> Right oN
+                    | otherwise -> Left
+                        (inconsErr2 mode moduleName sourceLines iloc "C4" prior iname nm "notation"
+                            "<prior body>" "<current body>")
 
 inconsErr2 :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Maybe String -> String -> String -> String -> String -> String -> ErrMsg
-inconsErr2 mode moduleName sourceLines iloc tag mPrior iname dname kindLabel rhsA rhsB =
-    moduleErr mode moduleName sourceLines iloc $ case mPrior of
-    Just prior -> concat
-        [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
-        , "' is declared by both `" ++ prior ++ "' and `" ++ iname
-        , "' with disagreeing " ++ kindLabel ++ ". "
-        , "(`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
-        ]
-    Nothing -> concat
-        [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
-        , "' is declared by `" ++ iname ++ "' with a different "
-        , kindLabel ++ " than the built-in seed."
-        ]
+inconsErr2 mode moduleName sourceLines iloc tag mPrior iname dname kindLabel rhsA rhsB = moduleErr mode moduleName sourceLines iloc msg where
+    msg = case mPrior of
+        Just prior -> concat
+            [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
+            , "' is declared by both `" ++ prior ++ "' and `" ++ iname
+            , "' with disagreeing " ++ kindLabel ++ ". "
+            , "(`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
+            ]
+        Nothing -> concat
+            [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
+            , "' is declared by `" ++ iname ++ "' with a different "
+            , kindLabel ++ " than the built-in seed."
+            ]
 
 typeRepEq :: TypeRep -> TypeRep -> Bool
 typeRepEq (RTyPrn _ a) b = typeRepEq a b
@@ -412,23 +390,24 @@ extractHeaderAndImports
     -> SourceLines
     -> [DeclRep]
     -> Either ErrMsg (Maybe (SLoc, String), [(SLoc, String)], [DeclRep])
-extractHeaderAndImports mode moduleName sourceLines decls0 = case decls0 of
-    RModuleHeaderDecl loc n : rest -> do
-        (imps, body) <- partitionImports rest
-        return (Just (loc, n), imps, body)
-    rest -> do
-        (imps, body) <- partitionImports rest
-        return (Nothing, imps, body)
-  where
-    partitionImports (RImportDecl loc n : rest) = do
-        (imps, body) <- partitionImports rest
-        return ((loc, n) : imps, body)
-    partitionImports rest =
-        case [ loc | RImportDecl loc _ <- rest ] of
-            (loc : _) -> Left (moduleErr mode moduleName sourceLines loc "`import' declarations must precede all other declarations.")
-            [] -> case [ loc | RModuleHeaderDecl loc _ <- rest ] of
-                (loc : _) -> Left (moduleErr mode moduleName sourceLines loc "`module' header must be the first declaration of the file.")
-                [] -> return ([], rest)
+extractHeaderAndImports mode moduleName sourceLines decls0
+    = case decls0 of
+        RModuleHeaderDecl loc n : rest -> do
+            (imps, body) <- partitionImports rest
+            return (Just (loc, n), imps, body)
+        rest -> do
+            (imps, body) <- partitionImports rest
+            return (Nothing, imps, body)
+    where
+        partitionImports (RImportDecl loc n : rest) = do
+            (imps, body) <- partitionImports rest
+            return ((loc, n) : imps, body)
+        partitionImports rest =
+            case [ loc | RImportDecl loc _ <- rest ] of
+                (loc : _) -> Left (moduleErr mode moduleName sourceLines loc "`import' declarations must precede all other declarations.")
+                [] -> case [ loc | RModuleHeaderDecl loc _ <- rest ] of
+                    (loc : _) -> Left (moduleErr mode moduleName sourceLines loc "`module' header must be the first declaration of the file.")
+                    [] -> return ([], rest)
 
 liftEither :: Monad m => Either ErrMsg a -> Loader m a
 liftEither = either throwE return

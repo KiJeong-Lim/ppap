@@ -62,7 +62,7 @@ parseAnonymousLV nm = case nm of
     'L' : 'V' : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
     'V'       : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
     _ -> Nothing
-  where
+    where
     mkAnon ctor digits = case reads digits of
         [(n, "")] -> Just (ctor (Unique n))
         _ -> Nothing

@@ -35,7 +35,9 @@ import Data.IntMap (restrictKeys)
 
 type AnalyzerOuput = Either TermRep [DeclRep]
 
-data ReplResult = ReplQuit | ReplReload
+data ReplResult
+    = ReplQuit
+    | ReplReload
 
 runAnalyzer :: DiagnosticMode -> String -> Either ErrMsg AnalyzerOuput
 runAnalyzer mode src0
@@ -82,7 +84,7 @@ runREPL mode program notationDB expansionDB = do
     verboseTyping <- liftIO (newIORef False)
     nameCache <- liftIO (newIORef initialCache)
     go isDebugging verboseTyping nameCache
-  where
+    where
     myTabs :: String
     myTabs = ""
     promptify :: String -> IO String
@@ -93,7 +95,7 @@ runREPL mode program notationDB expansionDB = do
     mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query = do
         stackRef <- newIORef []
         return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _PrintPrimitive = primitivePrint, _ReadPrimitive = primitiveRead, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging, _NotationDB = notationDB, _ModuleName = moduleName program })
-      where
+        where
         primitivePrint :: Context -> TermNode -> IO ()
         primitivePrint ctx term = do
             cache <- readIORef nameCache
@@ -165,17 +167,18 @@ runREPL mode program notationDB expansionDB = do
                         return ()
                     _ -> return ()
         parseAssign :: String -> Maybe (String, String)
-        parseAssign body0 =
-            let body = dropWhile (== ' ') body0
-            in case body of
+        parseAssign body0
+            = case body of
                 '?' : rest -> findSep rest ""
                 _ -> Nothing
-          where
-            findSep :: String -> String -> Maybe (String, String)
-            findSep [] _ = Nothing
-            findSep (' ' : ':' : '=' : ' ' : rs) acc =
-                Just (reverse (dropWhile (== ' ') acc), dropWhile (== ' ') rs)
-            findSep (c : cs) acc = findSep cs (c : acc)
+            where
+                body = dropWhile (== ' ') body0
+
+                findSep :: String -> String -> Maybe (String, String)
+                findSep [] _ = Nothing
+                findSep (' ' : ':' : '=' : ' ' : rs) acc =
+                    Just (reverse (dropWhile (== ' ') acc), dropWhile (== ' ') rs)
+                findSep (c : cs) acc = findSep cs (c : acc)
         handleAssign :: RuntimeEnv -> Context -> String -> IO ()
         handleAssign env ctx body = case parseAssign body of
             Nothing -> do
@@ -242,7 +245,7 @@ runREPL mode program notationDB expansionDB = do
                             then do
                                 _ <- promptify (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text (List.intercalate "; " xconErrors)])
                                 return ()
-                          else if badType
+                        else if badType
                             then case mexpectedTy of
                                 Just expectedTy -> do
                                     _ <- promptify (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text ("Type mismatch for '" ++ varName ++ "'; expected " ++ showsMonoType notationDB 0 expectedTy (", got " ++ showsMonoType notationDB 0 inferredTy ""))])

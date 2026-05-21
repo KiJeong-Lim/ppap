@@ -60,9 +60,7 @@ data HopuFail
     deriving (Eq, Ord, Show)
 
 newtype VarBinding
-    = VarBinding
-    { unVarBinding :: Map.Map LogicVar TermNode
-    }
+    = VarBinding { unVarBinding :: Map.Map LogicVar TermNode }
     deriving (Eq, Ord, Show)
 
 class Labelable atom where
@@ -233,7 +231,8 @@ instance Outputable Labeling where
             ]
 
 instance Outputable VarBinding where
-    pprint _ (VarBinding mapsto) = strstr "VarBinding " . plist 4 [ shows x . strstr " +-> " . shows t | (x, t) <- Map.toList mapsto ]
+    pprint _ (VarBinding mapsto)
+        = strstr "VarBinding " . plist 4 [ shows x . strstr " +-> " . shows t | (x, t) <- Map.toList mapsto ]
 
 instance Outputable Disagreement where
     pprint prec (lhs :=?=: rhs)
@@ -420,22 +419,17 @@ simplify = flip loop mempty . zip (repeat []) where
             | (lhsHints, lhs') <- viewNestedNLamH lhs
             , (rhsHints, rhs') <- viewNestedNLamH rhs
             , not (null lhsHints) && not (null rhsHints)
-            = let lambda1 = length lhsHints
-                  lambda2 = length rhsHints
-                  lambda = min lambda1 lambda2
-              in dispatch (l ++ take lambda lhsHints) (makeNestedNLamH (drop lambda lhsHints) lhs') (makeNestedNLamH (drop lambda rhsHints) rhs')
+            = dispatch (l ++ take (min (length lhsHints) (length rhsHints)) lhsHints) (makeNestedNLamH (drop (min (length lhsHints) (length rhsHints)) lhsHints) lhs') (makeNestedNLamH (drop (min (length lhsHints) (length rhsHints)) rhsHints) rhs')
             | (lhsHints, lhs') <- viewNestedNLamH lhs
             , not (null lhsHints)
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , isRigidAtom rhs_head
-            = let lambda1 = length lhsHints
-              in dispatch (l ++ lhsHints) lhs' (List.foldl' mkNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1 - 1, lambda1 - 2 .. 0]))
+            = dispatch (l ++ lhsHints) lhs' (List.foldl' mkNApp (rewriteWithSusp rhs_head 0 (length lhsHints) [] HNF) ([ mkSusp rhs_tail_element 0 (length lhsHints) [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [length lhsHints - 1, length lhsHints - 2 .. 0]))
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
             , (rhsHints, rhs') <- viewNestedNLamH rhs
             , isRigidAtom lhs_head
             , not (null rhsHints)
-            = let lambda2 = length rhsHints
-              in dispatch (l ++ rhsHints) (List.foldl' mkNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2 - 1, lambda2 - 2 .. 0])) rhs'
+            = dispatch (l ++ rhsHints) (List.foldl' mkNApp (rewriteWithSusp lhs_head 0 (length rhsHints) [] HNF) ([ mkSusp lhs_tail_element 0 (length rhsHints) [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [length rhsHints - 1, length rhsHints - 2 .. 0])) rhs'
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , isRigidAtom lhs_head && isRigidAtom rhs_head

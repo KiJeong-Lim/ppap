@@ -26,9 +26,7 @@ data TypeError
     deriving ()
 
 newtype TypeSubst
-    = TypeSubst
-    { getTypeSubst :: Map.Map MetaTVar (MonoType Int)
-    }
+    = TypeSubst { getTypeSubst :: Map.Map MetaTVar (MonoType Int) }
     deriving ()
 
 class HasMTVar a where
@@ -241,26 +239,26 @@ mkTyErr mode moduleName source_lines db used_mtvs loc ((actual_typ, expected_typ
         , text ("Relevant equation: `" ++ ty lhs ++ "' ~ `" ++ ty rhs ++ "'")
         , text ("Reason: " ++ reason)
         ]
-  where
-    text = Z.Doc.text
-    ty :: MonoType Int -> String
-    ty typ = showMonoType db used_mtvs typ ""
-    (lhs, rhs, reason) = case typ_error of
-        KindsAreMismatched (typ1, kin1) (typ2, kin2) ->
-            ( typ1
-            , typ2
-            , "kind mismatch: `" ++ pprint 0 kin1 "' vs `" ++ pprint 0 kin2 "'."
-            )
-        OccursCheckFailed mtv1 typ2 ->
-            ( TyMTV mtv1
-            , typ2
-            , "occurs check failed; `" ++ ty (TyMTV mtv1) ++ "' would contain itself."
-            )
-        TypesAreMismatched typ1 typ2 ->
-            ( typ1
-            , typ2
-            , "the two types are not unifiable."
-            )
+    where
+        text = Z.Doc.text
+        ty :: MonoType Int -> String
+        ty typ = showMonoType db used_mtvs typ ""
+        (lhs, rhs, reason) = case typ_error of
+            KindsAreMismatched (typ1, kin1) (typ2, kin2) ->
+                ( typ1
+                , typ2
+                , "kind mismatch: `" ++ pprint 0 kin1 "' vs `" ++ pprint 0 kin2 "'."
+                )
+            OccursCheckFailed mtv1 typ2 ->
+                ( TyMTV mtv1
+                , typ2
+                , "occurs check failed; `" ++ ty (TyMTV mtv1) ++ "' would contain itself."
+                )
+            TypesAreMismatched typ1 typ2 ->
+                ( typ1
+                , typ2
+                , "the two types are not unifiable."
+                )
 
 inferType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
 inferType = inferTypeWithDiagnostic DiagnosticPretty Nothing

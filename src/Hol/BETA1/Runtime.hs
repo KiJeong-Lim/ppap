@@ -84,9 +84,7 @@ data RuntimeEnv
     deriving ()
 
 newtype Runtime a
-    = Runtime
-    { unRuntime :: ReaderT RuntimeEnv IO a
-    }
+    = Runtime { unRuntime :: ReaderT RuntimeEnv IO a }
 
 instance Functor Runtime where
     fmap f (Runtime m) = Runtime (fmap f m)
@@ -231,7 +229,8 @@ cmdAssign name term = do
         Right () -> return (Right ())
 
 instance ZonkLVar Context where
-    zonkLVar theta ctx = Context
+    zonkLVar theta ctx
+        = Context
         { _TotalVarBinding = theta <> _TotalVarBinding ctx
         , _CurrentLabeling = zonkLVar theta (_CurrentLabeling ctx)
         , _LeftConstraints = zonkLVar theta (_LeftConstraints ctx)
@@ -251,7 +250,8 @@ instance ZonkLVar Constraint where
         = ArithmeticConstraint (bindVars theta arith)
 
 instance ZonkLVar Cell where
-    zonkLVar theta (Cell facts hyps level goal call_id) = mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
+    zonkLVar theta (Cell facts hyps level goal call_id)
+        = mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
 
 instance Show Constraint where
     showsPrec prec (DisagreementConstraint eqn) = showsPrec prec eqn
@@ -266,25 +266,33 @@ showsvdash space [] goal = strstr "|- " . shows goal
 showsvdash space [hyp] goal = shows hyp . strstr " |- " . shows goal
 showsvdash space (hyp : hyps) goal = shows hyp . strstr ", " . showsvdash space hyps goal
 
+parensIf :: Bool -> ShowS -> ShowS
+parensIf True inner = strstr "(" . inner . strstr ")"
+parensIf False inner = inner
+
 showsMonoType :: NotationDB -> Int -> MonoType Int -> ShowS
-showsMonoType db prec t = case Notation.tryFoldType db t of
-    Just (name, []) -> strstr name
-    Just (name, args) ->
-        let inner = strstr name . List.foldr (.) id [ strstr " " . showsMonoType db 7 a | a <- args ]
-        in if prec > 6 then strstr "(" . inner . strstr ")" else inner
-    Nothing -> showsMonoTypeRaw db prec t
+showsMonoType db prec t
+    = case Notation.tryFoldType db t of
+        Just (name, []) -> strstr name
+        Just (name, args) -> parensIf (prec > 6) inner where
+            inner = strstr name . List.foldr (.) id [ strstr " " . showsMonoType db 7 a | a <- args ]
+        Nothing -> showsMonoTypeRaw db prec t
 
 showsMonoTypeRaw :: NotationDB -> Int -> MonoType Int -> ShowS
-showsMonoTypeRaw _  _    (TyVar i) = strstr "a_" . shows i
-showsMonoTypeRaw _  _    (TyMTV mtv) = strstr "?t" . shows mtv
-showsMonoTypeRaw _  _    (TyCon (TCon (TC_Unique uni) _)) = strstr "?TV_" . shows (unUnique uni)
-showsMonoTypeRaw _  _    (TyCon (TCon tc _)) = shows tc
-showsMonoTypeRaw db prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2) =
-    let inner = showsMonoType db 5 t1 . strstr " -> " . showsMonoType db 4 t2
-    in if prec > 4 then strstr "(" . inner . strstr ")" else inner
-showsMonoTypeRaw db prec (TyApp t1 t2) =
-    let inner = showsMonoType db 6 t1 . strstr " " . showsMonoType db 7 t2
-    in if prec > 6 then strstr "(" . inner . strstr ")" else inner
+showsMonoTypeRaw _ _ (TyVar i)
+    = strstr "a_" . shows i
+showsMonoTypeRaw _ _ (TyMTV mtv)
+    = strstr "?t" . shows mtv
+showsMonoTypeRaw _ _ (TyCon (TCon (TC_Unique uni) _))
+    = strstr "?TV_" . shows (unUnique uni)
+showsMonoTypeRaw _ _ (TyCon (TCon tc _))
+    = shows tc
+showsMonoTypeRaw db prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2)
+    = parensIf (prec > 4) inner where
+        inner = showsMonoType db 5 t1 . strstr " -> " . showsMonoType db 4 t2
+showsMonoTypeRaw db prec (TyApp t1 t2)
+    = parensIf (prec > 6) inner where
+        inner = showsMonoType db 6 t1 . strstr " " . showsMonoType db 7 t2
 
 showLVarVN :: LogicVar -> ShowS
 showLVarVN (LV_ty_var uni) = strstr "?TV_" . shows (unUnique uni)
@@ -293,41 +301,44 @@ showLVarVN (LV_Unique uni (DispHint Nothing)) = strstr "?V_" . shows (unUnique u
 showLVarVN (LV_Named name) = strstr name
 
 showsMonoTypeIn :: NotationDB -> Bool -> Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
-showsMonoTypeIn db False _ _ mtyp = case mtyp of
-    Just t -> showsMonoType db 0 t
-    Nothing -> strstr "?"
-showsMonoTypeIn db True labeling lv mtyp = render lv mtyp where
+showsMonoTypeIn db False _ _ mtyp
+    = case mtyp of
+        Just t -> showsMonoType db 0 t
+        Nothing -> strstr "?"
+showsMonoTypeIn db True labeling lv mtyp
+    = render lv mtyp where
     render :: LogicVar -> Maybe (MonoType Int) -> ShowS
-    render lv mtyp =
-        let (scope_v, myK) = case lv of
-                LV_Named _ -> (-1, -1)
-                _ -> (lookupLabel lv labeling, lvKey lv)
-            cons = [ renderCon uni cTyp
-                   | (uni, cTyp) <- IntMap.toAscList (_ConTypes labeling)
-                   , IntMap.findWithDefault maxBound uni (_ConLabel labeling) <= scope_v
-                   ]
-            vars = [ renderVar uni
-                   | (uni, scp) <- IntMap.toAscList (_VarLabel labeling)
-                   , uni < myK
-                   , scp <= scope_v
-                   ]
-            entries = cons ++ vars
-            prefix = case entries of
-                [] -> strstr "("
-                _ -> strstr "(" . sepBy (strstr ", ") entries . strstr " "
-            renderedTy = case mtyp of
-                Just t -> showsMonoType db 0 t
-                Nothing -> strstr "?"
-        in prefix . strstr "|- " . renderedTy . strstr ")"
+    render lv' mtyp' = prefix . strstr "|- " . renderedTy . strstr ")" where
+        (scope_v, myK) = case lv' of
+            LV_Named _ -> (-1, -1)
+            _ -> (lookupLabel lv' labeling, lvKey lv')
+        cons =
+            [ renderCon uni cTyp
+            | (uni, cTyp) <- IntMap.toAscList (_ConTypes labeling)
+            , IntMap.findWithDefault maxBound uni (_ConLabel labeling) <= scope_v
+            ]
+        vars =
+            [ renderVar uni
+            | (uni, scp) <- IntMap.toAscList (_VarLabel labeling)
+            , uni < myK
+            , scp <= scope_v
+            ]
+        entries = cons ++ vars
+        prefix = case entries of
+            [] -> strstr "("
+            _ -> strstr "(" . sepBy (strstr ", ") entries . strstr " "
+        renderedTy = case mtyp' of
+            Just t -> showsMonoType db 0 t
+            Nothing -> strstr "?"
     renderCon :: Int -> MonoType Int -> ShowS
     renderCon uni cTyp = strstr "c_" . shows uni . strstr " : " . showsMonoType db 0 cTyp
     renderVar :: Int -> ShowS
     renderVar uni
         | IntMap.member uni (_TyVarKeys labeling) = strstr "?TV_" . shows uni
-        | otherwise =
-            let innerLV = LV_Unique (Unique uni) noHint
-                mInnerTy = IntMap.lookup uni (_VarTypes labeling)
-            in strstr "?V_" . shows uni . strstr " : " . render innerLV mInnerTy
+        | otherwise = strstr "?V_" . shows uni . strstr " : " . render innerLV mInnerTy
+        where
+            innerLV = LV_Unique (Unique uni) noHint
+            mInnerTy = IntMap.lookup uni (_VarTypes labeling)
     sepBy :: ShowS -> [ShowS] -> ShowS
     sepBy _ [] = id
     sepBy _ [x] = x
@@ -339,22 +350,24 @@ showStackItem db verbose fvs typeMap space (ctx, cells) = strcat
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
-    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) (concat
-        [
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (Just typ)
-        | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
-        ]
-        ,
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
-        | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
-        , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
-        , let v = LV_Unique (Unique uni) noHint
-        ]
-        ]
-      ) . nl
+    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) typings . nl
     , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
     , pindent (space + 4) . strstr "}" . nl
     ]
+    where
+        typings = namedTypings ++ generatedTypings
+
+        namedTypings =
+            [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (Just typ)
+            | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
+            ]
+
+        generatedTypings =
+            [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
+            | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
+            , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
+            , let v = LV_Unique (Unique uni) noHint
+            ]
 
 showsCurrentState :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
 showsCurrentState db verbose fvs typeMap ctx cells stack = strcat
@@ -533,43 +546,49 @@ simplifyArithmetic :: TermNode -> Maybe TermNode
 simplifyArithmetic t = do
     (sawArithmetic, poly) <- Just (polyOf (rewrite NF t))
     if sawArithmetic then renderPoly (combinePoly poly) else Nothing
-  where
-    polyOf :: TermNode -> (Bool, [([TermNode], Integer)])
-    polyOf (NCon (DC (DC_NatL n))) = (True, [([], n)])
-    polyOf (NApp (NApp (NCon (DC DC_plus)) t1) t2) =
-        let (saw1, p1) = polyOf t1
+    where
+        polyOf :: TermNode -> (Bool, [([TermNode], Integer)])
+        polyOf (NCon (DC (DC_NatL n))) = (True, [([], n)])
+        polyOf (NApp (NApp (NCon (DC DC_plus)) t1) t2) = (saw1 || saw2 || True, p1 ++ p2) where
+            (saw1, p1) = polyOf t1
             (saw2, p2) = polyOf t2
-        in (saw1 || saw2 || True, p1 ++ p2)
-    polyOf (NApp (NApp (NCon (DC DC_mul)) t1) t2) =
-        let (saw1, p1) = polyOf t1
+        polyOf (NApp (NApp (NCon (DC DC_mul)) t1) t2) = (saw1 || saw2 || True, multiplyPoly p1 p2) where
+            (saw1, p1) = polyOf t1
             (saw2, p2) = polyOf t2
-        in (saw1 || saw2 || True, multiplyPoly p1 p2)
-    polyOf atom = (False, [([atom], 1)])
-    multiplyPoly p1 p2 =
-        [ (factors1 ++ factors2, coeff1 * coeff2)
-        | (factors1, coeff1) <- p1
-        , (factors2, coeff2) <- p2
-        ]
-    combinePoly = foldl insertTerm [] where
-        insertTerm [] term = [term]
-        insertTerm ((factors, coeff) : rest) term@(factors', coeff')
-            | factors == factors' =
-                let coeff'' = coeff + coeff'
-                in if coeff'' == 0 then rest else (factors, coeff'') : rest
-            | otherwise = (factors, coeff) : insertTerm rest term
-    renderPoly poly0 = case filter ((/= 0) . snd) poly0 of
-        [] -> Just (mkNCon (DC_NatL 0))
-        terms
-            | all ((>= 0) . snd) terms -> Just (foldl1 add (map renderTerm terms))
-            | otherwise -> Nothing
-    renderTerm (factors, coeff) = case (coeff, factors) of
-        (0, _) -> mkNCon (DC_NatL 0)
-        (1, []) -> mkNCon (DC_NatL 1)
-        (1, factor : rest) -> foldl mul factor rest
-        (_, []) -> mkNCon (DC_NatL coeff)
-        (_, _) -> foldl mul (mkNCon (DC_NatL coeff)) factors
-    add t1 t2 = mkNApp (mkNApp (mkNCon DC_plus) t1) t2
-    mul t1 t2 = mkNApp (mkNApp (mkNCon DC_mul) t1) t2
+        polyOf atom = (False, [([atom], 1)])
+
+        multiplyPoly p1 p2 =
+            [ (factors1 ++ factors2, coeff1 * coeff2)
+            | (factors1, coeff1) <- p1
+            , (factors2, coeff2) <- p2
+            ]
+
+        combinePoly = foldl insertTerm [] where
+            insertTerm [] term = [term]
+            insertTerm ((factors, coeff) : rest) term@(factors', coeff')
+                | factors == factors' && coeff'' == 0 = rest
+                | factors == factors' = (factors, coeff'') : rest
+                | otherwise = (factors, coeff) : insertTerm rest term
+                where
+                    coeff'' = coeff + coeff'
+
+        renderPoly poly0
+            = case filter ((/= 0) . snd) poly0 of
+                [] -> Just (mkNCon (DC_NatL 0))
+                terms
+                    | all ((>= 0) . snd) terms -> Just (foldl1 add (map renderTerm terms))
+                    | otherwise -> Nothing
+
+        renderTerm (factors, coeff)
+            = case (coeff, factors) of
+                (0, _) -> mkNCon (DC_NatL 0)
+                (1, []) -> mkNCon (DC_NatL 1)
+                (1, factor : rest) -> foldl mul factor rest
+                (_, []) -> mkNCon (DC_NatL coeff)
+                (_, _) -> foldl mul (mkNCon (DC_NatL coeff)) factors
+
+        add t1 t2 = mkNApp (mkNApp (mkNCon DC_plus) t1) t2
+        mul t1 t2 = mkNApp (mkNApp (mkNCon DC_mul) t1) t2
 
 runDebugger :: TermNode -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
 runDebugger loc_str ctx facts hyps level call_id cells stack = do
@@ -582,61 +601,71 @@ runPresburger rep freeOf ctx cells stack =
     if entails compiledHyps compiledPhi
         then (ctx, cells) : stack
         else stack
-  where
-    theta :: LogicVar -> Maybe TermNode
-    theta lv = case bindVars (_TotalVarBinding ctx) (LVar lv) of
-        LVar lv' | lv == lv' -> Nothing
-        t -> Just t
-    repZonked :: MyPresburgerFormulaRep
-    repZonked = zonkPresburger theta freeOf rep
-    arithTerms :: [TermNode]
-    arithTerms =
-        [ bindVars (_TotalVarBinding ctx) t
-        | ArithmeticConstraint t <- _LeftConstraints ctx
-        ]
-    liftedResults :: [LiftResult]
-    liftedResults = mapMaybe liftConstraint arithTerms
-    allLVs :: [LogicVar]
-    allLVs = Set.toAscList $ Set.union
-        (Set.fromList (Map.elems freeOf))
-        (Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ])
-    shared :: Map.Map LogicVar MyVar
-    shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
-    phiRep :: MyPresburgerFormulaRep
-    phiRep = renumberFormula shared freeOf repZonked
-    hypReps :: [MyPresburgerFormulaRep]
-    hypReps =
-        [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
-        | lr <- liftedResults
-        ]
-    compiledPhi :: MyPresburgerFormula
-    compiledPhi = fmap compilePresburgerTerm phiRep
-    compiledHyps :: [MyPresburgerFormula]
-    compiledHyps = map (fmap compilePresburgerTerm) hypReps
+    where
+        theta :: LogicVar -> Maybe TermNode
+        theta lv
+            = case bindVars (_TotalVarBinding ctx) (LVar lv) of
+                LVar lv' | lv == lv' -> Nothing
+                t -> Just t
+
+        repZonked :: MyPresburgerFormulaRep
+        repZonked = zonkPresburger theta freeOf rep
+
+        arithTerms :: [TermNode]
+        arithTerms =
+            [ bindVars (_TotalVarBinding ctx) t
+            | ArithmeticConstraint t <- _LeftConstraints ctx
+            ]
+
+        liftedResults :: [LiftResult]
+        liftedResults = mapMaybe liftConstraint arithTerms
+
+        allLVs :: [LogicVar]
+        allLVs = Set.toAscList $ Set.union (Set.fromList (Map.elems freeOf)) (Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ])
+
+        shared :: Map.Map LogicVar MyVar
+        shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+
+        phiRep :: MyPresburgerFormulaRep
+        phiRep = renumberFormula shared freeOf repZonked
+
+        hypReps :: [MyPresburgerFormulaRep]
+        hypReps =
+            [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
+            | lr <- liftedResults
+            ]
+
+        compiledPhi :: MyPresburgerFormula
+        compiledPhi = fmap compilePresburgerTerm phiRep
+
+        compiledHyps :: [MyPresburgerFormula]
+        compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 isInconsistent :: [TermNode] -> Bool
 isInconsistent arithTerms
     | cheapKill = True
     | otherwise = entails compiledHyps (ValF False)
-  where
-    cheapKill :: Bool
-    cheapKill = List.any
-        (\t -> evaluateB t == Right False || evaluateB t == Left "ill")
-        arithTerms
-    liftedResults :: [LiftResult]
-    liftedResults = mapMaybe liftConstraint arithTerms
-    allLVs :: [LogicVar]
-    allLVs = Set.toAscList $ Set.unions
-        [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ]
-    shared :: Map.Map LogicVar MyVar
-    shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
-    hypReps :: [MyPresburgerFormulaRep]
-    hypReps =
-        [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
-        | lr <- liftedResults
-        ]
-    compiledHyps :: [MyPresburgerFormula]
-    compiledHyps = map (fmap compilePresburgerTerm) hypReps
+    where
+        cheapKill :: Bool
+        cheapKill = List.any (\t -> evaluateB t == Right False || evaluateB t == Left "ill") arithTerms
+
+        liftedResults :: [LiftResult]
+        liftedResults = mapMaybe liftConstraint arithTerms
+
+        allLVs :: [LogicVar]
+        allLVs = Set.toAscList $ Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ]
+
+        shared :: Map.Map LogicVar MyVar
+        shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+
+        hypReps :: [MyPresburgerFormulaRep]
+        hypReps =
+            [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
+            | lr <- liftedResults
+            ]
+
+        compiledHyps :: [MyPresburgerFormula]
+        compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 runTransition :: RuntimeEnv -> Set.Set LogicVar -> Stack -> ExceptT KernelErr (UniqueT IO) Satisfied
 runTransition env free_lvars = go where
@@ -647,21 +676,21 @@ runTransition env free_lvars = go where
     arithOpCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr (UniqueT IO) Stack
     arithOpCheck call_id ctx cells predicate args op
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
-            Left "non" ->
-                let newCtx = Context
-                        { _TotalVarBinding = _TotalVarBinding ctx
-                        , _CurrentLabeling = _CurrentLabeling ctx
-                        , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
-                        , _ContextThreadId = call_id
-                        , _debuggindModeOn = _debuggindModeOn ctx
-                        }
-                    arithTerms =
-                        [ bindVars (_TotalVarBinding newCtx) t
-                        | ArithmeticConstraint t <- _LeftConstraints newCtx
-                        ]
-                in if isInconsistent arithTerms then failure else success (newCtx, cells)
+            Left "non" -> if isInconsistent arithTerms then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
+        where
+            newCtx = Context
+                { _TotalVarBinding = _TotalVarBinding ctx
+                , _CurrentLabeling = _CurrentLabeling ctx
+                , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
+                , _ContextThreadId = call_id
+                , _debuggindModeOn = _debuggindModeOn ctx
+                }
+            arithTerms =
+                [ bindVars (_TotalVarBinding newCtx) t
+                | ArithmeticConstraint t <- _LeftConstraints newCtx
+                ]
     search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique
@@ -739,7 +768,8 @@ runTransition env free_lvars = go where
             go (stack' ++ stack)
     dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf, []) _call_id cells stack
         = go (runPresburger rep freeOf ctx cells stack)
-    dispatch ctx facts hyps level (t, ts) call_id cells stack = throwE (BadGoalGiven (foldlNApp t ts))
+    dispatch ctx facts hyps level (t, ts) call_id cells stack
+        = throwE (BadGoalGiven (foldlNApp t ts))
     applyPending :: Stack -> ExceptT KernelErr (UniqueT IO) Stack
     applyPending [] = return []
     applyPending st@((ctx, cells) : rest) = liftIO $ do

@@ -86,9 +86,7 @@ data RuntimeEnv
     } deriving ()
 
 newtype Runtime a
-    = Runtime
-    { unRuntime :: ReaderT RuntimeEnv IO a
-    }
+    = Runtime { unRuntime :: ReaderT RuntimeEnv IO a }
 
 instance Functor Runtime where
     fmap f (Runtime m) = Runtime (fmap f m)
@@ -239,7 +237,8 @@ cmdAssign name term
             Right () -> return (Right ())
 
 instance ZonkLVar Context where
-    zonkLVar theta ctx = Context
+    zonkLVar theta ctx
+        = Context
         { _TotalVarBinding = theta <> _TotalVarBinding ctx
         , _CurrentLabeling = zonkLVar theta (_CurrentLabeling ctx)
         , _LeftConstraints = zonkLVar theta (_LeftConstraints ctx)
@@ -259,7 +258,8 @@ instance ZonkLVar Constraint where
         = ArithmeticConstraint (bindVars theta arith)
 
 instance ZonkLVar Cell where
-    zonkLVar theta (Cell facts hyps level goal call_id) = mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
+    zonkLVar theta (Cell facts hyps level goal call_id)
+        = mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
 
 instance Show Constraint where
     showsPrec prec (DisagreementConstraint eqn) = showsPrec prec eqn
@@ -287,10 +287,14 @@ showsMonoType db prec t
         Nothing -> showsMonoTypeRaw db prec t
 
 showsMonoTypeRaw :: NotationDB -> Int -> MonoType Int -> ShowS
-showsMonoTypeRaw _ _ (TyVar i) = strstr "a_" . shows i
-showsMonoTypeRaw _ _ (TyMTV mtv) = strstr "?t" . shows mtv
-showsMonoTypeRaw _ _ (TyCon (TCon (TC_Unique uni) _)) = strstr "?TV_" . shows (unUnique uni)
-showsMonoTypeRaw _ _ (TyCon (TCon tc _)) = shows tc
+showsMonoTypeRaw _ _ (TyVar i)
+    = strstr "a_" . shows i
+showsMonoTypeRaw _ _ (TyMTV mtv)
+    = strstr "?t" . shows mtv
+showsMonoTypeRaw _ _ (TyCon (TCon (TC_Unique uni) _))
+    = strstr "?TV_" . shows (unUnique uni)
+showsMonoTypeRaw _ _ (TyCon (TCon tc _))
+    = shows tc
 showsMonoTypeRaw db prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2)
     = parensIf (prec > 4) inner where
         inner = showsMonoType db 5 t1 . strstr " -> " . showsMonoType db 4 t2
@@ -309,7 +313,8 @@ showsMonoTypeIn db False _ _ mtyp
     = case mtyp of
         Just t -> showsMonoType db 0 t
         Nothing -> strstr "?"
-showsMonoTypeIn db True labeling lv mtyp = render lv mtyp where
+showsMonoTypeIn db True labeling lv mtyp
+    = render lv mtyp where
     render :: LogicVar -> Maybe (MonoType Int) -> ShowS
     render lv' mtyp' = prefix . strstr "|- " . renderedTy . strstr ")" where
         (scope_v, myK) = case lv' of
@@ -374,7 +379,8 @@ showStackItem mname db verbose fvs typeMap space (ctx, cells) = strcat
             ]
 
         slocLine :: [Cell] -> ShowS
-        slocLine [] = strstr "(none)"
+        slocLine []
+            = strstr "(none)"
         slocLine (cell : _)
             = case getNodeSLoc (_WantedGoal cell) of
                 Just l -> strstr "`" . pprintMSLoc (Just mname) l . strstr "'"

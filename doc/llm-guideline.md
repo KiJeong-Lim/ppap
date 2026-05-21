@@ -80,6 +80,13 @@ data RuntimeInput
     } deriving (Eq, Ord, Show)
 ```
 
+단일 필드 `newtype` 레코드는 생성자와 필드 블록을 같은 줄에 둔다.
+
+```hs
+newtype Runtime a
+    = Runtime { unRuntime :: ReaderT RuntimeEnv IO a }
+```
+
 합 타입도 같은 방식으로 쓴다.
 
 ```hs

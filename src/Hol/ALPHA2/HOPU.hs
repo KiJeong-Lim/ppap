@@ -57,9 +57,7 @@ data HopuFail
     deriving (Eq, Ord, Show)
 
 newtype VarBinding
-    = VarBinding
-    { unVarBinding :: Map.Map LogicVar TermNode
-    }
+    = VarBinding { unVarBinding :: Map.Map LogicVar TermNode }
     deriving (Eq, Ord, Show)
 
 class Labelable atom where
@@ -179,7 +177,8 @@ instance Outputable Labeling where
             ]
 
 instance Outputable VarBinding where
-    pprint _ (VarBinding mapsto) = strstr "VarBinding " . plist 4 [ shows x . strstr " +-> " . shows t | (x, t) <- Map.toList mapsto ]
+    pprint _ (VarBinding mapsto)
+        = strstr "VarBinding " . plist 4 [ shows x . strstr " +-> " . shows t | (x, t) <- Map.toList mapsto ]
 
 instance Outputable Disagreement where
     pprint prec (lhs :=?=: rhs)
