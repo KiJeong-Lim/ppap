@@ -57,8 +57,7 @@ data Cell
     , _ScopeLevel :: ScopeLevel
     , _WantedGoal :: Goal
     , _CellCallId :: CallId
-    }
-    deriving ()
+    } deriving ()
 
 data Context
     = Context
@@ -67,8 +66,7 @@ data Context
     , _LeftConstraints :: [Constraint]
     , _ContextThreadId :: CallId
     , _debuggindModeOn :: IORef Debugging
-    }
-    deriving ()
+    } deriving ()
 
 data RuntimeEnv
     = RuntimeEnv
@@ -85,8 +83,7 @@ data RuntimeEnv
     , _DebuggingRef :: IORef Debugging
     , _NotationDB :: NotationDB
     , _ModuleName :: String
-    }
-    deriving ()
+    } deriving ()
 
 newtype Runtime a
     = Runtime
@@ -121,51 +118,56 @@ data Snapshot
     }
 
 snapshot :: Runtime Snapshot
-snapshot = do
-    env <- askRuntimeEnv
-    liftIO $ do
-        st <- readIORef (_StackRef env)
-        ps <- readIORef (_PendingSubst env)
-        nc <- readIORef (_NameCacheRef env)
-        return (Snapshot { _SnapStack = st, _SnapPendingSubst = ps, _SnapNameCache = nc })
+snapshot
+    = do
+        env <- askRuntimeEnv
+        liftIO $ do
+            st <- readIORef (_StackRef env)
+            ps <- readIORef (_PendingSubst env)
+            nc <- readIORef (_NameCacheRef env)
+            return (Snapshot { _SnapStack = st, _SnapPendingSubst = ps, _SnapNameCache = nc })
 
 restore :: Snapshot -> Runtime ()
-restore snap = do
-    env <- askRuntimeEnv
-    liftIO $ do
-        writeIORef (_StackRef env) (_SnapStack snap)
-        writeIORef (_PendingSubst env) (_SnapPendingSubst snap)
-        currentCache <- readIORef (_NameCacheRef env)
-        writeIORef (_NameCacheRef env) (mergeKeepingNewEntries (_SnapNameCache snap) currentCache)
+restore snap
+    = do
+        env <- askRuntimeEnv
+        liftIO $ do
+            writeIORef (_StackRef env) (_SnapStack snap)
+            writeIORef (_PendingSubst env) (_SnapPendingSubst snap)
+            currentCache <- readIORef (_NameCacheRef env)
+            writeIORef (_NameCacheRef env) (mergeKeepingNewEntries (_SnapNameCache snap) currentCache)
 
 cmdDebugToggle :: Runtime ()
-cmdDebugToggle = do
-    env <- askRuntimeEnv
-    liftIO $ modifyIORef (_DebuggingRef env) not
+cmdDebugToggle
+    = do
+        env <- askRuntimeEnv
+        liftIO $ modifyIORef (_DebuggingRef env) not
 
 cmdQuit :: Runtime ()
-cmdQuit = do
-    env <- askRuntimeEnv
-    liftIO $ do
-        writeIORef (_StackRef env) []
-        writeIORef (_PendingSubst env) (VarBinding Map.empty)
+cmdQuit
+    = do
+        env <- askRuntimeEnv
+        liftIO $ do
+            writeIORef (_StackRef env) []
+            writeIORef (_PendingSubst env) (VarBinding Map.empty)
 
 cmdShow :: SmallId -> Runtime String
-cmdShow name = do
-    env <- askRuntimeEnv
-    liftIO $ do
-        st <- readIORef (_StackRef env)
-        cache <- readIORef (_NameCacheRef env)
-        let resolved = case fromDisplay name cache of
-                Just lv -> Just lv
-                Nothing -> parseAnonymousLV name
-        case (st, resolved) of
-            (_, Nothing) -> return ("unknown variable '?" ++ name ++ "'")
-            ([], _) -> return "no active goal"
-            ((ctx, _) : _, Just lv) ->
-                case Map.lookup lv (unVarBinding (_TotalVarBinding ctx)) of
-                    Nothing -> return "unbound"
-                    Just t -> return (prettyTerm (_NotationDB env) cache t "")
+cmdShow name
+    = do
+        env <- askRuntimeEnv
+        liftIO $ do
+            st <- readIORef (_StackRef env)
+            cache <- readIORef (_NameCacheRef env)
+            let resolved = case fromDisplay name cache of
+                    Just lv -> Just lv
+                    Nothing -> parseAnonymousLV name
+            case (st, resolved) of
+                (_, Nothing) -> return ("unknown variable '?" ++ name ++ "'")
+                ([], _) -> return "no active goal"
+                ((ctx, _) : _, Just lv) ->
+                    case Map.lookup lv (unVarBinding (_TotalVarBinding ctx)) of
+                        Nothing -> return "unbound"
+                        Just t -> return (prettyTerm (_NotationDB env) cache t "")
 
 scopeEscaping :: Labeling -> ScopeLevel -> LogicVar -> TermNode -> ([Constant], [LogicVar])
 scopeEscaping labeling targetScope targetLV = walk where
@@ -184,56 +186,57 @@ scopeEscaping labeling targetScope targetLV = walk where
     combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
 
 cmdAssign :: SmallId -> TermNode -> Runtime (Either ErrMsg ())
-cmdAssign name term = do
-    snap <- snapshot
-    env <- askRuntimeEnv
-    outcome <- liftIO $ do
-        st <- readIORef (_StackRef env)
-        cache <- readIORef (_NameCacheRef env)
-        case st of
-            [] -> return (Left "no active goal")
-            (ctx, _) : _ -> do
-                let targetLV = case fromDisplay name cache of
-                        Just lv -> lv
-                        Nothing -> fromMaybe (LV_Named name) (parseAnonymousLV name)
-                existingPending <- readIORef (_PendingSubst env)
-                let composed_subst = existingPending <> _TotalVarBinding ctx
-                    t_zonked = bindVars composed_subst term
-                if targetLV `Set.member` getLVars t_zonked
-                    then return (Left ("occurs check failed for '" ++ name ++ "'"))
-                    else do
-                        let labeling = _CurrentLabeling ctx
-                            scope_target = case targetLV of
-                                LV_Named _ -> 0
-                                _ -> lookupLabel targetLV labeling
-                            (escapedCons, escapedVars) = scopeEscaping labeling scope_target targetLV t_zonked
-                        if not (null escapedCons) || not (null escapedVars)
-                            then do
-                                let renderCon c = shows c ""
-                                    renderVar v = case v of
-                                        LV_Unique _ (DispHint (Just s)) -> s
-                                        LV_Unique u (DispHint Nothing) -> "?V_" ++ show (unUnique u)
-                                        LV_ty_var u -> "?TV_" ++ show (unUnique u)
-                                        LV_Named n -> n
-                                    items = map renderCon escapedCons ++ map renderVar escapedVars
-                                return (Left ("scope violation for '" ++ name ++ "' — out-of-scope: " ++ List.intercalate ", " items))
-                            else do
-                                let new_binding = VarBinding (Map.singleton targetLV t_zonked)
-                                    composedAfter = new_binding <> existingPending <> _TotalVarBinding ctx
-                                    arithTermsAfter =
-                                        [ bindVars composedAfter t
-                                        | ArithmeticConstraint t <- _LeftConstraints ctx
-                                        ]
-                                if isInconsistent arithTermsAfter
-                                    then return (Left ("inconsistent with arithmetic constraints for '" ++ name ++ "'"))
-                                    else do
-                                        writeIORef (_PendingSubst env) (new_binding <> existingPending)
-                                        return (Right ())
-    case outcome of
-        Left err -> do
-            restore snap
-            return (Left err)
-        Right () -> return (Right ())
+cmdAssign name term
+    = do
+        snap <- snapshot
+        env <- askRuntimeEnv
+        outcome <- liftIO $ do
+            st <- readIORef (_StackRef env)
+            cache <- readIORef (_NameCacheRef env)
+            case st of
+                [] -> return (Left "no active goal")
+                (ctx, _) : _ -> do
+                    let targetLV = case fromDisplay name cache of
+                            Just lv -> lv
+                            Nothing -> fromMaybe (LV_Named name) (parseAnonymousLV name)
+                    existingPending <- readIORef (_PendingSubst env)
+                    let composed_subst = existingPending <> _TotalVarBinding ctx
+                        t_zonked = bindVars composed_subst term
+                    if targetLV `Set.member` getLVars t_zonked
+                        then return (Left ("occurs check failed for '" ++ name ++ "'"))
+                        else do
+                            let labeling = _CurrentLabeling ctx
+                                scope_target = case targetLV of
+                                    LV_Named _ -> 0
+                                    _ -> lookupLabel targetLV labeling
+                                (escapedCons, escapedVars) = scopeEscaping labeling scope_target targetLV t_zonked
+                            if not (null escapedCons) || not (null escapedVars)
+                                then do
+                                    let renderCon c = shows c ""
+                                        renderVar v = case v of
+                                            LV_Unique _ (DispHint (Just s)) -> s
+                                            LV_Unique u (DispHint Nothing) -> "?V_" ++ show (unUnique u)
+                                            LV_ty_var u -> "?TV_" ++ show (unUnique u)
+                                            LV_Named n -> n
+                                        items = map renderCon escapedCons ++ map renderVar escapedVars
+                                    return (Left ("scope violation for '" ++ name ++ "' — out-of-scope: " ++ List.intercalate ", " items))
+                                else do
+                                    let new_binding = VarBinding (Map.singleton targetLV t_zonked)
+                                        composedAfter = new_binding <> existingPending <> _TotalVarBinding ctx
+                                        arithTermsAfter =
+                                            [ bindVars composedAfter t
+                                            | ArithmeticConstraint t <- _LeftConstraints ctx
+                                            ]
+                                    if isInconsistent arithTermsAfter
+                                        then return (Left ("inconsistent with arithmetic constraints for '" ++ name ++ "'"))
+                                        else do
+                                            writeIORef (_PendingSubst env) (new_binding <> existingPending)
+                                            return (Right ())
+        case outcome of
+            Left err -> do
+                restore snap
+                return (Left err)
+            Right () -> return (Right ())
 
 instance ZonkLVar Context where
     zonkLVar theta ctx = Context
@@ -271,25 +274,29 @@ showsvdash space [] goal = strstr "|- " . shows goal
 showsvdash space [hyp] goal = shows hyp . strstr " |- " . shows goal
 showsvdash space (hyp : hyps) goal = shows hyp . strstr ", " . showsvdash space hyps goal
 
+parensIf :: Bool -> ShowS -> ShowS
+parensIf True inner = strstr "(" . inner . strstr ")"
+parensIf False inner = inner
+
 showsMonoType :: NotationDB -> Int -> MonoType Int -> ShowS
-showsMonoType db prec t = case Notation.tryFoldType db t of
-    Just (name, []) -> strstr name
-    Just (name, args) ->
-        let inner = strstr name . List.foldr (.) id [ strstr " " . showsMonoType db 7 a | a <- args ]
-        in if prec > 6 then strstr "(" . inner . strstr ")" else inner
-    Nothing -> showsMonoTypeRaw db prec t
+showsMonoType db prec t
+    = case Notation.tryFoldType db t of
+        Just (name, []) -> strstr name
+        Just (name, args) -> parensIf (prec > 6) inner where
+            inner = strstr name . List.foldr (.) id [ strstr " " . showsMonoType db 7 a | a <- args ]
+        Nothing -> showsMonoTypeRaw db prec t
 
 showsMonoTypeRaw :: NotationDB -> Int -> MonoType Int -> ShowS
-showsMonoTypeRaw _  _    (TyVar i) = strstr "a_" . shows i
-showsMonoTypeRaw _  _    (TyMTV mtv) = strstr "?t" . shows mtv
-showsMonoTypeRaw _  _    (TyCon (TCon (TC_Unique uni) _)) = strstr "?TV_" . shows (unUnique uni)
-showsMonoTypeRaw _  _    (TyCon (TCon tc _)) = shows tc
-showsMonoTypeRaw db prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2) =
-    let inner = showsMonoType db 5 t1 . strstr " -> " . showsMonoType db 4 t2
-    in if prec > 4 then strstr "(" . inner . strstr ")" else inner
-showsMonoTypeRaw db prec (TyApp t1 t2) =
-    let inner = showsMonoType db 6 t1 . strstr " " . showsMonoType db 7 t2
-    in if prec > 6 then strstr "(" . inner . strstr ")" else inner
+showsMonoTypeRaw _ _ (TyVar i) = strstr "a_" . shows i
+showsMonoTypeRaw _ _ (TyMTV mtv) = strstr "?t" . shows mtv
+showsMonoTypeRaw _ _ (TyCon (TCon (TC_Unique uni) _)) = strstr "?TV_" . shows (unUnique uni)
+showsMonoTypeRaw _ _ (TyCon (TCon tc _)) = shows tc
+showsMonoTypeRaw db prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2)
+    = parensIf (prec > 4) inner where
+        inner = showsMonoType db 5 t1 . strstr " -> " . showsMonoType db 4 t2
+showsMonoTypeRaw db prec (TyApp t1 t2)
+    = parensIf (prec > 6) inner where
+        inner = showsMonoType db 6 t1 . strstr " " . showsMonoType db 7 t2
 
 showLVarVN :: LogicVar -> ShowS
 showLVarVN (LV_ty_var uni) = strstr "?TV_" . shows (unUnique uni)
@@ -298,41 +305,43 @@ showLVarVN (LV_Unique uni (DispHint Nothing)) = strstr "?V_" . shows (unUnique u
 showLVarVN (LV_Named name) = strstr name
 
 showsMonoTypeIn :: NotationDB -> Bool -> Labeling -> LogicVar -> Maybe (MonoType Int) -> ShowS
-showsMonoTypeIn db False _ _ mtyp = case mtyp of
-    Just t -> showsMonoType db 0 t
-    Nothing -> strstr "?"
+showsMonoTypeIn db False _ _ mtyp
+    = case mtyp of
+        Just t -> showsMonoType db 0 t
+        Nothing -> strstr "?"
 showsMonoTypeIn db True labeling lv mtyp = render lv mtyp where
     render :: LogicVar -> Maybe (MonoType Int) -> ShowS
-    render lv mtyp =
-        let (scope_v, myK) = case lv of
-                LV_Named _ -> (-1, -1)
-                _ -> (lookupLabel lv labeling, lvKey lv)
-            cons = [ renderCon uni cTyp
-                   | (uni, cTyp) <- IntMap.toAscList (_ConTypes labeling)
-                   , IntMap.findWithDefault maxBound uni (_ConLabel labeling) <= scope_v
-                   ]
-            vars = [ renderVar uni
-                   | (uni, scp) <- IntMap.toAscList (_VarLabel labeling)
-                   , uni < myK
-                   , scp <= scope_v
-                   ]
-            entries = cons ++ vars
-            prefix = case entries of
-                [] -> strstr "("
-                _ -> strstr "(" . sepBy (strstr ", ") entries . strstr " "
-            renderedTy = case mtyp of
-                Just t -> showsMonoType db 0 t
-                Nothing -> strstr "?"
-        in prefix . strstr "|- " . renderedTy . strstr ")"
+    render lv' mtyp' = prefix . strstr "|- " . renderedTy . strstr ")" where
+        (scope_v, myK) = case lv' of
+            LV_Named _ -> (-1, -1)
+            _ -> (lookupLabel lv' labeling, lvKey lv')
+        cons =
+            [ renderCon uni cTyp
+            | (uni, cTyp) <- IntMap.toAscList (_ConTypes labeling)
+            , IntMap.findWithDefault maxBound uni (_ConLabel labeling) <= scope_v
+            ]
+        vars =
+            [ renderVar uni
+            | (uni, scp) <- IntMap.toAscList (_VarLabel labeling)
+            , uni < myK
+            , scp <= scope_v
+            ]
+        entries = cons ++ vars
+        prefix = case entries of
+            [] -> strstr "("
+            _ -> strstr "(" . sepBy (strstr ", ") entries . strstr " "
+        renderedTy = case mtyp' of
+            Just t -> showsMonoType db 0 t
+            Nothing -> strstr "?"
     renderCon :: Int -> MonoType Int -> ShowS
     renderCon uni cTyp = strstr "c_" . shows uni . strstr " : " . showsMonoType db 0 cTyp
     renderVar :: Int -> ShowS
     renderVar uni
         | IntMap.member uni (_TyVarKeys labeling) = strstr "?TV_" . shows uni
-        | otherwise =
-            let innerLV = LV_Unique (Unique uni) noHint
-                mInnerTy = IntMap.lookup uni (_VarTypes labeling)
-            in strstr "?V_" . shows uni . strstr " : " . render innerLV mInnerTy
+        | otherwise = strstr "?V_" . shows uni . strstr " : " . render innerLV mInnerTy
+        where
+            innerLV = LV_Unique (Unique uni) noHint
+            mInnerTy = IntMap.lookup uni (_VarTypes labeling)
     sepBy :: ShowS -> [ShowS] -> ShowS
     sepBy _ [] = id
     sepBy _ [x] = x
@@ -344,29 +353,32 @@ showStackItem mname db verbose fvs typeMap space (ctx, cells) = strcat
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
-    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) (concat
-        [
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (Just typ)
-        | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
-        ]
-        ,
-        [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
-        | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
-        , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
-        , let v = LV_Unique (Unique uni) noHint
-        ]
-        ]
-      ) . nl
+    , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) typings . nl
     , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
     , pindent (space + 4) . strstr ", " . strstr "_sloc = " . slocLine cells . nl
     , pindent (space + 4) . strstr "}" . nl
     ]
-  where
-    slocLine :: [Cell] -> ShowS
-    slocLine [] = strstr "(none)"
-    slocLine (cell : _) = case getNodeSLoc (_WantedGoal cell) of
-        Just l  -> strstr "`" . pprintMSLoc (Just mname) l . strstr "'"
-        Nothing -> strstr "(none)"
+    where
+        typings = namedTypings ++ generatedTypings
+
+        namedTypings =
+            [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (Just typ)
+            | (v, typ) <- Map.toList typeMap, v `Set.member` fvs
+            ]
+
+        generatedTypings =
+            [ showLVarVN v . strstr " : " . showsMonoTypeIn db verbose (_CurrentLabeling ctx) v (lookupLVarType v (_CurrentLabeling ctx))
+            | (uni, _) <- IntMap.toList (_VarLabel (_CurrentLabeling ctx))
+            , not (IntMap.member uni (_TyVarKeys (_CurrentLabeling ctx)))
+            , let v = LV_Unique (Unique uni) noHint
+            ]
+
+        slocLine :: [Cell] -> ShowS
+        slocLine [] = strstr "(none)"
+        slocLine (cell : _)
+            = case getNodeSLoc (_WantedGoal cell) of
+                Just l -> strstr "`" . pprintMSLoc (Just mname) l . strstr "'"
+                Nothing -> strstr "(none)"
 
 showsCurrentState :: String -> NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
 showsCurrentState mname db verbose fvs typeMap ctx cells stack = strcat
@@ -594,51 +606,57 @@ mentionsArithmetic t = case rewrite HNF t of
     NLam _ _ body _ -> mentionsArithmetic body
     Susp body _ _ env -> mentionsArithmetic body || any mentionsSuspItem env
     _ -> False
-  where
-    mentionsSuspItem (Dummy _) = False
-    mentionsSuspItem (Binds body _) = mentionsArithmetic body
+    where
+        mentionsSuspItem (Dummy _) = False
+        mentionsSuspItem (Binds body _) = mentionsArithmetic body
 
 simplifyArithmetic :: TermNode -> Maybe TermNode
 simplifyArithmetic t = do
     (sawArithmetic, poly) <- Just (polyOf (rewrite NF t))
     if sawArithmetic then renderPoly (combinePoly poly) else Nothing
-  where
-    polyOf :: TermNode -> (Bool, [([TermNode], Integer)])
-    polyOf (NCon (DC (DC_NatL n)) _) = (True, [([], n)])
-    polyOf (NApp (NApp (NCon (DC DC_plus) _) t1 _) t2 _) =
-        let (saw1, p1) = polyOf t1
+    where
+        polyOf :: TermNode -> (Bool, [([TermNode], Integer)])
+        polyOf (NCon (DC (DC_NatL n)) _) = (True, [([], n)])
+        polyOf (NApp (NApp (NCon (DC DC_plus) _) t1 _) t2 _) = (saw1 || saw2 || True, p1 ++ p2) where
+            (saw1, p1) = polyOf t1
             (saw2, p2) = polyOf t2
-        in (saw1 || saw2 || True, p1 ++ p2)
-    polyOf (NApp (NApp (NCon (DC DC_mul) _) t1 _) t2 _) =
-        let (saw1, p1) = polyOf t1
+        polyOf (NApp (NApp (NCon (DC DC_mul) _) t1 _) t2 _) = (saw1 || saw2 || True, multiplyPoly p1 p2) where
+            (saw1, p1) = polyOf t1
             (saw2, p2) = polyOf t2
-        in (saw1 || saw2 || True, multiplyPoly p1 p2)
-    polyOf atom = (False, [([atom], 1)])
-    multiplyPoly p1 p2 =
-        [ (List.sort (factors1 ++ factors2), coeff1 * coeff2)
-        | (factors1, coeff1) <- p1
-        , (factors2, coeff2) <- p2
-        ]
-    combinePoly = foldl insertTerm [] where
-        insertTerm [] term = [term]
-        insertTerm ((factors, coeff) : rest) term@(factors', coeff')
-            | factors == factors' =
-                let coeff'' = coeff + coeff'
-                in if coeff'' == 0 then rest else (factors, coeff'') : rest
-            | otherwise = (factors, coeff) : insertTerm rest term
-    renderPoly poly0 = case filter ((/= 0) . snd) poly0 of
-        [] -> Just (mkNCon (DC_NatL 0))
-        terms
-            | all ((>= 0) . snd) terms -> Just (foldl1 add (map renderTerm terms))
-            | otherwise -> Nothing
-    renderTerm (factors, coeff) = case (coeff, factors) of
-        (0, _) -> mkNCon (DC_NatL 0)
-        (1, []) -> mkNCon (DC_NatL 1)
-        (1, factor : rest) -> foldl mul factor rest
-        (_, []) -> mkNCon (DC_NatL coeff)
-        (_, _) -> foldl mul (mkNCon (DC_NatL coeff)) factors
-    add t1 t2 = mkNApp (mkNApp (mkNCon DC_plus) t1) t2
-    mul t1 t2 = mkNApp (mkNApp (mkNCon DC_mul) t1) t2
+        polyOf atom = (False, [([atom], 1)])
+
+        multiplyPoly p1 p2 =
+            [ (List.sort (factors1 ++ factors2), coeff1 * coeff2)
+            | (factors1, coeff1) <- p1
+            , (factors2, coeff2) <- p2
+            ]
+
+        combinePoly = foldl insertTerm [] where
+            insertTerm [] term = [term]
+            insertTerm ((factors, coeff) : rest) term@(factors', coeff')
+                | factors == factors' && coeff'' == 0 = rest
+                | factors == factors' = (factors, coeff'') : rest
+                | otherwise = (factors, coeff) : insertTerm rest term
+                where
+                    coeff'' = coeff + coeff'
+
+        renderPoly poly0
+            = case filter ((/= 0) . snd) poly0 of
+                [] -> Just (mkNCon (DC_NatL 0))
+                terms
+                    | all ((>= 0) . snd) terms -> Just (foldl1 add (map renderTerm terms))
+                    | otherwise -> Nothing
+
+        renderTerm (factors, coeff)
+            = case (coeff, factors) of
+                (0, _) -> mkNCon (DC_NatL 0)
+                (1, []) -> mkNCon (DC_NatL 1)
+                (1, factor : rest) -> foldl mul factor rest
+                (_, []) -> mkNCon (DC_NatL coeff)
+                (_, _) -> foldl mul (mkNCon (DC_NatL coeff)) factors
+
+        add t1 t2 = mkNApp (mkNApp (mkNCon DC_plus) t1) t2
+        mul t1 t2 = mkNApp (mkNApp (mkNCon DC_mul) t1) t2
 
 runDebugger :: UniqueM m => TermNode -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Stack
 runDebugger loc_str ctx facts hyps level call_id cells stack = do
@@ -651,61 +669,71 @@ runPresburger rep freeOf ctx cells stack =
     if entails compiledHyps compiledPhi
         then (ctx, cells) : stack
         else stack
-  where
-    theta :: LogicVar -> Maybe TermNode
-    theta lv = case bindVars (_TotalVarBinding ctx) (LVar lv) of
-        LVar lv' | lv == lv' -> Nothing
-        t -> Just t
-    repZonked :: MyPresburgerFormulaRep
-    repZonked = zonkPresburger theta freeOf rep
-    arithTerms :: [TermNode]
-    arithTerms =
-        [ bindVars (_TotalVarBinding ctx) t
-        | ArithmeticConstraint t <- _LeftConstraints ctx
-        ]
-    liftedResults :: [LiftResult]
-    liftedResults = mapMaybe liftConstraint arithTerms
-    allLVs :: [LogicVar]
-    allLVs = Set.toAscList $ Set.union
-        (Set.fromList (Map.elems freeOf))
-        (Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ])
-    shared :: Map.Map LogicVar MyVar
-    shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
-    phiRep :: MyPresburgerFormulaRep
-    phiRep = renumberFormula shared freeOf repZonked
-    hypReps :: [MyPresburgerFormulaRep]
-    hypReps =
-        [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
-        | lr <- liftedResults
-        ]
-    compiledPhi :: MyPresburgerFormula
-    compiledPhi = fmap compilePresburgerTerm phiRep
-    compiledHyps :: [MyPresburgerFormula]
-    compiledHyps = map (fmap compilePresburgerTerm) hypReps
+    where
+        theta :: LogicVar -> Maybe TermNode
+        theta lv
+            = case bindVars (_TotalVarBinding ctx) (LVar lv) of
+                LVar lv' | lv == lv' -> Nothing
+                t -> Just t
+
+        repZonked :: MyPresburgerFormulaRep
+        repZonked = zonkPresburger theta freeOf rep
+
+        arithTerms :: [TermNode]
+        arithTerms =
+            [ bindVars (_TotalVarBinding ctx) t
+            | ArithmeticConstraint t <- _LeftConstraints ctx
+            ]
+
+        liftedResults :: [LiftResult]
+        liftedResults = mapMaybe liftConstraint arithTerms
+
+        allLVs :: [LogicVar]
+        allLVs = Set.toAscList $ Set.union (Set.fromList (Map.elems freeOf)) (Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ])
+
+        shared :: Map.Map LogicVar MyVar
+        shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+
+        phiRep :: MyPresburgerFormulaRep
+        phiRep = renumberFormula shared freeOf repZonked
+
+        hypReps :: [MyPresburgerFormulaRep]
+        hypReps =
+            [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
+            | lr <- liftedResults
+            ]
+
+        compiledPhi :: MyPresburgerFormula
+        compiledPhi = fmap compilePresburgerTerm phiRep
+
+        compiledHyps :: [MyPresburgerFormula]
+        compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 isInconsistent :: [TermNode] -> Bool
 isInconsistent arithTerms
     | cheapKill = True
     | otherwise = entails compiledHyps (ValF False)
-  where
-    cheapKill :: Bool
-    cheapKill = List.any
-        (\t -> evaluateB t == Right False || evaluateB t == Left "ill")
-        arithTerms
-    liftedResults :: [LiftResult]
-    liftedResults = mapMaybe liftConstraint arithTerms
-    allLVs :: [LogicVar]
-    allLVs = Set.toAscList $ Set.unions
-        [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ]
-    shared :: Map.Map LogicVar MyVar
-    shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
-    hypReps :: [MyPresburgerFormulaRep]
-    hypReps =
-        [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
-        | lr <- liftedResults
-        ]
-    compiledHyps :: [MyPresburgerFormula]
-    compiledHyps = map (fmap compilePresburgerTerm) hypReps
+    where
+        cheapKill :: Bool
+        cheapKill = List.any (\t -> evaluateB t == Right False || evaluateB t == Left "ill") arithTerms
+
+        liftedResults :: [LiftResult]
+        liftedResults = mapMaybe liftConstraint arithTerms
+
+        allLVs :: [LogicVar]
+        allLVs = Set.toAscList $ Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ]
+
+        shared :: Map.Map LogicVar MyVar
+        shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+
+        hypReps :: [MyPresburgerFormulaRep]
+        hypReps =
+            [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
+            | lr <- liftedResults
+            ]
+
+        compiledHyps :: [MyPresburgerFormula]
+        compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 runTransition :: forall m. UniqueM m => RuntimeEnv -> Set.Set LogicVar -> Stack -> ExceptT KernelErr m Satisfied
 runTransition env free_lvars = go where
@@ -716,25 +744,24 @@ runTransition env free_lvars = go where
     arithOpCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr m Stack
     arithOpCheck call_id ctx cells predicate args op
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
-            Left "non" ->
-                let candidate = foldlNApp (mkNConLoc Nothing predicate) args
-                in case liftConstraint candidate of
-                    Nothing -> throwE (UnsupportedArithmeticConstraint candidate)
-                    Just _ ->
-                        let newCtx = Context
-                                { _TotalVarBinding = _TotalVarBinding ctx
-                                , _CurrentLabeling = _CurrentLabeling ctx
-                                , _LeftConstraints = ArithmeticConstraint candidate : _LeftConstraints ctx
-                                , _ContextThreadId = call_id
-                                , _debuggindModeOn = _debuggindModeOn ctx
-                                }
-                            arithTerms =
-                                [ bindVars (_TotalVarBinding newCtx) t
-                                | ArithmeticConstraint t <- _LeftConstraints newCtx
-                                ]
-                        in if isInconsistent arithTerms then failure else success (newCtx, cells)
+            Left "non" -> case liftConstraint candidate of
+                Nothing -> throwE (UnsupportedArithmeticConstraint candidate)
+                Just _ -> if isInconsistent arithTerms then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
+        where
+            candidate = foldlNApp (mkNConLoc Nothing predicate) args
+            newCtx = Context
+                { _TotalVarBinding = _TotalVarBinding ctx
+                , _CurrentLabeling = _CurrentLabeling ctx
+                , _LeftConstraints = ArithmeticConstraint candidate : _LeftConstraints ctx
+                , _ContextThreadId = call_id
+                , _debuggindModeOn = _debuggindModeOn ctx
+                }
+            arithTerms =
+                [ bindVars (_TotalVarBinding newCtx) t
+                | ArithmeticConstraint t <- _LeftConstraints newCtx
+                ]
     eqOpCheck :: Context -> [Cell] -> [TermNode] -> Maybe (ExceptT KernelErr m Stack)
     eqOpCheck ctx cells [_typeArg, lhs, rhs]
         | mentionsArithmetic lhs || mentionsArithmetic rhs = case arithmeticEquality (bindVars (_TotalVarBinding ctx) lhs) (bindVars (_TotalVarBinding ctx) rhs) of
@@ -743,80 +770,76 @@ runTransition env free_lvars = go where
             ArithEqUnknown -> Nothing
     eqOpCheck _ _ _ = Nothing
     primitivePrint :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
-    primitivePrint ctx args cells stack | Just arg <- onePrimitiveArg args = do
-        liftIO (_PrintPrimitive env ctx (bindVars (_TotalVarBinding ctx) arg))
-        success (ctx, cells)
+    primitivePrint ctx args cells stack
+        | Just arg <- onePrimitiveArg args
+        = do
+            liftIO (_PrintPrimitive env ctx (bindVars (_TotalVarBinding ctx) arg))
+            success (ctx, cells)
     primitivePrint _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "print")) args))
     primitiveRead :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
-    primitiveRead ctx args cells stack | Just arg <- onePrimitiveArg args = do
-        mvalue <- liftIO (_ReadPrimitive env ctx arg)
-        case mvalue of
-            Nothing -> failure
-            Just value -> case rewrite NF (bindVars (_TotalVarBinding ctx) arg) of
-                LVar x
-                    | canBindPrimitive x value ->
-                        let theta = VarBinding (Map.singleton x value)
-                        in execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack
-                arg'
-                    | rewrite NF arg' == rewrite NF value -> success (ctx, cells)
-                _ -> failure
-      where
-        canBindPrimitive x t =
-            x `Set.notMember` getLVars t
-                && let targetScope = lookupLabel x (_CurrentLabeling ctx)
-                       (badCons, badVars) = scopeEscaping (_CurrentLabeling ctx) targetScope x t
-                   in null badCons && null badVars
+    primitiveRead ctx args cells stack
+        | Just arg <- onePrimitiveArg args
+        = do
+            mvalue <- liftIO (_ReadPrimitive env ctx arg)
+            case mvalue of
+                Nothing -> failure
+                Just value -> case rewrite NF (bindVars (_TotalVarBinding ctx) arg) of
+                    LVar x
+                        | canBindPrimitive x value -> bindPrimitive x value
+                    arg'
+                        | rewrite NF arg' == rewrite NF value -> success (ctx, cells)
+                    _ -> failure
+        where
+            bindPrimitive x value = execIs (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack where
+                theta = VarBinding (Map.singleton x value)
+
+            canBindPrimitive x t = x `Set.notMember` getLVars t && null badCons && null badVars where
+                targetScope = lookupLabel x (_CurrentLabeling ctx)
+                (badCons, badVars) = scopeEscaping (_CurrentLabeling ctx) targetScope x t
     primitiveRead _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "read")) args))
     onePrimitiveArg :: [TermNode] -> Maybe TermNode
     onePrimitiveArg [arg] = Just arg
     onePrimitiveArg [_typeArg, arg] = Just arg
     onePrimitiveArg _ = Nothing
     search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr m Stack
-    search facts hyps level predicate args ctx cells = do
-        call_id <- getUnique
-        let arithOpCheck' = arithOpCheck call_id ctx cells predicate args
-        ans0 <- case predicate of
-            DC DC_eq -> sequence (eqOpCheck ctx cells args)
-            DC DC_ge -> Just <$> arithOpCheck' (>=)
-            DC DC_gt -> Just <$> arithOpCheck' (>)
-            DC DC_le -> Just <$> arithOpCheck' (<=)
-            DC DC_lt -> Just <$> arithOpCheck' (<)
-            _ -> return Nothing
-        case ans0 of
-            Just ans -> return ans
-            Nothing -> searchFacts call_id
-      where
-        searchFacts call_id = do
-            ans2 <- fmap concat (forM (Map.findWithDefault [] predicate facts) (matchFact call_id))
-            ans3 <- fmap concat (forM hyps (matchFact call_id))
-            return (ans2 ++ ans3)
-        matchFact call_id fact = do
-            ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
-            case unfoldlNApp (rewrite HNF goal') of
-                (NCon predicate' _, args')
-                    | predicate == predicate' -> do
-                        hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ])) else throwE (BadFactGiven goal')
-                        let new_level = level
-                            new_hyps = hyps
-                        case hopu_output of
-                            Nothing -> failure
-                            Just (new_disagreements, HopuSol new_labeling subst) -> do
-                                let new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- zonkLVar subst (_LeftConstraints ctx) ]
-                                    new_arithmetic_constraints = [ rewrite NF arith | ArithmeticConstraint arith <- zonkLVar subst (_LeftConstraints ctx) ]
-                                if isInconsistent new_arithmetic_constraints then
-                                    failure
-                                else
-                                    success
-                                        ( Context
-                                            { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
-                                            , _CurrentLabeling = new_labeling
-                                            , _LeftConstraints = map DisagreementConstraint new_disagreements ++ [ EvalutionConstraint lhs rhs | (lhs, rhs) <- new_evaluation_constraints ] ++ [ ArithmeticConstraint arith | arith <- new_arithmetic_constraints, evaluateB (rewrite NF arith) == Left "non" ]
-                                            , _ContextThreadId = call_id
-                                            , _debuggindModeOn = _debuggindModeOn ctx
-                                            }
-                                        , zonkLVar subst (mkCell facts new_hyps new_level new_goal call_id : cells)
-                                        )
-                _ -> failure
+    search facts hyps level predicate args ctx cells
+        = do
+            call_id <- getUnique
+            let arithOpCheck' = arithOpCheck call_id ctx cells predicate args
+            ans0 <- case predicate of
+                DC DC_eq -> sequence (eqOpCheck ctx cells args)
+                DC DC_ge -> Just <$> arithOpCheck' (>=)
+                DC DC_gt -> Just <$> arithOpCheck' (>)
+                DC DC_le -> Just <$> arithOpCheck' (<=)
+                DC DC_lt -> Just <$> arithOpCheck' (<)
+                _ -> return Nothing
+            case ans0 of
+                Just ans -> return ans
+                Nothing -> searchFacts call_id
+        where
+            searchFacts call_id = do
+                ans2 <- fmap concat (forM (Map.findWithDefault [] predicate facts) (matchFact call_id))
+                ans3 <- fmap concat (forM hyps (matchFact call_id))
+                return (ans2 ++ ans3)
+
+            matchFact call_id fact = do
+                ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
+                case unfoldlNApp (rewrite HNF goal') of
+                    (NCon predicate' _, args')
+                        | predicate == predicate' -> do
+                            hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ])) else throwE (BadFactGiven goal')
+                            let new_level = level
+                                new_hyps = hyps
+                            case hopu_output of
+                                Nothing -> failure
+                                Just (new_disagreements, HopuSol new_labeling subst) -> do
+                                    let new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- zonkLVar subst (_LeftConstraints ctx) ]
+                                        new_arithmetic_constraints = [ rewrite NF arith | ArithmeticConstraint arith <- zonkLVar subst (_LeftConstraints ctx) ]
+                                    if isInconsistent new_arithmetic_constraints then
+                                        failure
+                                    else
+                                        success (Context { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx), _CurrentLabeling = new_labeling, _LeftConstraints = map DisagreementConstraint new_disagreements ++ [ EvalutionConstraint lhs rhs | (lhs, rhs) <- new_evaluation_constraints ] ++ [ ArithmeticConstraint arith | arith <- new_arithmetic_constraints, evaluateB (rewrite NF arith) == Left "non" ], _ContextThreadId = call_id, _debuggindModeOn = _debuggindModeOn ctx }, zonkLVar subst (mkCell facts new_hyps new_level new_goal call_id : cells))
+                    _ -> failure
     dispatch :: Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Satisfied
     dispatch ctx facts hyps level (NCon predicate _, args) call_id cells stack
         | DC (DC_LO logical_operator) <- predicate
