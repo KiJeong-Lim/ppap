@@ -1,1 +1,1039 @@
+# Project A: Go-to-Coq Extraction Differential Fuzzing Plan
 
+## 0. Goal
+
+Project A의 목표는 임의로 생성한 Go 프로그램 `gofile.go`에 대해 다음 두 실행 경로의 외부 관찰 가능한 동작이 같은지 검사하는 것이다.
+
+```text
+Path A:
+  gofile.go
+    -- go compiler -->
+  native executable
+    -- run -->
+  observable behavior
+
+Path B:
+  gofile.go
+    -- translator -->
+  gofile.v
+    -- coqc + extraction -->
+  gofile.hs
+    -- ghc/runghc -->
+  observable behavior
+```
+
+핵심 property는 다음이다.
+
+```text
+obs(run(go build gofile.go))
+==
+obs(run(ghc gofile.hs))
+```
+
+여기서 Go compiler/runtime을 oracle로 두고, translator, generated Coq, extraction, Haskell runtime을 모두 test subject의 일부로 본다.
+
+초기 목표는 완전한 Go semantics 검증이 아니라, 작은 well-typed Go subset에 대한 end-to-end differential fuzzing이다. 이후 generator, shrinker, score, corpus를 단계적으로 강화한다.
+
+## 1. Observable Behavior Policy
+
+처음부터 stderr 문자열까지 정확히 비교하지 않는다. Go runtime과 Haskell runtime의 에러 메시지는 구현 세부사항이 다를 수 있기 때문이다.
+
+MVP에서 비교할 관찰값은 다음으로 제한한다.
+
+```text
+termination class
+exit code
+stdout bytes
+timeout 여부
+```
+
+권장 타입:
+
+```hs
+data Obs = Obs
+  { obsTermination :: Termination
+  , obsExitCode    :: Maybe Int
+  , obsStdout      :: ByteString
+  , obsTimedOut    :: Bool
+  }
+
+data Termination
+  = Terminated
+  | TimedOut
+  | RuntimeFailed
+```
+
+초기 비교 정책:
+
+```text
+1. 둘 다 정상 종료하면 exit code와 stdout bytes를 비교한다.
+2. native는 정상 종료했는데 extracted path가 실패하면 mismatch다.
+3. native는 실패했는데 extracted path가 정상 종료하면 mismatch다.
+4. 둘 다 timeout이면 기본적으로 inconclusive로 분류한다.
+5. 한쪽만 timeout이면 mismatch다.
+```
+
+stderr는 로그로 저장하되, MVP의 equality에는 넣지 않는다. 나중에 panic 종류나 런타임 실패 class를 더 세분화할 때 사용한다.
+
+## 2. Failure Classification
+
+테스트 실패를 하나의 "failed"로 뭉치지 말고 pipeline stage별로 분류한다.
+
+```hs
+data PipelineResult
+  = InvalidGo GoBuildLog
+  | TranslatorError Log
+  | CoqError Log
+  | ExtractionError Log
+  | HaskellCompileError Log
+  | NativeRunError Obs
+  | ExtractedRunError Obs
+  | RanBoth Obs Obs
+
+data Failure
+  = TranslatorCompletenessBug
+  | IllTypedGeneratedCoq
+  | ExtractionSetupBug
+  | HaskellRuntimeIntegrationBug
+  | ObservableMismatch Obs Obs
+  | TerminationMismatch Obs Obs
+```
+
+분류 정책:
+
+```text
+Go rejected:
+  generator가 invalid Go를 만든 것이다. 일반 equivalence bug로 세지 않고 discard한다.
+
+Go accepted, translator failed:
+  translator completeness bug 후보.
+
+Go accepted, translator succeeded, coqc failed:
+  generated Coq가 ill-typed인 경우. translator soundness/type preservation bug 후보.
+
+coqc succeeded, extraction failed:
+  extraction setup bug 후보.
+
+extraction succeeded, ghc failed:
+  generated Haskell 또는 fixed runtime 연결 bug 후보.
+
+both ran, obs differ:
+  semantic mismatch bug 후보.
+
+both timed out:
+  우선 inconclusive. timeout threshold를 조정하거나 프로그램을 shrink한다.
+```
+
+가장 우선순위가 높은 failure는 `CoqError`와 `ObservableMismatch`다.
+
+## 3. Work Directory Layout
+
+각 test case는 독립 디렉터리 하나로 보존한다.
+
+```text
+.project-a-work/
+  cases/
+    000001/
+      seed.json
+      feature.json
+      result.json
+      gofile.go
+      input.stdin
+      args.txt
+      env.json
+
+      native/
+        build.log
+        run.log
+        stdout.bin
+        stderr.bin
+        exit.code
+        timeout
+
+      coq/
+        gofile.v
+        coqc.log
+        extracted/
+          Gofile.hs
+        ghc.log
+        run.log
+        stdout.bin
+        stderr.bin
+        exit.code
+        timeout
+
+  failures/
+    failure-000001/
+      original/
+      shrunk/
+      report.txt
+
+  corpus/
+    corpus.json
+    cases/
+
+  regressions/
+    issue-0001/
+      gofile.go
+      input.stdin
+      expected.json
+      report.txt
+```
+
+실패 케이스는 반드시 재현 가능한 상태로 남긴다.
+
+저장해야 할 최소 정보:
+
+```text
+seed
+generator version
+translator version
+Go version
+Coq version
+GHC version
+gofile.go
+gofile.v
+extracted Haskell
+native obs
+extracted obs
+pipeline logs
+replay command
+```
+
+## 4. CLI Plan
+
+최초 구현 CLI는 다음 네 개면 충분하다.
+
+```text
+project-a one --seed 1234 --workdir .project-a-work
+project-a fuzz --cases 1000 --seed 1234 --jobs 1
+project-a replay .project-a-work/failures/failure-000001
+project-a shrink .project-a-work/failures/failure-000001
+```
+
+권장 동작:
+
+```text
+project-a one:
+  seed 하나를 받아 generator와 전체 pipeline을 한 번 실행한다.
+
+project-a fuzz:
+  여러 seed를 실행하고, pass/fail/discard 통계를 출력한다.
+
+project-a replay:
+  저장된 artifact를 사용하여 동일 실패를 재현한다.
+
+project-a shrink:
+  실패한 Go AST를 줄이고, 가장 작은 실패 프로그램을 저장한다.
+```
+
+나중에 score/corpus 기반 탐색이 들어가면 다음을 추가한다.
+
+```text
+project-a search --budget 1h --jobs 16
+project-a corpus show
+project-a regression
+```
+
+## 5. Phase 0: Deterministic Runner
+
+가장 먼저 QuickCheck을 붙이지 말고 seed 하나를 끝까지 실행하는 deterministic runner를 만든다.
+
+작업 항목:
+
+```text
+1. seed를 받아 고정된 작은 Go 프로그램을 생성한다.
+2. `gofmt`를 실행한다.
+3. `go build`로 native executable을 만든다.
+4. native executable을 timeout과 함께 실행한다.
+5. translator를 실행해 `gofile.v`를 만든다.
+6. `coqc gofile.v`를 실행한다.
+7. extraction 결과 `gofile.hs`를 확인한다.
+8. `ghc` 또는 `runghc`로 extracted path를 실행한다.
+9. 두 Obs를 비교한다.
+10. 모든 artifact와 `result.json`을 저장한다.
+```
+
+완료 기준:
+
+```text
+project-a one --seed 1
+```
+
+이 명령이 하나의 work case를 만들고, native path와 extracted path의 obs를 기록해야 한다.
+
+이 단계에서는 generator가 상수 프로그램만 만들어도 된다.
+
+예:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+    fmt.Println(3)
+}
+```
+
+## 6. Phase 1: Small Typed Go AST
+
+무작위 문자열 생성은 하지 않는다. Haskell 내부에 typed AST를 만들고, AST를 pretty-print하여 Go source를 만든다.
+
+초기 subset:
+
+```text
+types:
+  int
+  bool
+  string
+
+expressions:
+  integer literal
+  boolean literal
+  string literal
+  variable
+  +, -, *, /, %
+  ==, !=, <, <=, >, >=
+  &&, ||, !
+
+statements:
+  var declaration
+  assignment
+  block
+  if / else
+  bounded for
+  fmt.Println
+```
+
+초기 제외 대상:
+
+```text
+goroutine
+channel
+map iteration
+reflection
+unsafe
+floating point
+panic / recover
+defer
+interface
+method set
+filesystem / network / time / randomness
+unbounded loop
+```
+
+권장 타입 스케치:
+
+```hs
+data Ty
+  = TInt
+  | TBool
+  | TString
+
+data Expr ty where
+  EInt    :: Int -> Expr TInt
+  EBool   :: Bool -> Expr TBool
+  EString :: String -> Expr TString
+  EVar    :: Var ty -> Expr ty
+  EAdd    :: Expr TInt -> Expr TInt -> Expr TInt
+  ESub    :: Expr TInt -> Expr TInt -> Expr TInt
+  EMul    :: Expr TInt -> Expr TInt -> Expr TInt
+  EDiv    :: Expr TInt -> Expr TInt -> Expr TInt
+  EMod    :: Expr TInt -> Expr TInt -> Expr TInt
+  ELt     :: Expr TInt -> Expr TInt -> Expr TBool
+  EEqInt  :: Expr TInt -> Expr TInt -> Expr TBool
+  ENot    :: Expr TBool -> Expr TBool
+  EAnd    :: Expr TBool -> Expr TBool -> Expr TBool
+  EOr     :: Expr TBool -> Expr TBool -> Expr TBool
+
+data Stmt
+  = SVar SomeTy Name SomeExpr
+  | SAssign Name SomeExpr
+  | SBlock [Stmt]
+  | SIf BoolExpr [Stmt] [Stmt]
+  | SForBounded Name Int [Stmt]
+  | SPrintln [PrintableExpr]
+```
+
+generator는 environment와 size를 받는다.
+
+```hs
+genExpr :: Env -> Ty -> Size -> Gen SomeExpr
+genStmt :: Env -> Size -> Gen (Stmt, Env)
+genProgram :: Size -> Gen GoProgram
+```
+
+완료 기준:
+
+```text
+1. `gofmt`가 모든 generated source를 accept한다.
+2. `go build` rejected case가 거의 없어야 한다.
+3. rejected case가 나오면 equivalence failure가 아니라 generator bug로 기록한다.
+```
+
+## 7. Phase 2: Boolean Differential Fuzzing
+
+이 단계에서는 아직 score/corpus search를 하지 않는다. 단순히 많은 프로그램을 만들고 비교한다.
+
+property:
+
+```hs
+prop_equiv :: TestCase -> IO PropertyResult
+prop_equiv tc = do
+  result <- runPipeline tc
+  case result of
+    InvalidGo _ ->
+      pure Discard
+
+    TranslatorError _ ->
+      pure (Fail TranslatorCompletenessBug)
+
+    CoqError _ ->
+      pure (Fail IllTypedGeneratedCoq)
+
+    ExtractionError _ ->
+      pure (Fail ExtractionSetupBug)
+
+    HaskellCompileError _ ->
+      pure (Fail HaskellRuntimeIntegrationBug)
+
+    RanBoth obsGo obsHs ->
+      if comparable obsGo obsHs && obsGo == obsHs
+      then pure Pass
+      else pure (Fail (ObservableMismatch obsGo obsHs))
+```
+
+실행 예:
+
+```text
+project-a fuzz --cases 500 --seed 20260521 --jobs 1
+```
+
+출력 예:
+
+```text
+cases: 500
+pass: 472
+discard: 18
+fail: 10
+
+failures:
+  CoqError: 3
+  ObservableMismatch: 7
+```
+
+완료 기준:
+
+```text
+1. seed를 바꾸지 않으면 같은 case와 같은 결과가 나온다.
+2. 실패 시 artifact가 저장된다.
+3. replay 명령으로 실패가 재현된다.
+```
+
+## 8. Phase 3: AST-Level Shrinker
+
+실패를 찾는 것보다 읽을 수 있게 줄이는 것이 중요하다. shrinker는 Go source string이 아니라 AST에서 동작해야 한다.
+
+shrink 규칙:
+
+```text
+program:
+  statement 제거
+  block을 하위 block으로 대체
+  사용되지 않는 var 제거
+
+statement:
+  if를 then branch 또는 else branch로 대체
+  else branch 제거
+  for bound 줄이기
+  for body 축소
+  assignment RHS 축소
+  println argument 수 줄이기
+
+expression:
+  binary expression을 left/right subexpression으로 대체
+  literal을 0, 1, -1, "", "a", false, true로 축소
+  x + 0, x * 1 같은 단순식으로 축소
+  division/modulo divisor를 작은 양수로 축소
+```
+
+shrinking loop:
+
+```text
+1. 실패 TestCase를 입력으로 받는다.
+2. 후보 shrink들을 만든다.
+3. 각 후보를 pipeline에 다시 넣는다.
+4. 같은 failure class 또는 같은 observable mismatch가 유지되면 후보를 채택한다.
+5. 더 이상 줄일 수 없으면 `shrunk/gofile.go`를 저장한다.
+```
+
+완료 기준:
+
+```text
+project-a shrink .project-a-work/failures/failure-000001
+```
+
+이 명령이 original보다 작은 `shrunk/gofile.go`와 report를 만들어야 한다.
+
+## 9. Phase 4: Feature Coverage
+
+각 test case에 feature vector를 붙인다.
+
+Go AST feature:
+
+```text
+UsesIf
+UsesFor
+UsesDivision
+UsesModulo
+UsesShortCircuit
+UsesNestedBlock
+UsesShadowing
+UsesString
+UsesMultiplePrint
+UsesZeroLiteral
+UsesNegativeLiteral
+```
+
+나중에 추가할 feature:
+
+```text
+UsesArray
+UsesStruct
+UsesPointer
+UsesFunctionCall
+UsesMultipleReturn
+UsesCompositeLiteral
+UsesZeroInit
+UsesNamedType
+```
+
+generated Coq 쪽 feature도 가능하면 기록한다.
+
+```text
+GeneratedAssign
+GeneratedIf
+GeneratedFor
+GeneratedCall
+GeneratedLoad
+GeneratedStore
+GeneratedBinop
+```
+
+fuzz 결과에 분포를 출력한다.
+
+```text
+feature coverage:
+  UsesIf: 42%
+  UsesFor: 18%
+  UsesDivision: 11%
+  UsesShortCircuit: 8%
+  UsesShadowing: 3%
+```
+
+완료 기준:
+
+```text
+1. 각 case의 `feature.json`이 생성된다.
+2. fuzz run 마지막에 feature 분포가 출력된다.
+3. generator가 특정 feature를 거의 만들지 못하면 weight를 조정할 수 있다.
+```
+
+## 10. Phase 5: Claessen-Style Score
+
+단순 QuickCheck식 property가 안정된 뒤에 score를 넣는다.
+
+목표:
+
+```text
+Bool property:
+  equivalent? yes/no
+
+Score objective:
+  counterexample에 얼마나 가까운가?
+```
+
+권장 타입:
+
+```hs
+data Score
+  = FoundCounterexample Failure
+  | Interesting Double
+  | Irrelevant
+```
+
+기본 정책:
+
+```text
+counterexample:
+  score 0으로 보고 즉시 저장 + shrink
+
+invalid Go:
+  Irrelevant
+
+pass이지만 위험 feature 포함:
+  작은 Interesting score
+
+boring pass:
+  큰 Interesting score
+```
+
+초기 risk metric:
+
+```text
+division/modulo divisor가 0에 가까움
+negative operand가 modulo/division에 들어감
+short-circuit RHS에 side-effect가 있음
+if condition이 true/false boundary에 가까움
+loop bound가 0/1 근처임
+integer overflow boundary에 가까움
+shadowing이 있음
+zero value initialization을 사용함
+```
+
+의사코드:
+
+```hs
+scoreCase :: TestCase -> IO Score
+scoreCase tc = do
+  r <- runPipeline tc
+  pure $ case r of
+    InvalidGo _ ->
+      Irrelevant
+
+    TranslatorError log ->
+      FoundCounterexample TranslatorCompletenessBug
+
+    CoqError log ->
+      FoundCounterexample IllTypedGeneratedCoq
+
+    HaskellCompileError log ->
+      FoundCounterexample HaskellRuntimeIntegrationBug
+
+    RanBoth obsGo obsHs
+      | obsGo /= obsHs ->
+          FoundCounterexample (ObservableMismatch obsGo obsHs)
+      | otherwise ->
+          Interesting (riskScore tc)
+```
+
+완료 기준:
+
+```text
+1. pass case에도 score가 기록된다.
+2. 낮은 score의 case를 corpus에 남길 수 있다.
+3. score 기준이 feature coverage와 함께 report에 보인다.
+```
+
+## 11. Phase 6: Corpus-Guided Mutation
+
+score가 들어간 뒤 corpus를 유지한다.
+
+corpus 저장 기준:
+
+```text
+1. 새로운 feature를 만든 case
+2. 기존 feature 조합을 더 작은 프로그램으로 만든 case
+3. risk score가 낮은 case
+4. timeout이나 runtime boundary에 가까운 case
+5. 과거 failure를 shrink한 regression seed
+```
+
+mutation 종류:
+
+```text
+replace expression
+insert statement
+delete statement
+duplicate block
+toggle boolean literal
+perturb integer literal
+change loop bound
+wrap statement in if
+wrap statement in bounded for
+rename variable to create shadowing
+```
+
+search loop:
+
+```text
+1. corpus에서 parent를 고른다.
+2. parent를 mutate하거나 새 case를 generate한다.
+3. pipeline을 실행한다.
+4. counterexample이면 저장 후 shrink한다.
+5. pass이면 score와 feature를 본다.
+6. interesting하면 corpus에 넣는다.
+7. 반복한다.
+```
+
+완료 기준:
+
+```text
+project-a search --budget 10m --jobs 4
+```
+
+이 명령이 corpus를 사용해 단순 random보다 feature-rich한 프로그램을 더 자주 만들어야 한다.
+
+## 12. Coq/Extraction Performance Plan
+
+매 test마다 `coqc + extraction + ghc`를 수행하는 것은 느리다. 그래도 correctness 우선으로 이 방식을 유지하되, 고정 부분을 캐시한다.
+
+고정 Coq library:
+
+```text
+Runtime.v
+GoSemantics.v
+ItreeInterpreter.v
+ExtractionSetup.v
+```
+
+이 파일들은 미리 컴파일한다.
+
+```text
+coqc Runtime.v
+coqc GoSemantics.v
+coqc ItreeInterpreter.v
+coqc ExtractionSetup.v
+```
+
+test마다 바뀌는 파일:
+
+```text
+.project-a-work/cases/000001/coq/gofile.v
+```
+
+형태:
+
+```coq
+From ProjectA Require Import Runtime GoSemantics ExtractionSetup.
+
+Definition prog : GoProgram := ...
+
+Definition main_itree :=
+  denote_program prog.
+
+Extraction "extracted/Gofile.hs" main_itree.
+```
+
+Haskell runtime은 고정 driver로 둔다.
+
+```hs
+module Main where
+
+import Extracted.Gofile
+import Runtime.Driver
+
+main :: IO ()
+main = runGoMain main_itree
+```
+
+최적화 순서:
+
+```text
+1. 고정 `.vo` 파일 cache
+2. generated Coq file만 매 case 컴파일
+3. fixed Haskell runtime 분리
+4. case 단위 병렬 실행
+5. hash(gofile.go, input, versions) 기반 result cache
+```
+
+## 13. Timeout Policy
+
+모든 external process에는 timeout을 둔다.
+
+초기 권장값:
+
+```text
+gofmt: 1s
+go build: 2s
+native run: 1s
+translator: 2s
+coqc: 5s
+ghc/runghc compile: 5s
+extracted run: 1s
+```
+
+stdout/stderr도 크기 제한을 둔다.
+
+```text
+stdout limit: 1 MiB
+stderr limit: 1 MiB
+```
+
+timeout 결과는 단순 실패가 아니라 `TimedOut` obs로 저장한다.
+
+## 14. Feature Expansion Order
+
+처음부터 Go 전체를 대상으로 하지 않는다. 다음 순서로 확장한다.
+
+```text
+0. constants and println
+1. int/bool/string expressions
+2. var declaration and assignment
+3. if / block / variable shadowing
+4. short-circuit && and ||
+5. bounded for
+6. zero initialization
+7. arrays
+8. structs
+9. function calls
+10. multiple return
+11. pointers
+12. slices
+13. methods/interfaces
+14. panic/defer/recover
+15. goroutines/channels
+```
+
+초기 프로젝트에서 특히 먼저 노릴 feature:
+
+```text
+zero initialization
+array/struct initialization
+assignment
+function call
+short-circuit evaluation
+variable shadowing
+```
+
+이 feature들은 translator가 만드는 Coq term이 복잡해지고, Go semantics와 extracted runtime이 어긋나기 쉬운 부분이다.
+
+## 15. Suggested Haskell Module Structure
+
+별도 fuzzer executable을 둔다면 다음 구조를 추천한다.
+
+```text
+project-a/
+  app/
+    Main.hs
+
+  src/
+    Go/AST.hs
+    Go/Pretty.hs
+    Go/Gen.hs
+    Go/Shrink.hs
+    Go/Feature.hs
+
+    Pipeline/NativeGo.hs
+    Pipeline/Translator.hs
+    Pipeline/Coq.hs
+    Pipeline/Extraction.hs
+    Pipeline/HaskellRun.hs
+    Pipeline/Observe.hs
+
+    Fuzz/Result.hs
+    Fuzz/Score.hs
+    Fuzz/Corpus.hs
+    Fuzz/Mutate.hs
+    Fuzz/Loop.hs
+    Fuzz/Shrink.hs
+
+    Util/Process.hs
+    Util/Timeout.hs
+    Util/Hash.hs
+    Util/Json.hs
+```
+
+핵심 타입:
+
+```hs
+data TestCase = TestCase
+  { tcSeed    :: Int
+  , tcProgram :: GoProgram
+  , tcInput   :: RuntimeInput
+  }
+
+data RuntimeInput = RuntimeInput
+  { riArgs  :: [String]
+  , riStdin :: ByteString
+  , riEnv   :: [(String, String)]
+  }
+
+data CaseArtifact = CaseArtifact
+  { caWorkDir :: FilePath
+  , caGoFile  :: FilePath
+  , caCoqFile :: FilePath
+  , caHsFile  :: Maybe FilePath
+  }
+```
+
+## 16. Regression Policy
+
+발견된 failure는 shrink 후 regression으로 승격한다.
+
+디렉터리:
+
+```text
+regressions/
+  issue-0001-short-circuit-side-effect/
+    gofile.go
+    input.stdin
+    expected.json
+    report.txt
+```
+
+regression은 fuzzing과 별도로 항상 실행한다.
+
+```text
+project-a regression
+```
+
+`expected.json`은 "현재 버그를 재현한다"가 아니라, 버그를 고친 뒤의 expected behavior를 담는다. 버그 수정 전에는 known failing regression으로 표시할 수 있다.
+
+## 17. CI Plan
+
+CI는 세 층으로 나눈다.
+
+빠른 smoke:
+
+```text
+cases: 50~200
+size: small
+features: constants, expressions, var, assignment, if
+timeout: short
+trigger: every PR
+```
+
+중간 fuzz:
+
+```text
+cases: 1,000~5,000
+features: bounded for, short-circuit, shadowing
+trigger: main branch or scheduled
+```
+
+nightly fuzz:
+
+```text
+cases: 10,000+
+jobs: many
+features: broad
+corpus-guided search: enabled
+trigger: nightly
+```
+
+모든 CI failure는 seed와 artifact path를 출력해야 한다.
+
+## 18. Initial Milestones
+
+Milestone 1: runner skeleton
+
+```text
+Deliverables:
+  project-a one --seed N
+  workdir artifact layout
+  Obs JSON
+
+Acceptance:
+  hand-written constant println program passes both paths.
+```
+
+Milestone 2: typed AST and pretty printer
+
+```text
+Deliverables:
+  Go AST
+  pretty printer
+  gofmt/go build sanity check
+
+Acceptance:
+  100 generated expression-only programs are accepted by Go.
+```
+
+Milestone 3: differential property
+
+```text
+Deliverables:
+  project-a fuzz --cases N
+  PipelineResult classification
+  failure saving
+
+Acceptance:
+  pass/discard/fail counts are deterministic for a fixed seed.
+```
+
+Milestone 4: shrinker
+
+```text
+Deliverables:
+  AST shrinker
+  project-a shrink
+  shrunk artifact
+
+Acceptance:
+  artificial mismatch can be reduced to a small program.
+```
+
+Milestone 5: feature report
+
+```text
+Deliverables:
+  feature extraction
+  feature.json
+  coverage summary
+
+Acceptance:
+  fuzz report shows feature distribution.
+```
+
+Milestone 6: score and corpus
+
+```text
+Deliverables:
+  Score
+  corpus storage
+  mutation loop
+
+Acceptance:
+  search mode keeps low-score and new-feature cases.
+```
+
+Milestone 7: targeted Go feature expansion
+
+```text
+Deliverables:
+  zero initialization
+  arrays
+  structs
+  function calls
+  short-circuit side effects
+
+Acceptance:
+  each feature has generator support, shrink support, and regression examples.
+```
+
+## 19. Immediate Next Actions
+
+가장 먼저 할 일은 다음 순서가 좋다.
+
+```text
+1. Project A용 executable 위치를 결정한다.
+   후보: `project-a/` 별도 패키지 또는 현재 cabal package의 sub-executable.
+
+2. `Obs`, `PipelineResult`, `Failure`, `TestCase` 타입을 만든다.
+
+3. external process runner를 만든다.
+   timeout, stdout/stderr capture, exit code capture가 필요하다.
+
+4. workdir artifact writer를 만든다.
+
+5. hand-written Go program 하나로 native path와 extracted path를 연결한다.
+
+6. 그 뒤 typed AST generator를 붙인다.
+```
+
+이 순서를 지키면 generator나 score 설계에 들어가기 전에, 가장 위험한 부분인 end-to-end toolchain 연결을 먼저 검증할 수 있다.
+
+## 20. Guiding Principles
+
+```text
+1. Go compiler/runtime is the oracle.
+2. Coq/extraction path is part of the implementation under test.
+3. Generate well-typed AST, not random text.
+4. Keep every failure reproducible.
+5. Shrinking is not optional.
+6. Start with Boolean differential fuzzing.
+7. Add Claessen-style score only after the pipeline is stable.
+8. Expand Go features one semantic risk at a time.
+```
