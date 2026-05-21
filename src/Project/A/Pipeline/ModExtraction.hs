@@ -85,12 +85,16 @@ runModExtraction config extractConfig = do
         Left opamLog -> return ModExtractReport { merCaseDir = caseDir, merHarnessFile = harnessFile, merExtractedFile = outputFile, merOpamEnvLog = Just opamLog, merInputLog = Nothing, merHarnessLog = opamLog, merResult = Left (opamEnvFailure opamLog) }
         Right prepared -> do
             inputLog <- compileInputIfNeeded config extractConfig prepared caseDir copiedInput
-            harnessArgs <- coqcArgs extractConfig caseDir ["coq" </> "ModHarness.v"]
-            harnessResult <- runTimedProcess (timeoutCoqc (cfgTimeouts config)) (Just caseDir) (pctEnv prepared) (pctCoqcCommand prepared) harnessArgs ""
-            let harnessLog = processLog harnessResult
-            exists <- doesFileExist outputFile
-            let result = if processSucceeded harnessResult && exists then Right outputFile else Left (modExtractionFailure outputFile harnessLog)
-            return ModExtractReport { merCaseDir = caseDir, merHarnessFile = harnessFile, merExtractedFile = outputFile, merOpamEnvLog = pctOpamEnvLog prepared, merInputLog = inputLog, merHarnessLog = harnessLog, merResult = result }
+            case inputLog of
+                Just logValue
+                    | not (processLogSucceeded logValue) -> return ModExtractReport { merCaseDir = caseDir, merHarnessFile = harnessFile, merExtractedFile = outputFile, merOpamEnvLog = pctOpamEnvLog prepared, merInputLog = inputLog, merHarnessLog = logValue, merResult = Left (inputCompileFailure logValue) }
+                _ -> do
+                    harnessArgs <- coqcArgs extractConfig caseDir ["coq" </> "ModHarness.v"]
+                    harnessResult <- runTimedProcess (timeoutCoqc (cfgTimeouts config)) (Just caseDir) (pctEnv prepared) (pctCoqcCommand prepared) harnessArgs ""
+                    let harnessLog = processLog harnessResult
+                    exists <- doesFileExist outputFile
+                    let result = if processSucceeded harnessResult && exists then Right outputFile else Left (modExtractionFailure outputFile harnessLog)
+                    return ModExtractReport { merCaseDir = caseDir, merHarnessFile = harnessFile, merExtractedFile = outputFile, merOpamEnvLog = pctOpamEnvLog prepared, merInputLog = inputLog, merHarnessLog = harnessLog, merResult = result }
 
 data PreparedCoqTools
     = PreparedCoqTools
@@ -205,6 +209,7 @@ modHarnessText' copiedInput extractConfig = strcat
     , strcat [ strstr "Require Import " . strstr moduleName . strstr "." . nl | moduleName <- importModules ]
     , nl
     , if null (mecExtractionBlacklist extractConfig) then id else strstr "Extraction Blacklist " . strstr (unwords (mecExtractionBlacklist extractConfig)) . strstr "." . nl
+    , if mecExtractionLanguage extractConfig == "Haskell" then strstr "Extract Constant excluded_middle_informative => \"Prelude.True\"." . nl else id
     , nl
     , strstr "Definition project_a_gra : GRA := " . strstr (mecGraTerm extractConfig) . strstr "." . nl
     , strstr "Definition project_a_target_mod : @Mod.t project_a_gra := " . strstr (mecModTerm extractConfig) . strstr "." . nl
@@ -234,3 +239,14 @@ opamEnvFailure logValue = concat
     , "; timedOut="
     , show (plTimedOut logValue)
     ]
+
+inputCompileFailure :: ProcessLog -> String
+inputCompileFailure logValue = concat
+    [ "input Coq file failed to compile: exit="
+    , show (plExitCode logValue)
+    , "; timedOut="
+    , show (plTimedOut logValue)
+    ]
+
+processLogSucceeded :: ProcessLog -> Bool
+processLogSucceeded logValue = plExitCode logValue == Just 0

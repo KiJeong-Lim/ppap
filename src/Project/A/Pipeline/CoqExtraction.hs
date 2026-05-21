@@ -1,5 +1,6 @@
 module Project.A.Pipeline.CoqExtraction where
 
+import Data.List
 import System.Directory
 import System.Environment
 import System.FilePath
@@ -8,6 +9,7 @@ import Project.A.Pipeline.Config
 import Project.A.Pipeline.ModExtraction
 import Project.A.Types
 import Project.A.Util.Process
+import Z.Utils
 
 data ExtractionOutcome
     = ExtractionOutcome
@@ -86,7 +88,8 @@ runModExtractionAndHaskell config caseDir input translatorLog = do
 runExtractedHaskell :: RunConfig -> FilePath -> RuntimeInput -> ProcessLog -> ProcessLog -> [(FilePath, ProcessLog)] -> FilePath -> IO ExtractionOutcome
 runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile = do
     let timeouts = cfgTimeouts config
-    ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs hsFile) ""
+    driverFile <- writeModHaskellDriver hsFile
+    ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs driverFile) ""
     let ghcLog = processLog ghcResult
     if not (processSucceeded ghcResult) then
         return (failedAfterGhcExtra translatorLog coqcLog ghcLog extraLogs (HaskellCompileError ghcLog))
@@ -94,7 +97,109 @@ runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile 
         runResult <- runTimedProcess (timeoutExtractedRun timeouts) (Just caseDir) (riEnv input) ("." </> "coq" </> "extracted" </> "gofile-hs") (riArgs input) (riStdin input)
         return ExtractionOutcome { eoTranslatorLog = Just translatorLog, eoCoqcLog = Just coqcLog, eoGhcLog = Just ghcLog, eoRunLog = Just (processLog runResult), eoExtraLogs = extraLogs, eoResult = Right (obsFromProcess runResult) }
     where
-        ghcArgs hsFile = ["-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", hsFile, "-o", "coq" </> "extracted" </> "gofile-hs"]
+        ghcArgs driverFile = ["-XNoPolyKinds", "-i" ++ takeDirectory driverFile, "-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", driverFile, "-o", "coq" </> "extracted" </> "gofile-hs"]
+
+writeModHaskellDriver :: FilePath -> IO FilePath
+writeModHaskellDriver hsFile = do
+    let driverFile = takeDirectory hsFile </> "Main.hs"
+    extractedText <- readFile hsFile
+    writeFile driverFile (modHaskellDriverText (extractedHasBackendValues extractedText) (takeBaseName hsFile))
+    return driverFile
+
+extractedHasBackendValues :: String -> Bool
+extractedHasBackendValues extractedText = all (`isInfixOf` extractedText) ["data Val", "Vint", "Vlong", "signed0"]
+
+modHaskellDriverText :: Bool -> String -> String
+modHaskellDriverText hasBackendValues extractedModule = modHaskellDriverText' hasBackendValues extractedModule ""
+
+modHaskellDriverText' :: Bool -> String -> ShowS
+modHaskellDriverText' hasBackendValues extractedModule = strcat
+    [ strstr "module Main where" . nl
+    , nl
+    , strstr "import qualified Data.Char as Char" . nl
+    , strstr "import qualified Prelude" . nl
+    , strstr "import qualified " . strstr extractedModule . strstr " as Extracted" . nl
+    , nl
+    , strstr "main :: Prelude.IO ()" . nl
+    , strstr "main = run Extracted.project_a_target_itr" . nl
+    , nl
+    , strstr "run :: Extracted.Itree (Extracted.CoreE Extracted.Any) Extracted.T0 -> Prelude.IO ()" . nl
+    , strstr "run itr =" . nl
+    , strstr "    case Extracted.observe itr of" . nl
+    , strstr "        Extracted.RetF _ -> Prelude.return ()" . nl
+    , strstr "        Extracted.TauF next -> run next" . nl
+    , strstr "        Extracted.VisF event kont -> handleCoreEvent event Prelude.>>= run Prelude.. kont" . nl
+    , nl
+    , strstr "handleCoreEvent :: Extracted.CoreE Extracted.Any -> Prelude.IO Extracted.Any" . nl
+    , strstr "handleCoreEvent Extracted.Choose = Prelude.return chooseValue" . nl
+    , strstr "handleCoreEvent Extracted.Take = Prelude.return takeValue" . nl
+    , strstr "handleCoreEvent (Extracted.IO name args) = handleExternalIO (coqStringToString name) args Prelude.>> Prelude.return ioValue" . nl
+    , nl
+    , strstr "chooseValue :: Extracted.Any" . nl
+    , strstr "chooseValue = Extracted.unsafeCoerce Extracted.O" . nl
+    , nl
+    , strstr "takeValue :: Extracted.Any" . nl
+    , strstr "takeValue = Extracted.unsafeCoerce ()" . nl
+    , nl
+    , strstr "ioValue :: Extracted.Any" . nl
+    , strstr "ioValue = Extracted.unsafeCoerce ([] :: [()])" . nl
+    , nl
+    , strstr "handleExternalIO :: Prelude.String -> Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "handleExternalIO name args" . nl
+    , strstr "    | name Prelude.== \"project-a.stdout\" = printExactStdout args" . nl
+    , strstr "    | name Prelude.== \"project-a.stdout-line\" = printExactStdout args Prelude.>> Prelude.putChar '\\n'" . nl
+    , if hasBackendValues then backendPrintDriverText else strstr "    | Prelude.otherwise = Prelude.return ()" . nl
+    , nl
+    , strstr "printExactStdout :: Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "printExactStdout args = Prelude.putStr (Prelude.concat (Prelude.map coqStringToString (Extracted.unsafeCoerce args :: [Extracted.String])))" . nl
+    , nl
+    , strstr "coqStringToString :: Extracted.String -> Prelude.String" . nl
+    , strstr "coqStringToString Extracted.EmptyString = []" . nl
+    , strstr "coqStringToString (Extracted.String0 ch rest) = asciiToChar ch : coqStringToString rest" . nl
+    , nl
+    , strstr "asciiToChar :: Extracted.Ascii0 -> Prelude.Char" . nl
+    , strstr "asciiToChar (Extracted.Ascii b0 b1 b2 b3 b4 b5 b6 b7) = Char.chr (bit 0 b0 Prelude.+ bit 1 b1 Prelude.+ bit 2 b2 Prelude.+ bit 3 b3 Prelude.+ bit 4 b4 Prelude.+ bit 5 b5 Prelude.+ bit 6 b6 Prelude.+ bit 7 b7)" . nl
+    , nl
+    , strstr "bit :: Prelude.Int -> Prelude.Bool -> Prelude.Int" . nl
+    , strstr "bit n flag = if flag then 2 Prelude.^ n else 0" . nl
+    ]
+
+backendPrintDriverText :: ShowS
+backendPrintDriverText = strcat
+    [ strstr "    | name Prelude.== \"Go.builtin.print\" = printBackendValues args" . nl
+    , strstr "    | name Prelude.== \"fmt.Println\" = printBackendValues args" . nl
+    , strstr "    | name Prelude.== \"fmt.Print\" = printBackendValuesNoNewline args" . nl
+    , strstr "    | Prelude.otherwise = Prelude.return ()" . nl
+    , nl
+    , strstr "printBackendValues :: Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "printBackendValues args = Prelude.putStrLn (joinWords (Prelude.map renderBackendValue (Extracted.unsafeCoerce args :: [Extracted.Val])))" . nl
+    , nl
+    , strstr "printBackendValuesNoNewline :: Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "printBackendValuesNoNewline args = Prelude.putStr (joinWords (Prelude.map renderBackendValue (Extracted.unsafeCoerce args :: [Extracted.Val])))" . nl
+    , nl
+    , strstr "renderBackendValue :: Extracted.Val -> Prelude.String" . nl
+    , strstr "renderBackendValue Extracted.Vundef = \"<undef>\"" . nl
+    , strstr "renderBackendValue (Extracted.Vint n) = Prelude.show (zToInteger (Extracted.signed0 n))" . nl
+    , strstr "renderBackendValue (Extracted.Vlong n) = Prelude.show (zToInteger (Extracted.signed n))" . nl
+    , strstr "renderBackendValue (Extracted.Vfloat _) = \"<float>\"" . nl
+    , strstr "renderBackendValue (Extracted.Vsingle _) = \"<float>\"" . nl
+    , strstr "renderBackendValue (Extracted.Vptr _ _) = \"<ptr>\"" . nl
+    , nl
+    , strstr "joinWords :: [Prelude.String] -> Prelude.String" . nl
+    , strstr "joinWords [] = \"\"" . nl
+    , strstr "joinWords [x] = x" . nl
+    , strstr "joinWords (x : xs) = x Prelude.++ Prelude.concatMap (\" \" Prelude.++) xs" . nl
+    , nl
+    , strstr "zToInteger :: Extracted.Z -> Prelude.Integer" . nl
+    , strstr "zToInteger Extracted.Z0 = 0" . nl
+    , strstr "zToInteger (Extracted.Zpos p) = positiveToInteger p" . nl
+    , strstr "zToInteger (Extracted.Zneg p) = Prelude.negate (positiveToInteger p)" . nl
+    , nl
+    , strstr "positiveToInteger :: Extracted.Positive -> Prelude.Integer" . nl
+    , strstr "positiveToInteger Extracted.XH = 1" . nl
+    , strstr "positiveToInteger (Extracted.XO p) = 2 Prelude.* positiveToInteger p" . nl
+    , strstr "positiveToInteger (Extracted.XI p) = 1 Prelude.+ 2 Prelude.* positiveToInteger p" . nl
+    ]
 
 modExtractionLogs :: ModExtractReport -> [(FilePath, ProcessLog)]
 modExtractionLogs report = concat

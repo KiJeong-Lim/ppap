@@ -21,8 +21,11 @@ replace_literal() {
 }
 
 replace_literal "$repo_root/a/extract-gofile-v.sh" "__PROJECT_A_BOOT_TOOL_ROOT__" "$tool_root"
+replace_literal "$repo_root/a/run.sh" "__PROJECT_A_BOOT_TOOL_ROOT__" "$tool_root"
 replace_literal "$repo_root/src/Project/A/Main.hs" "__PROJECT_A_BOOT_STACK_DIR__" "$stack_dir"
 replace_literal "$repo_root/src/Project/A/Main.hs" "__PROJECT_A_BOOT_BACKEND_DIR__" "$backend_dir"
+replace_literal "$repo_root/src/Project/A/Pipeline/CoqExtraction.hs" "__PROJECT_A_BOOT_STACK_DIR__" "$stack_dir"
+replace_literal "$repo_root/src/Project/A/Pipeline/CoqExtraction.hs" "__PROJECT_A_BOOT_BACKEND_DIR__" "$backend_dir"
 replace_literal "$repo_root/src/Project/A/Pipeline/ModExtraction.hs" "__PROJECT_A_BOOT_BACKEND_LOGICAL__" "$backend_logical"
 
 echo "Project A extraction backend booted."
