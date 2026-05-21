@@ -7,7 +7,9 @@ Usage:
   a/run.sh [options]
 
 Options:
-  --mode=one|fuzz      Run one generated case or many cases.
+  --mode=one|fuzz|search
+                       Run one generated case, many generated cases, or
+                       corpus-guided mutation search.
                        Default: PROJECT_A_RUN_MODE or fuzz
   --cases=N            Number of cases for fuzz mode.
                        Default: PROJECT_A_CASES or 10
@@ -183,10 +185,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$mode" in
-  one|fuzz)
+  one|fuzz|search)
     ;;
   *)
-    echo "error: --mode must be one or fuzz: $mode" >&2
+    echo "error: --mode must be one, fuzz, or search: $mode" >&2
     exit 2
     ;;
 esac
@@ -215,7 +217,7 @@ reject_whitespace "--coqc" "$coqc_command"
 
 cmd=(Project "--$mode" "--seed=$seed" "--size=$size" "--workdir=$workdir")
 
-if [[ "$mode" == "fuzz" ]]; then
+if [[ "$mode" == "fuzz" || "$mode" == "search" ]]; then
   cmd+=("--cases=$cases")
 fi
 

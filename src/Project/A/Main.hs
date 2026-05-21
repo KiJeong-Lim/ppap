@@ -12,8 +12,11 @@ import System.FilePath
 import Project.A.Artifact
 import Project.A.Fuzz.Summary
 import Project.A.Fuzz.Shrink
+import Project.A.Fuzz.Score
+import Project.A.Go.AST
 import Project.A.Go.Feature
 import Project.A.Go.Gen
+import Project.A.Go.Mutate
 import Project.A.Go.Pretty
 import Project.A.Go.Shrink
 import Project.A.Pipeline.Config
@@ -31,6 +34,7 @@ mainWithArgs args
         Help -> putStr helpText
         One options -> runOne options
         Fuzz options -> runFuzz options
+        Search options -> runSearch options
         Replay options -> runReplay options
         Shrink options -> runShrink options
         ModExtract options -> runModExtract options
@@ -39,6 +43,7 @@ data Command
     = Help
     | One Options
     | Fuzz Options
+    | Search Options
     | Replay Options
     | Shrink Options
     | ModExtract ModExtractOptions
@@ -114,6 +119,7 @@ parseCommand rawArgs
         "help" : _ -> Help
         "one" : rest -> One (parseOptions rest)
         "fuzz" : rest -> Fuzz (parseOptions rest)
+        "search" : rest -> Search (parseOptions rest)
         "replay" : rest -> Replay (parseOptions rest)
         "shrink" : rest -> Shrink (parseOptions rest)
         "mod-extract" : rest -> ModExtract (parseModExtractOptions rest)
@@ -204,6 +210,7 @@ runOne options = do
     report <- runGeneratedCase (configFromOptions options) 1 (optSeed options) (optSize options)
     putStrLn ("case-dir: " ++ crCaseDir report)
     putStrLn ("status: " ++ show (crStatus report))
+    putStrLn ("score: " ++ scoreSummary (scoreOfReport report))
     putStrLn ("result: " ++ show (crResult report))
 
 runFuzz :: Options -> IO ()
@@ -217,8 +224,38 @@ runFuzz options
         runStep summary caseId = do
             let seed = optSeed options + caseId - 1
             report <- runGeneratedCase config caseId seed (optSize options)
-            putStrLn (show caseId ++ ": " ++ show (crStatus report) ++ " " ++ crCaseDir report)
+            putStrLn (show caseId ++ ": " ++ show (crStatus report) ++ " " ++ scoreSummary (scoreOfReport report) ++ " " ++ crCaseDir report)
             return (addReport summary report)
+
+runSearch :: Options -> IO ()
+runSearch options
+    = do
+        (summary, _) <- foldM runStep (emptySummary, Nothing) [1 .. optCases options]
+        putStr (renderSummary summary)
+    where
+        config = configFromOptions options
+
+        runStep (summary, best) caseId = do
+            let seed = optSeed options + caseId - 1
+            let program = case best of
+                    Nothing -> genProgram seed (optSize options)
+                    Just (bestProgram, _) -> mutateProgram seed bestProgram
+            let tc0 = genTestCase caseId seed (optSize options)
+            let tc = tc0 { tcProgram = program, tcSize = programNodeCount program }
+            report <- runCase config tc
+            let score = scoreOfReport report
+            putStrLn (show caseId ++ ": " ++ show (crStatus report) ++ " " ++ scoreSummary score ++ " " ++ crCaseDir report)
+            return (addReport summary report, updateSearchBest program score best)
+
+updateSearchBest :: Program -> Score -> Maybe (Program, Int) -> Maybe (Program, Int)
+updateSearchBest program score current
+    = case score of
+        Interesting n _ -> case current of
+            Nothing -> Just (program, n)
+            Just (_, best)
+                | n < best -> Just (program, n)
+                | otherwise -> current
+        _ -> current
 
 runReplay :: Options -> IO ()
 runReplay options
@@ -239,11 +276,22 @@ runShrink options
         result <- runShrinkSearch config tc
         let shrunkDir = caseDir </> "shrunk"
         writeShrunkArtifacts shrunkDir result
+        regressionDir <- saveRegressionArchive caseDir shrunkDir result
         putStrLn ("original-status: " ++ show (crStatus (srOriginalReport result)))
         putStrLn ("shrunk-status: " ++ show (crStatus (srFinalReport result)))
         putStrLn ("tested: " ++ show (srTested result))
         putStrLn ("accepted: " ++ show (srAccepted result))
         putStrLn ("shrunk-dir: " ++ shrunkDir)
+        maybe (return ()) (\dir -> putStrLn ("regression-dir: " ++ dir)) regressionDir
+
+saveRegressionArchive :: FilePath -> FilePath -> ShrinkResult -> IO (Maybe FilePath)
+saveRegressionArchive caseDir shrunkDir result
+    = case crStatus (srFinalReport result) of
+        CaseFail _ -> do
+            let dst = takeDirectory (takeDirectory caseDir) </> "regressions" </> takeFileName caseDir
+            copyDirectoryTree shrunkDir dst
+            return (Just dst)
+        _ -> return Nothing
 
 runModExtract :: ModExtractOptions -> IO ()
 runModExtract rawOptions = do
@@ -395,10 +443,10 @@ writeShrunkArtifacts dir result = do
     let finalReport = srFinalReport result
     let program = tcProgram (crTestCase finalReport)
     createDirectoryIfMissing True dir
-    writeFile (dir </> "gofile.go") (prettyProgram program)
-    writeFile (dir </> "feature.json") (featureJson (featuresOf program))
-    writeFile (dir </> "result.json") (caseReportJson finalReport)
-    writeFile (dir </> "report.txt") (shrinkReport result)
+    writeTextFile (dir </> "gofile.go") (prettyProgram program)
+    writeTextFile (dir </> "feature.json") (featureJson (featuresOf program))
+    writeTextFile (dir </> "result.json") (caseReportJson finalReport)
+    writeTextFile (dir </> "report.txt") (shrinkReport result)
 
 shrinkReport :: ShrinkResult -> String
 shrinkReport result = shrinkReport' result ""
@@ -433,6 +481,7 @@ helpText' = strcat
     , strstr "Commands:" . nl
     , strstr "  one  --seed=N --size=N --workdir=DIR" . nl
     , strstr "  fuzz --cases=N --seed=N --size=N --workdir=DIR" . nl
+    , strstr "  search --cases=N --seed=N --size=N --workdir=DIR" . nl
     , strstr "  replay --case-dir=DIR [--workdir=DIR]" . nl
     , strstr "  shrink --case-dir=DIR [--workdir=DIR]" . nl
     , strstr "  mod-extract --mod=TERM [--tool-root=DIR] [--coqproject=FILE] [--opam-env-dir=DIR] [--backend-root=DIR] [--coqc=COQC] [--coq-file=FILE] [--require=M1,M2] [--backend-logical=NAME] [--backend-dirs=D1,D2] [--gra=TERM] [--resource=TERM] [--arg=TERM] [--output=FILE]" . nl

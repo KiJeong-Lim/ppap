@@ -11,6 +11,7 @@ import Project.A.Go.Feature
 import Project.A.Go.Pretty
 import Project.A.Types
 import qualified Project.A.Util.Json as Json
+import Z.System
 
 data StoredSeed
     = StoredSeed
@@ -29,21 +30,70 @@ prepareCaseDirectory workDir caseId = do
     createDirectoryIfMissing True (dir </> "coq" </> "extracted")
     return dir
 
+copyDirectoryTree :: FilePath -> FilePath -> IO ()
+copyDirectoryTree src dst = do
+    resetPath dst
+    createDirectoryIfMissing True dst
+    entries <- listDirectory src
+    mapM_ copyEntry entries
+    where
+        copyEntry "go-cache" = return ()
+        copyEntry name = do
+            let srcPath = src </> name
+            let dstPath = dst </> name
+            isDir <- doesDirectoryExist srcPath
+            if isDir then
+                copyDirectoryTree srcPath dstPath
+            else
+                copyFile srcPath dstPath
+
+resetPath :: FilePath -> IO ()
+resetPath path = do
+    isDir <- doesDirectoryExist path
+    isFile <- doesFileExist path
+    if isDir then
+        removeDirectoryRecursive path
+    else if isFile then
+        removeFile path
+    else
+        return ()
+
+saveFailureArchive :: FilePath -> CaseReport Program -> IO (Maybe FilePath)
+saveFailureArchive workDir report
+    = case crStatus report of
+        CaseFail _ -> do
+            let dst = workDir </> "failures" </> takeFileName (crCaseDir report)
+            copyDirectoryTree (crCaseDir report) dst
+            return (Just dst)
+        _ -> return Nothing
+
 writeInitialArtifacts :: FilePath -> TestCase Program -> IO ()
 writeInitialArtifacts dir tc = do
-    writeFile (dir </> "seed.json") (seedJson tc)
-    writeFile (dir </> "feature.json") (featureJson (featuresOf (tcProgram tc)))
-    writeFile (dir </> "gofile.go") (prettyProgram (tcProgram tc))
-    writeFile (dir </> "input.stdin") (riStdin (tcInput tc))
-    writeFile (dir </> "args.txt") (unlines (riArgs (tcInput tc)))
-    writeFile (dir </> "env.json") (envJson (riEnv (tcInput tc)))
+    writeTextFile (dir </> "seed.json") (seedJson tc)
+    writeTextFile (dir </> "feature.json") (featureJson (featuresOf (tcProgram tc)))
+    writeTextFile (dir </> "gofile.go") (prettyProgram (tcProgram tc))
+    writeTextFile (dir </> "input.stdin") (riStdin (tcInput tc))
+    writeTextFile (dir </> "args.txt") (unlines (riArgs (tcInput tc)))
+    writeTextFile (dir </> "env.json") (envJson (riEnv (tcInput tc)))
 
 writeProcessLog :: FilePath -> ProcessLog -> IO ()
 writeProcessLog path logValue = do
-    writeFile path (processLogJson logValue)
+    writeTextFile path (processLogJson logValue)
 
 writeResult :: FilePath -> CaseReport Program -> IO ()
-writeResult dir report = writeFile (dir </> "result.json") (caseReportJson report)
+writeResult dir report = writeTextFile (dir </> "result.json") (caseReportJson report)
+
+writeTextFile :: FilePath -> String -> IO ()
+writeTextFile path content = do
+    _ <- writeFileNow path content
+    return ()
+
+readRequiredFile :: FilePath -> IO String
+readRequiredFile path = do
+    content <- readFileNow path
+    case content of
+        Just str -> return str
+        Nothing -> fail ("cannot read file: " ++ path)
 
 readStoredSeed :: FilePath -> IO (Either String StoredSeed)
 readStoredSeed dir = do
@@ -52,7 +102,7 @@ readStoredSeed dir = do
     if not exists then
         return (Left ("seed file does not exist: " ++ path))
     else do
-        content <- readFile path
+        content <- readRequiredFile path
         return (storedSeedFromJson path content)
 
 storedSeedFromJson :: FilePath -> String -> Either String StoredSeed

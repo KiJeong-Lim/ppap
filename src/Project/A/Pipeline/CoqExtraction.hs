@@ -9,6 +9,7 @@ import Project.A.Pipeline.Config
 import Project.A.Pipeline.ModExtraction
 import Project.A.Types
 import Project.A.Util.Process
+import Z.System
 import Z.Utils
 
 data ExtractionOutcome
@@ -42,7 +43,7 @@ runConfiguredTranslator config caseDir input commandLine
             if not (processSucceeded translatorResult)
                 then return (failedAfterTranslator translatorLog (TranslatorError (plStderr translatorLog ++ plStdout translatorLog)))
                 else do
-                    writeFile (caseDir </> "coq" </> "gofile.v") (tprStdout translatorResult)
+                    _ <- writeFileNow (caseDir </> "coq" </> "gofile.v") (tprStdout translatorResult)
                     mode <- lookupEnv "PROJECT_A_EXTRACT_MODE"
                     case mode of
                         Just "mod" -> runModExtractionAndHaskell config caseDir input translatorLog
@@ -102,8 +103,8 @@ runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile 
 writeModHaskellDriver :: FilePath -> IO FilePath
 writeModHaskellDriver hsFile = do
     let driverFile = takeDirectory hsFile </> "Main.hs"
-    extractedText <- readFile hsFile
-    writeFile driverFile (modHaskellDriverText (extractedHasBackendValues extractedText) (takeBaseName hsFile))
+    extractedText <- maybe (fail ("cannot read file: " ++ hsFile)) return =<< readFileNow hsFile
+    _ <- writeFileNow driverFile (modHaskellDriverText (extractedHasBackendValues extractedText) (takeBaseName hsFile))
     return driverFile
 
 extractedHasBackendValues :: String -> Bool

@@ -15,7 +15,7 @@ data GenState
     } deriving (Eq, Ord, Show)
 
 constantProgram :: Program
-constantProgram = Program [SPrintln [EInt 3]]
+constantProgram = Program [] [SPrintln [EInt 3]]
 
 genTestCase :: CaseId -> Seed -> Size -> TestCase Program
 genTestCase caseId seed size = TestCase { tcCaseId = caseId, tcSeed = seed, tcSize = size, tcProgram = genProgram seed size, tcInput = RuntimeInput { riArgs = [], riStdin = "", riEnv = [] } }
@@ -23,7 +23,15 @@ genTestCase caseId seed size = TestCase { tcCaseId = caseId, tcSeed = seed, tcSi
 genProgram :: Seed -> Size -> Program
 genProgram seed size
     | size <= 0 = constantProgram
-    | otherwise = Program (evalState (genProgramStmts size) (initialGenState seed))
+    | otherwise = evalState (genProgramFull size) (initialGenState seed)
+
+genProgramFull :: Size -> State GenState Program
+genProgramFull size = do
+    stmts <- genProgramStmts size
+    if size >= 4 then
+        return (Program helperFuncs (go2cStyleStressStmts ++ stmts))
+    else
+        return (Program [] stmts)
 
 genProgramStmts :: Size -> State GenState [Stmt]
 genProgramStmts size = do
@@ -120,6 +128,11 @@ genExpr env ty depth
         TInt -> genIntExpr env depth
         TBool -> genBoolExpr env depth
         TString -> genStringExpr env depth
+        TArray _ _ -> genAtom env ty
+        TSlice _ -> genAtom env ty
+        TPointer _ -> genAtom env ty
+        TNamed _ -> genAtom env ty
+        TStruct _ -> genAtom env ty
 
 genIntExpr :: Env -> Int -> State GenState Expr
 genIntExpr env depth = do
@@ -206,6 +219,13 @@ genLiteral TBool = do
 genLiteral TString = do
     str <- chooseFrom "" ["", "a", "go", "coq", "seed"]
     return (EString str)
+genLiteral (TArray n ty) = do
+    exprs <- replicateM n (genLiteral ty)
+    return (EArrayLit ty exprs)
+genLiteral (TSlice ty) = return (ESliceLit ty [])
+genLiteral ty@(TPointer _) = return (ENil ty)
+genLiteral ty@(TNamed _) = return (EStructLit ty [])
+genLiteral ty@(TStruct _) = return (EStructLit ty [])
 
 genIntLiteral :: State GenState Expr
 genIntLiteral = do
@@ -216,6 +236,42 @@ genNonZeroIntLiteral :: State GenState Expr
 genNonZeroIntLiteral = do
     n <- chooseFrom 1 [-7, -3, -1, 1, 2, 3, 5, 8]
     return (EInt n)
+
+helperFuncs :: [Func]
+helperFuncs =
+    [ Func
+        { funcName = "add1"
+        , funcParams = [(TInt, "a")]
+        , funcReturns = [TInt]
+        , funcBody = [SReturn [EAdd (EVar TInt "a") (EInt 1)]]
+        }
+    , Func
+        { funcName = "pair"
+        , funcParams = [(TInt, "a")]
+        , funcReturns = [TInt, TInt]
+        , funcBody = [SReturn [EVar TInt "a", EMul (EVar TInt "a") (EInt 2)]]
+        }
+    ]
+
+go2cStyleStressStmts :: [Stmt]
+go2cStyleStressStmts =
+    [ STypeDecl "PairBox" (TStruct [(TInt, "left"), (TInt, "right")])
+    , SVarZero (TArray 3 TInt) "arr"
+    , SVarZero (TArray 2 (TArray 2 TInt)) "grid"
+    , SIndexAssign (EVar (TArray 3 TInt) "arr") (EInt 0) (EInt 7)
+    , SShortVar TInt "z" (ECall TInt "add1" [EIndex TInt (EVar (TArray 3 TInt) "arr") (EInt 0)])
+    , SIndexAssign (EIndex (TArray 2 TInt) (EVar (TArray 2 (TArray 2 TInt)) "grid") (EInt 0)) (EInt 1) (EVar TInt "z")
+    , SShortVarCall [(TInt, "p"), (TInt, "q")] "pair" [EVar TInt "z"]
+    , SOpAssign "z" "+=" (EVar TInt "p")
+    , SBlank (EVar TInt "q")
+    , SShortVar (TSlice TInt) "sl" (ESliceLit TInt [EInt 1, EInt 2, EInt 3])
+    , SAssign "sl" (ECall (TSlice TInt) "append" [EVar (TSlice TInt) "sl", EVar TInt "z"])
+    , SBlank (ELen (EVar (TSlice TInt) "sl"))
+    , SShortVar (TNamed "PairBox") "box" (EStructLit (TNamed "PairBox") [("left", EVar TInt "z"), ("right", EVar TInt "q")])
+    , SBlank (EField TInt (EVar (TNamed "PairBox") "box") "left")
+    , SShortVar (TPointer TInt) "pz" (EAddr (EVar TInt "z"))
+    , SDerefAssign (EVar (TPointer TInt) "pz") (EAdd (EDeref TInt (EVar (TPointer TInt) "pz")) (EInt 1))
+    ]
 
 varsOfTy :: Ty -> Env -> Env
 varsOfTy ty = filter (\(varTy, _) -> varTy == ty)

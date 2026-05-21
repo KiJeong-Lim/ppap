@@ -3,6 +3,8 @@ module Project.A.Pipeline.Runner where
 import System.FilePath
 
 import Project.A.Artifact
+import Project.A.Fuzz.Corpus
+import Project.A.Fuzz.Score
 import Project.A.Go.AST
 import Project.A.Go.Gen
 import Project.A.Pipeline.Config
@@ -31,6 +33,12 @@ runCase config tc = do
                 Right obsHs -> return (RanBoth obsGo obsHs)
     let report = CaseReport { crCaseDir = caseDir, crTestCase = tc, crResult = result, crStatus = classifyResult result }
     writeResult caseDir report
+    let score = scoreOfReport report
+    writeTextFile (caseDir </> "score.json") (scoreJson score)
+    _ <- saveFailureArchive (cfgWorkDir config) report
+    corpusDecision <- decideCorpusAdmission (cfgWorkDir config) score report
+    writeCorpusDecision caseDir corpusDecision
+    commitCorpusAdmission (cfgWorkDir config) corpusDecision report
     return report
 
 writeExtractionLogs :: FilePath -> ExtractionOutcome -> IO ()

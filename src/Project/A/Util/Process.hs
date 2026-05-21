@@ -22,6 +22,9 @@ runTimedProcess :: Int -> Maybe FilePath -> [(String, String)] -> FilePath -> [S
 runTimedProcess timeoutMicros cwd envOverrides command args input = do
     processEnv <- makeProcessEnv envOverrides
     (Just hin, Just hout, Just herr, ph) <- createProcess (proc command args) { cwd = cwd, env = processEnv, std_in = CreatePipe, std_out = CreatePipe, std_err = CreatePipe }
+    hSetEncoding hin char8
+    hSetEncoding hout char8
+    hSetEncoding herr char8
     hPutStr hin input
     hClose hin
     outVar <- newEmptyMVar

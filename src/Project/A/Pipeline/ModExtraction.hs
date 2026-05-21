@@ -9,6 +9,7 @@ import System.FilePath
 import Project.A.Pipeline.Config
 import Project.A.Types
 import Project.A.Util.Process
+import Z.System
 import Z.Utils
 
 data ModExtractConfig
@@ -79,7 +80,7 @@ runModExtraction config extractConfig = do
     copiedInput <- copyInputModule coqDir extractConfig
     let harnessFile = coqDir </> "ModHarness.v"
     let outputFile = extractedDir </> mecOutputFile extractConfig
-    writeFile harnessFile (modHarnessText copiedInput extractConfig)
+    _ <- writeFileNow harnessFile (modHarnessText copiedInput extractConfig)
     toolEnv <- prepareCoqToolEnv config extractConfig
     case toolEnv of
         Left opamLog -> return ModExtractReport { merCaseDir = caseDir, merHarnessFile = harnessFile, merExtractedFile = outputFile, merOpamEnvLog = Just opamLog, merInputLog = Nothing, merHarnessLog = opamLog, merResult = Left (opamEnvFailure opamLog) }
@@ -150,8 +151,8 @@ copyInputModule coqDir extractConfig
     = case mecCoqFile extractConfig of
         Nothing -> return Nothing
         Just path -> do
-            content <- readFile path
-            writeFile (coqDir </> "Input.v") content
+            content <- maybe (fail ("cannot read file: " ++ path)) return =<< readFileNow path
+            _ <- writeFileNow (coqDir </> "Input.v") content
             return (Just (mecProjectLogical extractConfig ++ ".Input"))
 
 compileInputIfNeeded :: RunConfig -> ModExtractConfig -> PreparedCoqTools -> FilePath -> Maybe String -> IO (Maybe ProcessLog)
@@ -174,7 +175,7 @@ coqProjectLoadPath extractConfig
 coqProjectArgsFromFile :: FilePath -> IO [String]
 coqProjectArgsFromFile path = do
     absPath <- makeAbsolute path
-    content <- readFile absPath
+    content <- maybe (fail ("cannot read file: " ++ absPath)) return =<< readFileNow absPath
     return (coqProjectArgs (takeDirectory absPath) content)
 
 coqProjectArgs :: FilePath -> String -> [String]

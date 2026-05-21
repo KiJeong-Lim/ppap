@@ -83,11 +83,14 @@ executable ppap
     PGS.LALR
     PGS.Main
     Project.A.Artifact
+    Project.A.Fuzz.Corpus
+    Project.A.Fuzz.Score
     Project.A.Fuzz.Shrink
     Project.A.Fuzz.Summary
     Project.A.Go.AST
     Project.A.Go.Feature
     Project.A.Go.Gen
+    Project.A.Go.Mutate
     Project.A.Go.Pretty
     Project.A.Go.Shrink
     Project.A.Main
