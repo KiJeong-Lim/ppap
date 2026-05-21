@@ -1,5 +1,7 @@
 module Project.A.Artifact where
 
+import Data.Char
+import Data.List
 import System.Directory
 import System.FilePath
 import Text.Printf
@@ -9,6 +11,13 @@ import Project.A.Go.Feature
 import Project.A.Go.Pretty
 import Project.A.Types
 import qualified Project.A.Util.Json as Json
+
+data StoredSeed
+    = StoredSeed
+    { storedCaseId :: CaseId
+    , storedSeed :: Seed
+    , storedSize :: Size
+    } deriving (Eq, Ord, Show)
 
 caseDirectory :: FilePath -> CaseId -> FilePath
 caseDirectory workDir caseId = workDir </> "cases" </> printf "%06d" caseId
@@ -35,6 +44,43 @@ writeProcessLog path logValue = do
 
 writeResult :: FilePath -> CaseReport Program -> IO ()
 writeResult dir report = writeFile (dir </> "result.json") (caseReportJson report)
+
+readStoredSeed :: FilePath -> IO (Either String StoredSeed)
+readStoredSeed dir = do
+    let path = dir </> "seed.json"
+    exists <- doesFileExist path
+    if not exists then
+        return (Left ("seed file does not exist: " ++ path))
+    else do
+        content <- readFile path
+        return (storedSeedFromJson path content)
+
+storedSeedFromJson :: FilePath -> String -> Either String StoredSeed
+storedSeedFromJson path content = do
+    caseId <- fieldInt "caseId"
+    seed <- fieldInt "seed"
+    size <- fieldInt "size"
+    return StoredSeed { storedCaseId = caseId, storedSeed = seed, storedSize = size }
+    where
+        fieldInt key
+            = case jsonIntField key content of
+                Just value -> Right value
+                Nothing -> Left ("cannot read integer field " ++ show key ++ " from " ++ path)
+
+jsonIntField :: String -> String -> Maybe Int
+jsonIntField key content = findField content where
+    prefix = show key ++ ":"
+
+    findField [] = Nothing
+    findField str
+        | prefix `isPrefixOf` str = readJsonInt (drop (length prefix) str)
+        | otherwise = findField (tail str)
+
+readJsonInt :: String -> Maybe Int
+readJsonInt str
+    = case reads (dropWhile isSpace str) of
+        [(value, _)] -> Just value
+        _ -> Nothing
 
 seedJson :: TestCase Program -> String
 seedJson tc = Json.object [Json.field "caseId" (Json.int (tcCaseId tc)), Json.field "seed" (Json.int (tcSeed tc)), Json.field "size" (Json.int (tcSize tc))]
