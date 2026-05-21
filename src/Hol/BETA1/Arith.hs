@@ -36,11 +36,7 @@ data LiftResult
     }
 
 
-parsePresburger
-    :: SLoc
-    -> String
-    -> Map.Map LargeId LogicVar
-    -> Either ErrMsg ParseResult
+parsePresburger :: SLoc -> String -> Map.Map LargeId LogicVar -> Either ErrMsg ParseResult
 parsePresburger sloc src env0 =
     case runP parseTop initState of
         Left msg       -> Left (locPrefix ++ msg)
@@ -398,11 +394,7 @@ parseAtomFormula = do
         _ -> throwP ("expected a relational operator, got: " ++ shows (take 20 inp) "")
 
 
-zonkPresburger
-    :: (LogicVar -> Maybe TermNode)
-    -> Map.Map MyVar LogicVar
-    -> MyPresburgerFormulaRep
-    -> MyPresburgerFormulaRep
+zonkPresburger :: (LogicVar -> Maybe TermNode) -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 zonkPresburger theta freeOf = goFormula Set.empty
     where
     goFormula bound (ValF b) = ValF b
@@ -527,11 +519,7 @@ liftTerm t = case t of
     _ -> fail_
 
 
-renumberFormula
-    :: Map.Map LogicVar MyVar
-    -> Map.Map MyVar LogicVar
-    -> MyPresburgerFormulaRep
-    -> MyPresburgerFormulaRep
+renumberFormula :: Map.Map LogicVar MyVar -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 renumberFormula shared local rep
     = fst (goFormula startFresh Map.empty rep)
     where

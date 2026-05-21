@@ -96,8 +96,10 @@ getMGU lhs rhs
         (Just typ_error, theta) -> throwE ((substMTVars theta lhs, substMTVars theta rhs), typ_error)
     where
         go :: Set.Set MetaTVar -> MonoType Int -> MonoType Int -> (Maybe TypeError, TypeSubst)
-        go lockeds (TyVar _) _ = error "`getMGU\'"
-        go lockeds _ (TyVar _) = error "`getMGU\'"
+        go lockeds (TyVar _) _
+            = error "`getMGU\'"
+        go lockeds _ (TyVar _)
+            = error "`getMGU\'"
         go lockeds (TyCon tcon1) (TyCon tcon2)
             | tcon1 == tcon2 = (Nothing, mempty)
         go lockeds (TyMTV mtv) typ 
@@ -114,17 +116,19 @@ getMGU lhs rhs
             = case mtv +-> typ of
                 Left typ_error -> (Just typ_error, mempty)
                 Right theta -> (Nothing, theta)
-        go lockeds (TyApp typ1 typ2) (TyApp typ1' typ2') = case go lockeds typ1 typ1' of
-            (Nothing, theta1) -> case go lockeds (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
-                (Nothing, theta2) -> (Nothing, theta2 <> theta1)
-                (Just typ_error, theta2) -> (Just typ_error, theta2 <> theta1)
-            (Just (OccursCheckFailed mtv typ), theta1) -> case go (Set.insert mtv lockeds) (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
-                (Nothing, theta2) -> (Just (OccursCheckFailed mtv typ), theta2 <> theta1)
-                (Just typ_error', theta2) -> (Just typ_error', theta2 <> theta1)
-            (Just typ_error, theta1) -> case go lockeds (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
-                (Nothing, theta2) -> (Just typ_error, theta2 <> theta1)
-                (Just typ_error', theta2) -> (Just typ_error, theta2 <> theta1)
-        go lockeds typ1 typ2 = (Just (TypesAreMismatched typ1 typ2), mempty)
+        go lockeds (TyApp typ1 typ2) (TyApp typ1' typ2')
+            = case go lockeds typ1 typ1' of
+                (Nothing, theta1) -> case go lockeds (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
+                    (Nothing, theta2) -> (Nothing, theta2 <> theta1)
+                    (Just typ_error, theta2) -> (Just typ_error, theta2 <> theta1)
+                (Just (OccursCheckFailed mtv typ), theta1) -> case go (Set.insert mtv lockeds) (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
+                    (Nothing, theta2) -> (Just (OccursCheckFailed mtv typ), theta2 <> theta1)
+                    (Just typ_error', theta2) -> (Just typ_error', theta2 <> theta1)
+                (Just typ_error, theta1) -> case go lockeds (substMTVars theta1 typ2) (substMTVars theta1 typ2') of
+                    (Nothing, theta2) -> (Just typ_error, theta2 <> theta1)
+                    (Just typ_error', theta2) -> (Just typ_error, theta2 <> theta1)
+        go lockeds typ1 typ2
+            = (Just (TypesAreMismatched typ1 typ2), mempty)
 
 unify :: Monad mnd => [(MonoType Int, MonoType Int)] -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
 unify [] = return mempty
@@ -150,9 +154,7 @@ lhs ->> rhs
                     mtv <- Set.toList (Map.keysSet mapsto1 `Set.intersection` Map.keysSet mapsto2)
                     let typ1 = mapsto1 Map.! mtv
                         typ2 = mapsto2 Map.! mtv
-                    if typ1 == typ2
-                        then []
-                        else return (typ1, typ2)
+                    if typ1 == typ2 then [] else return (typ1, typ2)
         go :: MonoType Int -> MonoType Int -> Either TypeError TypeSubst
         go (TyVar _) _ = error "`(->>)\'"
         go _ (TyVar _) = error "`(->>)\'"

@@ -31,6 +31,12 @@ module Project.A.Types where
 
 ## 함수 배치
 
+함수 시그니처는 한 줄로 둔다.
+
+```hs
+runWithConfig :: RunConfig -> [TestCase] -> IO Summary
+```
+
 본문이 조금이라도 길면 `=`를 다음 줄에 둔다.
 같은 이름의 여러 방정식이나 의미상 한 묶음인 자매 정의에서는, 하나라도 `=`를 다음 줄에 두면 나머지도 같이 다음 줄에 둔다.
 

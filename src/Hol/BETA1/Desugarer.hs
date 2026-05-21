@@ -190,13 +190,7 @@ populateTermFoldTable type_env expansion_db db0 = go (Notation.termNotationList 
             Left _    -> go rest db
             Right tn  -> go rest (Notation.addNotation name params tn db)
 
-compileNotationRHS
-    :: MonadUnique m
-    => NotationDB
-    -> TypeEnv
-    -> [LargeId]
-    -> TermRep
-    -> ExceptT ErrMsg m TermNode
+compileNotationRHS :: MonadUnique m => NotationDB -> TypeEnv -> [LargeId] -> TermRep -> ExceptT ErrMsg m TermNode
 compileNotationRHS db type_env params body = do
     paramIVars <- lift (mapM (\_ -> getUnique) params)
     let initialNameEnv = Map.fromList (zip params paramIVars)

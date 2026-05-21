@@ -201,10 +201,7 @@ renderTerm db (NLam mhint _ t _) = ViewIAbs name (foldTerm db t) where
         Nothing -> "x"
 renderTerm db (Susp body _ _ _) = foldTerm db body
 
-tryMatch
-    :: [FoldEntry]
-    -> TermNode
-    -> Maybe (EntryKind, SmallId, [TermNode])
+tryMatch :: [FoldEntry] -> TermNode -> Maybe (EntryKind, SmallId, [TermNode])
 tryMatch entries t = firstJust
     [ do
         env <- matchTerm (_feParams e) (_feRhs e) t
@@ -248,11 +245,7 @@ foldTermAsNode db = go where
                 EK_Term -> mkNCon (DC_Named name)
         Nothing -> t
 
-matchTerm
-    :: [LargeId]
-    -> TermNode
-    -> TermNode
-    -> Maybe (Map.Map LargeId TermNode)
+matchTerm :: [LargeId] -> TermNode -> TermNode -> Maybe (Map.Map LargeId TermNode)
 matchTerm params tmpl cand = go tmpl cand Map.empty where
     isParam (LV_Named n) = n `elem` params
     isParam _ = False

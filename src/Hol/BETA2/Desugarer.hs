@@ -226,16 +226,7 @@ populateTermFoldTableInModule mode moduleName sourceLines type_env expansion_db 
             Left _    -> go rest db
             Right tn  -> go rest (Notation.addNotation name params tn db)
 
-compileNotationRHS
-    :: MonadUnique m
-    => DiagnosticMode
-    -> Maybe String
-    -> SourceLines
-    -> NotationDB
-    -> TypeEnv
-    -> [LargeId]
-    -> TermRep
-    -> ExceptT ErrMsg m TermNode
+compileNotationRHS :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -> TypeEnv -> [LargeId] -> TermRep -> ExceptT ErrMsg m TermNode
 compileNotationRHS mode moduleName sourceLines db type_env params body = do
     paramIVars <- lift (mapM (\_ -> getUnique) params)
     let initialNameEnv = Map.fromList (zip params paramIVars)

@@ -174,21 +174,15 @@ mkNIdx i = NIdx i
 
 {-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
-    = n' `seq` mkNCon (DC_NatL n')
-    where
-        n' = n + 1
-mkNApp t1 t2
-    = NApp t1 t2 Nothing
+mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = n' `seq` mkNCon (DC_NatL n') where
+    n' = n + 1
+mkNApp t1 t2 = NApp t1 t2 Nothing
 
 {-# INLINE mkNAppLoc #-}
 mkNAppLoc :: Maybe SLoc -> TermNode -> TermNode -> TermNode
-mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
-    = n' `seq` mkNConLoc sl (DC_NatL n')
-    where
-        n' = n + 1
-mkNAppLoc sl t1 t2
-    = NApp t1 t2 sl
+mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = n' `seq` mkNConLoc sl (DC_NatL n') where
+    n' = n + 1
+mkNAppLoc sl t1 t2 = NApp t1 t2 sl
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
@@ -242,9 +236,7 @@ substTyMTV mtv uni = go where
     goLamType (LamType (Just ty)) = LamType (Just (goMono ty))
     goLamType x = x
     goMono :: MonoType Int -> MonoType Int
-    goMono (TyMTV m)
-        | m == mtv = refTy
-        | otherwise = TyMTV m
+    goMono (TyMTV m) = if m == mtv then refTy else TyMTV m
     goMono (TyApp a b) = TyApp (goMono a) (goMono b)
     goMono t = t
 
@@ -301,8 +293,10 @@ unfoldlNApp = flip go [] where
         | otherwise = error "`unfoldlNApp\': negative integer"
         where
             n' = n - 1
-    go (NApp t1 t2 _) ts = go t1 (t2 : ts)
-    go t ts = (t, ts)
+    go (NApp t1 t2 _) ts
+        = go t1 (t2 : ts)
+    go t ts
+        = (t, ts)
 
 lensForSuspEnv :: (TermNode -> TermNode) -> SuspEnv -> SuspEnv
 lensForSuspEnv delta = map go where
@@ -332,11 +326,8 @@ freshenName h live
         rev_rest = dropWhile isDigitChar (reverse h)
         base = if null rev_rest then h else reverse rev_rest
         pickFresh = go (1 :: Int)
-        go i
-            | cand `notElem` live = cand
-            | otherwise = go (i + 1)
-            where
-                cand = base ++ show i
+        go i = if cand `notElem` live then cand else go (i + 1) where
+            cand = base ++ show i
 
 viewNestedNLam :: TermNode -> (Int, TermNode)
 viewNestedNLam = go 0 where

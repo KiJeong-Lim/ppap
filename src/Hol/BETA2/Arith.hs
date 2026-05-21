@@ -29,45 +29,35 @@ data ParseResult
     { _formula :: MyPresburgerFormulaRep
     , _freeOfFormula :: Map.Map MyVar LogicVar
     , _updatedEnv :: Map.Map LargeId LogicVar
-    }
+    } deriving ()
 
 data LiftResult
     = LiftResult
     { _liftedFormula :: MyPresburgerFormulaRep
     , _freeOfLifted :: Map.Map MyVar LogicVar
-    }
+    } deriving ()
 
 
-parsePresburger
-    :: SLoc
-    -> String
-    -> Map.Map LargeId LogicVar
-    -> Either ErrMsg ParseResult
-parsePresburger sloc src env0 =
-    case runP parseTop initState of
+parsePresburger :: SLoc -> String -> Map.Map LargeId LogicVar -> Either ErrMsg ParseResult
+parsePresburger sloc src env0
+    = case runP parseTop initState of
         Left msg       -> Left (locPrefix ++ msg)
-        Right (f, st') -> Right ParseResult
-            { _formula = f
-            , _freeOfFormula = psFreeMap st'
-            , _updatedEnv = psNameToVar st'
-            }
+        Right (f, st') -> Right (ParseResult { _formula = f, _freeOfFormula = psFreeMap st', _updatedEnv = psNameToVar st' })
     where
-    locPrefix = "presburger[" ++ shows (_BegPos sloc) "]: "
-    initState = PState
-        { psInput = src
-        , psNameToVar = env0
-        , psBoundStack = []
-        , psFreeMap = Map.empty
-        , psInverseFree = Map.empty
-        , psNextVar = theMinNumOfMyVar
-        }
-    parseTop = do
-        f <- parseFormula
-        skipWS
-        leftover <- getInput
-        if null leftover
-            then return f
-            else throwP ("unexpected trailing input: " ++ shows (take 20 leftover) "")
+        locPrefix = "presburger[" ++ shows (_BegPos sloc) "]: "
+        initState = PState
+            { psInput = src
+            , psNameToVar = env0
+            , psBoundStack = []
+            , psFreeMap = Map.empty
+            , psInverseFree = Map.empty
+            , psNextVar = theMinNumOfMyVar
+            }
+        parseTop = do
+            f <- parseFormula
+            skipWS
+            leftover <- getInput
+            if null leftover then return f else throwP ("unexpected trailing input: " ++ shows (take 20 leftover) "")
 
 
 data PState
@@ -78,10 +68,11 @@ data PState
     , psFreeMap :: !(Map.Map MyVar LogicVar)
     , psInverseFree :: !(Map.Map LogicVar MyVar)
     , psNextVar :: !MyVar
-    }
+    } deriving ()
 
 newtype P a
     = P { runP :: PState -> Either ErrMsg (a, PState) }
+    deriving ()
 
 instance Functor P where
     fmap f (P g) = P $ \s -> case g s of
@@ -97,7 +88,6 @@ instance Applicative P where
             Right (x, s'') -> Right (h x, s'')
 
 instance Monad P where
-    return = pure
     P g >>= k = P $ \s -> case g s of
         Left e -> Left e
         Right (a, s') -> runP (k a) s'
@@ -141,11 +131,11 @@ literal lit = do
 mustLiteral :: String -> P ()
 mustLiteral lit = do
     ok <- literal lit
-    if ok
-        then return ()
-        else do
-            inp <- getInput
-            throwP ("expected " ++ shows lit (", got: " ++ shows (take 20 inp) ""))
+    if ok then
+        return ()
+    else do
+        inp <- getInput
+        throwP ("expected " ++ shows lit (", got: " ++ shows (take 20 inp) ""))
 
 isIdentStart :: Char -> Bool
 isIdentStart c = (c >= 'A' && c <= 'Z') || c == '_'
@@ -158,10 +148,11 @@ upperIdent = do
     skipWS
     inp <- getInput
     case inp of
-        (c : cs) | isIdentStart c -> do
-            let (rest, more) = span isIdentCont cs
-            setInput more
-            return (Just (c : rest))
+        (c : cs)
+            | isIdentStart c -> do
+                let (rest, more) = span isIdentCont cs
+                setInput more
+                return (Just (c : rest))
         _ -> return Nothing
 
 mustUpperIdent :: P LargeId
@@ -176,11 +167,11 @@ decimalNat = do
     skipWS
     inp <- getInput
     let (digs, rest) = span isDigit inp
-    if null digs
-        then return Nothing
-        else do
-            setInput rest
-            return (Just (read digs))
+    if null digs then
+        return Nothing
+    else do
+        setInput rest
+        return (Just (read digs))
 
 natToTermRep :: Integer -> PresburgerTermRep
 natToTermRep n
@@ -188,29 +179,26 @@ natToTermRep n
     | otherwise = Succ (natToTermRep (n - 1))
 
 resolveVar :: LargeId -> P MyVar
-resolveVar name = do
-    st <- getState
-    case lookup name (psBoundStack st) of
-        Just v -> return v
-        Nothing -> case Map.lookup name (psNameToVar st) of
-            Just lv -> reuseOrAlloc lv
-            Nothing -> do
-                let lv = LV_Named name
-                modify $ \s -> s { psNameToVar = Map.insert name lv (psNameToVar s) }
-                reuseOrAlloc lv
-    where
-    reuseOrAlloc lv = do
+resolveVar name
+    = do
         st <- getState
-        case Map.lookup lv (psInverseFree st) of
+        case lookup name (psBoundStack st) of
             Just v -> return v
-            Nothing -> do
-                let v = psNextVar st
-                modify $ \s -> s
-                    { psFreeMap = Map.insert v lv (psFreeMap s)
-                    , psInverseFree = Map.insert lv v (psInverseFree s)
-                    , psNextVar = v + 1
-                    }
-                return v
+            Nothing -> case Map.lookup name (psNameToVar st) of
+                Just lv -> reuseOrAlloc lv
+                Nothing -> do
+                    let lv = LV_Named name
+                    modify $ \s -> s { psNameToVar = Map.insert name lv (psNameToVar s) }
+                    reuseOrAlloc lv
+    where
+        reuseOrAlloc lv = do
+            st <- getState
+            case Map.lookup lv (psInverseFree st) of
+                Just v -> return v
+                Nothing -> do
+                    let v = psNextVar st
+                    modify $ \s -> s { psFreeMap = Map.insert v lv (psFreeMap s) , psInverseFree = Map.insert lv v (psInverseFree s) , psNextVar = v + 1 }
+                    return v
 
 freshBoundVar :: P MyVar
 freshBoundVar = do
@@ -228,19 +216,20 @@ withBound name v action = do
 
 
 parseArith :: P PresburgerTermRep
-parseArith = do
-    t1 <- parseArithAtom
-    parseArithRest t1
+parseArith
+    = do
+        t1 <- parseArithAtom
+        parseArithRest t1
     where
-    parseArithRest acc = do
-        skipWS
-        inp <- getInput
-        case inp of
-            ('+' : rest) -> do
-                setInput rest
-                t2 <- parseArithAtom
-                parseArithRest (Plus acc t2)
-            _ -> return acc
+        parseArithRest acc = do
+            skipWS
+            inp <- getInput
+            case inp of
+                ('+' : rest) -> do
+                    setInput rest
+                    t2 <- parseArithAtom
+                    parseArithRest (Plus acc t2)
+                _ -> return acc
 
 parseArithAtom :: P PresburgerTermRep
 parseArithAtom = do
@@ -252,15 +241,17 @@ parseArithAtom = do
             t <- parseArith
             mustLiteral ")"
             return t
-        (c : _) | isDigit c -> do
-            mn <- decimalNat
-            case mn of
-                Just n -> return (natToTermRep n)
-                Nothing -> throwP "expected decimal literal"
-        (c : _) | isIdentStart c -> do
-            name <- mustUpperIdent
-            v <- resolveVar name
-            return (IVar v)
+        (c : _)
+            | isDigit c -> do
+                mn <- decimalNat
+                case mn of
+                    Just n -> return (natToTermRep n)
+                    Nothing -> throwP "expected decimal literal"
+        (c : _)
+            | isIdentStart c -> do
+                name <- mustUpperIdent
+                v <- resolveVar name
+                return (IVar v)
         _ -> throwP ("expected arithmetic atom, got: " ++ shows (take 20 inp) "")
 
 
@@ -284,57 +275,62 @@ parseLevel0 = do
         _ -> return f1
 
 parseLevel1 :: P MyPresburgerFormulaRep
-parseLevel1 = do
-    f1 <- parseLevel2
-    rest f1
+parseLevel1
+    = do
+        f1 <- parseLevel2
+        rest f1
     where
-    rest acc = do
-        skipWS
-        inp <- getInput
-        case inp of
-            ('\\' : '/' : more) -> do
-                setInput more
-                f2 <- parseLevel2
-                rest (DisF acc f2)
-            _ -> return acc
+        rest acc = do
+            skipWS
+            inp <- getInput
+            case inp of
+                ('\\' : '/' : more) -> do
+                    setInput more
+                    f2 <- parseLevel2
+                    rest (DisF acc f2)
+                _ -> return acc
 
 parseLevel2 :: P MyPresburgerFormulaRep
-parseLevel2 = do
-    f1 <- parseLevel3
-    rest f1
+parseLevel2
+    = do
+        f1 <- parseLevel3
+        rest f1
     where
-    rest acc = do
+        rest acc = do
+            skipWS
+            inp <- getInput
+            case inp of
+                ('/' : '\\' : more) -> do
+                    setInput more
+                    f2 <- parseLevel3
+                    rest (ConF acc f2)
+                _ -> return acc
+
+parseLevel3 :: P MyPresburgerFormulaRep
+parseLevel3
+    = do
         skipWS
         inp <- getInput
         case inp of
-            ('/' : '\\' : more) -> do
-                setInput more
-                f2 <- parseLevel3
-                rest (ConF acc f2)
-            _ -> return acc
-
-parseLevel3 :: P MyPresburgerFormulaRep
-parseLevel3 = do
-    skipWS
-    inp <- getInput
-    case inp of
-        ('~' : rest) -> do
-            setInput rest
-            f <- parseLevel3
-            return (NegF f)
-        _ | keywordAt "forall" inp -> do
-            setInput (drop 6 inp)
-            parseQuantifierBody AllF
-        _ | keywordAt "exists" inp -> do
-            setInput (drop 6 inp)
-            parseQuantifierBody ExsF
-        _ -> parseLevel4
+            ('~' : rest) -> do
+                setInput rest
+                f <- parseLevel3
+                return (NegF f)
+            _
+                | keywordAt "forall" inp -> do
+                    setInput (drop 6 inp)
+                    parseQuantifierBody AllF
+            _
+                | keywordAt "exists" inp -> do
+                    setInput (drop 6 inp)
+                    parseQuantifierBody ExsF
+            _ -> parseLevel4
     where
-    keywordAt kw s =
-        kw `List.isPrefixOf` s &&
-        case drop (length kw) s of
-            [] -> True
-            (c : _) -> not (isIdentCont c)
+        keywordAt kw s =
+            kw `List.isPrefixOf` s &&
+            case drop (length kw) s of
+                [] -> True
+                (c : _) -> not (isIdentCont c)
 
 parseQuantifierBody :: (MyVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep) -> P MyPresburgerFormulaRep
 parseQuantifierBody ctor = do
@@ -400,11 +396,7 @@ parseAtomFormula = do
         _ -> throwP ("expected a relational operator, got: " ++ shows (take 20 inp) "")
 
 
-zonkPresburger
-    :: (LogicVar -> Maybe TermNode)
-    -> Map.Map MyVar LogicVar
-    -> MyPresburgerFormulaRep
-    -> MyPresburgerFormulaRep
+zonkPresburger :: (LogicVar -> Maybe TermNode) -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 zonkPresburger theta freeOf = goFormula Set.empty
     where
     goFormula bound (ValF b) = ValF b
@@ -440,19 +432,19 @@ zonkPresburger theta freeOf = goFormula Set.empty
 
 
 liftConstraint :: TermNode -> Maybe LiftResult
-liftConstraint t =
-    case runLift (liftFormula t) emptyLS of
+liftConstraint t
+    = case runLift (liftFormula t) emptyLS of
         Just (f, st) -> Just LiftResult
             { _liftedFormula = f
             , _freeOfLifted = lsFreeMap st
             }
         Nothing -> Nothing
     where
-    emptyLS = LiftState
-        { lsFreeMap = Map.empty
-        , lsInverse = Map.empty
-        , lsNextVar = theMinNumOfMyVar
-        }
+        emptyLS = LiftState
+            { lsFreeMap = Map.empty
+            , lsInverse = Map.empty
+            , lsNextVar = theMinNumOfMyVar
+            }
 
 data LiftState
     = LiftState
@@ -487,15 +479,16 @@ fail_ :: L a
 fail_ = L $ \_ -> Nothing
 
 allocL :: LogicVar -> L MyVar
-allocL lv = L $ \s -> case Map.lookup lv (lsInverse s) of
-    Just v -> Just (v, s)
-    Nothing -> Just (v, s') where
-        v = lsNextVar s
-        s' = s
-            { lsFreeMap = Map.insert v lv (lsFreeMap s)
-            , lsInverse = Map.insert lv v (lsInverse s)
-            , lsNextVar = v + 1
-            }
+allocL lv
+    = L $ \s -> case Map.lookup lv (lsInverse s) of
+        Just v -> Just (v, s)
+        Nothing -> Just (v, s') where
+            v = lsNextVar s
+            s' = s
+                { lsFreeMap = Map.insert v lv (lsFreeMap s)
+                , lsInverse = Map.insert lv v (lsInverse s)
+                , lsNextVar = v + 1
+                }
 
 liftFormula :: TermNode -> L MyPresburgerFormulaRep
 liftFormula t = case t of
@@ -558,11 +551,7 @@ scaleTermRep n t
     | otherwise = Plus t (scaleTermRep (n - 1) t)
 
 
-renumberFormula
-    :: Map.Map LogicVar MyVar
-    -> Map.Map MyVar LogicVar
-    -> MyPresburgerFormulaRep
-    -> MyPresburgerFormulaRep
+renumberFormula :: Map.Map LogicVar MyVar -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 renumberFormula shared local rep
     = fst (goFormula startFresh Map.empty rep)
     where

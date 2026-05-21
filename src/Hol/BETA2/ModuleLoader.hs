@@ -88,16 +88,10 @@ pathDerivedName root absPath = map dotSep stripped where
         | base == path = path
         | otherwise = path
 
-loadMain
-    :: UniqueM m
-    => KindEnv -> TypeEnv -> [TermNode] -> FilePath
-    -> m (Either ErrMsg LoadedModule)
+loadMain :: UniqueM m => KindEnv -> TypeEnv -> [TermNode] -> FilePath -> m (Either ErrMsg LoadedModule)
 loadMain = loadMainWithDiagnostic DiagnosticPretty
 
-loadMainWithDiagnostic
-    :: UniqueM m
-    => DiagnosticMode -> KindEnv -> TypeEnv -> [TermNode] -> FilePath
-    -> m (Either ErrMsg LoadedModule)
+loadMainWithDiagnostic :: UniqueM m => DiagnosticMode -> KindEnv -> TypeEnv -> [TermNode] -> FilePath -> m (Either ErrMsg LoadedModule)
 loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
     root <- liftIO getCurrentDirectory
     rootC <- liftIO (canonicalizePath root)
@@ -252,14 +246,7 @@ data Origins
 emptyOrigins :: Origins
 emptyOrigins = Origins Map.empty Map.empty Map.empty Map.empty Map.empty
 
-combineImport
-    :: Monad m
-    => DiagnosticMode
-    -> Maybe String
-    -> SourceLines
-    -> (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
-    -> ((SLoc, String), ModuleEnv)
-    -> Loader m (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
+combineImport :: Monad m => DiagnosticMode -> Maybe String -> SourceLines -> (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins) -> ((SLoc, String), ModuleEnv) -> Loader m (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
 combineImport mode moduleName sourceLines (k, t, n, e, o) ((iloc, iname), env) = do
     (k', oK) <- liftEither (mergeKindsStrict   mode moduleName sourceLines iloc iname (oKinds o)    k (moduleEnvKinds     env))
     (t', oT) <- liftEither (mergeTypesStrict   mode moduleName sourceLines iloc iname (oTypes o)    t (moduleEnvTypes     env))
@@ -321,11 +308,7 @@ mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new
         lookupFixity name db = lookup name (Notation.fixityList db)
         showFixity (kind, prec) = show kind ++ " " ++ show prec
 
-mergeExpStrict
-    :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String
-    -> Map.Map SmallId String -> Map.Map SmallId String
-    -> ExpansionDB -> ExpansionDB
-    -> Either ErrMsg (ExpansionDB, Map.Map SmallId String, Map.Map SmallId String)
+mergeExpStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map SmallId String -> Map.Map SmallId String -> ExpansionDB -> ExpansionDB -> Either ErrMsg (ExpansionDB, Map.Map SmallId String, Map.Map SmallId String)
 mergeExpStrict mode moduleName sourceLines iloc iname oA0 oN0 old new
     = do
         oA <- foldr stepA (Right oA0) (Notation.typeAbbrevList new)
@@ -384,12 +367,7 @@ termRepEq (RAbs _ x a) (RAbs _ y b) = x == y && termRepEq a b
 termRepEq (R_wc _) (R_wc _) = True
 termRepEq _ _ = False
 
-extractHeaderAndImports
-    :: DiagnosticMode
-    -> Maybe String
-    -> SourceLines
-    -> [DeclRep]
-    -> Either ErrMsg (Maybe (SLoc, String), [(SLoc, String)], [DeclRep])
+extractHeaderAndImports :: DiagnosticMode -> Maybe String -> SourceLines -> [DeclRep] -> Either ErrMsg (Maybe (SLoc, String), [(SLoc, String)], [DeclRep])
 extractHeaderAndImports mode moduleName sourceLines decls0
     = case decls0 of
         RModuleHeaderDecl loc n : rest -> do
