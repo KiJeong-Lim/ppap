@@ -39,3 +39,4 @@ writeExtractionLogs caseDir extraction = do
     maybe (return ()) (writeProcessLog (caseDir </> "coq" </> "coqc.log")) (eoCoqcLog extraction)
     maybe (return ()) (writeProcessLog (caseDir </> "coq" </> "ghc.log")) (eoGhcLog extraction)
     maybe (return ()) (writeProcessLog (caseDir </> "coq" </> "run.log")) (eoRunLog extraction)
+    mapM_ (\(path, logValue) -> writeProcessLog (caseDir </> "coq" </> path) logValue) (eoExtraLogs extraction)
