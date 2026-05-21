@@ -63,10 +63,9 @@ ppap = do
             | null args -> do
                 shellyM ("ppap >>= exec (TEST.main)")
                 liftIO TEST.main
-        Just ("Project", args)
-            | null args -> do
-                shellyM ("ppap >>= exec (Project.main)")
-                liftIO Project.main
+        Just ("Project", args) -> do
+            shellyM ("ppap >>= exec (Project.main" ++ extraArgs args ++ ")")
+            liftIO (Project.mainWithArgs args)
         Just (cmd, args) -> do
             shellyM ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()

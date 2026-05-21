@@ -82,7 +82,20 @@ executable ppap
     PGS.Alpha1
     PGS.LALR
     PGS.Main
+    Project.A.Artifact
+    Project.A.Fuzz.Summary
+    Project.A.Go.AST
+    Project.A.Go.Feature
+    Project.A.Go.Gen
+    Project.A.Go.Pretty
     Project.A.Main
+    Project.A.Pipeline.Config
+    Project.A.Pipeline.CoqExtraction
+    Project.A.Pipeline.NativeGo
+    Project.A.Pipeline.Runner
+    Project.A.Types
+    Project.A.Util.Json
+    Project.A.Util.Process
     Project.Main
     TEST.Main
     X.Machine
