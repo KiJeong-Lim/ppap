@@ -702,12 +702,7 @@ installPresburger = go
 
     extractString :: TermNode -> Maybe String
     extractString (NApp (NCon (DC DC_Nil) _) _ _) = Just ""
-    extractString
-        (NApp
-            (NApp
-                (NApp (NCon (DC DC_Cons) _) _typeArg _)
-                (NCon (DC (DC_ChrL c)) _) _)
-            rest _) = do
-                cs <- extractString rest
-                return (c : cs)
+    extractString (NApp (NApp (NApp (NCon (DC DC_Cons) _) _typeArg _) (NCon (DC (DC_ChrL c)) _) _) rest _) = do
+        cs <- extractString rest
+        return (c : cs)
     extractString _ = Nothing
