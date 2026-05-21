@@ -44,7 +44,8 @@ data Command
     | ModExtract ModExtractOptions
     deriving (Eq, Ord, Show)
 
-data ModExtractOptions = ModExtractOptions
+data ModExtractOptions
+    = ModExtractOptions
     { modOptWorkDir :: FilePath
     , modOptBackendRoot :: FilePath
     , modOptToolRoot :: Maybe FilePath
@@ -93,7 +94,8 @@ defaultModExtractOptions = ModExtractOptions
     , modOptOutputFile = mecOutputFile defaultModExtractConfig
     }
 
-data Options = Options
+data Options
+    = Options
     { optSeed :: Seed
     , optSize :: Size
     , optCases :: Int
@@ -405,6 +407,9 @@ shrinkReport' :: ShrinkResult -> ShowS
 shrinkReport' result = strcat
     [ strstr "original-status: " . shows (crStatus original) . nl
     , strstr "shrunk-status: " . shows (crStatus final) . nl
+    , strstr "original-objective: " . strstr (programObjectiveText (tcProgram (crTestCase original))) . nl
+    , strstr "shrunk-objective: " . strstr (programObjectiveText (tcProgram (crTestCase final))) . nl
+    , strstr "objective-drop: " . strstr (programObjectiveDeltaText (tcProgram (crTestCase original)) (tcProgram (crTestCase final))) . nl
     , strstr "original-nodes: " . shows (programNodeCount (tcProgram (crTestCase original))) . nl
     , strstr "shrunk-nodes: " . shows (programNodeCount (tcProgram (crTestCase final))) . nl
     , strstr "tested: " . shows (srTested result) . nl

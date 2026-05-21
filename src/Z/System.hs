@@ -20,6 +20,7 @@ import Data.Ratio ((%))
 
 import System.Directory
 import System.Console.Pretty
+import System.Environment
 import System.IO
 import qualified System.Time.Extra as Extra
 
@@ -176,9 +177,25 @@ shellyM = shellymain where
             (my_suffix_left, my_suffix_right) -> if null my_suffix_left then my_prefix ++ my_suffix_left ++ my_suffix_right else color Cyan (my_prefix ++ my_suffix_left) ++ my_suffix_right
     elaborate :: String -> String
     elaborate str = maybe (smallshell str) concat (foldr (const . Just) Nothing [ res | (res, "") <- unPM shellPM str ])
+    shouldPretty :: IO Bool
+    shouldPretty = do
+        ppapColor <- lookupEnv "PPAP_COLOR"
+        clicolorForce <- lookupEnv "CLICOLOR_FORCE"
+        noColor <- lookupEnv "NO_COLOR"
+        case ppapColor of
+            Just "always" -> return True
+            Just "never" -> return False
+            _ | envEnabled clicolorForce -> return True
+              | envEnabled noColor -> return False
+              | otherwise -> supportsPretty
+    envEnabled :: Maybe String -> Bool
+    envEnabled Nothing = False
+    envEnabled (Just "") = False
+    envEnabled (Just "0") = False
+    envEnabled (Just _) = True
     shellymain :: String -> ShellyT String
     shellymain msg = do
-        can_prettify <- liftIO supportsPretty
+        can_prettify <- liftIO shouldPretty
         let rendered = if can_prettify then elaborate msg else msg
         liftIO $ cout << rendered << Flush
         if not (null msg) && last msg == ' '
@@ -191,6 +208,7 @@ shellyM = shellymain where
                         liftIO (hSetBuffering stdin LineBuffering)
                         str <- liftIO getLine
                         liftIO (hSetBuffering stdin bfm)
+                        liftIO $ cout << endl << Flush
                         remember str
                         return str
             else do

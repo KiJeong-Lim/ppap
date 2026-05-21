@@ -35,8 +35,8 @@ matchCommand str
 
 ppap :: ShellyT ()
 ppap = do
-    let extraArgs [] = ""
-        extraArgs args = concat [ " --" ++ arg | arg <- args ]
+    let shownArgs [] = ""
+        shownArgs args = concat [ " " ++ show arg | arg <- args ]
     cmd <- shellyM ("ppap =<< ")
     case matchCommand cmd of
         Nothing -> do
@@ -45,7 +45,7 @@ ppap = do
         Just ("", []) -> return ()
         Just ("Hol", args)
             | args `elem` [[], ["pretty"], ["test"]] -> do
-                shellyM ("ppap >>= exec (Hol.main" ++ extraArgs args ++ ")")
+                shellyM ("ppap >>= exec (Hol.main" ++ shownArgs args ++ ")")
                 Hol.mainWithArgsM args
         Just ("Calc", args)
             | null args -> do
@@ -64,7 +64,7 @@ ppap = do
                 shellyM ("ppap >>= exec (TEST.main)")
                 liftIO TEST.main
         Just ("Project", args) -> do
-            shellyM ("ppap >>= exec (Project.main" ++ extraArgs args ++ ")")
+            shellyM ("ppap >>= exec (Project.main" ++ shownArgs args ++ ")")
             liftIO (Project.mainWithArgs args)
         Just (cmd, args) -> do
             shellyM ("ppap >>= abort (" ++ shows "unimplemented..." ")")
