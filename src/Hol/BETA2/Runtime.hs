@@ -860,17 +860,18 @@ runTransition env free_lvars = go where
             go (stack' ++ stack)
     dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf _, []) _call_id cells stack
         = go (runPresburger rep freeOf ctx cells stack)
-    dispatch ctx facts hyps level (t, ts) call_id cells stack = throwE (BadGoalGiven (foldlNApp t ts))
+    dispatch ctx facts hyps level (t, ts) call_id cells stack
+        = throwE (BadGoalGiven (foldlNApp t ts))
     applyPending :: Stack -> ExceptT KernelErr m Stack
     applyPending [] = return []
     applyPending st@((ctx, cells) : rest) = liftIO $ do
         pending <- readIORef (_PendingSubst env)
-        if Map.null (unVarBinding pending)
-            then return st
-            else do
-                writeIORef (_PendingSubst env) (VarBinding Map.empty)
-                let zonkFrame (c, cs) = (zonkLVar pending c, map (zonkLVar pending) cs)
-                return (zonkFrame (ctx, cells) : map zonkFrame rest)
+        if Map.null (unVarBinding pending) then
+            return st
+        else do
+            writeIORef (_PendingSubst env) (VarBinding Map.empty)
+            let zonkFrame (c, cs) = (zonkLVar pending c, map (zonkLVar pending) cs)
+            return (zonkFrame (ctx, cells) : map zonkFrame rest)
     go :: Stack -> ExceptT KernelErr m Satisfied
     go raw_stack = do
         stack0 <- applyPending raw_stack

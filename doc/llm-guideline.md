@@ -32,6 +32,7 @@ module Project.A.Types where
 ## 함수 배치
 
 본문이 조금이라도 길면 `=`를 다음 줄에 둔다.
+같은 이름의 여러 방정식이나 의미상 한 묶음인 자매 정의에서는, 하나라도 `=`를 다음 줄에 두면 나머지도 같이 다음 줄에 둔다.
 
 ```hs
 mainWithArgs :: [String] -> IO ()
@@ -116,6 +117,8 @@ if not (processSucceeded coqcResult) then
 else do
     ...
 ```
+
+여러 줄 `if`에서는 되도록 `if 조건 then`을 한 줄에 두고, `then`만 다음 줄에 따로 세우지 않는다.
 
 불필요하게 계층을 깊게 만들지 않는다.
 
