@@ -667,14 +667,13 @@ freeMyVarsT (PresburgerTerm _ coeffs) =
 
 
 installPresburger :: TermNode -> Either ErrMsg TermNode
-installPresburger = go
-    where
+installPresburger = go where
     placeholderSLoc :: SLoc
     placeholderSLoc = SLoc (0, 0) (0, 0)
 
     go :: TermNode -> Either ErrMsg TermNode
-    go (NApp (NCon (DC (DC_Named "presburger")) _) arg sl) =
-        case extractString arg of
+    go (NApp (NCon (DC (DC_Named "presburger")) _) arg sl)
+        = case extractString arg of
             Just src -> do
                 let litLoc = case sl of { Just l -> l; Nothing -> placeholderSLoc }
                 r <- parsePresburger litLoc src Map.empty
