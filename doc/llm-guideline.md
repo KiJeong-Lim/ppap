@@ -74,6 +74,8 @@ stringOptionMaybe key rawArgs = go (map normalizeArg rawArgs) where
 
 ## 데이터 선언
 
+`data`/`newtype` 선언에는 항상 `deriving`을 붙인다. 실제로 파생할 인스턴스가 없으면 기존 코드처럼 `deriving ()`를 둔다.
+
 레코드 생성자는 타입명 다음 줄에 둔다.
 record data type 선언에서는 `{ ... }` 블록을 생성자보다 한 단계 더 들여쓰지 않는다. `{`, `,`, `}`는 `= 생성자`와 같은 4칸 들여쓰기 기준에 맞춘다.
 
@@ -91,6 +93,7 @@ data RuntimeInput
 ```hs
 newtype Runtime a
     = Runtime { unRuntime :: ReaderT RuntimeEnv IO a }
+    deriving ()
 ```
 
 합 타입도 같은 방식으로 쓴다.
