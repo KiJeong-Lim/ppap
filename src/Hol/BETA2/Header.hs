@@ -38,9 +38,9 @@ type TypeEnv = Map.Map DataConstructor PolyType
 
 data SLoc
     = SLoc
-        { _BegPos :: SPos
-        , _EndPos :: SPos
-        }
+    { _BegPos :: SPos
+    , _EndPos :: SPos
+    }
     deriving (Eq, Ord)
 
 data Literal
@@ -64,7 +64,10 @@ data LogicalOperator
     | LO_is
     deriving (Eq, Ord)
 
-newtype DispHint = DispHint { unDispHint :: Maybe SmallId }
+newtype DispHint
+    = DispHint
+    { unDispHint :: Maybe SmallId
+    }
 
 instance Eq DispHint where
     _ == _ = True
@@ -134,11 +137,11 @@ data TermExpr dcon annot
 
 data Program term
     = Program
-        { moduleName :: String
-        , _KindDecls :: KindEnv
-        , _TypeDecls :: TypeEnv
-        , _FactDecls :: [term]
-        }
+    { moduleName :: String
+    , _KindDecls :: KindEnv
+    , _TypeDecls :: TypeEnv
+    , _FactDecls :: [term]
+    }
     deriving ()
 
 class HasSLoc a where

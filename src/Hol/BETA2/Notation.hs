@@ -54,7 +54,8 @@ data EntryKind
     | EK_Term
     deriving (Eq, Show)
 
-data FoldEntry = FoldEntry
+data FoldEntry
+    = FoldEntry
     { _feName :: !SmallId
     , _feParams :: ![LargeId]
     , _feRhs :: !TermNode             -- type RHS pre-compiled to TermNode
@@ -62,7 +63,8 @@ data FoldEntry = FoldEntry
     , _feKind :: !EntryKind
     }
 
-data NotationDB = NotationDB
+data NotationDB
+    = NotationDB
     { _fixity :: !(Map.Map SmallId (FixityKind, Precedence))
     , _entries :: ![FoldEntry]
     , _nextSeq :: !Int
@@ -255,23 +257,21 @@ matchTerm
     -> TermNode
     -> TermNode
     -> Maybe (Map.Map LargeId TermNode)
-matchTerm params tmpl cand = go tmpl cand Map.empty
-  where
+matchTerm params tmpl cand = go tmpl cand Map.empty where
     isParam (LV_Named n) = n `elem` params
     isParam _ = False
 
     go (LVar lv) c env
-        | isParam lv =
-            let LV_Named n = lv
-            in case Map.lookup n env of
-                Nothing -> Just (Map.insert n c env)
-                Just prev -> if prev == c then Just env else Nothing
+        | isParam lv
+        = case Map.lookup n env of
+            Nothing -> Just (Map.insert n c env)
+            Just prev -> if prev == c then Just env else Nothing
+        where
+            LV_Named n = lv
     go (LVar lv1) (LVar lv2) env = if lv1 == lv2 then Just env else Nothing
     go (NCon c1 _) (NCon c2 _) env = if c1 == c2 then Just env else Nothing
     go (NIdx i) (NIdx j) env = if i == j then Just env else Nothing
-    go (NApp a1 a2 _) (NApp b1 b2 _) env = do
-        env1 <- go a1 b1 env
-        go a2 b2 env1
+    go (NApp a1 a2 _) (NApp b1 b2 _) env = go a1 b1 env >>= go a2 b2
     go (NLam _ _ t1 _) (NLam _ _ t2 _) env = go t1 t2 env
     go _ _ _ = Nothing
 
@@ -282,7 +282,8 @@ firstJust (Just x : _) = Just x
 firstJust (Nothing : xs) = firstJust xs
 
 
-data ExpansionDB = ExpansionDB
+data ExpansionDB
+    = ExpansionDB
     { _typeAbbrevs :: !(Map.Map SmallId ([LargeId], TypeRep))
     , _termNotations :: !(Map.Map SmallId ([LargeId], TermRep))
     }
@@ -304,12 +305,10 @@ initialExpansionDB = addTypeAbbrevDecl "string" [] stringRhs emptyExpansionDB wh
     stringRhs = RTyApp nullLoc (RTyCon nullLoc (TC_Named "list")) (RTyCon nullLoc (TC_Named "char"))
 
 addTypeAbbrevDecl :: SmallId -> [LargeId] -> TypeRep -> ExpansionDB -> ExpansionDB
-addTypeAbbrevDecl name params body db =
-    db { _typeAbbrevs = Map.insert name (params, body) (_typeAbbrevs db) }
+addTypeAbbrevDecl name params body db = db { _typeAbbrevs = Map.insert name (params, body) (_typeAbbrevs db) }
 
 addTermNotationDecl :: SmallId -> [LargeId] -> TermRep -> ExpansionDB -> ExpansionDB
-addTermNotationDecl name params body db =
-    db { _termNotations = Map.insert name (params, body) (_termNotations db) }
+addTermNotationDecl name params body db = db { _termNotations = Map.insert name (params, body) (_termNotations db) }
 
 lookupTypeAbbrev :: SmallId -> ExpansionDB -> Maybe ([LargeId], TypeRep)
 lookupTypeAbbrev name db = Map.lookup name (_typeAbbrevs db)
@@ -354,9 +353,8 @@ freshNameAvoiding avoid base
     | not (Set.member base avoid) = base
     | otherwise = go (1 :: Int)
   where
-    go n =
-        let candidate = base ++ "_" ++ show n
-        in if Set.member candidate avoid then go (n + 1) else candidate
+    go n = if Set.member candidate avoid then go (n + 1) else candidate where
+        candidate = base ++ "_" ++ show n
 
 substTermRep :: Map.Map LargeId TermRep -> TermRep -> TermRep
 substTermRep env t = case t of

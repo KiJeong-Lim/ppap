@@ -30,11 +30,11 @@ data TermNode
     | NApp !TermNode !TermNode
     | NLam !TermNode
     | Susp
-        { getSuspBody :: !TermNode
-        , getSuspOL :: {-# UNPACK #-} !Int
-        , getSuspNL :: {-# UNPACK #-} !Int
-        , getSuspEnv :: !SuspEnv
-        }
+    { getSuspBody :: !TermNode
+    , getSuspOL :: {-# UNPACK #-} !Int
+    , getSuspNL :: {-# UNPACK #-} !Int
+    , getSuspEnv :: !SuspEnv
+    }
     deriving (Eq, Ord)
 
 data SuspItem

@@ -30,14 +30,14 @@ type HasChanged = Bool
 
 data Labeling
     = Labeling
-        { _ConLabel :: IntMap.IntMap ScopeLevel
-        , _VarLabel :: IntMap.IntMap ScopeLevel
-        , _ConTypes :: IntMap.IntMap (MonoType Int)
-        , _VarTypes :: IntMap.IntMap (MonoType Int)
-        , _NamedTypes :: Map.Map LargeId (MonoType Int)
-        , _TyVarKeys :: IntMap.IntMap ()
-        , _TypeEnv :: TypeEnv
-        }
+    { _ConLabel :: IntMap.IntMap ScopeLevel
+    , _VarLabel :: IntMap.IntMap ScopeLevel
+    , _ConTypes :: IntMap.IntMap (MonoType Int)
+    , _VarTypes :: IntMap.IntMap (MonoType Int)
+    , _NamedTypes :: Map.Map LargeId (MonoType Int)
+    , _TyVarKeys :: IntMap.IntMap ()
+    , _TypeEnv :: TypeEnv
+    }
 
 data Disagreement
     = TermNode :=?=: TermNode
@@ -45,9 +45,9 @@ data Disagreement
 
 data HopuSol
     = HopuSol
-        { _ChangedLabelingEnv :: Labeling
-        , _MostGeneralUnifier :: LogicVarSubst
-        }
+    { _ChangedLabelingEnv :: Labeling
+    , _MostGeneralUnifier :: LogicVarSubst
+    }
 
 data HopuFail
     = DownFail
@@ -60,7 +60,9 @@ data HopuFail
     deriving (Eq, Ord, Show)
 
 newtype VarBinding
-    = VarBinding { unVarBinding :: Map.Map LogicVar TermNode }
+    = VarBinding
+    { unVarBinding :: Map.Map LogicVar TermNode
+    }
     deriving (Eq, Ord, Show)
 
 class Labelable atom where

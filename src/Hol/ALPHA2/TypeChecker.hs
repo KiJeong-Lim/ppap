@@ -22,7 +22,9 @@ data TypeError
     deriving ()
 
 newtype TypeSubst
-    = TypeSubst { getTypeSubst :: Map.Map MetaTVar (MonoType Int) }
+    = TypeSubst
+    { getTypeSubst :: Map.Map MetaTVar (MonoType Int)
+    }
     deriving ()
 
 class HasMTVar a where

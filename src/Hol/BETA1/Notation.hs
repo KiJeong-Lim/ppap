@@ -51,7 +51,8 @@ data EntryKind
     | EK_Term
     deriving (Eq, Show)
 
-data FoldEntry = FoldEntry
+data FoldEntry
+    = FoldEntry
     { _feName :: !SmallId
     , _feParams :: ![LargeId]
     , _feRhs :: !TermNode             -- type RHS pre-compiled to TermNode
@@ -59,7 +60,8 @@ data FoldEntry = FoldEntry
     , _feKind :: !EntryKind
     }
 
-data NotationDB = NotationDB
+data NotationDB
+    = NotationDB
     { _fixity :: !(Map.Map SmallId (FixityKind, Precedence))
     , _entries :: ![FoldEntry]
     , _nextSeq :: !Int
@@ -269,7 +271,8 @@ firstJust (Just x : _) = Just x
 firstJust (Nothing : xs) = firstJust xs
 
 
-data ExpansionDB = ExpansionDB
+data ExpansionDB
+    = ExpansionDB
     { _typeAbbrevs :: !(Map.Map SmallId ([LargeId], TypeRep))
     , _termNotations :: !(Map.Map SmallId ([LargeId], TermRep))
     }

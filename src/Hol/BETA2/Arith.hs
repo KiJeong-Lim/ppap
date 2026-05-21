@@ -26,16 +26,16 @@ import Z.Utils (ErrMsg)
 
 data ParseResult
     = ParseResult
-        { _formula :: MyPresburgerFormulaRep
-        , _freeOfFormula :: Map.Map MyVar LogicVar
-        , _updatedEnv :: Map.Map LargeId LogicVar
-        }
+    { _formula :: MyPresburgerFormulaRep
+    , _freeOfFormula :: Map.Map MyVar LogicVar
+    , _updatedEnv :: Map.Map LargeId LogicVar
+    }
 
 data LiftResult
     = LiftResult
-        { _liftedFormula :: MyPresburgerFormulaRep
-        , _freeOfLifted :: Map.Map MyVar LogicVar
-        }
+    { _liftedFormula :: MyPresburgerFormulaRep
+    , _freeOfLifted :: Map.Map MyVar LogicVar
+    }
 
 
 parsePresburger
@@ -70,7 +70,8 @@ parsePresburger sloc src env0 =
             else throwP ("unexpected trailing input: " ++ shows (take 20 leftover) "")
 
 
-data PState = PState
+data PState
+    = PState
     { psInput :: !String
     , psNameToVar :: !(Map.Map LargeId LogicVar)
     , psBoundStack :: ![(LargeId, MyVar)]
@@ -79,7 +80,10 @@ data PState = PState
     , psNextVar :: !MyVar
     }
 
-newtype P a = P { runP :: PState -> Either ErrMsg (a, PState) }
+newtype P a
+    = P
+    { runP :: PState -> Either ErrMsg (a, PState)
+    }
 
 instance Functor P where
     fmap f (P g) = P $ \s -> case g s of
@@ -453,13 +457,17 @@ liftConstraint t =
         , lsNextVar = theMinNumOfMyVar
         }
 
-data LiftState = LiftState
+data LiftState
+    = LiftState
     { lsFreeMap :: !(Map.Map MyVar LogicVar)
     , lsInverse :: !(Map.Map LogicVar MyVar)
     , lsNextVar :: !MyVar
     }
 
-newtype L a = L { runLift :: LiftState -> Maybe (a, LiftState) }
+newtype L a
+    = L
+    { runLift :: LiftState -> Maybe (a, LiftState)
+    }
 
 instance Functor L where
     fmap f (L g) = L $ \s -> case g s of

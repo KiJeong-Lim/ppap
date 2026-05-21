@@ -31,14 +31,17 @@ data TermNode
     | NApp !TermNode !TermNode !(Maybe SLoc)
     | NLam !(Maybe SmallId) !LamType !TermNode !(Maybe SLoc)
     | Susp
-        { getSuspBody :: !TermNode
-        , getSuspOL :: {-# UNPACK #-} !Int
-        , getSuspNL :: {-# UNPACK #-} !Int
-        , getSuspEnv :: !SuspEnv
-        }
+    { getSuspBody :: !TermNode
+    , getSuspOL :: {-# UNPACK #-} !Int
+    , getSuspNL :: {-# UNPACK #-} !Int
+    , getSuspEnv :: !SuspEnv
+    }
     | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar) !(Maybe SLoc)
 
-newtype LamType = LamType { unLamType :: Maybe (MonoType Int) }
+newtype LamType
+    = LamType
+    { unLamType :: Maybe (MonoType Int)
+    }
 
 instance Eq LamType where
     _ == _ = True

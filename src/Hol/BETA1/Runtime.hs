@@ -50,40 +50,43 @@ data Constraint
 
 data Cell
     = Cell
-        { _GivenFacts :: Map.Map Constant [Fact]
-        , _GivenHypos :: [Fact]
-        , _ScopeLevel :: ScopeLevel
-        , _WantedGoal :: Goal
-        , _CellCallId :: CallId
-        }
+    { _GivenFacts :: Map.Map Constant [Fact]
+    , _GivenHypos :: [Fact]
+    , _ScopeLevel :: ScopeLevel
+    , _WantedGoal :: Goal
+    , _CellCallId :: CallId
+    }
     deriving ()
 
 data Context
     = Context
-        { _TotalVarBinding :: VarBinding
-        , _CurrentLabeling :: Labeling
-        , _LeftConstraints :: [Constraint]
-        , _ContextThreadId :: CallId
-        , _debuggindModeOn :: IORef Debugging
-        }
+    { _TotalVarBinding :: VarBinding
+    , _CurrentLabeling :: Labeling
+    , _LeftConstraints :: [Constraint]
+    , _ContextThreadId :: CallId
+    , _debuggindModeOn :: IORef Debugging
+    }
     deriving ()
 
 data RuntimeEnv
     = RuntimeEnv
-        { _PutStr :: RuntimeEnv -> Context -> String -> IO ()
-        , _Answer :: Context -> IO RunMore
-        , _TypeInfo :: Map.Map LogicVar (MonoType Int)
-        , _PendingSubst :: IORef LogicVarSubst
-        , _ProgramTypeEnv :: TypeEnv
-        , _VerboseTyping :: IORef Bool
-        , _StackRef :: IORef Stack
-        , _NameCacheRef :: IORef NameCache
-        , _DebuggingRef :: IORef Debugging
-        , _NotationDB :: NotationDB
-        }
+    { _PutStr :: RuntimeEnv -> Context -> String -> IO ()
+    , _Answer :: Context -> IO RunMore
+    , _TypeInfo :: Map.Map LogicVar (MonoType Int)
+    , _PendingSubst :: IORef LogicVarSubst
+    , _ProgramTypeEnv :: TypeEnv
+    , _VerboseTyping :: IORef Bool
+    , _StackRef :: IORef Stack
+    , _NameCacheRef :: IORef NameCache
+    , _DebuggingRef :: IORef Debugging
+    , _NotationDB :: NotationDB
+    }
     deriving ()
 
-newtype Runtime a = Runtime { unRuntime :: ReaderT RuntimeEnv IO a }
+newtype Runtime a
+    = Runtime
+    { unRuntime :: ReaderT RuntimeEnv IO a
+    }
 
 instance Functor Runtime where
     fmap f (Runtime m) = Runtime (fmap f m)
@@ -107,10 +110,10 @@ askRuntimeEnv = Runtime ask
 
 data Snapshot
     = Snapshot
-        { _SnapStack :: Stack
-        , _SnapPendingSubst :: LogicVarSubst
-        , _SnapNameCache :: NameCache
-        }
+    { _SnapStack :: Stack
+    , _SnapPendingSubst :: LogicVarSubst
+    , _SnapNameCache :: NameCache
+    }
 
 snapshot :: Runtime Snapshot
 snapshot = do

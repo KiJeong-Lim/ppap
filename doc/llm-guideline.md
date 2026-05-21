@@ -63,6 +63,7 @@ stringOptionMaybe key rawArgs = go (map normalizeArg rawArgs) where
 ## 데이터 선언
 
 레코드 생성자는 타입명 다음 줄에 둔다.
+record data type 선언에서는 `{ ... }` 블록을 생성자보다 한 단계 더 들여쓰지 않는다. `{`, `,`, `}`는 `= 생성자`와 같은 4칸 들여쓰기 기준에 맞춘다.
 
 ```hs
 data RuntimeInput
