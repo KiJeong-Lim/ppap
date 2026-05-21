@@ -13,7 +13,7 @@ module Hol.BETA2.Diagnostic
     , locBlockWith
     ) where
 
-import Hol.BETA2.Header (SLoc (..), pprintMSLoc)
+import Hol.BETA2.Header (SLoc (..))
 import qualified Z.Doc as Doc
 
 type SourceLines = Maybe [String]
@@ -34,32 +34,32 @@ diagnosticInModule :: String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc]
 diagnosticInModule = diagnosticWithModule DiagnosticPretty
 
 diagnosticWithModule :: DiagnosticMode -> String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
-diagnosticWithModule mode tag moduleName sourceLines loc body =
+diagnosticWithModule mode tag sourceName sourceLines loc body =
     render mode $ Doc.vcat
-        (Doc.text (locPrefix moduleName loc ++ ": error: [" ++ tag ++ "]") : locBlockWith mode sourceLines loc : body)
+        (diagnosticHeader "error" tag sourceName loc : locBlockWith mode sourceLines loc : body)
 
 diagnosticWarningWithModule :: DiagnosticMode -> String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
-diagnosticWarningWithModule mode tag moduleName sourceLines loc body =
+diagnosticWarningWithModule mode tag sourceName sourceLines loc body =
     render mode $ Doc.vcat
-        (Doc.text (locPrefix moduleName loc ++ ": warning: [" ++ tag ++ "]") : locBlockWith mode sourceLines loc : body)
+        (diagnosticHeader "warning" tag sourceName loc : locBlockWith mode sourceLines loc : body)
 
 diagnosticAt :: String -> Int -> Int -> [Doc.Doc] -> String
 diagnosticAt tag row col body =
     render DiagnosticPretty $ Doc.vcat
-        (Doc.text (show row ++ ":" ++ show col ++ ": error: [" ++ tag ++ "]") : locBlockWith DiagnosticPretty Nothing (SLoc (row, col) (row, col)) : body)
+        (diagnosticHeader "error" tag Nothing (SLoc (row, col) (row, col)) : locBlockWith DiagnosticPretty Nothing (SLoc (row, col) (row, col)) : body)
 
 diagnosticNoLoc :: String -> [Doc.Doc] -> String
 diagnosticNoLoc = diagnosticNoLocWith DiagnosticPretty
 
 diagnosticNoLocWith :: DiagnosticMode -> String -> [Doc.Doc] -> String
 diagnosticNoLocWith mode tag body =
-    render mode $ Doc.vcat (Doc.text ("error: [" ++ tag ++ "]") : body)
+    render mode $ Doc.vcat (severityDoc "error" <> Doc.text (" [" ++ tag ++ "]") : body)
 
 locBlock :: SourceLines -> SLoc -> Doc.Doc
 locBlock = locBlockWith DiagnosticPretty
 
 locBlockWith :: DiagnosticMode -> SourceLines -> SLoc -> Doc.Doc
-locBlockWith mode sourceLines (SLoc (row, col) _) =
+locBlockWith mode sourceLines (SLoc (row, col) (endRow, endCol)) =
     mconcat
         [ Doc.vcat [Doc.text "", colorLineNo (mconcat [Doc.text " ", Doc.ptext row, Doc.text " "]), Doc.text ""]
         , colorLineNo (Doc.beam '|')
@@ -72,8 +72,17 @@ locBlockWith mode sourceLines (SLoc (row, col) _) =
     colorCaret = case mode of
         DiagnosticPretty -> Doc.red
         DiagnosticTest -> id
-    sourceDoc = Doc.text " " <> maybe mempty Doc.text (sourceLines >>= lineAt row)
-    caretDoc = Doc.text " " <> Doc.text (replicate (max 0 (col - 1)) ' ') <> colorCaret (Doc.beam '^')
+    colorSource = case mode of
+        DiagnosticPretty -> Doc.red
+        DiagnosticTest -> id
+    focusWidth = max 1 (if row == endRow then endCol - col + 1 else 1)
+    sourceDoc = Doc.text " " <> maybe mempty highlightedLine (sourceLines >>= lineAt row)
+    caretDoc = Doc.text " " <> Doc.text (replicate (max 0 (col - 1)) ' ') <> colorCaret (Doc.textbf (replicate focusWidth '^'))
+    highlightedLine line =
+        let beforeLen = max 0 (col - 1)
+            (before, rest) = splitAt beforeLen line
+            (focus, after) = splitAt focusWidth rest
+        in Doc.text before <> colorSource (Doc.textbf focus) <> Doc.text after
     lineAt :: Int -> [String] -> Maybe String
     lineAt n xs
         | n <= 0 = Nothing
@@ -82,11 +91,19 @@ locBlockWith mode sourceLines (SLoc (row, col) _) =
             [] -> Nothing
 
 ghcLoc :: SLoc -> String
-ghcLoc (SLoc (row, col) _) = show row ++ ":" ++ show col
+ghcLoc (SLoc (row, col) (endRow, endCol)) = show row ++ ":" ++ show col ++ "-" ++ show endRow ++ ":" ++ show endCol
 
 locPrefix :: Maybe String -> SLoc -> String
 locPrefix Nothing loc = ghcLoc loc
-locPrefix moduleName loc = pprintMSLoc moduleName loc ""
+locPrefix (Just sourceName) loc = sourceName ++ ":" ++ ghcLoc loc
+
+diagnosticHeader :: String -> String -> Maybe String -> SLoc -> Doc.Doc
+diagnosticHeader severity tag sourceName loc =
+    Doc.textbf (locPrefix sourceName loc) <> Doc.text ": " <> severityDoc severity <> Doc.text (" [" ++ tag ++ "]")
+
+severityDoc :: String -> Doc.Doc
+severityDoc "error" = Doc.red (Doc.textbf "error:")
+severityDoc severity = Doc.textbf (severity ++ ":")
 
 render :: DiagnosticMode -> Doc.Doc -> String
 render DiagnosticPretty = Doc.renderDoc

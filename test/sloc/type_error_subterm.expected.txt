@@ -2,7 +2,7 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling test.sloc.type_error_subterm ( test/sloc/type_error_subterm.hol, interpreted )
-[test.sloc.type_error_subterm]:8:15-8:15: error: [HolBETA2-TypeError]
+/home/lim/Desktop/Haskell/portfolio/ppap/test/sloc/type_error_subterm.hol:8:15-8:15: error: [HolBETA2-TypeError]
    |                   
  8 | appendStr "a" 7 _.
    |               ^   

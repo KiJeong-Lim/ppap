@@ -133,7 +133,7 @@ loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
 -- Load (or fetch from cache) the file at `canonicalPath`.  `importContext`
 -- is the location of the surface `import` that requested this file (used
 -- for cycle-error attribution); `Nothing` means this is the main file.
-loadFile :: UniqueM m => FilePath -> Maybe (String, SLoc, SourceLines) -> Loader m ModuleEnv
+loadFile :: UniqueM m => FilePath -> Maybe (FilePath, SLoc, SourceLines) -> Loader m ModuleEnv
 loadFile canonicalPath importContext = do
     st <- lift State.get
     let mode = lsDiagnosticMode st
@@ -146,7 +146,7 @@ loadFile canonicalPath importContext = do
                     let cycle = reverse (mname : map fst (takeWhile ((/= mname) . fst) (lsLoading st)))
                         chain = List.intercalate " -> " (cycle ++ [mname])
                     throwE $ case importContext of
-                        Just (importerName, loc, sourceLines) -> moduleErr mode (Just importerName) sourceLines loc ("Import cycle detected: " ++ chain ++ ".")
+                        Just (importerPath, loc, sourceLines) -> moduleErr mode (Just importerPath) sourceLines loc ("Import cycle detected: " ++ chain ++ ".")
                         Nothing -> diagnosticNoLocWith mode "HolBETA2-ModuleError" [Z.Doc.text ("Import cycle detected: " ++ chain ++ ".")]
                 Nothing -> do
                     msrc <- liftIO (readFileNow canonicalPath)
@@ -155,10 +155,10 @@ loadFile canonicalPath importContext = do
                         Just src -> do
                             let sourceLines = Just (lines src)
                             case runHolLexer src of
-                                Left (row, col) -> throwE (diagnosticWithModule mode "HolBETA2-LexError" (Just mname) sourceLines (SLoc (row, col) (row, col)) [Z.Doc.text ("Lexing failed in `" ++ canonicalPath ++ "'.")])
+                                Left (row, col) -> throwE (diagnosticWithModule mode "HolBETA2-LexError" (Just canonicalPath) sourceLines (SLoc (row, col) (row, col)) [Z.Doc.text ("Lexing failed in `" ++ canonicalPath ++ "'.")])
                                 Right tokens -> case runHolParser tokens of
                                     Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("Parsing failed at EOF in `" ++ canonicalPath ++ "'.")])
-                                    Left (Just token) -> throwE (diagnosticWithModule mode "HolBETA2-ParseError" (Just mname) sourceLines (getSLoc token) [Z.Doc.text ("Parsing failed in `" ++ canonicalPath ++ "'.")])
+                                    Left (Just token) -> throwE (diagnosticWithModule mode "HolBETA2-ParseError" (Just canonicalPath) sourceLines (getSLoc token) [Z.Doc.text ("Parsing failed in `" ++ canonicalPath ++ "'.")])
                                     Right (Left _) -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("File `" ++ canonicalPath ++ "' is a query, not a program.")])
                                     Right (Right decls) -> elaborate canonicalPath mname (lines src) decls
 
@@ -170,12 +170,12 @@ elaborate :: UniqueM m => FilePath -> String -> [String] -> [DeclRep] -> Loader 
 elaborate canonicalPath mname sourceLines decls = do
     st0 <- lift State.get
     let mode = lsDiagnosticMode st0
-    (mHeader, imports, body) <- liftEither (extractHeaderAndImports mode (Just mname) (Just sourceLines) decls)
+    (mHeader, imports, body) <- liftEither (extractHeaderAndImports mode (Just canonicalPath) (Just sourceLines) decls)
     case mHeader of
         Just (loc, declared) | declared /= mname ->
-            throwE (moduleErr mode (Just mname) (Just sourceLines) loc ("Module header `" ++ declared ++ "' does not match file path-derived name `" ++ mname ++ "'."))
+            throwE (moduleErr mode (Just canonicalPath) (Just sourceLines) loc ("Module header `" ++ declared ++ "' does not match file path-derived name `" ++ mname ++ "'."))
         _ -> return ()
-    let importWarnings = duplicateImportWarnings mode mname (Just sourceLines) imports
+    let importWarnings = duplicateImportWarnings mode canonicalPath (Just sourceLines) imports
         importsUnique = uniqueImports imports
     lift (State.modify (\ s -> s { lsWarnings = reverse importWarnings ++ lsWarnings s }))
     lift (State.modify (\ s -> s { lsLoading = (mname, canonicalPath) : lsLoading s }))
@@ -187,14 +187,14 @@ elaborate canonicalPath mname sourceLines decls = do
     let initialKinds = lsInitialKinds st
         initialFacts = lsInitialFacts st
         initialTypes = lsInitialTypes st
-    (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM (combineImport mode (Just mname) (Just sourceLines))
+    (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM (combineImport mode (Just canonicalPath) (Just sourceLines))
         (initialKinds, initialTypes, Notation.initial, Notation.initialExpansionDB, emptyOrigins)
         importedEnvsWithLocs
     let importedFacts = concatMap (drop (length initialFacts) . moduleEnvFacts . snd) importedEnvsWithLocs
-    (env1, ownNotation0, ownExpansion0) <- desugarProgramWithModule mode (Just mname) (Just sourceLines) composedKinds composedTypes mname body
+    (env1, ownNotation0, ownExpansion0) <- desugarProgramWithModule mode (Just canonicalPath) (Just sourceLines) composedKinds composedTypes mname body
     let ownNotation  = mergeNotation composedNotation ownNotation0
         ownExpansion = mergeExpansion composedExpansion ownExpansion0
-    facts2 <- sequence [ checkTypeWithModule mode (Just mname) (Just sourceLines) ownNotation (_TypeDecls env1) fact mkTyO | fact <- _FactDecls env1 ]
+    facts2 <- sequence [ checkTypeWithModule mode (Just canonicalPath) (Just sourceLines) ownNotation (_TypeDecls env1) fact mkTyO | fact <- _FactDecls env1 ]
     facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
     ownFactsR <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
     let env = ModuleEnv
@@ -223,8 +223,8 @@ loadImport importerName importerPath sourceLines (importLoc, importedName) = do
     case mFound of
         Nothing -> do
             st <- lift State.get
-            throwE (moduleErr (lsDiagnosticMode st) (Just importerName) sourceLines importLoc ("Cannot resolve module `" ++ importedName ++ "' from `" ++ importerPath ++ "'."))
-        Just canonical -> loadFile canonical (Just (importerName, importLoc, sourceLines))
+            throwE (moduleErr (lsDiagnosticMode st) (Just importerPath) sourceLines importLoc ("Cannot resolve module `" ++ importedName ++ "' from `" ++ importerPath ++ "'."))
+        Just canonical -> loadFile canonical (Just (importerPath, importLoc, sourceLines))
 
 takeDir :: FilePath -> FilePath
 takeDir p = case break (== '/') (reverse p) of

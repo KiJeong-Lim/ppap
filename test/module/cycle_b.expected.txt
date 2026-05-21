@@ -2,10 +2,10 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling test.module.cycle_b ( test/module/cycle_b.hol, interpreted )
-[test.module.cycle_a]:4:1-4:27: error: [HolBETA2-ModuleError]
+/home/lim/Desktop/Haskell/portfolio/ppap/test/module/cycle_a.hol:4:1-4:27: error: [HolBETA2-ModuleError]
    |                            
  4 | import test.module.cycle_b.
-   | ^                          
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Import cycle detected: test.module.cycle_a -> test.module.cycle_b -> test.module.cycle_b.
 
 Hol =<< Hol >>= quit

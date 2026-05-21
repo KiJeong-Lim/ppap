@@ -2,10 +2,10 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling test.module.mismatched_header ( test/module/mismatched_header.hol, interpreted )
-[test.module.mismatched_header]:3:1-3:18: error: [HolBETA2-ModuleError]
+/home/lim/Desktop/Haskell/portfolio/ppap/test/module/mismatched_header.hol:3:1-3:18: error: [HolBETA2-ModuleError]
    |                   
  3 | module wrong.name.
-   | ^                 
+   | ^^^^^^^^^^^^^^^^^^
 Module header `wrong.name' does not match file path-derived name `test.module.mismatched_header'.
 
 Hol =<< Hol >>= quit

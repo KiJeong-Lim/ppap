@@ -2,10 +2,10 @@ ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
 ppap =<< ppap >>= exec (Hol.main --test)
 Hol =<< Hol> Compiling test.kind.higher_order_kind_rejected ( test/kind/higher_order_kind_rejected.hol, interpreted )
-[test.kind.higher_order_kind_rejected]:5:11-5:32: error: [HolBETA2-DesugarError]
+/home/lim/Desktop/Haskell/portfolio/ppap/test/kind/higher_order_kind_rejected.hol:5:11-5:32: error: [HolBETA2-DesugarError]
    |                                   
  5 | kind foo ((type -> type) -> type).
-   |           ^                       
+   |           ^^^^^^^^^^^^^^^^^^^^^^  
 The higher-order kind expression is not allowed.
 
 Hol =<< Hol> Ok, no module loaded.
