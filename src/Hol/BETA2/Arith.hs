@@ -618,14 +618,12 @@ renumberFormula shared local rep = fst (goFormula startFresh Map.empty rep) wher
 
 
 entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
-entails phis phi
-    = checkTruthValueOfMyPresburgerFormula eliminated == Just True
-    where
-        hyp = foldr ConF (ValF True) phis
-        body = ImpF hyp phi
-        fvs = Set.toAscList (freeMyVarsF body)
-        closed = foldr AllF body fvs
-        eliminated = eliminateQuantifierReferringToTheBookWrittenByPeterHinman closed
+entails phis phi = checkTruthValueOfMyPresburgerFormula eliminated == Just True where
+    hyp = foldr ConF (ValF True) phis
+    body = ImpF hyp phi
+    fvs = Set.toAscList (freeMyVarsF body)
+    closed = foldr AllF body fvs
+    eliminated = eliminateQuantifierReferringToTheBookWrittenByPeterHinman closed
 
 arithEntails :: [TermNode] -> TermNode -> Bool
 arithEntails hyps phi
@@ -656,8 +654,7 @@ freeMyVarsF (AllF y f1) = Set.delete y (freeMyVarsF f1)
 freeMyVarsF (ExsF y f1) = Set.delete y (freeMyVarsF f1)
 
 freeMyVarsT :: PresburgerTerm -> Set.Set MyVar
-freeMyVarsT (PresburgerTerm _ coeffs) =
-    Map.keysSet (Map.filter (/= 0) coeffs)
+freeMyVarsT (PresburgerTerm _ coeffs) = Map.keysSet (Map.filter (/= 0) coeffs)
 
 
 installPresburger :: TermNode -> Either ErrMsg TermNode
