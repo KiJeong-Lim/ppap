@@ -375,7 +375,8 @@ parseAtomFormula = do
             mustLiteral "}"
             t2 <- parseArith
             case mn of
-                Just n | n > 0 -> return (ModF t1 (fromInteger n) t2)
+                Just n
+                    | n > 0 -> return (ModF t1 (fromInteger n) t2)
                 _ -> throwP "modulus must be a positive decimal literal"
         ('=' : rest) -> do
             setInput rest
