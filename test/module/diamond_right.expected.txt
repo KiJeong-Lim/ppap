@@ -1,6 +1,9 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.module.diamond_right ( test/module/diamond_right.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.diamond_right ( test/module/diamond_right.hol, interpreted )
 test.module.diamond_right> Ok, one module loaded.
-test.module.diamond_right> Hol >>= quit
+test.module.diamond_right> 
+Hol >>= quit

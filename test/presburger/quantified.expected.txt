@@ -1,8 +1,13 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.presburger.quantified ( test/presburger/quantified.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.presburger.quantified ( test/presburger/quantified.hol, interpreted )
 test.presburger.quantified> Ok, one module loaded.
-test.presburger.quantified> test.presburger.quantified> yes.
-test.presburger.quantified> test.presburger.quantified> no.
-test.presburger.quantified> Hol >>= quit
+test.presburger.quantified> 
+test.presburger.quantified> yes.
+test.presburger.quantified> 
+test.presburger.quantified> no.
+test.presburger.quantified> 
+Hol >>= quit

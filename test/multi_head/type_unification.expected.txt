@@ -1,18 +1,33 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.multi_head.type_unification ( test/multi_head/type_unification.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.multi_head.type_unification ( test/multi_head/type_unification.hol, interpreted )
 test.multi_head.type_unification> Ok, one module loaded.
-test.multi_head.type_unification> test.multi_head.type_unification> The answer substitution is:
+test.multi_head.type_unification> 
+test.multi_head.type_unification> The answer substitution is:
 test.multi_head.type_unification> X := 7.
-test.multi_head.type_unification> Find more solutions? [Y/n] test.multi_head.type_unification> Find more solutions? [Y/n] test.multi_head.type_unification> yes.
-test.multi_head.type_unification> test.multi_head.type_unification> The answer substitution is:
+test.multi_head.type_unification> Find more solutions? [Y/n] 
+test.multi_head.type_unification> Find more solutions? [Y/n] 
+test.multi_head.type_unification> yes.
+test.multi_head.type_unification> 
+test.multi_head.type_unification> The answer substitution is:
 test.multi_head.type_unification> X := 7.
-test.multi_head.type_unification> Find more solutions? [Y/n] test.multi_head.type_unification> Find more solutions? [Y/n] test.multi_head.type_unification> yes.
-test.multi_head.type_unification> test.multi_head.type_unification> The answer substitution is:
+test.multi_head.type_unification> Find more solutions? [Y/n] 
+test.multi_head.type_unification> Find more solutions? [Y/n] 
+test.multi_head.type_unification> yes.
+test.multi_head.type_unification> 
+test.multi_head.type_unification> The answer substitution is:
 test.multi_head.type_unification> X := 7.
-test.multi_head.type_unification> Find more solutions? [Y/n] test.multi_head.type_unification> Find more solutions? [Y/n] test.multi_head.type_unification> yes.
-test.multi_head.type_unification> test.multi_head.type_unification> yes.
-test.multi_head.type_unification> test.multi_head.type_unification> no.
-test.multi_head.type_unification> test.multi_head.type_unification> no.
-test.multi_head.type_unification> Hol >>= quit
+test.multi_head.type_unification> Find more solutions? [Y/n] 
+test.multi_head.type_unification> Find more solutions? [Y/n] 
+test.multi_head.type_unification> yes.
+test.multi_head.type_unification> 
+test.multi_head.type_unification> yes.
+test.multi_head.type_unification> 
+test.multi_head.type_unification> no.
+test.multi_head.type_unification> 
+test.multi_head.type_unification> no.
+test.multi_head.type_unification> 
+Hol >>= quit

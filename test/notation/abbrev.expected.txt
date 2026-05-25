@@ -1,9 +1,15 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.notation.abbrev ( test/notation/abbrev.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.abbrev ( test/notation/abbrev.hol, interpreted )
 test.notation.abbrev> Ok, one module loaded.
-test.notation.abbrev> test.notation.abbrev> The answer substitution is:
+test.notation.abbrev> 
+test.notation.abbrev> The answer substitution is:
 test.notation.abbrev> Y := [1, 2, 3].
-test.notation.abbrev> Find more solutions? [Y/n] test.notation.abbrev> Find more solutions? [Y/n] test.notation.abbrev> yes.
-test.notation.abbrev> Hol >>= quit
+test.notation.abbrev> Find more solutions? [Y/n] 
+test.notation.abbrev> Find more solutions? [Y/n] 
+test.notation.abbrev> yes.
+test.notation.abbrev> 
+Hol >>= quit

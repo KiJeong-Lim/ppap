@@ -1,10 +1,14 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.sloc.goal_loc_in_debug ( test/sloc/goal_loc_in_debug.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.sloc.goal_loc_in_debug ( test/sloc/goal_loc_in_debug.hol, interpreted )
 test.sloc.goal_loc_in_debug> Ok, one module loaded.
-test.sloc.goal_loc_in_debug> test.sloc.goal_loc_in_debug> Debugging mode on.
-test.sloc.goal_loc_in_debug> --------------------------------
+test.sloc.goal_loc_in_debug> 
+test.sloc.goal_loc_in_debug> Debugging mode on.
+test.sloc.goal_loc_in_debug> 
+--------------------------------
 * The top of the current stack is:
     + progressings = 
         [ ?- [ |- p X ] # call_id = 11
@@ -22,7 +26,8 @@ test.sloc.goal_loc_in_debug> --------------------------------
 * The rest of the current stack is:
 --------------------------------
 
-test.sloc.goal_loc_in_debug> Press the enter key to go to next state: --------------------------------
+test.sloc.goal_loc_in_debug> Press the enter key to go to next state: 
+--------------------------------
 * The top of the current stack is:
     + progressings = 
         [ ?- [ |- q ?V_14 ] # call_id = 12
@@ -44,7 +49,8 @@ test.sloc.goal_loc_in_debug> Press the enter key to go to next state: ----------
 * The rest of the current stack is:
 --------------------------------
 
-test.sloc.goal_loc_in_debug> Press the enter key to go to next state: --------------------------------
+test.sloc.goal_loc_in_debug> Press the enter key to go to next state: 
+--------------------------------
 * The top of the current stack is:
     + progressings = 
         [ ?- [ |- true ] # call_id = 15
@@ -66,7 +72,8 @@ test.sloc.goal_loc_in_debug> Press the enter key to go to next state: ----------
 * The rest of the current stack is:
 --------------------------------
 
-test.sloc.goal_loc_in_debug> Press the enter key to go to next state: --------------------------------
+test.sloc.goal_loc_in_debug> Press the enter key to go to next state: 
+--------------------------------
 * The top of the current stack is:
     + progressings = []
     + context = Context
@@ -86,7 +93,10 @@ test.sloc.goal_loc_in_debug> Press the enter key to go to next state: ----------
 * The rest of the current stack is:
 --------------------------------
 
-test.sloc.goal_loc_in_debug> Press the enter key to go to next state: test.sloc.goal_loc_in_debug> The answer substitution is:
+test.sloc.goal_loc_in_debug> Press the enter key to go to next state: 
+test.sloc.goal_loc_in_debug> The answer substitution is:
 test.sloc.goal_loc_in_debug> X := 5.
-test.sloc.goal_loc_in_debug> Find more solutions? [Y/n] test.sloc.goal_loc_in_debug> yes.
-test.sloc.goal_loc_in_debug> Hol >>= quit
+test.sloc.goal_loc_in_debug> Find more solutions? [Y/n] 
+test.sloc.goal_loc_in_debug> yes.
+test.sloc.goal_loc_in_debug> 
+Hol >>= quit

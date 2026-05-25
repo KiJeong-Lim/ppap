@@ -1,11 +1,17 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.module.diamond_import ( test/module/diamond_import.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.diamond_import ( test/module/diamond_import.hol, interpreted )
 test.module.diamond_import> Ok, one module loaded.
-test.module.diamond_import> test.module.diamond_import> The answer substitution is:
+test.module.diamond_import> 
+test.module.diamond_import> The answer substitution is:
 test.module.diamond_import> X := 42.
-test.module.diamond_import> Find more solutions? [Y/n] test.module.diamond_import> The answer substitution is:
+test.module.diamond_import> Find more solutions? [Y/n] 
+test.module.diamond_import> The answer substitution is:
 test.module.diamond_import> X := 42.
-test.module.diamond_import> Find more solutions? [Y/n] test.module.diamond_import> yes.
-test.module.diamond_import> Hol >>= quit
+test.module.diamond_import> Find more solutions? [Y/n] 
+test.module.diamond_import> yes.
+test.module.diamond_import> 
+Hol >>= quit

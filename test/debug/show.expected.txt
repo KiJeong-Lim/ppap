@@ -1,10 +1,14 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.debug.show ( test/debug/show.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.debug.show ( test/debug/show.hol, interpreted )
 test.debug.show> Ok, one module loaded.
-test.debug.show> test.debug.show> Debugging mode on.
-test.debug.show> --------------------------------
+test.debug.show> 
+test.debug.show> Debugging mode on.
+test.debug.show> 
+--------------------------------
 * The top of the current stack is:
     + progressings = 
         [ ?- [ |- X is 3 ] # call_id = 5
@@ -22,7 +26,8 @@ test.debug.show> --------------------------------
 * The rest of the current stack is:
 --------------------------------
 
-test.debug.show> Press the enter key to go to next state: test.debug.show> *** :show: ?X = unknown variable '?X'
+test.debug.show> Press the enter key to go to next state: 
+test.debug.show> *** :show: ?X = unknown variable '?X'
 --------------------------------
 * The top of the current stack is:
     + progressings = []
@@ -41,8 +46,11 @@ test.debug.show> Press the enter key to go to next state: test.debug.show> *** :
 * The rest of the current stack is:
 --------------------------------
 
-test.debug.show> Press the enter key to go to next state: test.debug.show> *** :show: ?X = unknown variable '?X'
+test.debug.show> Press the enter key to go to next state: 
+test.debug.show> *** :show: ?X = unknown variable '?X'
 test.debug.show> The answer substitution is:
 test.debug.show> X := 3.
-test.debug.show> Find more solutions? [Y/n] test.debug.show> yes.
-test.debug.show> Hol >>= quit
+test.debug.show> Find more solutions? [Y/n] 
+test.debug.show> yes.
+test.debug.show> 
+Hol >>= quit

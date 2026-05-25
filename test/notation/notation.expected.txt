@@ -1,9 +1,15 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.notation.notation ( test/notation/notation.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.notation ( test/notation/notation.hol, interpreted )
 test.notation.notation> Ok, one module loaded.
-test.notation.notation> test.notation.notation> The answer substitution is:
+test.notation.notation> 
+test.notation.notation> The answer substitution is:
 test.notation.notation> Y := duplo 7.
-test.notation.notation> Find more solutions? [Y/n] test.notation.notation> Find more solutions? [Y/n] test.notation.notation> yes.
-test.notation.notation> Hol >>= quit
+test.notation.notation> Find more solutions? [Y/n] 
+test.notation.notation> Find more solutions? [Y/n] 
+test.notation.notation> yes.
+test.notation.notation> 
+Hol >>= quit

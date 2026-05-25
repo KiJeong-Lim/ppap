@@ -1,6 +1,9 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.sloc.install_pass_loc ( test/sloc/install_pass_loc.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.sloc.install_pass_loc ( test/sloc/install_pass_loc.hol, interpreted )
 presburger[(8,13)]: expected ")", got: "= 1"
-Hol =<< Hol >>= quit
+Hol =<< 
+Hol >>= quit

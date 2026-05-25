@@ -1,9 +1,14 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.example.einstein ( test/example/einstein.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.example.einstein ( test/example/einstein.hol, interpreted )
 test.example.einstein> Ok, one module loaded.
-test.example.einstein> test.example.einstein> The answer substitution is:
+test.example.einstein> 
+test.example.einstein> The answer substitution is:
 test.example.einstein> Houses := [house norway water dunhill cat yellow, house denmark tea blend horse blue, house england milk pallmall bird red, house german coffee prince ?V_411827 green, house sweden beer bluemaster dog white].
-test.example.einstein> Find more solutions? [Y/n] test.example.einstein> no.
-test.example.einstein> Hol >>= quit
+test.example.einstein> Find more solutions? [Y/n] 
+test.example.einstein> no.
+test.example.einstein> 
+Hol >>= quit

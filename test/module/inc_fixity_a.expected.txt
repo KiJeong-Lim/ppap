@@ -1,6 +1,9 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.module.inc_fixity_a ( test/module/inc_fixity_a.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.inc_fixity_a ( test/module/inc_fixity_a.hol, interpreted )
 test.module.inc_fixity_a> Ok, one module loaded.
-test.module.inc_fixity_a> Hol >>= quit
+test.module.inc_fixity_a> 
+Hol >>= quit
