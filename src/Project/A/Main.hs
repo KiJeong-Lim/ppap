@@ -268,7 +268,7 @@ runReplay options
 
 runShrink :: Options -> IO ()
 runShrink options
-    = withStoredSeed "shrink" options $ \caseDir stored -> do
+    = withStoredSeed "shrink" options $ \caseDir -> \stored -> do
         let workDir = shrinkWorkDir options caseDir
         resetDirectory workDir
         let config = defaultRunConfig { cfgWorkDir = workDir }
@@ -337,7 +337,7 @@ applyModExtractEnv options = do
     let derivedBackendRoot = deriveBackendRoot toolRoot backendRoot
     let derivedOpamEnvDir = deriveOpamEnvDir toolRoot opamEnvDir
     let derivedCoqProjectFiles = deriveCoqProjectFiles toolRoot coqProjectFiles
-    return options
+    return $ options
         { modOptWorkDir = workDir
         , modOptBackendRoot = derivedBackendRoot
         , modOptToolRoot = toolRoot

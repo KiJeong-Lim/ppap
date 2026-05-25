@@ -31,11 +31,12 @@ prepareCaseDirectory workDir caseId = do
     return dir
 
 copyDirectoryTree :: FilePath -> FilePath -> IO ()
-copyDirectoryTree src dst = do
-    resetPath dst
-    createDirectoryIfMissing True dst
-    entries <- listDirectory src
-    mapM_ copyEntry entries
+copyDirectoryTree src dst
+    = do
+        resetPath dst
+        createDirectoryIfMissing True dst
+        entries <- listDirectory src
+        mapM_ copyEntry entries
     where
         copyEntry "go-cache" = return ()
         copyEntry name = do
