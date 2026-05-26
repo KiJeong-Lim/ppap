@@ -103,7 +103,7 @@ Examples live under `example/*.hol` and `test/**/*.hol`.
 cabal run -v0 ppap
 # then:
 # ppap =<< Hol
-# Hol =<< example/stlc
+# Hol =<< example/stlc.hol
 # example.stlc> ?- infer (anno (lam x\ x) (fn A A)) T.
 ```
 
