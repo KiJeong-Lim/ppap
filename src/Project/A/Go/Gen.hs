@@ -65,13 +65,12 @@ genStmt env depth = do
         0 -> genAssign env depth
         1 -> genIf env depth
         2 -> genFor env depth
-        3 -> genShadowBlock env depth
         _ -> genPrint env depth
 
 chooseStmtKind :: Env -> Int -> State GenState Int
 chooseStmtKind env depth = do
     let assignChoices = if null env then [] else [0, 0, 0]
-    let recursiveChoices = if depth <= 1 then [] else [1, 2, 3]
+    let recursiveChoices = if depth <= 1 then [] else [1, 2]
     chooseFrom 4 (assignChoices ++ recursiveChoices ++ [4, 4])
 
 genAssign :: Env -> Int -> State GenState Stmt
@@ -92,7 +91,6 @@ genBranchStmt env depth = do
     kind <- chooseFrom 0 [0, 0, 1, 2]
     case kind of
         0 -> genAssign env depth
-        1 -> genShadowBlock env depth
         _ -> genPrint env depth
 
 genFor :: Env -> Int -> State GenState Stmt
@@ -103,12 +101,6 @@ genFor env _ = do
     let loopVar = EVar TInt loopName
     let targetVar = EVar TInt target
     return (SForBounded loopName bound [SAssign target (EAdd targetVar loopVar)])
-
-genShadowBlock :: Env -> Int -> State GenState Stmt
-genShadowBlock env depth = do
-    (ty, name) <- chooseFrom (TInt, "x") env
-    expr <- genExpr env ty (depth - 1)
-    return (SBlock [SVar ty name expr, SPrintln [EVar ty name]])
 
 genPrint :: Env -> Int -> State GenState Stmt
 genPrint env depth = do

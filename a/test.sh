@@ -82,4 +82,4 @@ printf 'Project --shrink --case-dir=.project-a-test-work/objective/cases/000001\
 
 test -f "$objective_workdir/cases/000001/shrunk/report.txt"
 test -f "$objective_workdir/regressions/000001/report.txt"
-grep -q 'objective-drop: nodes 148 -> 3, repr 2299 -> 30' "$objective_workdir/cases/000001/shrunk/report.txt"
+grep -q 'objective-drop: nodes 203 -> 3, repr 2780 -> 30' "$objective_workdir/cases/000001/shrunk/report.txt"

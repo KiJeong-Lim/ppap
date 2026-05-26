@@ -31,14 +31,14 @@ shrinkStmt stmt
         SDerefAssign target expr -> [SDerefAssign target expr' | expr' <- shrinkExprAs (exprTy expr) expr]
         SBlock stmts -> blockReplacements stmts ++ [SBlock stmts' | stmts' <- shrinkStmtList stmts]
         SIf cond thn els -> concat
-            [ [SBlock thn, SBlock els]
+            [ blockReplacements thn ++ blockReplacements els
             , [SIf (EBool True) thn els, SIf (EBool False) thn els]
             , [SIf cond' thn els | cond' <- shrinkExprAs TBool cond]
             , [SIf cond thn' els | thn' <- shrinkStmtList thn]
             , [SIf cond thn els' | els' <- shrinkStmtList els]
             ]
         SForBounded name bound body -> concat
-            [ [SBlock body]
+            [ blockReplacements body
             , [SForBounded name bound' body | bound' <- shrinkBound bound]
             , [SForBounded name bound body' | body' <- shrinkStmtList body]
             ]
