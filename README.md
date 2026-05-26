@@ -1,6 +1,6 @@
 # ppap
 
-Projects Pouring All Power.
+> Projects Pouring All Power.
 
 `ppap` is a collection of Haskell research and experiment projects packaged behind one executable. The public-facing documentation focuses on the logic programming interpreter, lexer/parser generators, and calculation experiments.
 
