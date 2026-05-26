@@ -21,6 +21,11 @@ test -f "$workdir/cases/000001/native/build.log"
 test -f "$workdir/failures/000001/result.json"
 test -f "$workdir/failures/000001/score.json"
 
+a/randomgen.sh --cases=2 --seed=100 --size=4 --no-build > "$workdir/randomgen.out"
+grep -q '^// randomgen case 1, seed=100, size=4$' "$workdir/randomgen.out"
+grep -q '^// randomgen case 2, seed=101, size=4$' "$workdir/randomgen.out"
+test "$(grep -c '^package main$' "$workdir/randomgen.out")" -eq 2
+
 printf 'Project --fuzz --cases=3 --seed=10 --size=3 --workdir=.project-a-test-work\n\n' \
   | env -u PROJECT_A_TRANSLATOR cabal run -v0 ppap
 

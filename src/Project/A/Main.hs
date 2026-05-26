@@ -34,6 +34,7 @@ mainWithArgs args
         Help -> putStr helpText
         One options -> runOne options
         Fuzz options -> runFuzz options
+        PrintGo options -> runPrintGo options
         Search options -> runSearch options
         Replay options -> runReplay options
         Shrink options -> runShrink options
@@ -43,6 +44,7 @@ data Command
     = Help
     | One Options
     | Fuzz Options
+    | PrintGo Options
     | Search Options
     | Replay Options
     | Shrink Options
@@ -119,6 +121,7 @@ parseCommand rawArgs
         "help" : _ -> Help
         "one" : rest -> One (parseOptions rest)
         "fuzz" : rest -> Fuzz (parseOptions rest)
+        "print-go" : rest -> PrintGo (parseOptions rest)
         "search" : rest -> Search (parseOptions rest)
         "replay" : rest -> Replay (parseOptions rest)
         "shrink" : rest -> Shrink (parseOptions rest)
@@ -226,6 +229,14 @@ runFuzz options
             report <- runGeneratedCase config caseId seed (optSize options)
             putStrLn (show caseId ++ ": " ++ show (crStatus report) ++ " " ++ scoreSummary (scoreOfReport report) ++ " " ++ crCaseDir report)
             return (addReport summary report)
+
+runPrintGo :: Options -> IO ()
+runPrintGo options = mapM_ printCase [1 .. optCases options] where
+    printCase caseId = do
+        let seed = optSeed options + caseId - 1
+        putStrLn ("// randomgen case " ++ show caseId ++ ", seed=" ++ show seed ++ ", size=" ++ show (optSize options))
+        putStr (prettyProgram (genProgram seed (optSize options)))
+        when (caseId < optCases options) (putStrLn "")
 
 runSearch :: Options -> IO ()
 runSearch options
@@ -481,6 +492,7 @@ helpText' = strcat
     , strstr "Commands:" . nl
     , strstr "  one  --seed=N --size=N --workdir=DIR" . nl
     , strstr "  fuzz --cases=N --seed=N --size=N --workdir=DIR" . nl
+    , strstr "  print-go --cases=N --seed=N --size=N" . nl
     , strstr "  search --cases=N --seed=N --size=N --workdir=DIR" . nl
     , strstr "  replay --case-dir=DIR [--workdir=DIR]" . nl
     , strstr "  shrink --case-dir=DIR [--workdir=DIR]" . nl
