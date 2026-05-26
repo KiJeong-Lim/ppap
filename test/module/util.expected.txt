@@ -1,6 +1,9 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.module.util ( test/module/util.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.util ( test/module/util.hol, interpreted )
 test.module.util> Ok, one module loaded.
-test.module.util> Hol >>= quit
+test.module.util> 
+Hol >>= quit

@@ -1,8 +1,10 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.sloc.type_error_subterm ( test/sloc/type_error_subterm.hol, interpreted )
-/home/lim/Desktop/Haskell/portfolio/ppap/test/sloc/type_error_subterm.hol:8:15-8:15: error: [HolBETA2-TypeError]
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.sloc.type_error_subterm ( test/sloc/type_error_subterm.hol, interpreted )
+/home/lim/portfolio/ppap/test/sloc/type_error_subterm.hol:8:15-8:15: error: [HolBETA2-TypeError]
    |                   
  8 | appendStr "a" 7 _.
    |               ^   
@@ -11,4 +13,5 @@ Couldn't match expected type `nat -> myStr -> o'
 Relevant equation: `string' ~ `nat'
 Reason: the two types are not unifiable.
 
-Hol =<< Hol >>= quit
+Hol =<< 
+Hol >>= quit

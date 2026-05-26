@@ -1,11 +1,16 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.example.lbeta ( test/example/lbeta.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.example.lbeta ( test/example/lbeta.hol, interpreted )
 test.example.lbeta> Ok, one module loaded.
-test.example.lbeta> test.example.lbeta> The answer substitution is:
+test.example.lbeta> 
+test.example.lbeta> The answer substitution is:
 test.example.lbeta> X := c\ f (?V_58 c) (?V_59 c c).
 test.example.lbeta> Y := c\ d\ ?V_58 c.
 test.example.lbeta> Z := ?V_59.
-test.example.lbeta> Find more solutions? [Y/n] test.example.lbeta> yes.
-test.example.lbeta> Hol >>= quit
+test.example.lbeta> Find more solutions? [Y/n] 
+test.example.lbeta> yes.
+test.example.lbeta> 
+Hol >>= quit

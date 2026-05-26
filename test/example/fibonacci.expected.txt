@@ -1,13 +1,20 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.example.fibonacci ( test/example/fibonacci.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.example.fibonacci ( test/example/fibonacci.hol, interpreted )
 test.example.fibonacci> Ok, one module loaded.
-test.example.fibonacci> test.example.fibonacci> The answer substitution is:
+test.example.fibonacci> 
+test.example.fibonacci> The answer substitution is:
 test.example.fibonacci> N := 12.
-test.example.fibonacci> Find more solutions? [Y/n] test.example.fibonacci> The answer substitution is:
+test.example.fibonacci> Find more solutions? [Y/n] 
+test.example.fibonacci> The answer substitution is:
 test.example.fibonacci> N := 1.
-test.example.fibonacci> Find more solutions? [Y/n] test.example.fibonacci> The answer substitution is:
+test.example.fibonacci> Find more solutions? [Y/n] 
+test.example.fibonacci> The answer substitution is:
 test.example.fibonacci> N := 0.
-test.example.fibonacci> Find more solutions? [Y/n] test.example.fibonacci> no.
-test.example.fibonacci> Hol >>= quit
+test.example.fibonacci> Find more solutions? [Y/n] 
+test.example.fibonacci> no.
+test.example.fibonacci> 
+Hol >>= quit

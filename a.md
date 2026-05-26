@@ -185,7 +185,7 @@ score :: TestCase -> IO Score
 score = 0      means counterexample found
 score = small  means suspicious / near miss
 score = large  means boring passing case
-score = ∞      means invalid / irrelevant case
+score = +∞     means invalid / irrelevant case
 ```
 
 중요한 방향은 property 자체가 아니라 **property violation**을 target으로 삼는 것입니다.
@@ -476,33 +476,23 @@ for i := 0; i < n; i++ {
 추천 classification:
 
 ```text
-A. Go rejected
-   -> discard
+A. Go rejected -> discard
 
-B. Go accepted, translator failed
-   -> translator completeness bug
+B. Go accepted, translator failed -> translator completeness bug
 
-C. Go accepted, translator succeeded, coqc failed
-   -> generated Coq ill-typed
-   -> translator soundness/type preservation bug
+C. Go accepted, translator succeeded, coqc failed -> generated Coq ill-typed -> translator soundness/type preservation bug
 
-D. coqc succeeded, extraction failed
-   -> extraction setup bug
+D. coqc succeeded, extraction failed -> extraction setup bug
 
-E. extraction succeeded, ghc failed
-   -> extraction/runtime Haskell integration bug
+E. extraction succeeded, ghc failed -> extraction/runtime Haskell integration bug
 
-F. both ran, obs differ
-   -> semantic mismatch bug
+F. both ran, obs differ -> semantic mismatch bug
 
-G. native timeout, extracted timeout
-   -> probably inconclusive/pass depending on policy
+G. native timeout, extracted timeout -> probably inconclusive/pass depending on policy
 
-H. native terminates, extracted timeout
-   -> semantic mismatch
+H. native terminates, extracted timeout -> semantic mismatch
 
-I. native timeout, extracted terminates
-   -> semantic mismatch or timeout threshold issue
+I. native timeout, extracted terminates -> semantic mismatch or timeout threshold issue
 ```
 
 가장 중요한 버그는 C와 F입니다.
@@ -586,18 +576,14 @@ data Score
 scoreCase :: TestCase -> IO Score
 scoreCase tc = do
   r <- runPipeline tc
-  pure $ case r of
-    InvalidGo -> Irrelevant
-
-    TranslatorFailed -> FoundCounterexample TranslatorCrash
-
-    CoqFailed -> FoundCounterexample IllTypedCoq
-
-    HaskellCompileFailed -> FoundCounterexample BadExtraction
-
+  case r of
+    InvalidGo -> pure $ Irrelevant
+    TranslatorFailed -> pure $ FoundCounterexample TranslatorCrash
+    CoqFailed -> pure $ FoundCounterexample IllTypedCoq
+    HaskellCompileFailed -> pure $ FoundCounterexample BadExtraction
     Ran obsGo obsHs
-      | obsGo /= obsHs -> FoundCounterexample (ObsMismatch obsGo obsHs)
-      | otherwise -> Score (interestingness tc obsGo obsHs)
+      | obsGo /= obsHs -> pure $ FoundCounterexample (ObsMismatch obsGo obsHs)
+      | otherwise -> pure $ Score (interestingness tc obsGo obsHs)
 ```
 
 여기서 `interestingness`를 잘 설계해야 합니다.
@@ -606,10 +592,7 @@ scoreCase tc = do
 
 ```hs
 interestingness :: TestCase -> Obs -> Obs -> Double
-interestingness tc obsGo obsHs =
-    branchDistance tc
-  + coveragePenalty tc
-  + simplicityPenalty tc
+interestingness tc obsGo obsHs = branchDistance tc + coveragePenalty tc + simplicityPenalty tc
 ```
 
 하지만 주의할 점이 있습니다.
@@ -703,9 +686,7 @@ loop corpus = do
       small <- shrinkCase child
       saveFailure small fail
       loop corpus
-
     Irrelevant -> loop corpus
-
     Score d -> do
       let corpus' = if isInteresting d child corpus then insert child d corpus else corpus
       loop corpus'

@@ -1,10 +1,14 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.notation.typing_fold ( test/notation/typing_fold.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.typing_fold ( test/notation/typing_fold.hol, interpreted )
 test.notation.typing_fold> Ok, one module loaded.
-test.notation.typing_fold> test.notation.typing_fold> Debugging mode on.
-test.notation.typing_fold> --------------------------------
+test.notation.typing_fold> 
+test.notation.typing_fold> Debugging mode on.
+test.notation.typing_fold> 
+--------------------------------
 * The top of the current stack is:
     + progressings = 
         [ ?- [ |- p X ] # call_id = 14
@@ -22,7 +26,8 @@ test.notation.typing_fold> --------------------------------
 * The rest of the current stack is:
 --------------------------------
 
-test.notation.typing_fold> Press the enter key to go to next state: --------------------------------
+test.notation.typing_fold> Press the enter key to go to next state: 
+--------------------------------
 * The top of the current stack is:
     + progressings = 
         [ ?- [ |- true ] # call_id = 15
@@ -42,7 +47,8 @@ test.notation.typing_fold> Press the enter key to go to next state: ------------
 * The rest of the current stack is:
 --------------------------------
 
-test.notation.typing_fold> Press the enter key to go to next state: --------------------------------
+test.notation.typing_fold> Press the enter key to go to next state: 
+--------------------------------
 * The top of the current stack is:
     + progressings = []
     + context = Context
@@ -60,7 +66,10 @@ test.notation.typing_fold> Press the enter key to go to next state: ------------
 * The rest of the current stack is:
 --------------------------------
 
-test.notation.typing_fold> Press the enter key to go to next state: test.notation.typing_fold> The answer substitution is:
+test.notation.typing_fold> Press the enter key to go to next state: 
+test.notation.typing_fold> The answer substitution is:
 test.notation.typing_fold> X := [1, 2, 3].
-test.notation.typing_fold> Find more solutions? [Y/n] test.notation.typing_fold> yes.
-test.notation.typing_fold> Hol >>= quit
+test.notation.typing_fold> Find more solutions? [Y/n] 
+test.notation.typing_fold> yes.
+test.notation.typing_fold> 
+Hol >>= quit

@@ -40,14 +40,14 @@ runConfiguredTranslator config caseDir input commandLine
             let timeouts = cfgTimeouts config
             translatorResult <- runTimedProcess (timeoutTranslator timeouts) (Just caseDir) [] command (baseArgs ++ ["gofile.go"]) ""
             let translatorLog = processLog translatorResult
-            if not (processSucceeded translatorResult)
-                then return (failedAfterTranslator translatorLog (TranslatorError (plStderr translatorLog ++ plStdout translatorLog)))
-                else do
-                    _ <- writeFileNow (caseDir </> "coq" </> "gofile.v") (tprStdout translatorResult)
-                    mode <- lookupEnv "PROJECT_A_EXTRACT_MODE"
-                    case mode of
-                        Just "mod" -> runModExtractionAndHaskell config caseDir input translatorLog
-                        _ -> runCoqcAndHaskell config caseDir input translatorLog
+            if not (processSucceeded translatorResult) then
+                return (failedAfterTranslator translatorLog (TranslatorError (plStderr translatorLog ++ plStdout translatorLog)))
+            else do
+                _ <- writeFileNow (caseDir </> "coq" </> "gofile.v") (tprStdout translatorResult)
+                mode <- lookupEnv "PROJECT_A_EXTRACT_MODE"
+                case mode of
+                    Just "mod" -> runModExtractionAndHaskell config caseDir input translatorLog
+                    _ -> runCoqcAndHaskell config caseDir input translatorLog
 
 runCoqcAndHaskell :: RunConfig -> FilePath -> RuntimeInput -> ProcessLog -> IO ExtractionOutcome
 runCoqcAndHaskell config caseDir input translatorLog
@@ -79,7 +79,7 @@ runModExtractionAndHaskell config caseDir input translatorLog = do
     extractConfig <- modExtractConfigFromEnv (caseDir </> "coq" </> "gofile.v")
     report <- runModExtraction config { cfgWorkDir = caseDir </> "coq" } extractConfig
     let coqcLog = merHarnessLog report
-    let extraLogs = modExtractionLogs report
+        extraLogs = modExtractionLogs report
     case merResult report of
         Left err
             | plExitCode coqcLog /= Just 0 -> return (failedAfterCoqcExtra translatorLog coqcLog extraLogs (CoqError coqcLog))
@@ -87,16 +87,17 @@ runModExtractionAndHaskell config caseDir input translatorLog = do
         Right hsFile -> runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile
 
 runExtractedHaskell :: RunConfig -> FilePath -> RuntimeInput -> ProcessLog -> ProcessLog -> [(FilePath, ProcessLog)] -> FilePath -> IO ExtractionOutcome
-runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile = do
-    let timeouts = cfgTimeouts config
-    driverFile <- writeModHaskellDriver hsFile
-    ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs driverFile) ""
-    let ghcLog = processLog ghcResult
-    if not (processSucceeded ghcResult) then
-        return (failedAfterGhcExtra translatorLog coqcLog ghcLog extraLogs (HaskellCompileError ghcLog))
-    else do
-        runResult <- runTimedProcess (timeoutExtractedRun timeouts) (Just caseDir) (riEnv input) ("." </> "coq" </> "extracted" </> "gofile-hs") (riArgs input) (riStdin input)
-        return ExtractionOutcome { eoTranslatorLog = Just translatorLog, eoCoqcLog = Just coqcLog, eoGhcLog = Just ghcLog, eoRunLog = Just (processLog runResult), eoExtraLogs = extraLogs, eoResult = Right (obsFromProcess runResult) }
+runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile
+    = do
+        let timeouts = cfgTimeouts config
+        driverFile <- writeModHaskellDriver hsFile
+        ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs driverFile) ""
+        let ghcLog = processLog ghcResult
+        if not (processSucceeded ghcResult) then
+            return (failedAfterGhcExtra translatorLog coqcLog ghcLog extraLogs (HaskellCompileError ghcLog))
+        else do
+            runResult <- runTimedProcess (timeoutExtractedRun timeouts) (Just caseDir) (riEnv input) ("." </> "coq" </> "extracted" </> "gofile-hs") (riArgs input) (riStdin input)
+            return ExtractionOutcome { eoTranslatorLog = Just translatorLog, eoCoqcLog = Just coqcLog, eoGhcLog = Just ghcLog, eoRunLog = Just (processLog runResult), eoExtraLogs = extraLogs, eoResult = Right (obsFromProcess runResult) }
     where
         ghcArgs driverFile = ["-XNoPolyKinds", "-i" ++ takeDirectory driverFile, "-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", driverFile, "-o", "coq" </> "extracted" </> "gofile-hs"]
 
@@ -230,10 +231,10 @@ modExtractConfigFromEnv coqFile = do
     argTerm <- envString "PROJECT_A_EXTRACT_ARG" (mecArgTerm defaultModExtractConfig)
     outputFile <- envString "PROJECT_A_EXTRACT_OUTPUT" (mecOutputFile defaultModExtractConfig)
     let backendRoot = maybe (deriveBackendRoot toolRoot (mecBackendRoot defaultModExtractConfig)) id backendRootEnv
-    let opamEnvDir = case opamEnvDirEnv of
+        opamEnvDir = case opamEnvDirEnv of
             Just dir -> Just dir
             Nothing -> toolRoot
-    let coqProjectFiles = case coqProjectFilesEnv of
+        coqProjectFiles = case coqProjectFilesEnv of
             Just str -> commaWords str
             Nothing -> maybe [] (\root -> [root </> "_CoqProject"]) toolRoot
     return defaultModExtractConfig

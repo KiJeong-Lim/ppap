@@ -1,10 +1,14 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.debug.assign_fail ( test/debug/assign_fail.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.debug.assign_fail ( test/debug/assign_fail.hol, interpreted )
 test.debug.assign_fail> Ok, one module loaded.
-test.debug.assign_fail> test.debug.assign_fail> Debugging mode on.
-test.debug.assign_fail> --------------------------------
+test.debug.assign_fail> 
+test.debug.assign_fail> Debugging mode on.
+test.debug.assign_fail> 
+--------------------------------
 * The top of the current stack is:
     + progressings = 
         [ ?- [ |- p X ] # call_id = 5
@@ -22,7 +26,8 @@ test.debug.assign_fail> --------------------------------
 * The rest of the current stack is:
 --------------------------------
 
-test.debug.assign_fail> Press the enter key to go to next state: test.debug.assign_fail> error: [HolBETA2-AssignError]
+test.debug.assign_fail> Press the enter key to go to next state: 
+test.debug.assign_fail> error: [HolBETA2-AssignError]
 occurs check failed for 'X'
 
 --------------------------------
@@ -61,7 +66,8 @@ occurs check failed for 'X'
 
 --------------------------------
 
-test.debug.assign_fail> Press the enter key to go to next state: --------------------------------
+test.debug.assign_fail> Press the enter key to go to next state: 
+--------------------------------
 * The top of the current stack is:
     + progressings = []
     + context = Context
@@ -95,7 +101,10 @@ test.debug.assign_fail> Press the enter key to go to next state: ---------------
 
 --------------------------------
 
-test.debug.assign_fail> Press the enter key to go to next state: test.debug.assign_fail> The answer substitution is:
+test.debug.assign_fail> Press the enter key to go to next state: 
+test.debug.assign_fail> The answer substitution is:
 test.debug.assign_fail> X := 0.
-test.debug.assign_fail> Find more solutions? [Y/n] test.debug.assign_fail> yes.
-test.debug.assign_fail> Hol >>= quit
+test.debug.assign_fail> Find more solutions? [Y/n] 
+test.debug.assign_fail> yes.
+test.debug.assign_fail> 
+Hol >>= quit

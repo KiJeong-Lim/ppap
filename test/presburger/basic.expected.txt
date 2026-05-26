@@ -1,10 +1,16 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.presburger.basic ( test/presburger/basic.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.presburger.basic ( test/presburger/basic.hol, interpreted )
 test.presburger.basic> Ok, one module loaded.
-test.presburger.basic> test.presburger.basic> The answer substitution is:
+test.presburger.basic> 
+test.presburger.basic> The answer substitution is:
 test.presburger.basic> X := 7.
-test.presburger.basic> Find more solutions? [Y/n] test.presburger.basic> yes.
-test.presburger.basic> test.presburger.basic> no.
-test.presburger.basic> Hol >>= quit
+test.presburger.basic> Find more solutions? [Y/n] 
+test.presburger.basic> yes.
+test.presburger.basic> 
+test.presburger.basic> no.
+test.presburger.basic> 
+Hol >>= quit

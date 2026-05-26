@@ -46,8 +46,8 @@ shrinkLoop config target original current seen nextId tested accepted = tryCandi
         | otherwise = do
             candidate <- runCandidate config current caseId program
             let testedNow = testedSoFar + 1
-            let seenNow = program : seenSoFar
-            let acceptedCandidate = sameFailureShape target (crStatus candidate)
+                seenNow = program : seenSoFar
+                acceptedCandidate = sameFailureShape target (crStatus candidate)
             if acceptedCandidate then do
                 putStrLn ("  shrink " ++ show (accepted + 1) ++ ": " ++ programObjectiveDeltaText currentProgram program)
                 shrinkLoop config target original candidate seenNow (caseId + 1) testedNow (accepted + 1)
@@ -70,16 +70,17 @@ programObjectiveText program = "nodes=" ++ show nodes ++ ", repr=" ++ show reprL
     (nodes, reprLength) = programMeasure program
 
 programObjectiveDeltaText :: Program -> Program -> String
-programObjectiveDeltaText old new = concat
-    [ "nodes "
-    , show oldNodes
-    , " -> "
-    , show newNodes
-    , ", repr "
-    , show oldReprLength
-    , " -> "
-    , show newReprLength
-    ]
+programObjectiveDeltaText old new
+    = concat
+        [ "nodes "
+        , show oldNodes
+        , " -> "
+        , show newNodes
+        , ", repr "
+        , show oldReprLength
+        , " -> "
+        , show newReprLength
+        ]
     where
         (oldNodes, oldReprLength) = programMeasure old
         (newNodes, newReprLength) = programMeasure new

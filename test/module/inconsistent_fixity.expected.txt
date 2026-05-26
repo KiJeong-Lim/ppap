@@ -1,11 +1,14 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.module.inconsistent_fixity ( test/module/inconsistent_fixity.hol, interpreted )
-/home/lim/Desktop/Haskell/portfolio/ppap/test/module/inconsistent_fixity.hol:5:1-5:32: error: [HolBETA2-ModuleError]
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.inconsistent_fixity ( test/module/inconsistent_fixity.hol, interpreted )
+/home/lim/portfolio/ppap/test/module/inconsistent_fixity.hol:5:1-5:32: error: [HolBETA2-ModuleError]
    |                                 
  5 | import test.module.inc_fixity_b.
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Import inconsistency (C5): `my_op' is declared by both `test.module.inc_fixity_a' and `test.module.inc_fixity_b' with disagreeing fixity. (`test.module.inc_fixity_a': FK_InfixL 5; `test.module.inc_fixity_b': FK_InfixR 6.)
 
-Hol =<< Hol >>= quit
+Hol =<< 
+Hol >>= quit

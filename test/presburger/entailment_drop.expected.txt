@@ -1,19 +1,28 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.presburger.entailment_drop ( test/presburger/entailment_drop.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.presburger.entailment_drop ( test/presburger/entailment_drop.hol, interpreted )
 test.presburger.entailment_drop> Ok, one module loaded.
-test.presburger.entailment_drop> test.presburger.entailment_drop> The remaining constraints are:
+test.presburger.entailment_drop> 
+test.presburger.entailment_drop> The remaining constraints are:
 test.presburger.entailment_drop> X > 5
 test.presburger.entailment_drop> The binding is:
-test.presburger.entailment_drop> Find more solutions? [Y/n] test.presburger.entailment_drop> yes.
-test.presburger.entailment_drop> test.presburger.entailment_drop> The remaining constraints are:
+test.presburger.entailment_drop> Find more solutions? [Y/n] 
+test.presburger.entailment_drop> yes.
+test.presburger.entailment_drop> 
+test.presburger.entailment_drop> The remaining constraints are:
 test.presburger.entailment_drop> X > 5
 test.presburger.entailment_drop> The binding is:
-test.presburger.entailment_drop> Find more solutions? [Y/n] test.presburger.entailment_drop> yes.
-test.presburger.entailment_drop> test.presburger.entailment_drop> The remaining constraints are:
+test.presburger.entailment_drop> Find more solutions? [Y/n] 
+test.presburger.entailment_drop> yes.
+test.presburger.entailment_drop> 
+test.presburger.entailment_drop> The remaining constraints are:
 test.presburger.entailment_drop> X < 10
 test.presburger.entailment_drop> X > 6
 test.presburger.entailment_drop> The binding is:
-test.presburger.entailment_drop> Find more solutions? [Y/n] test.presburger.entailment_drop> yes.
-test.presburger.entailment_drop> Hol >>= quit
+test.presburger.entailment_drop> Find more solutions? [Y/n] 
+test.presburger.entailment_drop> yes.
+test.presburger.entailment_drop> 
+Hol >>= quit

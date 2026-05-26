@@ -1,6 +1,9 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.module.leaf ( test/module/leaf.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.leaf ( test/module/leaf.hol, interpreted )
 test.module.leaf> Ok, one module loaded.
-test.module.leaf> Hol >>= quit
+test.module.leaf> 
+Hol >>= quit

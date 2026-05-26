@@ -1,9 +1,14 @@
 ppap> Copyright (c) 2021-2026, Kijeong Lim
 ppap> All rights reserved
-ppap =<< ppap >>= exec (Hol.main --test)
-Hol =<< Hol> Compiling test.module.explicit_header ( test/module/explicit_header.hol, interpreted )
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.explicit_header ( test/module/explicit_header.hol, interpreted )
 test.module.explicit_header> Ok, one module loaded.
-test.module.explicit_header> test.module.explicit_header> The answer substitution is:
+test.module.explicit_header> 
+test.module.explicit_header> The answer substitution is:
 test.module.explicit_header> X := 7.
-test.module.explicit_header> Find more solutions? [Y/n] test.module.explicit_header> yes.
-test.module.explicit_header> Hol >>= quit
+test.module.explicit_header> Find more solutions? [Y/n] 
+test.module.explicit_header> yes.
+test.module.explicit_header> 
+Hol >>= quit
