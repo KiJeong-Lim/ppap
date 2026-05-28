@@ -24,6 +24,7 @@ import Project.A.Pipeline.ModExtraction
 import Project.A.Pipeline.TestItrExtraction
 import Project.A.Pipeline.Runner
 import Project.A.Types
+import qualified Z.Doc as Doc
 import Z.Utils
 
 main :: IO ()
@@ -249,10 +250,8 @@ readMaybeInt str
 runOne :: Options -> IO ()
 runOne options = do
     report <- runGeneratedCase (configFromOptions options) 1 (optSeed options) (optSize options)
-    putStrLn ("case-dir: " ++ crCaseDir report)
-    putStrLn ("status: " ++ show (crStatus report))
-    putStrLn ("score: " ++ scoreSummary (scoreOfReport report))
-    putStrLn ("result: " ++ show (crResult report))
+    columns <- outputColumns
+    putStr (renderCaseReport columns report)
 
 runFuzz :: Options -> IO ()
 runFuzz options
@@ -310,9 +309,146 @@ runReplay options
     = withStoredSeed "replay" options $ \caseDir stored -> do
         let config = defaultRunConfig { cfgWorkDir = replayWorkDir options caseDir }
         report <- runGeneratedCase config (storedCaseId stored) (storedSeed stored) (storedSize stored)
-        putStrLn ("case-dir: " ++ crCaseDir report)
-        putStrLn ("status: " ++ show (crStatus report))
-        putStrLn ("result: " ++ show (crResult report))
+        columns <- outputColumns
+        putStr (renderCaseReport columns report)
+
+renderCaseReport :: Int -> CaseReport program -> String
+renderCaseReport columns report = unlines $
+    [ "case-dir: " ++ crCaseDir report
+    , "status: " ++ caseStatusText (crStatus report)
+    , "result: " ++ pipelineResultText (crResult report)
+    ] ++ pipelineResultDetails columns (crResult report)
+
+caseStatusText :: CaseStatus -> String
+caseStatusText CasePass = "PASS"
+caseStatusText CaseDiscard = "DISCARD"
+caseStatusText CaseInconclusive = "INCONCLUSIVE"
+caseStatusText (CaseFail failure) = "FAIL (" ++ failureText failure ++ ")"
+
+failureText :: Failure -> String
+failureText TranslatorCompletenessBug = "translator"
+failureText IllTypedGeneratedCoq = "coq"
+failureText ExtractionSetupBug = "extraction"
+failureText HaskellRuntimeIntegrationBug = "haskell-runtime-integration"
+failureText (ObservableMismatch _ _) = "observable-mismatch"
+failureText (TerminationMismatch _ _) = "termination-mismatch"
+
+pipelineResultText :: PipelineResult -> String
+pipelineResultText (InvalidGo _) = "InvalidGo"
+pipelineResultText (TranslatorError _) = "TranslatorError"
+pipelineResultText (CoqError _) = "CoqError"
+pipelineResultText (ExtractionError _) = "ExtractionError"
+pipelineResultText (HaskellCompileError _) = "HaskellCompileError"
+pipelineResultText (NativeRunError _) = "NativeRunError"
+pipelineResultText (ExtractedRunError _) = "ExtractedRunError"
+pipelineResultText (RanBoth _ _) = "RanBoth"
+
+pipelineResultDetails :: Int -> PipelineResult -> [String]
+pipelineResultDetails _ (InvalidGo logValue) =
+    [ "stage: native go build"
+    , "exit-code: " ++ maybe "-" show (plExitCode logValue)
+    ]
+pipelineResultDetails columns (TranslatorError message) =
+    [ "stage: translator"
+    , "message: " ++ oneLine (messageLimit columns) message
+    ]
+pipelineResultDetails _ (CoqError logValue) =
+    [ "stage: coqc"
+    , "exit-code: " ++ maybe "-" show (plExitCode logValue)
+    ]
+pipelineResultDetails columns (ExtractionError message) =
+    [ "stage: extraction"
+    , "message: " ++ oneLine (messageLimit columns) message
+    ]
+pipelineResultDetails _ (HaskellCompileError logValue) =
+    [ "stage: ghc"
+    , "exit-code: " ++ maybe "-" show (plExitCode logValue)
+    ]
+pipelineResultDetails columns (NativeRunError obsGo) =
+    [ "comparison:"
+    , renderObsComparison columns obsGo timeoutObs
+    ]
+pipelineResultDetails columns (ExtractedRunError obsHs) =
+    [ "comparison:"
+    , renderObsComparison columns timeoutObs obsHs
+    ]
+pipelineResultDetails columns (RanBoth obsGo obsHs) =
+    [ "comparison:"
+    , renderObsComparison columns obsGo obsHs
+    ]
+
+renderObsComparison :: Int -> Obs -> Obs -> String
+renderObsComparison columns obsGo obsHs = renderTable
+    [ ["field", "native Go", "extracted Hs"]
+    , ["termination", show (obsTermination obsGo), show (obsTermination obsHs)]
+    , ["exit-code", maybe "-" show (obsExitCode obsGo), maybe "-" show (obsExitCode obsHs)]
+    , ["timed-out", show (obsTimedOut obsGo), show (obsTimedOut obsHs)]
+    , ["stdout", oneLine stdoutLimit (show (obsStdout obsGo)), oneLine stdoutLimit (show (obsStdout obsHs))]
+    ]
+    where
+        stdoutLimit = stdoutCellLimit columns
+
+outputColumns :: IO Int
+outputColumns = do
+    explicit <- lookupEnv "PROJECT_A_OUTPUT_COLUMNS"
+    terminal <- lookupEnv "COLUMNS"
+    return (maybe defaultOutputColumns (max minimumOutputColumns) (parseColumns explicit `orElse` parseColumns terminal))
+
+defaultOutputColumns :: Int
+defaultOutputColumns = 100
+
+minimumOutputColumns :: Int
+minimumOutputColumns = 40
+
+parseColumns :: Maybe String -> Maybe Int
+parseColumns value =
+    case value >>= readMaybeInt of
+        Just n | n > 0 -> Just n
+        _ -> Nothing
+
+orElse :: Maybe a -> Maybe a -> Maybe a
+orElse (Just x) _ = Just x
+orElse Nothing y = y
+
+messageLimit :: Int -> Int
+messageLimit columns = max 20 (columns - length "message: ")
+
+stdoutCellLimit :: Int -> Int
+stdoutCellLimit columns = max minimumCellWidth ((columns - frameWidth - fieldWidth) `div` 2)
+    where
+        frameWidth = 10
+        fieldWidth = length "termination"
+        minimumCellWidth = length "extracted Hs"
+
+renderTable :: [[String]] -> String
+renderTable [] = ""
+renderTable rows@(header : body) = Doc.renderDoc (Doc.vcat ([ruleDoc, renderHeader header, ruleDoc] ++ map renderBody body ++ [ruleDoc])) where
+    widths = columnWidths rows
+    ruleDoc = Doc.text ("+" ++ intercalate "+" [replicate (width + 2) '-' | width <- widths] ++ "+")
+    renderHeader = renderRow (\width cell -> Doc.textbf (padRight width cell))
+    renderBody = renderRow (\width cell -> Doc.text (padRight width cell))
+    renderRow renderCell cells = Doc.hcat ([Doc.text "| "] ++ intersperse (Doc.text " | ") (zipWith renderCell widths cells) ++ [Doc.text " |"])
+
+columnWidths :: [[String]] -> [Int]
+columnWidths [] = []
+columnWidths rows
+    | any null rows = []
+    | otherwise = maximum (map (length . head) rows) : columnWidths (map tail rows)
+
+padRight :: Int -> String -> String
+padRight width str = str ++ replicate (max 0 (width - length str)) ' '
+
+oneLine :: Int -> String -> String
+oneLine limit str
+    | length cleaned <= limit = cleaned
+    | limit <= 3 = take limit cleaned
+    | otherwise = take (limit - 3) cleaned ++ "..."
+    where
+        cleaned = map normalize str
+        normalize '\n' = ' '
+        normalize '\r' = ' '
+        normalize '\t' = ' '
+        normalize ch = ch
 
 runShrink :: Options -> IO ()
 runShrink options
