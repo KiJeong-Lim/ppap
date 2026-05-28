@@ -23,7 +23,47 @@ Options:
 
 Runs the stage-one Project A E2E path:
   generated Go -> golanggen Coq -> Coq extraction -> Haskell execution -> comparison.
+
+After a run, the script prints the generated source and extraction artifact
+paths, including the extracted Haskell file.
 EOF
+}
+
+print_artifact() {
+  local label="$1"
+  local path="$2"
+  if [[ -f "$path" ]]; then
+    printf '  %-20s %s\n' "$label:" "$path"
+  fi
+}
+
+print_case_artifacts() {
+  local case_dir="$1"
+  if [[ ! -d "$case_dir" ]]; then
+    return 0
+  fi
+
+  printf '\nartifacts: %s\n' "$case_dir"
+  print_artifact "go" "$case_dir/gofile.go"
+  print_artifact "coq" "$case_dir/coq/gofile.v"
+  print_artifact "extracted hs" "$case_dir/coq/mod-extract/coq/extracted/ExtractedMain.hs"
+  print_artifact "hs driver" "$case_dir/coq/mod-extract/coq/extracted/Main.hs"
+  print_artifact "direct hs" "$case_dir/coq/extracted/Gofile.hs"
+  print_artifact "result" "$case_dir/result.json"
+}
+
+print_artifacts() {
+  local max_case="$cases"
+  if [[ "$mode" == "one" ]]; then
+    max_case=1
+  fi
+
+  local case_id
+  local case_dir
+  for ((case_id = 1; case_id <= max_case; case_id++)); do
+    printf -v case_dir '%s/cases/%06d' "$workdir" "$case_id"
+    print_case_artifacts "$case_dir"
+  done
 }
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -196,3 +236,4 @@ fi
 
 cd "$repo_root"
 PROJECT_A_GOLANGGEN_ROOT="$golanggen_root" a/run.sh "${run_args[@]}"
+print_artifacts
