@@ -5,6 +5,7 @@ module Project.A.Main
 
 import Control.Monad
 import Data.List
+import Data.Ord
 import System.Directory
 import System.Environment
 import System.FilePath
@@ -277,32 +278,405 @@ runPrintGo options = mapM_ printCase [1 .. optCases options] where
 runSearch :: Options -> IO ()
 runSearch options
     = do
-        (summary, _) <- foldM runStep (emptySummary, Nothing) [1 .. optCases options]
-        putStr (renderSummary summary)
+        putStrLn "search objective: lower distance is closer to the stage-one IO counterexample surface."
+        putStrLn "search milestones: print literal -> var/const -> scan(&x) -> print scanned x -> expression print -> multiple writes"
+        state <- foldM runStep emptySearchState [1 .. optCases options]
+        putStrLn ""
+        putStr (renderSearchTrajectory (reverse (ssRows state)))
+        putStrLn "note: trajectory distance is the guided IO objective; score summary below is the existing corpus/risk score."
+        putStr (renderSummary (ssSummary state))
     where
         config = configFromOptions options
 
-        runStep (summary, best) caseId = do
+        runStep state caseId = do
             let seed = optSeed options + caseId - 1
-            let program = case best of
-                    Nothing -> genProgram seed (optSize options)
-                    Just (bestProgram, _) -> mutateProgram seed bestProgram
+            let candidate = chooseSearchCandidate options state caseId seed
+            let program = scProgram candidate
             let tc0 = genTestCase caseId seed (optSize options)
             let tc = tc0 { tcProgram = program, tcSize = programNodeCount program }
             report <- runCase config tc
             let score = scoreOfReport report
-            putStrLn (show caseId ++ ": " ++ show (crStatus report) ++ " " ++ scoreSummary score ++ " " ++ crCaseDir report)
-            return (addReport summary report, updateSearchBest program score best)
+            let oldBest = ssBest state
+            let (best', action) = updateSearchBest program report oldBest
+            let row = searchTraceRow candidate report score oldBest best' action
+            putStrLn (renderSearchLiveRow row)
+            return state
+                { ssSummary = addReport (ssSummary state) report
+                , ssBest = best'
+                , ssSeen = program : ssSeen state
+                , ssRows = row : ssRows state
+                }
 
-updateSearchBest :: Program -> Score -> Maybe (Program, Int) -> Maybe (Program, Int)
-updateSearchBest program score current
-    = case score of
-        Interesting n _ -> case current of
-            Nothing -> Just (program, n)
-            Just (_, best)
-                | n < best -> Just (program, n)
-                | otherwise -> current
-        _ -> current
+data SearchState
+    = SearchState
+    { ssSummary :: Summary
+    , ssBest :: Maybe SearchBest
+    , ssSeen :: [Program]
+    , ssRows :: [SearchTraceRow]
+    } deriving (Eq, Ord, Show)
+
+data SearchBest
+    = SearchBest
+    { sbProgram :: Program
+    , sbDistance :: Int
+    , sbCaseDir :: FilePath
+    } deriving (Eq, Ord, Show)
+
+data SearchCandidate
+    = SearchCandidate
+    { scProgram :: Program
+    , scPlan :: String
+    , scDistance :: Int
+    , scMilestones :: [SearchMilestone]
+    } deriving (Eq, Ord, Show)
+
+data SearchTraceRow
+    = SearchTraceRow
+    { strCase :: Int
+    , strPlan :: String
+    , strStatus :: String
+    , strDistance :: Int
+    , strBest :: Int
+    , strDelta :: String
+    , strAction :: String
+    , strMilestones :: String
+    , strCaseDir :: FilePath
+    } deriving (Eq, Ord, Show)
+
+data SearchMilestone
+    = SearchPrintLiteral
+    | SearchVarDeclaration
+    | SearchConstAssignment
+    | SearchScanAddress
+    | SearchPrintScanned
+    | SearchExpressionPrint
+    | SearchMultipleWrites
+    deriving (Eq, Ord, Show)
+
+emptySearchState :: SearchState
+emptySearchState = SearchState { ssSummary = emptySummary, ssBest = Nothing, ssSeen = [], ssRows = [] }
+
+chooseSearchCandidate :: Options -> SearchState -> CaseId -> Seed -> SearchCandidate
+chooseSearchCandidate options state caseId seed
+    = case stageOneObjectiveCandidate caseId of
+        Just candidate -> candidate
+        Nothing -> rankedSearchCandidate plan candidates
+    where
+        plan = case ssBest state of
+            Nothing -> "fresh seed"
+            Just best -> "mutate best " ++ takeFileName (sbCaseDir best)
+
+        baseProgram = maybe (genProgram seed (optSize options)) sbProgram (ssBest state)
+
+        mutationPool = case ssBest state of
+            Nothing -> [baseProgram]
+            Just _ -> mutationCandidates seed baseProgram
+
+        unseenPool = filter (`notElem` ssSeen state) (mutationPool ++ [genProgram seed (optSize options)])
+        candidates = if null unseenPool then mutationPool else unseenPool
+
+stageOneObjectiveCandidate :: CaseId -> Maybe SearchCandidate
+stageOneObjectiveCandidate caseId
+    = case drop (caseId - 1) stageOneObjectivePrograms of
+        (plan, program) : _ -> Just (mkSearchCandidate ("objective: " ++ plan) program)
+        [] -> Nothing
+
+stageOneObjectivePrograms :: [(String, Program)]
+stageOneObjectivePrograms =
+    [ ("print literal", Program [] [SPrint [EInt 3]])
+    , ("var + const assign", Program [] [SVarZero TInt "x", SAssign "x" (EInt 3), SPrint [EVar TInt "x"]])
+    , ("scan + print x", Program [] stageOneBaseStmts)
+    , ("scan + print x+0", Program [] [SVarZero TInt "x", SAssign "x" (EInt 0), stageOneScanStmt, SPrint [EAdd (EVar TInt "x") (EInt 0)]])
+    , ("scan + expr + two writes", Program [] [SVarZero TInt "x", SAssign "x" (EInt 0), stageOneScanStmt, SPrint [EAdd (EVar TInt "x") (EInt 0)], SPrint [EInt 0]])
+    ]
+
+rankedSearchCandidate :: String -> [Program] -> SearchCandidate
+rankedSearchCandidate plan [] = mkSearchCandidate plan constantProgram
+rankedSearchCandidate plan programs = mkSearchCandidate plan (minimumBy (comparing searchProgramRank) programs)
+
+searchProgramRank :: Program -> (Int, Int, Int)
+searchProgramRank program = (searchObjectiveDistance program, staticScore, programNodeCount program)
+    where
+        staticScore = maybe 999 id (scoreValue (scoreOfProgram program))
+
+mkSearchCandidate :: String -> Program -> SearchCandidate
+mkSearchCandidate plan program = SearchCandidate
+    { scProgram = program
+    , scPlan = plan
+    , scDistance = searchObjectiveDistance program
+    , scMilestones = searchMilestones program
+    }
+
+updateSearchBest :: Program -> CaseReport Program -> Maybe SearchBest -> (Maybe SearchBest, String)
+updateSearchBest program report current
+    = case crStatus report of
+        CaseFail _ -> (Just (SearchBest program 0 (crCaseDir report)), "found counterexample")
+        _ -> case current of
+            Nothing -> (Just candidate, "new best")
+            Just best
+                | sbDistance candidate < sbDistance best -> (Just candidate, "closer")
+                | otherwise -> (current, "keep best")
+    where
+        candidate = SearchBest program (searchObjectiveDistance program) (crCaseDir report)
+
+searchTraceRow :: SearchCandidate -> CaseReport Program -> Score -> Maybe SearchBest -> Maybe SearchBest -> String -> SearchTraceRow
+searchTraceRow candidate report score oldBest newBest action = SearchTraceRow
+    { strCase = tcCaseId (crTestCase report)
+    , strPlan = scPlan candidate
+    , strStatus = searchStatusText (crStatus report)
+    , strDistance = runDistance
+    , strBest = maybe runDistance sbDistance newBest
+    , strDelta = searchDeltaText runDistance oldBest
+    , strAction = action
+    , strMilestones = searchMilestoneText (scMilestones candidate) score
+    , strCaseDir = crCaseDir report
+    }
+    where
+        runDistance = case crStatus report of
+            CaseFail _ -> 0
+            _ -> scDistance candidate
+
+searchStatusText :: CaseStatus -> String
+searchStatusText CasePass = "PASS"
+searchStatusText CaseDiscard = "DISCARD"
+searchStatusText CaseInconclusive = "INCONCLUSIVE"
+searchStatusText (CaseFail failure) = "FAIL " ++ failureText failure
+
+searchDeltaText :: Int -> Maybe SearchBest -> String
+searchDeltaText distance Nothing = "-"
+searchDeltaText distance (Just best)
+    | distance < sbDistance best = "-" ++ show (sbDistance best - distance)
+    | distance == sbDistance best = "0"
+    | otherwise = "+" ++ show (distance - sbDistance best)
+
+searchMilestoneText :: [SearchMilestone] -> Score -> String
+searchMilestoneText milestones score
+    = milestoneList milestones ++ riskSuffix score
+    where
+        riskSuffix (FoundCounterexample _) = ""
+        riskSuffix Irrelevant = ""
+        riskSuffix (Interesting _ []) = ""
+        riskSuffix (Interesting _ risks) = " risks=" ++ shortList (map show risks)
+
+milestoneList :: [SearchMilestone] -> String
+milestoneList [] = "-"
+milestoneList milestones = shortList (map searchMilestoneName milestones)
+
+searchMilestoneName :: SearchMilestone -> String
+searchMilestoneName SearchPrintLiteral = "literal-print"
+searchMilestoneName SearchVarDeclaration = "var"
+searchMilestoneName SearchConstAssignment = "const-assign"
+searchMilestoneName SearchScanAddress = "scan"
+searchMilestoneName SearchPrintScanned = "print-scanned"
+searchMilestoneName SearchExpressionPrint = "expr-print"
+searchMilestoneName SearchMultipleWrites = "multi-write"
+
+shortList :: [String] -> String
+shortList [] = "-"
+shortList xs = intercalate "," xs
+
+renderSearchLiveRow :: SearchTraceRow -> String
+renderSearchLiveRow row = concat
+    [ "case "
+    , show (strCase row)
+    , ": "
+    , strStatus row
+    , " distance="
+    , show (strDistance row)
+    , " best="
+    , show (strBest row)
+    , " delta="
+    , strDelta row
+    , " action="
+    , strAction row
+    , " plan="
+    , strPlan row
+    , " "
+    , strCaseDir row
+    ]
+
+renderSearchTrajectory :: [SearchTraceRow] -> String
+renderSearchTrajectory rows = unlines
+    [ "search trajectory:"
+    , renderTable (header : map renderRow rows)
+    , ""
+    ]
+    where
+        header = ["case", "plan", "status", "dist", "best", "delta", "action", "milestones", "case-dir"]
+        renderRow row =
+            [ show (strCase row)
+            , strPlan row
+            , strStatus row
+            , show (strDistance row)
+            , show (strBest row)
+            , strDelta row
+            , strAction row
+            , strMilestones row
+            , strCaseDir row
+            ]
+
+searchObjectiveDistance :: Program -> Int
+searchObjectiveDistance program = max 1 (missingWeight + programNodeCount program)
+    where
+        achieved = searchMilestones program
+        missingWeight = sum [ searchMilestoneWeight milestone | milestone <- allSearchMilestones, milestone `notElem` achieved ]
+
+allSearchMilestones :: [SearchMilestone]
+allSearchMilestones =
+    [ SearchPrintLiteral
+    , SearchVarDeclaration
+    , SearchConstAssignment
+    , SearchScanAddress
+    , SearchPrintScanned
+    , SearchExpressionPrint
+    , SearchMultipleWrites
+    ]
+
+searchMilestoneWeight :: SearchMilestone -> Int
+searchMilestoneWeight SearchPrintLiteral = 8
+searchMilestoneWeight SearchVarDeclaration = 13
+searchMilestoneWeight SearchConstAssignment = 13
+searchMilestoneWeight SearchScanAddress = 34
+searchMilestoneWeight SearchPrintScanned = 34
+searchMilestoneWeight SearchExpressionPrint = 21
+searchMilestoneWeight SearchMultipleWrites = 13
+
+searchMilestones :: Program -> [SearchMilestone]
+searchMilestones program = filter (`programHasMilestone` program) allSearchMilestones
+
+programHasMilestone :: SearchMilestone -> Program -> Bool
+programHasMilestone SearchPrintLiteral program = any stmtPrintsLiteral (programStatements program)
+programHasMilestone SearchVarDeclaration program = any stmtDeclaresVar (programStatements program)
+programHasMilestone SearchConstAssignment program = any stmtConstAssigns (programStatements program)
+programHasMilestone SearchScanAddress program = not (null (scannedNames program))
+programHasMilestone SearchPrintScanned program = any (stmtPrintsAnyName (scannedNames program)) (programStatements program)
+programHasMilestone SearchExpressionPrint program = any (stmtPrintsDerivedName (scannedNames program)) (programStatements program)
+programHasMilestone SearchMultipleWrites program = printWriteCount (programStatements program) >= 2
+
+programStatements :: Program -> [Stmt]
+programStatements (Program funcs stmts) = concatMap funcBody funcs ++ stmts
+
+stmtDeclaresVar :: Stmt -> Bool
+stmtDeclaresVar (SVar _ _ _) = True
+stmtDeclaresVar (SVarZero _ _) = True
+stmtDeclaresVar (SShortVar _ _ _) = True
+stmtDeclaresVar (SShortVarCall _ _ _) = True
+stmtDeclaresVar (SBlock stmts) = any stmtDeclaresVar stmts
+stmtDeclaresVar (SIf _ thn els) = any stmtDeclaresVar (thn ++ els)
+stmtDeclaresVar (SForBounded _ _ body) = any stmtDeclaresVar body
+stmtDeclaresVar _ = False
+
+stmtConstAssigns :: Stmt -> Bool
+stmtConstAssigns (SVar _ _ (EInt _)) = True
+stmtConstAssigns (SShortVar _ _ (EInt _)) = True
+stmtConstAssigns (SAssign _ (EInt _)) = True
+stmtConstAssigns (SBlock stmts) = any stmtConstAssigns stmts
+stmtConstAssigns (SIf _ thn els) = any stmtConstAssigns (thn ++ els)
+stmtConstAssigns (SForBounded _ _ body) = any stmtConstAssigns body
+stmtConstAssigns _ = False
+
+stmtPrintsLiteral :: Stmt -> Bool
+stmtPrintsLiteral (SPrint exprs) = any exprIsLiteral exprs
+stmtPrintsLiteral (SPrintln exprs) = any exprIsLiteral exprs
+stmtPrintsLiteral (SBlock stmts) = any stmtPrintsLiteral stmts
+stmtPrintsLiteral (SIf _ thn els) = any stmtPrintsLiteral (thn ++ els)
+stmtPrintsLiteral (SForBounded _ _ body) = any stmtPrintsLiteral body
+stmtPrintsLiteral _ = False
+
+exprIsLiteral :: Expr -> Bool
+exprIsLiteral (EInt _) = True
+exprIsLiteral (EBool _) = True
+exprIsLiteral (EString _) = True
+exprIsLiteral _ = False
+
+scannedNames :: Program -> [String]
+scannedNames program = nub (concatMap stmtScannedNames (programStatements program))
+
+stmtScannedNames :: Stmt -> [String]
+stmtScannedNames (SExpr expr) = exprScannedNames expr
+stmtScannedNames (SBlank expr) = exprScannedNames expr
+stmtScannedNames (SAssign _ expr) = exprScannedNames expr
+stmtScannedNames (SVar _ _ expr) = exprScannedNames expr
+stmtScannedNames (SShortVar _ _ expr) = exprScannedNames expr
+stmtScannedNames (SPrint exprs) = concatMap exprScannedNames exprs
+stmtScannedNames (SPrintln exprs) = concatMap exprScannedNames exprs
+stmtScannedNames (SBlock stmts) = concatMap stmtScannedNames stmts
+stmtScannedNames (SIf cond thn els) = exprScannedNames cond ++ concatMap stmtScannedNames (thn ++ els)
+stmtScannedNames (SForBounded _ _ body) = concatMap stmtScannedNames body
+stmtScannedNames _ = []
+
+exprScannedNames :: Expr -> [String]
+exprScannedNames (ECall _ "fmt.Scan" args) = concatMap scanArgName args
+exprScannedNames expr = concatMap exprScannedNames (exprChildren expr)
+
+scanArgName :: Expr -> [String]
+scanArgName (EAddr (EVar _ name)) = [name]
+scanArgName _ = []
+
+stmtPrintsAnyName :: [String] -> Stmt -> Bool
+stmtPrintsAnyName names (SPrint exprs) = any (exprMentionsAny names) exprs
+stmtPrintsAnyName names (SPrintln exprs) = any (exprMentionsAny names) exprs
+stmtPrintsAnyName names (SBlock stmts) = any (stmtPrintsAnyName names) stmts
+stmtPrintsAnyName names (SIf _ thn els) = any (stmtPrintsAnyName names) (thn ++ els)
+stmtPrintsAnyName names (SForBounded _ _ body) = any (stmtPrintsAnyName names) body
+stmtPrintsAnyName _ _ = False
+
+stmtPrintsDerivedName :: [String] -> Stmt -> Bool
+stmtPrintsDerivedName names (SPrint exprs) = any (exprDerivedFromAny names) exprs
+stmtPrintsDerivedName names (SPrintln exprs) = any (exprDerivedFromAny names) exprs
+stmtPrintsDerivedName names (SBlock stmts) = any (stmtPrintsDerivedName names) stmts
+stmtPrintsDerivedName names (SIf _ thn els) = any (stmtPrintsDerivedName names) (thn ++ els)
+stmtPrintsDerivedName names (SForBounded _ _ body) = any (stmtPrintsDerivedName names) body
+stmtPrintsDerivedName _ _ = False
+
+exprMentionsAny :: [String] -> Expr -> Bool
+exprMentionsAny names (EVar _ name) = name `elem` names
+exprMentionsAny names expr = any (exprMentionsAny names) (exprChildren expr)
+
+exprDerivedFromAny :: [String] -> Expr -> Bool
+exprDerivedFromAny _ (EVar _ _) = False
+exprDerivedFromAny names expr = exprMentionsAny names expr && not (exprIsPlainName names expr)
+
+exprIsPlainName :: [String] -> Expr -> Bool
+exprIsPlainName names (EVar _ name) = name `elem` names
+exprIsPlainName _ _ = False
+
+printWriteCount :: [Stmt] -> Int
+printWriteCount = sum . map stmtPrintWriteCount
+
+stmtPrintWriteCount :: Stmt -> Int
+stmtPrintWriteCount (SPrint _) = 1
+stmtPrintWriteCount (SPrintln _) = 1
+stmtPrintWriteCount (SBlock stmts) = printWriteCount stmts
+stmtPrintWriteCount (SIf _ thn els) = printWriteCount thn + printWriteCount els
+stmtPrintWriteCount (SForBounded _ _ body) = printWriteCount body
+stmtPrintWriteCount _ = 0
+
+exprChildren :: Expr -> [Expr]
+exprChildren (EAdd lhs rhs) = [lhs, rhs]
+exprChildren (ESub lhs rhs) = [lhs, rhs]
+exprChildren (EMul lhs rhs) = [lhs, rhs]
+exprChildren (EDiv lhs rhs) = [lhs, rhs]
+exprChildren (EMod lhs rhs) = [lhs, rhs]
+exprChildren (EEq lhs rhs) = [lhs, rhs]
+exprChildren (ENe lhs rhs) = [lhs, rhs]
+exprChildren (ELt lhs rhs) = [lhs, rhs]
+exprChildren (ELe lhs rhs) = [lhs, rhs]
+exprChildren (EGt lhs rhs) = [lhs, rhs]
+exprChildren (EGe lhs rhs) = [lhs, rhs]
+exprChildren (ENot arg) = [arg]
+exprChildren (EAnd lhs rhs) = [lhs, rhs]
+exprChildren (EOr lhs rhs) = [lhs, rhs]
+exprChildren (EArrayLit _ exprs) = exprs
+exprChildren (ESliceLit _ exprs) = exprs
+exprChildren (EStructLit _ fields) = map snd fields
+exprChildren (EIndex _ target index) = [target, index]
+exprChildren (EField _ target _) = [target]
+exprChildren (ELen expr) = [expr]
+exprChildren (ECall _ _ args) = args
+exprChildren (EAddr expr) = [expr]
+exprChildren (EDeref _ expr) = [expr]
+exprChildren _ = []
 
 runReplay :: Options -> IO ()
 runReplay options
