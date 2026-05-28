@@ -428,7 +428,7 @@ applyModExtractEnv options = do
 deriveBackendRoot :: Maybe FilePath -> FilePath -> FilePath
 deriveBackendRoot Nothing backendRoot = backendRoot
 deriveBackendRoot (Just toolRoot) backendRoot
-    | backendRoot == modOptBackendRoot defaultModExtractOptions = toolRoot </> "__PROJECT_A_BOOT_STACK_DIR__" </> "__PROJECT_A_BOOT_BACKEND_DIR__"
+    | backendRoot == modOptBackendRoot defaultModExtractOptions = toolRoot </> "clightplus" </> "CRIS"
     | otherwise = backendRoot
 
 deriveOpamEnvDir :: Maybe FilePath -> Maybe FilePath -> Maybe FilePath

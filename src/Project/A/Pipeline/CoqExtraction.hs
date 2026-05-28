@@ -268,7 +268,7 @@ modExtractConfigFromEnv coqFile = do
 deriveBackendRoot :: Maybe FilePath -> FilePath -> FilePath
 deriveBackendRoot Nothing backendRoot = backendRoot
 deriveBackendRoot (Just toolRoot) backendRoot
-    | backendRoot == mecBackendRoot defaultModExtractConfig = toolRoot </> "__PROJECT_A_BOOT_STACK_DIR__" </> "__PROJECT_A_BOOT_BACKEND_DIR__"
+    | backendRoot == mecBackendRoot defaultModExtractConfig = toolRoot </> "clightplus" </> "CRIS"
     | otherwise = backendRoot
 
 envString :: String -> String -> IO String

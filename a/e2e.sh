@@ -12,8 +12,8 @@ Options:
   --seed=N                Default: 1
   --size=N                Default: 0
   --workdir=DIR           Default: .project-a-e2e-work
-  --tool-root=DIR         Default: PROJECT_A_TOOL_ROOT or /home/lim/coq82000/go2c
-  --golanggen-root=DIR    Default: PROJECT_A_GOLANGGEN_ROOT or tool-root/golanggen
+  --tool-root=DIR         Default: PROJECT_A_TOOL_ROOT or default_tool_root in this script
+  --golanggen-root=DIR    Default: PROJECT_A_GOLANGGEN_ROOT or default_golanggen_root in this script
   --coqproject=FILE       Default: PROJECT_A_COQPROJECTS or tool-root/_CoqProject
   --opam-env-dir=DIR      Default: PROJECT_A_OPAM_ENV_DIR or tool-root
   --coqc=COQC             Default: PROJECT_A_COQC or coqc
@@ -27,13 +27,19 @@ EOF
 }
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Local path defaults. Edit these when your go2c/golanggen checkout lives
+# somewhere else; CLI flags and PROJECT_A_* environment variables still win.
+default_tool_root=
+default_golanggen_root=
+
 mode="${PROJECT_A_RUN_MODE:-one}"
 cases="${PROJECT_A_CASES:-1}"
 seed="${PROJECT_A_SEED:-1}"
 size="${PROJECT_A_SIZE:-0}"
 workdir="${PROJECT_A_WORKDIR:-.project-a-e2e-work}"
-tool_root="${PROJECT_A_TOOL_ROOT:-/home/lim/coq82000/go2c}"
-golanggen_root="${PROJECT_A_GOLANGGEN_ROOT:-}"
+tool_root="${PROJECT_A_TOOL_ROOT:-$default_tool_root}"
+golanggen_root="${PROJECT_A_GOLANGGEN_ROOT:-$default_golanggen_root}"
 coqproject="${PROJECT_A_COQPROJECTS:-}"
 opam_env_dir="${PROJECT_A_OPAM_ENV_DIR:-}"
 coqc_command="${PROJECT_A_COQC:-}"
