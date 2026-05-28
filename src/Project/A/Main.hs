@@ -21,6 +21,7 @@ import Project.A.Go.Pretty
 import Project.A.Go.Shrink
 import Project.A.Pipeline.Config
 import Project.A.Pipeline.ModExtraction
+import Project.A.Pipeline.TestItrExtraction
 import Project.A.Pipeline.Runner
 import Project.A.Types
 import Z.Utils
@@ -39,6 +40,7 @@ mainWithArgs args
         Replay options -> runReplay options
         Shrink options -> runShrink options
         ModExtract options -> runModExtract options
+        TestItrExtract options -> runTestItrExtract options
 
 data Command
     = Help
@@ -49,7 +51,28 @@ data Command
     | Replay Options
     | Shrink Options
     | ModExtract ModExtractOptions
+    | TestItrExtract TestItrExtractOptions
     deriving (Eq, Ord, Show)
+
+data TestItrExtractOptions
+    = TestItrExtractOptions
+    { testItrOptModOptions :: ModExtractOptions
+    , testItrOptTerm :: String
+    , testItrOptGhcCommand :: FilePath
+    , testItrOptBinaryFile :: FilePath
+    } deriving (Eq, Ord, Show)
+
+defaultTestItrExtractOptions :: TestItrExtractOptions
+defaultTestItrExtractOptions = TestItrExtractOptions
+    { testItrOptModOptions = defaultModExtractOptions
+        { modOptWorkDir = ".project-a-test-itr-extract"
+        , modOptModTerm = ""
+        , modOptOutputFile = "ExtractedMain.hs"
+        }
+    , testItrOptTerm = tieTerm defaultTestItrExtractConfig
+    , testItrOptGhcCommand = tieGhcCommand defaultTestItrExtractConfig
+    , testItrOptBinaryFile = tieBinaryFile defaultTestItrExtractConfig
+    }
 
 data ModExtractOptions
     = ModExtractOptions
@@ -126,6 +149,7 @@ parseCommand rawArgs
         "replay" : rest -> Replay (parseOptions rest)
         "shrink" : rest -> Shrink (parseOptions rest)
         "mod-extract" : rest -> ModExtract (parseModExtractOptions rest)
+        "test-itr-extract" : rest -> TestItrExtract (parseTestItrExtractOptions rest)
         "--help" : _ -> Help
         unknown : _ -> if unknown == "one" || unknown == "--one" then One defaultOptions else Help
 
@@ -156,6 +180,24 @@ parseModExtractOptions args = defaultModExtractOptions
     , modOptArgTerm = stringOption "arg" (modOptArgTerm defaultModExtractOptions) args
     , modOptOutputFile = stringOption "output" (modOptOutputFile defaultModExtractOptions) args
     }
+
+parseTestItrExtractOptions :: [String] -> TestItrExtractOptions
+parseTestItrExtractOptions args = defaultTestItrExtractOptions
+    { testItrOptModOptions = (parseModExtractOptions args) { modOptWorkDir = stringOption "workdir" (modOptWorkDir (testItrOptModOptions defaultTestItrExtractOptions)) args, modOptCoqFile = testItrCoqFileArg args, modOptModTerm = "", modOptOutputFile = stringOption "output" (modOptOutputFile (testItrOptModOptions defaultTestItrExtractOptions)) args}
+    , testItrOptTerm = stringOption "term" (testItrOptTerm defaultTestItrExtractOptions) args
+    , testItrOptGhcCommand = stringOption "ghc" (testItrOptGhcCommand defaultTestItrExtractOptions) args
+    , testItrOptBinaryFile = stringOption "binary" (testItrOptBinaryFile defaultTestItrExtractOptions) args
+    }
+
+testItrCoqFileArg :: [String] -> Maybe FilePath
+testItrCoqFileArg args
+    = case stringOptionMaybe "coq-file" args of
+        Just path -> Just path
+        Nothing -> lastMaybe [arg | arg <- map normalizeArg args, ".v" `isSuffixOf` arg, not ("-" `isPrefixOf` arg)]
+
+lastMaybe :: [a] -> Maybe a
+lastMaybe [] = Nothing
+lastMaybe xs = Just (last xs)
 
 normalizeArg :: String -> String
 normalizeArg arg
@@ -322,6 +364,44 @@ runModExtract rawOptions = do
             Right path -> putStrLn ("extracted: " ++ path)
             Left err -> putStrLn ("mod-extract-error: " ++ err)
 
+runTestItrExtract :: TestItrExtractOptions -> IO ()
+runTestItrExtract rawOptions = do
+    options <- applyTestItrExtractEnv rawOptions
+    case modOptCoqFile (testItrOptModOptions options) of
+        Nothing -> putStrLn "test-itr-extract-error: --coq-file=FILE or a positional FILE.v is required"
+        Just _ -> do
+            let workDir = modOptWorkDir (testItrOptModOptions options)
+            resetDirectory (workDir </> "test-itr-extract")
+            report <- runTestItrExtraction defaultRunConfig { cfgWorkDir = workDir } (testItrConfigFromOptions options)
+            maybe (return ()) (writeProcessLog (tierCaseDir report </> "coq" </> "opam-env.log")) (tierOpamEnvLog report)
+            maybe (return ()) (writeProcessLog (tierCaseDir report </> "coq" </> "input.log")) (tierInputLog report)
+            maybe (return ()) (writeProcessLog (tierCaseDir report </> "coq" </> "harness.log")) (tierHarnessLog report)
+            maybe (return ()) (writeProcessLog (tierCaseDir report </> "coq" </> "extracted" </> "ghc.log")) (tierGhcLog report)
+            putStrLn ("case-dir: " ++ tierCaseDir report)
+            putStrLn ("harness: " ++ tierHarnessFile report)
+            putStrLn ("extracted-target: " ++ tierExtractedFile report)
+            case tierResult report of
+                Right path -> putStrLn ("binary: " ++ path)
+                Left err -> putStrLn ("test-itr-extract-error: " ++ err)
+
+applyTestItrExtractEnv :: TestItrExtractOptions -> IO TestItrExtractOptions
+applyTestItrExtractEnv options = do
+    shared0 <- applyModExtractEnv (testItrOptModOptions options)
+    workDir <- envString "PROJECT_A_WORKDIR" (modOptWorkDir (testItrOptModOptions defaultTestItrExtractOptions)) (modOptWorkDir (testItrOptModOptions options))
+    term <- envString "PROJECT_A_TEST_ITR_TERM" (testItrOptTerm defaultTestItrExtractOptions) (testItrOptTerm options)
+    ghcCommand <- envString "PROJECT_A_GHC" (testItrOptGhcCommand defaultTestItrExtractOptions) (testItrOptGhcCommand options)
+    binaryFile <- envString "PROJECT_A_TEST_ITR_BINARY" (testItrOptBinaryFile defaultTestItrExtractOptions) (testItrOptBinaryFile options)
+    let shared = shared0 { modOptWorkDir = workDir }
+    return options { testItrOptModOptions = shared, testItrOptTerm = term, testItrOptGhcCommand = ghcCommand, testItrOptBinaryFile = binaryFile}
+
+testItrConfigFromOptions :: TestItrExtractOptions -> TestItrExtractConfig
+testItrConfigFromOptions options = defaultTestItrExtractConfig
+    { tieModConfig = modConfigFromOptions (testItrOptModOptions options)
+    , tieTerm = testItrOptTerm options
+    , tieGhcCommand = testItrOptGhcCommand options
+    , tieBinaryFile = testItrOptBinaryFile options
+    }
+
 applyModExtractEnv :: ModExtractOptions -> IO ModExtractOptions
 applyModExtractEnv options = do
     workDir <- envString "PROJECT_A_WORKDIR" (modOptWorkDir defaultModExtractOptions) (modOptWorkDir options)
@@ -348,29 +428,7 @@ applyModExtractEnv options = do
     let derivedBackendRoot = deriveBackendRoot toolRoot backendRoot
     let derivedOpamEnvDir = deriveOpamEnvDir toolRoot opamEnvDir
     let derivedCoqProjectFiles = deriveCoqProjectFiles toolRoot coqProjectFiles
-    return $ options
-        { modOptWorkDir = workDir
-        , modOptBackendRoot = derivedBackendRoot
-        , modOptToolRoot = toolRoot
-        , modOptCoqcCommand = coqcCommand
-        , modOptOpamEnvDir = derivedOpamEnvDir
-        , modOptCoqExtraArgs = coqExtraArgs
-        , modOptCoqProjectFiles = derivedCoqProjectFiles
-        , modOptBackendLogical = backendLogical
-        , modOptBackendLoadDirs = backendLoadDirs
-        , modOptProjectLogical = projectLogical
-        , modOptCoreRequires = coreRequires
-        , modOptExtractionLanguage = extractionLanguage
-        , modOptExtractionSupport = extractionSupport
-        , modOptExtractionBlacklist = extractionBlacklist
-        , modOptGraTerm = graTerm
-        , modOptCoqFile = coqFile
-        , modOptRequires = requires
-        , modOptModTerm = modTerm
-        , modOptResourceTerm = resourceTerm
-        , modOptArgTerm = argTerm
-        , modOptOutputFile = outputFile
-        }
+    return $ options { modOptWorkDir = workDir, modOptBackendRoot = derivedBackendRoot, modOptToolRoot = toolRoot, modOptCoqcCommand = coqcCommand, modOptOpamEnvDir = derivedOpamEnvDir, modOptCoqExtraArgs = coqExtraArgs, modOptCoqProjectFiles = derivedCoqProjectFiles, modOptBackendLogical = backendLogical, modOptBackendLoadDirs = backendLoadDirs, modOptProjectLogical = projectLogical, modOptCoreRequires = coreRequires, modOptExtractionLanguage = extractionLanguage, modOptExtractionSupport = extractionSupport, modOptExtractionBlacklist = extractionBlacklist, modOptGraTerm = graTerm, modOptCoqFile = coqFile, modOptRequires = requires, modOptModTerm = modTerm, modOptResourceTerm = resourceTerm, modOptArgTerm = argTerm, modOptOutputFile = outputFile}
 
 deriveBackendRoot :: Maybe FilePath -> FilePath -> FilePath
 deriveBackendRoot Nothing backendRoot = backendRoot
@@ -487,7 +545,7 @@ helpText = helpText' ""
 
 helpText' :: ShowS
 helpText' = strcat
-    [ strstr "Project A differential fuzzing" . nl
+    [ strstr "[Project A] differential fuzzing" . nl
     , nl
     , strstr "Commands:" . nl
     , strstr "  one  --seed=N --size=N --workdir=DIR" . nl
@@ -497,7 +555,9 @@ helpText' = strcat
     , strstr "  replay --case-dir=DIR [--workdir=DIR]" . nl
     , strstr "  shrink --case-dir=DIR [--workdir=DIR]" . nl
     , strstr "  mod-extract --mod=TERM [--tool-root=DIR] [--coqproject=FILE] [--opam-env-dir=DIR] [--backend-root=DIR] [--coqc=COQC] [--coq-file=FILE] [--require=M1,M2] [--backend-logical=NAME] [--backend-dirs=D1,D2] [--gra=TERM] [--resource=TERM] [--arg=TERM] [--output=FILE]" . nl
+    , strstr "  test-itr-extract [FILE.v] [--coq-file=FILE] [--term=TERM] [--tool-root=DIR] [--coqproject=FILE] [--opam-env-dir=DIR] [--coqc=COQC] [--ghc=GHC] [--require=M1,M2] [--output=FILE] [--binary=FILE]" . nl
     , strstr "  mod-extract also reads PROJECT_A_TOOL_ROOT, PROJECT_A_OPAM_ENV_DIR, PROJECT_A_COQPROJECTS, PROJECT_A_BACKEND_ROOT, PROJECT_A_COQC, PROJECT_A_EXTRACT_MOD, PROJECT_A_EXTRACT_REQUIRE." . nl
+    , strstr "  test-itr-extract also reads PROJECT_A_TEST_ITR_TERM, PROJECT_A_GHC, PROJECT_A_TEST_ITR_BINARY, and the same Coq path variables as mod-extract." . nl
     , nl
     , strstr "The Coq/extraction path is enabled by PROJECT_A_TRANSLATOR." . nl
     , strstr "The translator command must read gofile.go and write generated Coq to stdout." . nl

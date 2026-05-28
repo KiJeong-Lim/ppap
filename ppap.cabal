@@ -99,6 +99,7 @@ executable ppap
     Project.A.Pipeline.ModExtraction
     Project.A.Pipeline.NativeGo
     Project.A.Pipeline.Runner
+    Project.A.Pipeline.TestItrExtraction
     Project.A.Types
     Project.A.Util.Json
     Project.A.Util.Process
