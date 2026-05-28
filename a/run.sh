@@ -32,6 +32,8 @@ Options:
   --opam-env-dir=DIR   Directory where `opam env` should be evaluated.
                        Default: PROJECT_A_OPAM_ENV_DIR or tool-root
   --coqc=COQC          coqc command. Default: PROJECT_A_COQC or coqc
+  --ghc-args=ARGS      Extra GHC args, comma-separated.
+                       Default: PROJECT_A_GHC_ARGS
   --no-build           Skip `cabal build`.
   -h, --help           Show this help.
 
@@ -54,6 +56,7 @@ requires="${PROJECT_A_EXTRACT_REQUIRE:-}"
 coqproject="${PROJECT_A_COQPROJECTS:-}"
 opam_env_dir="${PROJECT_A_OPAM_ENV_DIR:-}"
 coqc_command="${PROJECT_A_COQC:-}"
+ghc_args="${PROJECT_A_GHC_ARGS:-}"
 do_build=1
 
 reject_whitespace() {
@@ -171,6 +174,14 @@ while [[ $# -gt 0 ]]; do
       coqc_command="${2:?missing value for --coqc}"
       shift 2
       ;;
+    --ghc-args=*)
+      ghc_args="${1#*=}"
+      shift
+      ;;
+    --ghc-args)
+      ghc_args="${2:?missing value for --ghc-args}"
+      shift 2
+      ;;
     --*)
       echo "error: unknown option: $1" >&2
       usage >&2
@@ -214,6 +225,7 @@ reject_whitespace "--require" "$requires"
 reject_whitespace "--coqproject" "$coqproject"
 reject_whitespace "--opam-env-dir" "$opam_env_dir"
 reject_whitespace "--coqc" "$coqc_command"
+reject_whitespace "--ghc-args" "$ghc_args"
 
 cmd=(Project "--$mode" "--seed=$seed" "--size=$size" "--workdir=$workdir")
 
@@ -242,6 +254,10 @@ fi
 
 if [[ -n "$coqc_command" ]]; then
   env_args+=("PROJECT_A_COQC=$coqc_command")
+fi
+
+if [[ -n "$ghc_args" ]]; then
+  env_args+=("PROJECT_A_GHC_ARGS=$ghc_args")
 fi
 
 cd "$repo_root"

@@ -106,6 +106,7 @@ stmtRiskSignals stmt
         SBlock stmts -> concatMap stmtRiskSignals stmts
         SIf cond thn els -> conditionRisk cond ++ exprRiskSignals cond ++ concatMap stmtRiskSignals thn ++ concatMap stmtRiskSignals els
         SForBounded _ bound body -> loopRisk bound ++ concatMap stmtRiskSignals body
+        SPrint exprs -> concatMap exprRiskSignals exprs
         SPrintln exprs -> concatMap exprRiskSignals exprs
         SExpr expr -> exprRiskSignals expr
         SBlank expr -> exprRiskSignals expr

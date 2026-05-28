@@ -26,6 +26,7 @@ prettyStmt depth stmt
             , if null els then [indent depth ++ "}"] else [indent depth ++ "} else {"] ++ concatMap (prettyStmt (depth + 1)) els ++ [indent depth ++ "}"]
             ]
         SForBounded name bound body -> [indent depth ++ "for " ++ name ++ " := 0; " ++ name ++ " < " ++ show bound ++ "; " ++ name ++ "++ {"] ++ concatMap (prettyStmt (depth + 1)) body ++ [indent depth ++ "}"]
+        SPrint exprs -> [indent depth ++ "fmt.Print(" ++ comma (map prettyExpr exprs) ++ ")"]
         SPrintln exprs -> [indent depth ++ "fmt.Println(" ++ comma (map prettyExpr exprs) ++ ")"]
         SExpr expr -> [indent depth ++ prettyExpr expr]
         SBlank expr -> [indent depth ++ "_ = " ++ prettyExpr expr]

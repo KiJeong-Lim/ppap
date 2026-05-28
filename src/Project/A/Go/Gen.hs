@@ -15,7 +15,7 @@ data GenState
     } deriving (Eq, Ord, Show)
 
 constantProgram :: Program
-constantProgram = Program [] [SPrintln [EInt 3]]
+constantProgram = Program [] stageOneBaseStmts
 
 genTestCase :: CaseId -> Seed -> Size -> TestCase Program
 genTestCase caseId seed size = TestCase { tcCaseId = caseId, tcSeed = seed, tcSize = size, tcProgram = genProgram seed size, tcInput = RuntimeInput { riArgs = [], riStdin = "", riEnv = [] } }
@@ -23,7 +23,27 @@ genTestCase caseId seed size = TestCase { tcCaseId = caseId, tcSeed = seed, tcSi
 genProgram :: Seed -> Size -> Program
 genProgram seed size
     | size <= 0 = constantProgram
-    | otherwise = evalState (genProgramFull size) (initialGenState seed)
+    | otherwise = evalState (genStageOneProgram size) (initialGenState seed)
+
+genStageOneProgram :: Size -> State GenState Program
+genStageOneProgram size = do
+    assigns <- replicateM assignmentCount genStageOneAssign
+    return (Program [] (SVarZero TInt "x" : assigns ++ [SPrint [EVar TInt "x"]]))
+    where
+        assignmentCount :: Int
+        assignmentCount = max 1 (min 8 size)
+
+genStageOneAssign :: State GenState Stmt
+genStageOneAssign = do
+    value <- chooseBetween 0 9
+    return (SAssign "x" (EInt value))
+
+stageOneBaseStmts :: [Stmt]
+stageOneBaseStmts =
+    [ SVarZero TInt "x"
+    , SAssign "x" (EInt 3)
+    , SPrint [EVar TInt "x"]
+    ]
 
 genProgramFull :: Size -> State GenState Program
 genProgramFull size = do

@@ -5,7 +5,7 @@ import qualified Data.List as List
 import Project.A.Go.AST
 
 minimalProgram :: Program
-minimalProgram = Program [] [SPrintln [EInt 0]]
+minimalProgram = Program [] [SVarZero TInt "x", SAssign "x" (EInt 0), SPrint [EVar TInt "x"]]
 
 shrinkProgram :: Program -> [Program]
 shrinkProgram program@(Program funcs stmts) = List.nub (filter (/= program) (minimal ++ removed ++ changed)) where
@@ -42,6 +42,7 @@ shrinkStmt stmt
             , [SForBounded name bound' body | bound' <- shrinkBound bound]
             , [SForBounded name bound body' | body' <- shrinkStmtList body]
             ]
+        SPrint exprs -> [SPrint exprs' | exprs' <- shrinkExprList exprs]
         SPrintln exprs -> [SPrintln exprs' | exprs' <- shrinkExprList exprs]
         SExpr expr -> [SExpr expr' | expr' <- shrinkExpr expr]
         SBlank expr -> [SBlank expr' | expr' <- shrinkExpr expr]
@@ -165,6 +166,7 @@ stmtNodeCount stmt
         SBlock stmts -> 1 + sum (map stmtNodeCount stmts)
         SIf cond thn els -> 1 + exprNodeCount cond + sum (map stmtNodeCount thn) + sum (map stmtNodeCount els)
         SForBounded _ _ body -> 1 + sum (map stmtNodeCount body)
+        SPrint exprs -> 1 + sum (map exprNodeCount exprs)
         SPrintln exprs -> 1 + sum (map exprNodeCount exprs)
         SExpr expr -> 1 + exprNodeCount expr
         SBlank expr -> 1 + exprNodeCount expr

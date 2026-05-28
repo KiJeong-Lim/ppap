@@ -63,7 +63,8 @@ runCoqcAndHaskell config caseDir input translatorLog
             if not hsExists then
                 return (failedAfterCoqc translatorLog coqcLog (ExtractionError ("Expected extracted file does not exist: " ++ hsFile)))
             else do
-                ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" ghcArgs ""
+                ghcExtraArgs <- ghcExtraArgsFromEnv
+                ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs ghcExtraArgs) ""
                 let ghcLog = processLog ghcResult
                 if not (processSucceeded ghcResult) then
                     return (failedAfterGhc translatorLog coqcLog ghcLog (HaskellCompileError ghcLog))
@@ -71,8 +72,8 @@ runCoqcAndHaskell config caseDir input translatorLog
                     runResult <- runTimedProcess (timeoutExtractedRun timeouts) (Just caseDir) (riEnv input) ("." </> "coq" </> "extracted" </> "gofile-hs") (riArgs input) (riStdin input)
                     return ExtractionOutcome { eoTranslatorLog = Just translatorLog, eoCoqcLog = Just coqcLog, eoGhcLog = Just ghcLog, eoRunLog = Just (processLog runResult), eoExtraLogs = [], eoResult = Right (obsFromProcess runResult) }
     where
-        ghcArgs :: [String]
-        ghcArgs = ["-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", "coq" </> "extracted" </> "Gofile.hs", "-o", "coq" </> "extracted" </> "gofile-hs"]
+        ghcArgs :: [String] -> [String]
+        ghcArgs extraArgs = extraArgs ++ ["-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", "coq" </> "extracted" </> "Gofile.hs", "-o", "coq" </> "extracted" </> "gofile-hs"]
 
 runModExtractionAndHaskell :: RunConfig -> FilePath -> RuntimeInput -> ProcessLog -> IO ExtractionOutcome
 runModExtractionAndHaskell config caseDir input translatorLog = do
@@ -91,7 +92,8 @@ runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile
     = do
         let timeouts = cfgTimeouts config
         driverFile <- writeModHaskellDriver hsFile
-        ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs driverFile) ""
+        ghcExtraArgs <- ghcExtraArgsFromEnv
+        ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs ghcExtraArgs driverFile) ""
         let ghcLog = processLog ghcResult
         if not (processSucceeded ghcResult) then
             return (failedAfterGhcExtra translatorLog coqcLog ghcLog extraLogs (HaskellCompileError ghcLog))
@@ -99,7 +101,10 @@ runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile
             runResult <- runTimedProcess (timeoutExtractedRun timeouts) (Just caseDir) (riEnv input) ("." </> "coq" </> "extracted" </> "gofile-hs") (riArgs input) (riStdin input)
             return ExtractionOutcome { eoTranslatorLog = Just translatorLog, eoCoqcLog = Just coqcLog, eoGhcLog = Just ghcLog, eoRunLog = Just (processLog runResult), eoExtraLogs = extraLogs, eoResult = Right (obsFromProcess runResult) }
     where
-        ghcArgs driverFile = ["-XNoPolyKinds", "-i" ++ takeDirectory driverFile, "-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", driverFile, "-o", "coq" </> "extracted" </> "gofile-hs"]
+        ghcArgs extraArgs driverFile = ["-XNoPolyKinds"] ++ extraArgs ++ ["-i" ++ takeDirectory driverFile, "-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", driverFile, "-o", "coq" </> "extracted" </> "gofile-hs"]
+
+ghcExtraArgsFromEnv :: IO [String]
+ghcExtraArgsFromEnv = envList "PROJECT_A_GHC_ARGS" []
 
 writeModHaskellDriver :: FilePath -> IO FilePath
 writeModHaskellDriver hsFile = do

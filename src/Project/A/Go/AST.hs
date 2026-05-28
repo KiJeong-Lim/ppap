@@ -56,6 +56,7 @@ data Stmt
     | SBlock [Stmt]
     | SIf Expr [Stmt] [Stmt]
     | SForBounded String Int [Stmt]
+    | SPrint [Expr]
     | SPrintln [Expr]
     | SExpr Expr
     | SBlank Expr

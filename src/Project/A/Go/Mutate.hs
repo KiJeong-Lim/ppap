@@ -8,13 +8,8 @@ mutateProgram :: Int -> Program -> Program
 mutateProgram seed program = chooseMutation seed (mutationCandidates seed program)
 
 mutationCandidates :: Int -> Program -> [Program]
-mutationCandidates seed program@(Program funcs stmts) = List.nub (filter (/= program) (riskPrograms ++ inserted ++ changed)) where
-    riskPrograms =
-        [ Program funcs (stmts ++ [SPrintln [EDiv (EInt (-7)) (EInt 3)]])
-        , Program funcs (stmts ++ [SPrintln [EMod (EInt (-7)) (EInt 3)]])
-        , Program funcs (stmts ++ [SIf (EBool True) [SPrintln [EInt 0]] [SPrintln [EInt 1]]])
-        ]
-    inserted = [Program funcs (prefix ++ [SPrintln [EInt (smallSeedInt seed)]] ++ suffix) | (prefix, suffix) <- insertionSplits stmts]
+mutationCandidates seed program@(Program funcs stmts) = List.nub (filter (/= program) (inserted ++ changed)) where
+    inserted = [Program funcs (prefix ++ [SPrint [EInt (smallSeedInt seed)]] ++ suffix) | (prefix, suffix) <- insertionSplits stmts]
     changed = [Program funcs (prefix ++ [stmt'] ++ suffix) | (prefix, stmt, suffix) <- splits stmts, stmt' <- mutateStmt stmt]
 
 mutateStmt :: Stmt -> [Stmt]
@@ -43,6 +38,7 @@ mutateStmt stmt
             [ [ SForBounded name bound' body | bound' <- mutateBound bound ]
             , [ SForBounded name bound body' | body' <- mutateStmtList body ]
             ]
+        SPrint exprs -> [ SPrint exprs' | exprs' <- mutateExprList exprs ]
         SPrintln exprs -> [ SPrintln exprs' | exprs' <- mutateExprList exprs ]
         SExpr expr -> [ SExpr expr' | expr' <- mutateExpr expr ]
         SBlank expr -> [ SBlank expr' | expr' <- mutateExpr expr ]
@@ -50,7 +46,7 @@ mutateStmt stmt
 
 mutateStmtList :: [Stmt] -> [[Stmt]]
 mutateStmtList stmts = inserted ++ changed where
-    inserted = [ prefix ++ [SPrintln [EInt 0]] ++ suffix | (prefix, suffix) <- insertionSplits stmts ]
+    inserted = [ prefix ++ [SPrint [EInt 0]] ++ suffix | (prefix, suffix) <- insertionSplits stmts ]
     changed = [ prefix ++ [stmt'] ++ suffix | (prefix, stmt, suffix) <- splits stmts, stmt' <- mutateStmt stmt ]
 
 mutateExprList :: [Expr] -> [[Expr]]
@@ -117,7 +113,7 @@ mutateBound :: Int -> [Int]
 mutateBound bound = List.nub (filter (>= 0) [bound - 1, bound + 1, 0, 1])
 
 chooseMutation :: Int -> [Program] -> Program
-chooseMutation _ [] = Program [] [SPrintln [EInt 0]]
+chooseMutation _ [] = Program [] [SPrint [EInt 0]]
 chooseMutation seed programs = programs !! (abs seed `mod` length programs)
 
 smallSeedInt :: Int -> Int

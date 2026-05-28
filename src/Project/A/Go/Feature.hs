@@ -92,6 +92,7 @@ stmtFeatures outers current (SIf cond thn els) = (UsesIf : exprFeatures cond ++ 
     (elsFeatures, _) = stmtListFeatures (current : outers) [] els
 stmtFeatures outers current (SForBounded name _ body) = (UsesFor : shadowFeatures outers current name ++ bodyFeatures, current) where
     (bodyFeatures, _) = stmtListFeatures (current : outers) [name] body
+stmtFeatures _ current (SPrint exprs) = ((if length exprs > 1 then [UsesMultiplePrint] else []) ++ concatMap exprFeatures exprs, current)
 stmtFeatures _ current (SPrintln exprs) = ((if length exprs > 1 then [UsesMultiplePrint] else []) ++ concatMap exprFeatures exprs, current)
 stmtFeatures _ current (SExpr expr) = (exprFeatures expr, current)
 stmtFeatures _ current (SBlank expr) = (exprFeatures expr, current)

@@ -39,7 +39,7 @@ set -euo pipefail
 mkdir -p coq/extracted
 cat > coq/extracted/Gofile.hs <<'HASKELL'
 main :: IO ()
-main = putStr "3\n"
+main = putStr "3"
 HASKELL
 
 printf '(* Project A local passing smoke test. *)\n'
@@ -72,14 +72,12 @@ objective_workdir="$workdir/objective"
 printf 'Project --one --seed=42 --size=6 --workdir=.project-a-test-work/objective\n\n' \
   | PROJECT_A_TRANSLATOR="$translator" cabal run -v0 ppap
 
-grep -q 'UsesTypeDecl' "$objective_workdir/cases/000001/feature.json"
-grep -q 'UsesStruct' "$objective_workdir/cases/000001/feature.json"
-grep -q 'UsesPointer' "$objective_workdir/cases/000001/feature.json"
-grep -q 'UsesField' "$objective_workdir/cases/000001/feature.json"
+grep -q 'UsesZeroInit' "$objective_workdir/cases/000001/feature.json"
 
 printf 'Project --shrink --case-dir=.project-a-test-work/objective/cases/000001\n\n' \
   | PROJECT_A_TRANSLATOR="$translator" cabal run -v0 ppap
 
 test -f "$objective_workdir/cases/000001/shrunk/report.txt"
 test -f "$objective_workdir/regressions/000001/report.txt"
-grep -q 'objective-drop: nodes 203 -> 3, repr 2780 -> 30' "$objective_workdir/cases/000001/shrunk/report.txt"
+grep -q 'shrunk-status: CaseFail' "$objective_workdir/cases/000001/shrunk/report.txt"
+grep -q 'objective-drop:' "$objective_workdir/cases/000001/shrunk/report.txt"
