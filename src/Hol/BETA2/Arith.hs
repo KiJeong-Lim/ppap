@@ -414,17 +414,22 @@ zonkPresburger theta freeOf = goFormula Set.empty where
     goFormula bound (ExsF y f1) = ExsF y (goFormula (Set.insert y bound) f1)
 
     goTerm bound (IVar v)
-        | v `Set.member` bound = IVar v
-        | otherwise = case Map.lookup v freeOf of
+        | v `Set.member` bound
+        = IVar v
+        | otherwise
+        = case Map.lookup v freeOf of
             Just lv -> case theta lv of
                 Just t -> case asClosedNatLit t of
                     Just n -> natToTermRep n
                     Nothing -> IVar v
                 Nothing -> IVar v
             Nothing -> IVar v
-    goTerm _ Zero = Zero
-    goTerm bound (Succ t) = Succ (goTerm bound t)
-    goTerm bound (Plus t1 t2) = Plus (goTerm bound t1) (goTerm bound t2)
+    goTerm _ Zero
+        = Zero
+    goTerm bound (Succ t)
+        = Succ (goTerm bound t)
+    goTerm bound (Plus t1 t2)
+        = Plus (goTerm bound t1) (goTerm bound t2)
 
     asClosedNatLit :: TermNode -> Maybe Integer
     asClosedNatLit (NCon (DC (DC_NatL n)) _) = Just n
@@ -434,11 +439,11 @@ zonkPresburger theta freeOf = goFormula Set.empty where
 liftConstraint :: TermNode -> Maybe LiftResult
 liftConstraint t
     = case runLift (liftFormula t) emptyLS of
+        Nothing -> Nothing
         Just (f, st) -> Just LiftResult
             { _liftedFormula = f
             , _freeOfLifted = lsFreeMap st
             }
-        Nothing -> Nothing
     where
         emptyLS = LiftState
             { lsFreeMap = Map.empty

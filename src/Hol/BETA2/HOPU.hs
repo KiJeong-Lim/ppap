@@ -110,41 +110,47 @@ lookupLVarType v lbl = IntMap.lookup (lvKey v) (_VarTypes lbl)
 
 
 splitArrowsHOPU :: Int -> MonoType Int -> Maybe ([MonoType Int], MonoType Int)
-splitArrowsHOPU 0 t = Just ([], t)
+splitArrowsHOPU 0 t
+    = Just ([], t)
 splitArrowsHOPU n (TyApp (TyApp (TyCon (TCon TC_Arrow _)) t1) t2)
     | n > 0 = do
         (params, result) <- splitArrowsHOPU (n - 1) t2
         return (t1 : params, result)
-splitArrowsHOPU _ _ = Nothing
+splitArrowsHOPU _ _
+    = Nothing
 
 mkArrowsHOPU :: [MonoType Int] -> MonoType Int -> MonoType Int
 mkArrowsHOPU args result = foldr mkTyArrow result args
 
 lookupConType :: Constant -> Labeling -> Maybe (MonoType Int)
-lookupConType (DC (DC_Unique uni _)) lbl = IntMap.lookup (unUnique uni) (_ConTypes lbl)
-lookupConType (DC dc) lbl = case Map.lookup dc (_TypeEnv lbl) of
-    Just (Forall _ ty) -> Just ty
-    Nothing -> Nothing
-lookupConType _ _ = Nothing
+lookupConType (DC (DC_Unique uni _)) lbl
+    = IntMap.lookup (unUnique uni) (_ConTypes lbl)
+lookupConType (DC dc) lbl
+    = case Map.lookup dc (_TypeEnv lbl) of
+        Just (Forall _ ty) -> Just ty
+        Nothing -> Nothing
+lookupConType _ _
+    = Nothing
 
 typeOfTerm :: Labeling -> [MonoType Int] -> TermNode -> Maybe (MonoType Int)
-typeOfTerm lbl env t = case t of
-    LVar v -> lookupLVarType v lbl
-    NCon c _ -> lookupConType c lbl
-    NIdx i
-        | i >= 0 && i < length env -> Just (env !! i)
-        | otherwise -> Nothing
-    NApp t1 t2 _ -> do
-        ty1 <- typeOfTerm lbl env t1
-        case ty1 of
-            TyApp (TyApp (TyCon (TCon TC_Arrow _)) _) r -> Just r
-            _ -> Nothing
-    NLam _ (LamType (Just dom)) body _ -> do
-        cod <- typeOfTerm lbl (dom : env) body
-        Just (mkTyArrow dom cod)
-    NLam _ _ _ _ -> Nothing
-    Susp body _ _ _ -> typeOfTerm lbl env body
-    NPresburgerCheck _ _ _ -> Just mkTyO
+typeOfTerm lbl env t
+    = case t of
+        LVar v -> lookupLVarType v lbl
+        NCon c _ -> lookupConType c lbl
+        NIdx i
+            | i >= 0 && i < length env -> Just (env !! i)
+            | otherwise -> Nothing
+        NApp t1 t2 _ -> do
+            ty1 <- typeOfTerm lbl env t1
+            case ty1 of
+                TyApp (TyApp (TyCon (TCon TC_Arrow _)) _) r -> Just r
+                _ -> Nothing
+        NLam _ (LamType (Just dom)) body _ -> do
+            cod <- typeOfTerm lbl (dom : env) body
+            Just (mkTyArrow dom cod)
+        NLam _ _ _ _ -> Nothing
+        Susp body _ _ _ -> typeOfTerm lbl env body
+        NPresburgerCheck _ _ _ -> Just mkTyO
 
 commonHeadType :: Labeling -> LogicVar -> Int -> [TermNode] -> Maybe (MonoType Int)
 commonHeadType labeling var k args = do
@@ -157,9 +163,10 @@ commonHeadType labeling var k args = do
 instance ZonkLVar Labeling where
     zonkLVar subst labeling = Map.foldlWithKey' applyBinding labeling (unVarBinding subst) where
         applyBinding :: Labeling -> LogicVar -> TermNode -> Labeling
-        applyBinding lbl v t = case getLevel v lbl of
-            Nothing -> lbl
-            Just level -> Set.foldr (insertVarMin level) lbl (accLVarsTerm t Set.empty)
+        applyBinding lbl v t
+            = case getLevel v lbl of
+                Nothing -> lbl
+                Just level -> Set.foldr (insertVarMin level) lbl (accLVarsTerm t Set.empty)
         getLevel :: LogicVar -> Labeling -> Maybe ScopeLevel
         getLevel (LV_Named _) _ = Just 0
         getLevel v lbl = IntMap.lookup (lvKey v) (_VarLabel lbl)

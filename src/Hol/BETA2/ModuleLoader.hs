@@ -195,7 +195,7 @@ loadImport importerName importerPath sourceLines (importLoc, importedName) = do
         Just canonical -> loadFile canonical (Just (importerPath, importLoc, sourceLines))
 
 takeDir :: FilePath -> FilePath
-takeDir p = case break (== '/') (reverse p) of
+takeDir p = case break (\c -> c == '/') (reverse p) of
     (_, '/' : rest) -> reverse rest
     _ -> "."
 
@@ -241,16 +241,16 @@ data Origins
     , oFixity :: !(Map.Map SmallId String)
     , oAbbrev :: !(Map.Map SmallId String)
     , oNotation :: !(Map.Map SmallId String)
-    }
+    } deriving ()
 
 emptyOrigins :: Origins
 emptyOrigins = Origins Map.empty Map.empty Map.empty Map.empty Map.empty
 
 combineImport :: Monad m => DiagnosticMode -> Maybe String -> SourceLines -> (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins) -> ((SLoc, String), ModuleEnv) -> Loader m (KindEnv, TypeEnv, NotationDB, ExpansionDB, Origins)
 combineImport mode moduleName sourceLines (k, t, n, e, o) ((iloc, iname), env) = do
-    (k', oK) <- liftEither (mergeKindsStrict   mode moduleName sourceLines iloc iname (oKinds o)    k (moduleEnvKinds     env))
-    (t', oT) <- liftEither (mergeTypesStrict   mode moduleName sourceLines iloc iname (oTypes o)    t (moduleEnvTypes     env))
-    (n', oF) <- liftEither (mergeFixityStrict  mode moduleName sourceLines iloc iname (oFixity o)   n (moduleEnvNotation  env))
+    (k', oK) <- liftEither (mergeKindsStrict   mode moduleName sourceLines iloc iname (oKinds o) k (moduleEnvKinds env))
+    (t', oT) <- liftEither (mergeTypesStrict   mode moduleName sourceLines iloc iname (oTypes o) t (moduleEnvTypes env))
+    (n', oF) <- liftEither (mergeFixityStrict  mode moduleName sourceLines iloc iname (oFixity o) n (moduleEnvNotation env))
     (e', oA, oN) <- liftEither (mergeExpStrict mode moduleName sourceLines iloc iname (oAbbrev o) (oNotation o) e (moduleEnvExpansion env))
     return (k', t', n', e', Origins { oKinds = oK, oTypes = oT, oFixity = oF, oAbbrev = oA, oNotation = oN })
 
@@ -283,11 +283,11 @@ polyTypeEq (Forall xs t) (Forall ys u)
 
 showTC :: TypeConstructor -> String
 showTC (TC_Named s) = s
-showTC tc           = show tc
+showTC tc = show tc
 
 showDC :: DataConstructor -> String
 showDC (DC_Named s) = s
-showDC dc           = show dc
+showDC dc = show dc
 
 mergeFixityStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map SmallId String -> NotationDB -> NotationDB -> Either ErrMsg (NotationDB, Map.Map SmallId String)
 mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new
@@ -302,11 +302,9 @@ mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new
                 Nothing -> Right (Map.insert name iname origin)
                 Just fp'
                     | fp == fp' -> Right origin
-                    | otherwise -> Left
-                        (inconsErr2 mode moduleName sourceLines iloc "C5" prior iname name "fixity"
-                            (showFixity fp') (showFixity fp))
+                    | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C5" prior iname name "fixity" (showFixity fp') (showFixity fp))
         lookupFixity name db = lookup name (Notation.fixityList db)
-        showFixity (kind, prec) = show kind ++ " " ++ show prec
+        showFixity (kind, prec) = shows kind (" " ++ shows prec "")
 
 mergeExpStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map SmallId String -> Map.Map SmallId String -> ExpansionDB -> ExpansionDB -> Either ErrMsg (ExpansionDB, Map.Map SmallId String, Map.Map SmallId String)
 mergeExpStrict mode moduleName sourceLines iloc iname oA0 oN0 old new

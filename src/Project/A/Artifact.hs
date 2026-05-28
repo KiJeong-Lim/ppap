@@ -78,8 +78,7 @@ writeInitialArtifacts dir tc = do
     writeTextFile (dir </> "env.json") (envJson (riEnv (tcInput tc)))
 
 writeProcessLog :: FilePath -> ProcessLog -> IO ()
-writeProcessLog path logValue = do
-    writeTextFile path (processLogJson logValue)
+writeProcessLog path logValue = writeTextFile path (processLogJson logValue)
 
 writeResult :: FilePath -> CaseReport Program -> IO ()
 writeResult dir report = writeTextFile (dir </> "result.json") (caseReportJson report)
@@ -107,11 +106,12 @@ readStoredSeed dir = do
         return (storedSeedFromJson path content)
 
 storedSeedFromJson :: FilePath -> String -> Either String StoredSeed
-storedSeedFromJson path content = do
-    caseId <- fieldInt "caseId"
-    seed <- fieldInt "seed"
-    size <- fieldInt "size"
-    return StoredSeed { storedCaseId = caseId, storedSeed = seed, storedSize = size }
+storedSeedFromJson path content
+    = do
+        caseId <- fieldInt "caseId"
+        seed <- fieldInt "seed"
+        size <- fieldInt "size"
+        return StoredSeed { storedCaseId = caseId, storedSeed = seed, storedSize = size }
     where
         fieldInt key
             = case jsonIntField key content of
@@ -121,7 +121,6 @@ storedSeedFromJson path content = do
 jsonIntField :: String -> String -> Maybe Int
 jsonIntField key content = findField content where
     prefix = show key ++ ":"
-
     findField [] = Nothing
     findField str
         | prefix `isPrefixOf` str = readJsonInt (drop (length prefix) str)

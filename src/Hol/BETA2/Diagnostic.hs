@@ -34,33 +34,25 @@ diagnosticInModule :: String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc]
 diagnosticInModule = diagnosticWithModule DiagnosticPretty
 
 diagnosticWithModule :: DiagnosticMode -> String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
-diagnosticWithModule mode tag sourceName sourceLines loc body =
-    render mode $ Doc.vcat
-        (diagnosticHeader "error" tag sourceName loc : locBlockWith mode sourceLines loc : body)
+diagnosticWithModule mode tag sourceName sourceLines loc body = render mode $ Doc.vcat (diagnosticHeader "error" tag sourceName loc : locBlockWith mode sourceLines loc : body)
 
 diagnosticWarningWithModule :: DiagnosticMode -> String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
-diagnosticWarningWithModule mode tag sourceName sourceLines loc body =
-    render mode $ Doc.vcat
-        (diagnosticHeader "warning" tag sourceName loc : locBlockWith mode sourceLines loc : body)
+diagnosticWarningWithModule mode tag sourceName sourceLines loc body = render mode $ Doc.vcat (diagnosticHeader "warning" tag sourceName loc : locBlockWith mode sourceLines loc : body)
 
 diagnosticAt :: String -> Int -> Int -> [Doc.Doc] -> String
-diagnosticAt tag row col body =
-    render DiagnosticPretty $ Doc.vcat
-        (diagnosticHeader "error" tag Nothing (SLoc (row, col) (row, col)) : locBlockWith DiagnosticPretty Nothing (SLoc (row, col) (row, col)) : body)
+diagnosticAt tag row col body = render DiagnosticPretty $ Doc.vcat (diagnosticHeader "error" tag Nothing (SLoc (row, col) (row, col)) : locBlockWith DiagnosticPretty Nothing (SLoc (row, col) (row, col)) : body)
 
 diagnosticNoLoc :: String -> [Doc.Doc] -> String
 diagnosticNoLoc = diagnosticNoLocWith DiagnosticPretty
 
 diagnosticNoLocWith :: DiagnosticMode -> String -> [Doc.Doc] -> String
-diagnosticNoLocWith mode tag body =
-    render mode $ Doc.vcat (severityDoc "error" <> Doc.text (" [" ++ tag ++ "]") : body)
+diagnosticNoLocWith mode tag body = render mode $ Doc.vcat (severityDoc "error" <> Doc.text (" [" ++ tag ++ "]") : body)
 
 locBlock :: SourceLines -> SLoc -> Doc.Doc
 locBlock = locBlockWith DiagnosticPretty
 
 locBlockWith :: DiagnosticMode -> SourceLines -> SLoc -> Doc.Doc
-locBlockWith mode sourceLines (SLoc (row, col) (endRow, endCol)) =
-    mconcat
+locBlockWith mode sourceLines (SLoc (row, col) (endRow, endCol)) = mconcat
         [ Doc.vcat [Doc.text "", colorLineNo (mconcat [Doc.text " ", Doc.ptext row, Doc.text " "]), Doc.text ""]
         , colorLineNo (Doc.beam '|')
         , Doc.vcat [Doc.text "", sourceDoc, caretDoc]
@@ -78,12 +70,10 @@ locBlockWith mode sourceLines (SLoc (row, col) (endRow, endCol)) =
         focusWidth = max 1 (if row == endRow then endCol - col + 1 else 1)
         sourceDoc = Doc.text " " <> maybe mempty highlightedLine (sourceLines >>= lineAt row)
         caretDoc = Doc.text " " <> Doc.text (replicate (max 0 (col - 1)) ' ') <> colorCaret (Doc.textbf (replicate focusWidth '^'))
-        highlightedLine line
-            = Doc.text before <> colorSource (Doc.textbf focus) <> Doc.text after
-            where
-                beforeLen = max 0 (col - 1)
-                (before, rest) = splitAt beforeLen line
-                (focus, after) = splitAt focusWidth rest
+        highlightedLine line = Doc.text before <> colorSource (Doc.textbf focus) <> Doc.text after where
+            beforeLen = max 0 (col - 1)
+            (before, rest) = splitAt beforeLen line
+            (focus, after) = splitAt focusWidth rest
         lineAt :: Int -> [String] -> Maybe String
         lineAt n xs
             | n <= 0 = Nothing
@@ -99,8 +89,7 @@ locPrefix Nothing loc = ghcLoc loc
 locPrefix (Just sourceName) loc = sourceName ++ ":" ++ ghcLoc loc
 
 diagnosticHeader :: String -> String -> Maybe String -> SLoc -> Doc.Doc
-diagnosticHeader severity tag sourceName loc =
-    Doc.textbf (locPrefix sourceName loc) <> Doc.text ": " <> severityDoc severity <> Doc.text (" [" ++ tag ++ "]")
+diagnosticHeader severity tag sourceName loc = Doc.textbf (locPrefix sourceName loc) <> Doc.text ": " <> severityDoc severity <> Doc.text (" [" ++ tag ++ "]")
 
 severityDoc :: String -> Doc.Doc
 severityDoc "error" = Doc.red (Doc.textbf "error:")
@@ -116,7 +105,8 @@ stripAnsi ('\ESC' : '[' : rest) = stripAnsi (dropAnsi rest)
 stripAnsi (ch : rest) = ch : stripAnsi rest
 
 dropAnsi :: String -> String
-dropAnsi [] = []
+dropAnsi []
+    = []
 dropAnsi (ch : rest)
     | ch >= '@' && ch <= '~' = rest
     | otherwise = dropAnsi rest

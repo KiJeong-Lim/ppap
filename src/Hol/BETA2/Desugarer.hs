@@ -178,8 +178,7 @@ desugarProgramWithSource :: MonadUnique m => SourceLines -> KindEnv -> TypeEnv -
 desugarProgramWithSource = desugarProgramWithDiagnostic DiagnosticPretty
 
 desugarProgramWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
-desugarProgramWithDiagnostic mode sourceLines kind_env type_env file_name program0
-    = desugarProgramWithModule mode Nothing sourceLines kind_env type_env file_name program0
+desugarProgramWithDiagnostic mode sourceLines kind_env type_env file_name program0 = desugarProgramWithModule mode Nothing sourceLines kind_env type_env file_name program0
 
 desugarProgramWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
 desugarProgramWithModule mode moduleName sourceLines kind_env type_env file_name program0
@@ -204,8 +203,7 @@ populateTypeFoldTable :: DiagnosticMode -> SourceLines -> KindEnv -> ExpansionDB
 populateTypeFoldTable mode = populateTypeFoldTableInModule mode Nothing
 
 populateTypeFoldTableInModule :: DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> ExpansionDB -> NotationDB -> Either ErrMsg NotationDB
-populateTypeFoldTableInModule mode moduleName sourceLines kind_env expansion_db = go (Notation.typeAbbrevList expansion_db)
-    where
+populateTypeFoldTableInModule mode moduleName sourceLines kind_env expansion_db = go (Notation.typeAbbrevList expansion_db) where
     go [] db = Right db
     go ((name, params, rhs) : rest) db = do
         let expanded = Notation.expandTypeRep expansion_db rhs
@@ -216,8 +214,7 @@ populateTermFoldTable :: MonadUnique m => DiagnosticMode -> SourceLines -> TypeE
 populateTermFoldTable mode = populateTermFoldTableInModule mode Nothing
 
 populateTermFoldTableInModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> TypeEnv -> ExpansionDB -> NotationDB -> ExceptT ErrMsg m NotationDB
-populateTermFoldTableInModule mode moduleName sourceLines type_env expansion_db db0 = go (Notation.termNotationList expansion_db) db0
-    where
+populateTermFoldTableInModule mode moduleName sourceLines type_env expansion_db db0 = go (Notation.termNotationList expansion_db) db0 where
     go [] db = return db
     go ((name, params, rhs) : rest) db = do
         let expanded = Notation.expandTermRep expansion_db rhs

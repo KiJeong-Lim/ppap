@@ -64,11 +64,7 @@ data TestItrExtractOptions
 
 defaultTestItrExtractOptions :: TestItrExtractOptions
 defaultTestItrExtractOptions = TestItrExtractOptions
-    { testItrOptModOptions = defaultModExtractOptions
-        { modOptWorkDir = ".project-a-test-itr-extract"
-        , modOptModTerm = ""
-        , modOptOutputFile = "ExtractedMain.hs"
-        }
+    { testItrOptModOptions = defaultModExtractOptions { modOptWorkDir = ".project-a-test-itr-extract", modOptModTerm = "", modOptOutputFile = "ExtractedMain.hs"}
     , testItrOptTerm = tieTerm defaultTestItrExtractConfig
     , testItrOptGhcCommand = tieGhcCommand defaultTestItrExtractConfig
     , testItrOptBinaryFile = tieBinaryFile defaultTestItrExtractConfig
@@ -265,7 +261,6 @@ runFuzz options
         putStr (renderSummary summary)
     where
         config = configFromOptions options
-
         runStep summary caseId = do
             let seed = optSeed options + caseId - 1
             report <- runGeneratedCase config caseId seed (optSize options)
@@ -521,18 +516,19 @@ shrinkReport :: ShrinkResult -> String
 shrinkReport result = shrinkReport' result ""
 
 shrinkReport' :: ShrinkResult -> ShowS
-shrinkReport' result = strcat
-    [ strstr "original-status: " . shows (crStatus original) . nl
-    , strstr "shrunk-status: " . shows (crStatus final) . nl
-    , strstr "original-objective: " . strstr (programObjectiveText (tcProgram (crTestCase original))) . nl
-    , strstr "shrunk-objective: " . strstr (programObjectiveText (tcProgram (crTestCase final))) . nl
-    , strstr "objective-drop: " . strstr (programObjectiveDeltaText (tcProgram (crTestCase original)) (tcProgram (crTestCase final))) . nl
-    , strstr "original-nodes: " . shows (programNodeCount (tcProgram (crTestCase original))) . nl
-    , strstr "shrunk-nodes: " . shows (programNodeCount (tcProgram (crTestCase final))) . nl
-    , strstr "tested: " . shows (srTested result) . nl
-    , strstr "accepted: " . shows (srAccepted result) . nl
-    , strstr "final-case-dir: " . strstr (crCaseDir final) . nl
-    ]
+shrinkReport' result
+    = strcat
+        [ strstr "original-status: " . shows (crStatus original) . nl
+        , strstr "shrunk-status: " . shows (crStatus final) . nl
+        , strstr "original-objective: " . strstr (programObjectiveText (tcProgram (crTestCase original))) . nl
+        , strstr "shrunk-objective: " . strstr (programObjectiveText (tcProgram (crTestCase final))) . nl
+        , strstr "objective-drop: " . strstr (programObjectiveDeltaText (tcProgram (crTestCase original)) (tcProgram (crTestCase final))) . nl
+        , strstr "original-nodes: " . shows (programNodeCount (tcProgram (crTestCase original))) . nl
+        , strstr "shrunk-nodes: " . shows (programNodeCount (tcProgram (crTestCase final))) . nl
+        , strstr "tested: " . shows (srTested result) . nl
+        , strstr "accepted: " . shows (srAccepted result) . nl
+        , strstr "final-case-dir: " . strstr (crCaseDir final) . nl
+        ]
     where
         original = srOriginalReport result
         final = srFinalReport result

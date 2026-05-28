@@ -61,32 +61,27 @@ data FoldEntry
     , _feRhs :: !TermNode             -- type RHS pre-compiled to TermNode
     , _feSeq :: !Int
     , _feKind :: !EntryKind
-    }
+    } deriving ()
 
 data NotationDB
     = NotationDB
     { _fixity :: !(Map.Map SmallId (FixityKind, Precedence))
     , _entries :: ![FoldEntry]
     , _nextSeq :: !Int
-    }
+    } deriving ()
 
 
 compileTypeTemplate :: MonoType LargeId -> TermNode
 compileTypeTemplate (TyVar x) = mkLVar (LV_Named x)
 compileTypeTemplate (TyCon (TCon tc _)) = mkNCon tc
-compileTypeTemplate (TyApp t1 t2) =
-    mkNApp (compileTypeTemplate t1) (compileTypeTemplate t2)
+compileTypeTemplate (TyApp t1 t2) = mkNApp (compileTypeTemplate t1) (compileTypeTemplate t2)
 compileTypeTemplate (TyMTV m) = mkLVar (LV_ty_var m)
 
 
 initial :: NotationDB
-initial = addAbbrev "string" [] stringRhs seededFixity
-    where
+initial = addAbbrev "string" [] stringRhs seededFixity where
     stringRhs :: MonoType LargeId
-    stringRhs =
-        TyApp
-            (TyCon (TCon (TC_Named "list") (KArr Star Star)))
-            (TyCon (TCon (TC_Named "char") Star))
+    stringRhs = TyApp (TyCon (TCon (TC_Named "list") (KArr Star Star))) (TyCon (TCon (TC_Named "char") Star))
 
     seededFixity :: NotationDB
     seededFixity = NotationDB
@@ -129,10 +124,8 @@ addNotation :: SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
 addNotation name ps rhs = addEntry EK_Term name ps rhs
 
 addEntry :: EntryKind -> SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
-addEntry kind name ps rhs db = db
-    { _entries = entry : _entries db
-    , _nextSeq = n + 1
-    }
+addEntry kind name ps rhs db
+    = db { _entries = entry : _entries db, _nextSeq = n + 1}
     where
         n = _nextSeq db
         entry = FoldEntry
@@ -211,13 +204,14 @@ tryMatch entries t = firstJust
     ]
 
 tryFoldType :: NotationDB -> MonoType Int -> Maybe (SmallId, [MonoType Int])
-tryFoldType db t = case tryMatch typeEntries (monoTypeIntToNode t) of
-    Just (EK_Type, name, argNodes) -> do
-        args <- traverse nodeToMonoTypeInt argNodes
-        return (name, args)
-    _ -> Nothing
+tryFoldType db t
+    = case tryMatch typeEntries (monoTypeIntToNode t) of
+        Just (EK_Type, name, argNodes) -> do
+            args <- traverse nodeToMonoTypeInt argNodes
+            return (name, args)
+        _ -> Nothing
     where
-    typeEntries = filter (\e -> _feKind e == EK_Type) (_entries db)
+        typeEntries = filter (\e -> _feKind e == EK_Type) (_entries db)
 
 monoTypeIntToNode :: MonoType Int -> TermNode
 monoTypeIntToNode (TyVar i) = mkLVar (LV_Named ("a_" ++ show i))
@@ -379,7 +373,8 @@ substTypeRep env t = case t of
 expandTermRep :: ExpansionDB -> TermRep -> TermRep
 expandTermRep db = go where
     go t = case t of
-        RApp loc _ _ -> case head_ of
+        RApp loc _ _ ->
+            case head_ of
                 RCon hloc (DC_Named name) -> case lookupTermNotation name db of
                     Just (params, body)
                         | length args' >= length params -> expandFull loc params body args'
@@ -414,7 +409,8 @@ expandTermRep db = go where
 expandTypeRep :: ExpansionDB -> TypeRep -> TypeRep
 expandTypeRep db = go where
     go t = case t of
-        RTyApp loc _ _ -> case head_ of
+        RTyApp loc _ _ ->
+            case head_ of
                 RTyCon hloc (TC_Named name) -> case lookupTypeAbbrev name db of
                     Just (params, body)
                         | length args' >= length params -> expandFull loc params body args'

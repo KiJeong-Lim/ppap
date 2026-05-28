@@ -234,8 +234,8 @@ zonkMTV theta = go where
     go (Lam (loc, typ) var h term) = Lam (loc, substMTVars theta typ) var h (go term)
 
 mkTyErr :: DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
-mkTyErr mode moduleName source_lines db used_mtvs loc ((actual_typ, expected_typ), typ_error) =
-    diagnosticWithModule mode "HolBETA2-TypeError" moduleName source_lines loc
+mkTyErr mode moduleName source_lines db used_mtvs loc ((actual_typ, expected_typ), typ_error)
+    = diagnosticWithModule mode "HolBETA2-TypeError" moduleName source_lines loc
         [ text ("Couldn't match expected type `" ++ ty expected_typ ++ "'")
         , text ("            with actual type `" ++ ty actual_typ ++ "'")
         , text ("Relevant equation: `" ++ ty lhs ++ "' ~ `" ++ ty rhs ++ "'")
@@ -243,24 +243,12 @@ mkTyErr mode moduleName source_lines db used_mtvs loc ((actual_typ, expected_typ
         ]
     where
         text = Z.Doc.text
+        (lhs, rhs, reason) = case typ_error of
+            KindsAreMismatched (typ1, kin1) (typ2, kin2) -> (typ1 , typ2 , "kind mismatch: `" ++ pprint 0 kin1 "' vs `" ++ pprint 0 kin2 "'." )
+            OccursCheckFailed mtv1 typ2 -> (TyMTV mtv1, typ2, "occurs check failed; `" ++ ty (TyMTV mtv1) ++ "' would contain itself.")
+            TypesAreMismatched typ1 typ2 -> (typ1, typ2, "the two types are not unifiable.")
         ty :: MonoType Int -> String
         ty typ = showMonoType db used_mtvs typ ""
-        (lhs, rhs, reason) = case typ_error of
-            KindsAreMismatched (typ1, kin1) (typ2, kin2) ->
-                ( typ1
-                , typ2
-                , "kind mismatch: `" ++ pprint 0 kin1 "' vs `" ++ pprint 0 kin2 "'."
-                )
-            OccursCheckFailed mtv1 typ2 ->
-                ( TyMTV mtv1
-                , typ2
-                , "occurs check failed; `" ++ ty (TyMTV mtv1) ++ "' would contain itself."
-                )
-            TypesAreMismatched typ1 typ2 ->
-                ( typ1
-                , typ2
-                , "the two types are not unifiable."
-                )
 
 inferType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
 inferType = inferTypeWithDiagnostic DiagnosticPretty Nothing
@@ -310,10 +298,7 @@ inferTypeWithModule mode moduleName source_lines db type_env = flip runStateT Ma
             Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
     mkUnknownConErr :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> DataConstructor -> ErrMsg
     mkUnknownConErr mode' moduleName' source loc con =
-        diagnosticWithModule mode' "HolBETA2-NotInScope" moduleName' source loc
-            [ Z.Doc.text ("Not in scope: data constructor `" ++ showsPrec 0 con "'")
-            , Z.Doc.text "Add a `type' declaration for it, or check the spelling."
-            ]
+        diagnosticWithModule mode' "HolBETA2-NotInScope" moduleName' source loc [Z.Doc.text ("Not in scope: data constructor `" ++ showsPrec 0 con "'") , Z.Doc.text "Add a `type' declaration for it, or check the spelling."]
 
 checkType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
 checkType = checkTypeWithDiagnostic DiagnosticPretty Nothing

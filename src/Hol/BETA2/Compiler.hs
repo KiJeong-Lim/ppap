@@ -52,7 +52,6 @@ convertProgram :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (Mon
 convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithoutChecking Map.empty initialEnv where
     initialEnv :: DeBruijnIndicesEnv
     initialEnv = Set.toList (Map.keysSet assumptions `Set.union` Map.keysSet used_mtvs)
-
     makeUniversalClosure :: TermNode -> TermNode
     makeUniversalClosure body = foldr wrapTyVar afterAssumed (Map.toDescList used_mtvs) where
         wrapAssumption (_, ty) acc = mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType ty) acc)

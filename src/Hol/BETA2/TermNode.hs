@@ -30,12 +30,7 @@ data TermNode
     | NIdx {-# UNPACK #-} !DeBruijn
     | NApp !TermNode !TermNode !(Maybe SLoc)
     | NLam !(Maybe SmallId) !LamType !TermNode !(Maybe SLoc)
-    | Susp
-    { getSuspBody :: !TermNode
-    , getSuspOL :: {-# UNPACK #-} !Int
-    , getSuspNL :: {-# UNPACK #-} !Int
-    , getSuspEnv :: !SuspEnv
-    }
+    | Susp { getSuspBody :: !TermNode , getSuspOL :: {-# UNPACK #-} !Int , getSuspNL :: {-# UNPACK #-} !Int , getSuspEnv :: !SuspEnv }
     | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar) !(Maybe SLoc)
 
 newtype LamType
