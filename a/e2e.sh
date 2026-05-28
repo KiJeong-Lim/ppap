@@ -70,8 +70,8 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Local path defaults. Edit these when your go2c/golanggen checkout lives
 # somewhere else; CLI flags and PROJECT_A_* environment variables still win.
-default_tool_root=
-default_golanggen_root=
+default_tool_root="/home/lim/coq82000/go2c"
+default_golanggen_root="/home/lim/coq82000/go2c/golanggen"
 
 mode="${PROJECT_A_RUN_MODE:-one}"
 cases="${PROJECT_A_CASES:-1}"

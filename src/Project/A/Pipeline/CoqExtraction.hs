@@ -128,19 +128,25 @@ modHaskellDriverText' hasBackendValues extractedModule = strcat
     , strstr "import qualified " . strstr extractedModule . strstr " as Extracted" . nl
     , nl
     , strstr "main :: Prelude.IO ()" . nl
-    , strstr "main = run Extracted.project_a_target_itr" . nl
+    , strstr "main = do" . nl
+    , strstr "    stdinText <- Prelude.getContents" . nl
+    , strstr "    run (Prelude.words stdinText) Extracted.project_a_target_itr" . nl
     , nl
-    , strstr "run :: Extracted.Itree (Extracted.CoreE Extracted.Any) Extracted.T0 -> Prelude.IO ()" . nl
-    , strstr "run itr =" . nl
+    , strstr "type ScanState = [Prelude.String]" . nl
+    , nl
+    , strstr "run :: ScanState -> Extracted.Itree (Extracted.CoreE Extracted.Any) Extracted.T0 -> Prelude.IO ()" . nl
+    , strstr "run scanState itr =" . nl
     , strstr "    case Extracted.observe itr of" . nl
     , strstr "        Extracted.RetF _ -> Prelude.return ()" . nl
-    , strstr "        Extracted.TauF next -> run next" . nl
-    , strstr "        Extracted.VisF event kont -> handleCoreEvent event Prelude.>>= run Prelude.. kont" . nl
+    , strstr "        Extracted.TauF next -> run scanState next" . nl
+    , strstr "        Extracted.VisF event kont -> do" . nl
+    , strstr "            (value, scanState') <- handleCoreEvent scanState event" . nl
+    , strstr "            run scanState' (kont value)" . nl
     , nl
-    , strstr "handleCoreEvent :: Extracted.CoreE Extracted.Any -> Prelude.IO Extracted.Any" . nl
-    , strstr "handleCoreEvent Extracted.Choose = Prelude.return chooseValue" . nl
-    , strstr "handleCoreEvent Extracted.Take = Prelude.return takeValue" . nl
-    , strstr "handleCoreEvent (Extracted.IO name args) = handleExternalIO (coqStringToString name) args Prelude.>> Prelude.return ioValue" . nl
+    , strstr "handleCoreEvent :: ScanState -> Extracted.CoreE Extracted.Any -> Prelude.IO (Extracted.Any, ScanState)" . nl
+    , strstr "handleCoreEvent scanState Extracted.Choose = Prelude.return (chooseValue, scanState)" . nl
+    , strstr "handleCoreEvent scanState Extracted.Take = Prelude.return (takeValue, scanState)" . nl
+    , strstr "handleCoreEvent scanState (Extracted.IO name args) = handleExternalIO scanState (coqStringToString name) args" . nl
     , nl
     , strstr "chooseValue :: Extracted.Any" . nl
     , strstr "chooseValue = Extracted.unsafeCoerce Extracted.O" . nl
@@ -151,11 +157,11 @@ modHaskellDriverText' hasBackendValues extractedModule = strcat
     , strstr "ioValue :: Extracted.Any" . nl
     , strstr "ioValue = Extracted.unsafeCoerce ([] :: [()])" . nl
     , nl
-    , strstr "handleExternalIO :: Prelude.String -> Extracted.Any -> Prelude.IO ()" . nl
-    , strstr "handleExternalIO name args" . nl
-    , strstr "    | name Prelude.== \"project-a.stdout\" = printExactStdout args" . nl
-    , strstr "    | name Prelude.== \"project-a.stdout-line\" = printExactStdout args Prelude.>> Prelude.putChar '\\n'" . nl
-    , if hasBackendValues then backendPrintDriverText else strstr "    | Prelude.otherwise = Prelude.return ()" . nl
+    , strstr "handleExternalIO :: ScanState -> Prelude.String -> Extracted.Any -> Prelude.IO (Extracted.Any, ScanState)" . nl
+    , strstr "handleExternalIO scanState name args" . nl
+    , strstr "    | name Prelude.== \"project-a.stdout\" = printExactStdout args Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , strstr "    | name Prelude.== \"project-a.stdout-line\" = printExactStdout args Prelude.>> Prelude.putChar '\\n' Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , if hasBackendValues then backendIODriverText else strstr "    | Prelude.otherwise = Prelude.return (ioValue, scanState)" . nl
     , nl
     , strstr "printExactStdout :: Extracted.Any -> Prelude.IO ()" . nl
     , strstr "printExactStdout args = Prelude.putStr (Prelude.concat (Prelude.map coqStringToString (Extracted.unsafeCoerce args :: [Extracted.String])))" . nl
@@ -171,18 +177,42 @@ modHaskellDriverText' hasBackendValues extractedModule = strcat
     , strstr "bit n flag = if flag then 2 Prelude.^ n else 0" . nl
     ]
 
-backendPrintDriverText :: ShowS
-backendPrintDriverText = strcat
-    [ strstr "    | name Prelude.== \"Go.builtin.print\" = printBackendValues args" . nl
-    , strstr "    | name Prelude.== \"fmt.Println\" = printBackendValues args" . nl
-    , strstr "    | name Prelude.== \"fmt.Print\" = printBackendValuesNoNewline args" . nl
-    , strstr "    | Prelude.otherwise = Prelude.return ()" . nl
+backendIODriverText :: ShowS
+backendIODriverText = strcat
+    [ strstr "    | name Prelude.== \"Go.builtin.scan\" = scanBackendValues scanState args" . nl
+    , strstr "    | name Prelude.== \"Go.builtin.print\" = printBackendValuesNoNewline args Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , strstr "    | name Prelude.== \"fmt.Println\" = printBackendValues args Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , strstr "    | name Prelude.== \"fmt.Print\" = printBackendValuesNoNewline args Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , strstr "    | Prelude.otherwise = Prelude.return (ioValue, scanState)" . nl
     , nl
     , strstr "printBackendValues :: Extracted.Any -> Prelude.IO ()" . nl
     , strstr "printBackendValues args = Prelude.putStrLn (joinWords (Prelude.map renderBackendValue (Extracted.unsafeCoerce args :: [Extracted.Val])))" . nl
     , nl
     , strstr "printBackendValuesNoNewline :: Extracted.Any -> Prelude.IO ()" . nl
     , strstr "printBackendValuesNoNewline args = Prelude.putStr (joinWords (Prelude.map renderBackendValue (Extracted.unsafeCoerce args :: [Extracted.Val])))" . nl
+    , nl
+    , strstr "scanBackendValues :: ScanState -> Extracted.Any -> Prelude.IO (Extracted.Any, ScanState)" . nl
+    , strstr "scanBackendValues scanState args =" . nl
+    , strstr "    let targetCount = Prelude.length (Extracted.unsafeCoerce args :: [Extracted.Val])" . nl
+    , strstr "        (usedTokens, remainingTokens) = Prelude.splitAt targetCount scanState" . nl
+    , strstr "        paddedTokens = usedTokens Prelude.++ Prelude.replicate (targetCount Prelude.- Prelude.length usedTokens) \"0\"" . nl
+    , strstr "        scannedValues = Prelude.map parseBackendInt paddedTokens" . nl
+    , strstr "    in Prelude.return (Extracted.unsafeCoerce (scannedValues :: [Extracted.Val]), remainingTokens)" . nl
+    , nl
+    , strstr "parseBackendInt :: Prelude.String -> Extracted.Val" . nl
+    , strstr "parseBackendInt token = backendIntValue (parseIntegerToken token)" . nl
+    , nl
+    , strstr "parseIntegerToken :: Prelude.String -> Prelude.Integer" . nl
+    , strstr "parseIntegerToken token =" . nl
+    , strstr "    case (Prelude.reads token :: [(Prelude.Integer, Prelude.String)]) of" . nl
+    , strstr "        [(n, \"\")] -> n" . nl
+    , strstr "        _ -> 0" . nl
+    , nl
+    , strstr "backendIntValue :: Prelude.Integer -> Extracted.Val" . nl
+    , strstr "backendIntValue n =" . nl
+    , strstr "    if Extracted.ptr64" . nl
+    , strstr "        then Extracted.Vlong (Extracted.repr1 (integerToZ n))" . nl
+    , strstr "        else Extracted.Vint (Extracted.repr (integerToZ n))" . nl
     , nl
     , strstr "renderBackendValue :: Extracted.Val -> Prelude.String" . nl
     , strstr "renderBackendValue Extracted.Vundef = \"<undef>\"" . nl
@@ -206,6 +236,18 @@ backendPrintDriverText = strcat
     , strstr "positiveToInteger Extracted.XH = 1" . nl
     , strstr "positiveToInteger (Extracted.XO p) = 2 Prelude.* positiveToInteger p" . nl
     , strstr "positiveToInteger (Extracted.XI p) = 1 Prelude.+ 2 Prelude.* positiveToInteger p" . nl
+    , nl
+    , strstr "integerToZ :: Prelude.Integer -> Extracted.Z" . nl
+    , strstr "integerToZ n" . nl
+    , strstr "    | n Prelude.== 0 = Extracted.Z0" . nl
+    , strstr "    | n Prelude.> 0 = Extracted.Zpos (positiveFromInteger n)" . nl
+    , strstr "    | Prelude.otherwise = Extracted.Zneg (positiveFromInteger (Prelude.negate n))" . nl
+    , nl
+    , strstr "positiveFromInteger :: Prelude.Integer -> Extracted.Positive" . nl
+    , strstr "positiveFromInteger n" . nl
+    , strstr "    | n Prelude.<= 1 = Extracted.XH" . nl
+    , strstr "    | n `Prelude.mod` 2 Prelude.== 0 = Extracted.XO (positiveFromInteger (n `Prelude.div` 2))" . nl
+    , strstr "    | Prelude.otherwise = Extracted.XI (positiveFromInteger (n `Prelude.div` 2))" . nl
     ]
 
 modExtractionLogs :: ModExtractReport -> [(FilePath, ProcessLog)]

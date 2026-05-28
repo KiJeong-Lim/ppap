@@ -208,10 +208,12 @@ modHarnessText' copiedInput extractConfig
         , if null (mecExtractionLanguage extractConfig) then id else strstr "Extraction Language " . strstr (mecExtractionLanguage extractConfig) . strstr "." . nl
         , nl
         , strcat [ strstr "Require Import " . strstr moduleName . strstr "." . nl | moduleName <- coreModules ]
+        , if mecExtractionLanguage extractConfig == "Haskell" then strstr "From go2c Require Import golang_prelude." . nl else id
         , strcat [ strstr "Require Import " . strstr moduleName . strstr "." . nl | moduleName <- importModules ]
         , nl
         , if null (mecExtractionBlacklist extractConfig) then id else strstr "Extraction Blacklist " . strstr (unwords (mecExtractionBlacklist extractConfig)) . strstr "." . nl
         , if mecExtractionLanguage extractConfig == "Haskell" then strstr "Extract Constant excluded_middle_informative => \"Prelude.True\"." . nl else id
+        , if mecExtractionLanguage extractConfig == "Haskell" then go2cHaskellExtractionAliases else id
         , nl
         , strstr "Definition project_a_gra : GRA := " . strstr (mecGraTerm extractConfig) . strstr "." . nl
         , strstr "Definition project_a_target_mod : @Mod.t project_a_gra := " . strstr (mecModTerm extractConfig) . strstr "." . nl
@@ -223,6 +225,15 @@ modHarnessText' copiedInput extractConfig
     where
         coreModules = mecCoreRequireModules extractConfig
         importModules = nub (maybe [] (: []) copiedInput ++ mecRequireModules extractConfig)
+
+go2cHaskellExtractionAliases :: ShowS
+go2cHaskellExtractionAliases = strcat
+    [ strstr "Extract Inductive C.val => \"Val\"" . nl
+    , strstr "  [ \"Vundef\" \"Vint\" \"Vlong\" \"Vfloat\" \"Vsingle\" \"Vptr\" ]." . nl
+    , strstr "Extract Inductive C.AST.memory_chunk => \"Memory_chunk\"" . nl
+    , strstr "  [ \"Mint8signed\" \"Mint8unsigned\" \"Mint16signed\" \"Mint16unsigned\"" . nl
+    , strstr "    \"Mint32\" \"Mint64\" \"Mfloat32\" \"Mfloat64\" \"Many32\" \"Many64\" ]." . nl
+    ]
 
 modExtractionFailure :: FilePath -> ProcessLog -> String
 modExtractionFailure outputFile logValue = concat

@@ -456,7 +456,7 @@ runShrink options
         let workDir = shrinkWorkDir options caseDir
         resetDirectory workDir
         let config = defaultRunConfig { cfgWorkDir = workDir }
-        let tc = TestCase { tcCaseId = storedCaseId stored, tcSeed = storedSeed stored, tcSize = storedSize stored, tcProgram = genProgram (storedSeed stored) (storedSize stored), tcInput = RuntimeInput { riArgs = [], riStdin = "", riEnv = [] } }
+        let tc = TestCase { tcCaseId = storedCaseId stored, tcSeed = storedSeed stored, tcSize = storedSize stored, tcProgram = genProgram (storedSeed stored) (storedSize stored), tcInput = genRuntimeInput (storedSeed stored) (storedSize stored) }
         result <- runShrinkSearch config tc
         let shrunkDir = caseDir </> "shrunk"
         writeShrunkArtifacts shrunkDir result

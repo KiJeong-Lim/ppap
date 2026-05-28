@@ -18,7 +18,10 @@ constantProgram :: Program
 constantProgram = Program [] stageOneBaseStmts
 
 genTestCase :: CaseId -> Seed -> Size -> TestCase Program
-genTestCase caseId seed size = TestCase { tcCaseId = caseId, tcSeed = seed, tcSize = size, tcProgram = genProgram seed size, tcInput = RuntimeInput { riArgs = [], riStdin = "", riEnv = [] } }
+genTestCase caseId seed size = TestCase { tcCaseId = caseId, tcSeed = seed, tcSize = size, tcProgram = genProgram seed size, tcInput = genRuntimeInput seed size }
+
+genRuntimeInput :: Seed -> Size -> RuntimeInput
+genRuntimeInput _ _ = RuntimeInput { riArgs = [], riStdin = "3\n", riEnv = [] }
 
 genProgram :: Seed -> Size -> Program
 genProgram seed size
@@ -28,7 +31,7 @@ genProgram seed size
 genStageOneProgram :: Size -> State GenState Program
 genStageOneProgram size = do
     assigns <- replicateM assignmentCount genStageOneAssign
-    return (Program [] (SVarZero TInt "x" : assigns ++ [SPrint [EVar TInt "x"]]))
+    return (Program [] (SVarZero TInt "x" : assigns ++ [stageOneScanStmt, SPrint [EVar TInt "x"]]))
     where
         assignmentCount :: Int
         assignmentCount = max 1 (min 8 size)
@@ -41,9 +44,13 @@ genStageOneAssign = do
 stageOneBaseStmts :: [Stmt]
 stageOneBaseStmts =
     [ SVarZero TInt "x"
-    , SAssign "x" (EInt 3)
+    , SAssign "x" (EInt 0)
+    , stageOneScanStmt
     , SPrint [EVar TInt "x"]
     ]
+
+stageOneScanStmt :: Stmt
+stageOneScanStmt = SExpr (ECall TInt "fmt.Scan" [EAddr (EVar TInt "x")])
 
 genProgramFull :: Size -> State GenState Program
 genProgramFull size = do
