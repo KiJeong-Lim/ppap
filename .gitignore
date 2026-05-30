@@ -26,4 +26,4 @@ list.txt
 tmp.txt
 .claude/
 .project-a-*/
-doc/Project_A_*.md
+doc/Project_A*.md
