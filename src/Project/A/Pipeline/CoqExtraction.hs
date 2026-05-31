@@ -64,6 +64,7 @@ runCoqcAndHaskell config caseDir input translatorLog
                 return (failedAfterCoqc translatorLog coqcLog (ExtractionError ("Expected extracted file does not exist: " ++ hsFile)))
             else do
                 ghcExtraArgs <- ghcExtraArgsFromEnv
+                normalizeExtractedHaskell hsFile
                 ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs ghcExtraArgs) ""
                 let ghcLog = processLog ghcResult
                 if not (processSucceeded ghcResult) then
@@ -91,6 +92,7 @@ runExtractedHaskell :: RunConfig -> FilePath -> RuntimeInput -> ProcessLog -> Pr
 runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile
     = do
         let timeouts = cfgTimeouts config
+        normalizeExtractedHaskell hsFile
         driverFile <- writeModHaskellDriver hsFile
         ghcExtraArgs <- ghcExtraArgsFromEnv
         ghcResult <- runTimedProcess (timeoutGhc timeouts) (Just caseDir) [] "ghc" (ghcArgs ghcExtraArgs driverFile) ""
@@ -102,6 +104,91 @@ runExtractedHaskell config caseDir input translatorLog coqcLog extraLogs hsFile
             return ExtractionOutcome { eoTranslatorLog = Just translatorLog, eoCoqcLog = Just coqcLog, eoGhcLog = Just ghcLog, eoRunLog = Just (processLog runResult), eoExtraLogs = extraLogs, eoResult = Right (obsFromProcess runResult) }
     where
         ghcArgs extraArgs driverFile = ["-XNoPolyKinds"] ++ extraArgs ++ ["-i" ++ takeDirectory driverFile, "-outputdir", "coq" </> "extracted", "-odir", "coq" </> "extracted", "-hidir", "coq" </> "extracted", driverFile, "-o", "coq" </> "extracted" </> "gofile-hs"]
+
+normalizeExtractedHaskell :: FilePath -> IO ()
+normalizeExtractedHaskell hsFile = do
+    extractedText <- maybe (fail ("cannot read file: " ++ hsFile)) return =<< readFileNow hsFile
+    _ <- writeFileNow hsFile (normalizeGoSyntaxAliases extractedText)
+    return ()
+
+normalizeGoSyntaxAliases :: String -> String
+normalizeGoSyntaxAliases = replaceMany goSyntaxAliasRewrites . removeAliasDataBlocks goSyntaxAliasDataNames
+
+goSyntaxAliasDataNames :: [String]
+goSyntaxAliasDataNames =
+    [ "Literal0"
+    , "Expr0"
+    , "Callexpr0"
+    , "Statement0"
+    , "FunctionDecl0"
+    ]
+
+goSyntaxAliasRewrites :: [(String, String)]
+goSyntaxAliasRewrites =
+    [ ("MkFunctionDecl0", "MkFunctionDecl")
+    , ("FunctionDecl0", "FunctionDecl")
+    , ("Sifthenelse0", "Sifthenelse")
+    , ("Scontinue0", "Scontinue")
+    , ("Ssequence0", "Ssequence")
+    , ("BuiltinCall0", "BuiltinCall")
+    , ("Statement0", "Statement")
+    , ("Callexpr0", "Callexpr")
+    , ("Sassign0", "Sassign")
+    , ("Sreturn0", "Sreturn")
+    , ("Sbreak0", "Sbreak")
+    , ("Sdefer0", "Sdefer")
+    , ("Sdecl0", "Sdecl")
+    , ("Sskip0", "Sskip")
+    , ("Sloop0", "Sloop")
+    , ("Scall0", "Scall")
+    , ("Sincr0", "Sincr")
+    , ("Sdecr0", "Sdecr")
+    , ("GoCall0", "GoCall")
+    , ("CCall0", "CCall")
+    , ("Esliceop0", "Esliceop")
+    , ("Eifthenelse0", "Eifthenelse")
+    , ("Eindexop0", "Eindexop")
+    , ("Eaddrof0", "Eaddrof")
+    , ("Ederef0", "Ederef")
+    , ("Efield0", "Efield")
+    , ("Ebinop0", "Ebinop")
+    , ("Eunop0", "Eunop")
+    , ("Ecast0", "Ecast")
+    , ("Expr0", "Expr")
+    , ("Elit0", "Elit")
+    , ("Evar0", "Evar")
+    , ("Literal0", "Literal")
+    , ("Lfloat0", "Lfloat")
+    , ("Lbool0", "Lbool")
+    , ("Lnil0", "Lnil")
+    , ("Lint0", "Lint")
+    , ("Lstr0", "Lstr")
+    ]
+
+removeAliasDataBlocks :: [String] -> String -> String
+removeAliasDataBlocks names = unlines . go . lines where
+    go [] = []
+    go (line : rest)
+        | Just name <- dataTypeName line
+        , name `elem` names = go (dropWhile (not . isTopLevelLine) rest)
+        | otherwise = line : go rest
+
+isTopLevelLine :: String -> Bool
+isTopLevelLine line =
+    case line of
+        [] -> False
+        ' ' : _ -> False
+        _ -> True
+
+replaceMany :: [(String, String)] -> String -> String
+replaceMany rewrites text = foldl' (\acc (old, new) -> replaceAll old new acc) text rewrites
+
+replaceAll :: String -> String -> String -> String
+replaceAll old new = go where
+    go [] = []
+    go str
+        | old `isPrefixOf` str = new ++ go (drop (length old) str)
+        | otherwise = head str : go (tail str)
 
 ghcExtraArgsFromEnv :: IO [String]
 ghcExtraArgsFromEnv = envList "PROJECT_A_GHC_ARGS" []

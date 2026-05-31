@@ -19,7 +19,8 @@ Options:
   --coqc=COQC             Default: PROJECT_A_COQC or coqc
   --ghc-args=ARGS         Default: PROJECT_A_GHC_ARGS or -fdefer-type-errors,-Wno-deferred-type-errors
   --no-build              Skip cabal build.
-  --no-tool-build         Skip go2c Coq library build.
+  --tool-build            Build go2c Coq library before running.
+  --no-tool-build         Skip go2c Coq library build. Default.
   -h, --help              Show this help.
 
 Runs the stage-one Project A E2E path:
@@ -87,7 +88,7 @@ opam_env_dir="${PROJECT_A_OPAM_ENV_DIR:-}"
 coqc_command="${PROJECT_A_COQC:-}"
 ghc_args="${PROJECT_A_GHC_ARGS:--fdefer-type-errors,-Wno-deferred-type-errors}"
 do_build=1
-do_tool_build="${PROJECT_A_E2E_TOOL_BUILD:-1}"
+do_tool_build="${PROJECT_A_E2E_TOOL_BUILD:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -101,6 +102,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-tool-build)
       do_tool_build=0
+      shift
+      ;;
+    --tool-build)
+      do_tool_build=1
       shift
       ;;
     --mode=*)
