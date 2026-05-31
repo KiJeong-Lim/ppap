@@ -12,13 +12,14 @@ Options:
   --seed=N                Default: 1
   --size=N                Default: 0
   --workdir=DIR           Default: .project-a-e2e-work
-  --tool-root=DIR         Default: PROJECT_A_TOOL_ROOT or default_tool_root in this script
-  --golanggen-root=DIR    Default: PROJECT_A_GOLANGGEN_ROOT or default_golanggen_root in this script
+  --tool-root=DIR         Default: PROJECT_A_TOOL_ROOT or the value injected by a/boot.sh
+  --golanggen-root=DIR    Default: PROJECT_A_GOLANGGEN_ROOT or tool-root/golanggen
   --coqproject=FILE       Default: PROJECT_A_COQPROJECTS or tool-root/_CoqProject
   --opam-env-dir=DIR      Default: PROJECT_A_OPAM_ENV_DIR or tool-root
   --coqc=COQC             Default: PROJECT_A_COQC or coqc
   --ghc-args=ARGS         Default: PROJECT_A_GHC_ARGS or -fdefer-type-errors,-Wno-deferred-type-errors
   --no-build              Skip cabal build.
+  --no-tool-build         Skip go2c Coq library build.
   -h, --help              Show this help.
 
 Runs the stage-one Project A E2E path:
@@ -70,7 +71,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Local path defaults. Edit these when your go2c/golanggen checkout lives
 # somewhere else; CLI flags and PROJECT_A_* environment variables still win.
-default_tool_root=
+default_tool_root="__PROJECT_A_BOOT_TOOL_ROOT__"
 default_golanggen_root=
 
 mode="${PROJECT_A_RUN_MODE:-one}"
@@ -80,11 +81,13 @@ size="${PROJECT_A_SIZE:-0}"
 workdir="${PROJECT_A_WORKDIR:-.project-a-e2e-work}"
 tool_root="${PROJECT_A_TOOL_ROOT:-$default_tool_root}"
 golanggen_root="${PROJECT_A_GOLANGGEN_ROOT:-$default_golanggen_root}"
+unbooted_tool_root="__PROJECT_A_BOOT_"'TOOL_ROOT__'
 coqproject="${PROJECT_A_COQPROJECTS:-}"
 opam_env_dir="${PROJECT_A_OPAM_ENV_DIR:-}"
 coqc_command="${PROJECT_A_COQC:-}"
 ghc_args="${PROJECT_A_GHC_ARGS:--fdefer-type-errors,-Wno-deferred-type-errors}"
 do_build=1
+do_tool_build="${PROJECT_A_E2E_TOOL_BUILD:-1}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -94,6 +97,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-build)
       do_build=0
+      shift
+      ;;
+    --no-tool-build)
+      do_tool_build=0
       shift
       ;;
     --mode=*)
@@ -201,12 +208,35 @@ if [[ -z "$golanggen_root" ]]; then
   golanggen_root="$tool_root/golanggen"
 fi
 
+if [[ "$tool_root" == "$unbooted_tool_root" ]]; then
+  echo "error: this checkout has not been booted; run a/boot.sh or set PROJECT_A_TOOL_ROOT" >&2
+  exit 2
+fi
+
 if [[ -z "$coqproject" ]]; then
   coqproject="$tool_root/_CoqProject"
 fi
 
 if [[ -z "$opam_env_dir" ]]; then
   opam_env_dir="$tool_root"
+fi
+
+if [[ "$do_tool_build" -eq 1 ]]; then
+  if [[ ! -f "$tool_root/CoqMakefile" ]]; then
+    echo "error: expected go2c CoqMakefile does not exist: $tool_root/CoqMakefile" >&2
+    exit 2
+  fi
+
+  (
+    cd "$opam_env_dir"
+    eval "$(opam env)"
+    cd "$tool_root"
+    make -f CoqMakefile \
+      theories/golang_notation.vo \
+      theories/expr_sem.vo \
+      theories/golang_builtins.vo \
+      theories/stmt_sem.vo
+  )
 fi
 
 run_args=(

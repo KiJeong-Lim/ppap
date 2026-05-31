@@ -110,17 +110,130 @@ writeModHaskellDriver :: FilePath -> IO FilePath
 writeModHaskellDriver hsFile = do
     let driverFile = takeDirectory hsFile </> "Main.hs"
     extractedText <- maybe (fail ("cannot read file: " ++ hsFile)) return =<< readFileNow hsFile
-    _ <- writeFileNow driverFile (modHaskellDriverText (extractedHasBackendValues extractedText) (takeBaseName hsFile))
+    _ <- writeFileNow driverFile (modHaskellDriverText (extractedBackendShape extractedText) (takeBaseName hsFile))
     return driverFile
 
-extractedHasBackendValues :: String -> Bool
-extractedHasBackendValues extractedText = all (`isInfixOf` extractedText) ["data Val", "Vint", "Vlong", "signed0"]
+data BackendArgShape
+    = NoBackendValues
+    | UntypedBackendValues BackendNames
+    | ExprBackendValues BackendNames ExprBackendNames
+    deriving (Eq, Ord, Show)
 
-modHaskellDriverText :: Bool -> String -> String
-modHaskellDriverText hasBackendValues extractedModule = modHaskellDriverText' hasBackendValues extractedModule ""
+data BackendNames
+    = BackendNames
+    deriving (Eq, Ord, Show)
 
-modHaskellDriverText' :: Bool -> String -> ShowS
-modHaskellDriverText' hasBackendValues extractedModule = strcat
+data ExprBackendNames
+    = ExprBackendNames
+    { ebExprType :: String
+    , ebTypeType :: String
+    , ebTintCtor :: String
+    , ebTboolCtor :: String
+    , ebSignedCtor :: String
+    , ebUnsignedCtor :: String
+    } deriving (Eq, Ord, Show)
+
+extractedBackendShape :: String -> BackendArgShape
+extractedBackendShape extractedText
+    = case extractedBackendNames extractedText of
+        Nothing -> NoBackendValues
+        Just backendNames ->
+            case extractedExprBackendNames extractedText of
+                Just exprNames -> ExprBackendValues backendNames exprNames
+                Nothing -> UntypedBackendValues backendNames
+
+extractedBackendNames :: String -> Maybe BackendNames
+extractedBackendNames extractedText
+    | not (all (`isInfixOf` extractedText) ["data Val", "Vint", "Vlong"]) = Nothing
+    | otherwise = Just BackendNames
+
+extractedExprBackendNames :: String -> Maybe ExprBackendNames
+extractedExprBackendNames extractedText = do
+    (exprType, elitLine) <- dataBlockWithConstructor extractedText "Elit"
+    typeType <- lastMaybe (constructorWords elitLine)
+    tintLine <- constructorLine extractedText typeType "Tint"
+    let tintWords = constructorWords tintLine
+    tintCtor <- headMaybe tintWords
+    signednessType <- headMaybe (drop 2 tintWords)
+    tboolCtor <- constructorNameWithPrefix extractedText typeType "Tbool"
+    signedCtor <- constructorNameWithPrefix extractedText signednessType "Signed"
+    unsignedCtor <- constructorNameWithPrefix extractedText signednessType "Unsigned"
+    return ExprBackendNames
+        { ebExprType = exprType
+        , ebTypeType = typeType
+        , ebTintCtor = tintCtor
+        , ebTboolCtor = tboolCtor
+        , ebSignedCtor = signedCtor
+        , ebUnsignedCtor = unsignedCtor
+        }
+
+constructorNameWithPrefix :: String -> String -> String -> Maybe String
+constructorNameWithPrefix extractedText typeName ctorPrefix = headMaybe . constructorWords =<< constructorLine extractedText typeName ctorPrefix
+
+constructorLine :: String -> String -> String -> Maybe String
+constructorLine extractedText typeName ctorPrefix
+    = find (constructorStartsWith ctorPrefix) (dataBlock extractedText typeName)
+
+dataBlockWithConstructor :: String -> String -> Maybe (String, String)
+dataBlockWithConstructor extractedText ctorPrefix = go (lines extractedText) where
+    go [] = Nothing
+    go (line : rest)
+        | Just typeName <- dataTypeName line
+        = case find (constructorStartsWith ctorPrefix) (takeDataBlock rest) of
+            Just ctorLine -> Just (typeName, ctorLine)
+            Nothing -> go rest
+        | otherwise = go rest
+
+dataBlock :: String -> String -> [String]
+dataBlock extractedText typeName
+    = case dropWhile (not . isDataLine typeName) (lines extractedText) of
+        [] -> []
+        _ : rest -> takeDataBlock rest
+
+takeDataBlock :: [String] -> [String]
+takeDataBlock = takeWhile (not . startsTopLevelDecl)
+
+startsTopLevelDecl :: String -> Bool
+startsTopLevelDecl line
+    = any (`isPrefixOf` trimLeft line) ["data ", "type ", "newtype ", "class ", "instance "]
+
+isDataLine :: String -> String -> Bool
+isDataLine typeName line = ("data " ++ typeName ++ " =") `isPrefixOf` trimLeft line
+
+dataTypeName :: String -> Maybe String
+dataTypeName line
+    = case words (trimLeft line) of
+        "data" : typeName : "=" : _ -> Just typeName
+        _ -> Nothing
+
+constructorStartsWith :: String -> String -> Bool
+constructorStartsWith ctorPrefix line
+    = case headMaybe (constructorWords line) of
+        Just ctor -> ctorPrefix `isPrefixOf` ctor
+        Nothing -> False
+
+constructorWords :: String -> [String]
+constructorWords line
+    = case words (trimLeft line) of
+        "|" : rest -> rest
+        words' -> words'
+
+trimLeft :: String -> String
+trimLeft = dropWhile (== ' ')
+
+headMaybe :: [a] -> Maybe a
+headMaybe [] = Nothing
+headMaybe (x : _) = Just x
+
+lastMaybe :: [a] -> Maybe a
+lastMaybe [] = Nothing
+lastMaybe xs = Just (last xs)
+
+modHaskellDriverText :: BackendArgShape -> String -> String
+modHaskellDriverText backendShape extractedModule = modHaskellDriverText' backendShape extractedModule ""
+
+modHaskellDriverText' :: BackendArgShape -> String -> ShowS
+modHaskellDriverText' backendShape extractedModule = strcat
     [ strstr "module Main where" . nl
     , nl
     , strstr "import qualified Data.Char as Char" . nl
@@ -161,7 +274,7 @@ modHaskellDriverText' hasBackendValues extractedModule = strcat
     , strstr "handleExternalIO scanState name args" . nl
     , strstr "    | name Prelude.== \"project-a.stdout\" = printExactStdout args Prelude.>> Prelude.return (ioValue, scanState)" . nl
     , strstr "    | name Prelude.== \"project-a.stdout-line\" = printExactStdout args Prelude.>> Prelude.putChar '\\n' Prelude.>> Prelude.return (ioValue, scanState)" . nl
-    , if hasBackendValues then backendIODriverText else strstr "    | Prelude.otherwise = Prelude.return (ioValue, scanState)" . nl
+    , backendIODriverText backendShape
     , nl
     , strstr "printExactStdout :: Extracted.Any -> Prelude.IO ()" . nl
     , strstr "printExactStdout args = Prelude.putStr (Prelude.concat (Prelude.map coqStringToString (Extracted.unsafeCoerce args :: [Extracted.String])))" . nl
@@ -177,15 +290,26 @@ modHaskellDriverText' hasBackendValues extractedModule = strcat
     , strstr "bit n flag = if flag then 2 Prelude.^ n else 0" . nl
     ]
 
-backendIODriverText :: ShowS
-backendIODriverText = strcat
+backendIODriverText :: BackendArgShape -> ShowS
+backendIODriverText NoBackendValues = strstr "    | Prelude.otherwise = Prelude.return (ioValue, scanState)" . nl
+backendIODriverText (UntypedBackendValues backendNames) = backendIODriverBody backendNames (untypedBackendArgText backendNames)
+backendIODriverText (ExprBackendValues backendNames exprNames) = backendIODriverBody backendNames (exprBackendArgText backendNames exprNames)
+
+backendIODriverBody :: BackendNames -> ShowS -> ShowS
+backendIODriverBody backendNames argText = strcat
     [ strstr "    | name Prelude.== \"Go.builtin.scan\" = scanBackendValues scanState args" . nl
     , strstr "    | name Prelude.== \"Go.builtin.print\" = printBackendValuesNoNewline args Prelude.>> Prelude.return (ioValue, scanState)" . nl
     , strstr "    | name Prelude.== \"fmt.Println\" = printBackendValues args Prelude.>> Prelude.return (ioValue, scanState)" . nl
     , strstr "    | name Prelude.== \"fmt.Print\" = printBackendValuesNoNewline args Prelude.>> Prelude.return (ioValue, scanState)" . nl
     , strstr "    | Prelude.otherwise = Prelude.return (ioValue, scanState)" . nl
     , nl
-    , strstr "printBackendValues :: Extracted.Any -> Prelude.IO ()" . nl
+    , argText
+    , backendValueText backendNames
+    ]
+
+untypedBackendArgText :: BackendNames -> ShowS
+untypedBackendArgText _ = strcat
+    [ strstr "printBackendValues :: Extracted.Any -> Prelude.IO ()" . nl
     , strstr "printBackendValues args = Prelude.putStrLn (joinWords (Prelude.map renderBackendValue (Extracted.unsafeCoerce args :: [Extracted.Val])))" . nl
     , nl
     , strstr "printBackendValuesNoNewline :: Extracted.Any -> Prelude.IO ()" . nl
@@ -199,7 +323,56 @@ backendIODriverText = strcat
     , strstr "        scannedValues = Prelude.map parseBackendInt paddedTokens" . nl
     , strstr "    in Prelude.return (Extracted.unsafeCoerce (scannedValues :: [Extracted.Val]), remainingTokens)" . nl
     , nl
-    , strstr "parseBackendInt :: Prelude.String -> Extracted.Val" . nl
+    ]
+
+exprBackendArgText :: BackendNames -> ExprBackendNames -> ShowS
+exprBackendArgText _ exprNames = strcat
+    [ strstr "type BackendArg = (Extracted." . strstr (ebExprType exprNames) . strstr ", Extracted.Val)" . nl
+    , nl
+    , strstr "printBackendValues :: Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "printBackendValues args = Prelude.putStrLn (joinWords (Prelude.map renderBackendArg (Extracted.unsafeCoerce args :: [BackendArg])))" . nl
+    , nl
+    , strstr "printBackendValuesNoNewline :: Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "printBackendValuesNoNewline args = Prelude.putStr (joinWords (Prelude.map renderBackendArg (Extracted.unsafeCoerce args :: [BackendArg])))" . nl
+    , nl
+    , strstr "scanBackendValues :: ScanState -> Extracted.Any -> Prelude.IO (Extracted.Any, ScanState)" . nl
+    , strstr "scanBackendValues scanState args =" . nl
+    , strstr "    let targetCount = Prelude.length (Extracted.unsafeCoerce args :: [BackendArg])" . nl
+    , strstr "        (usedTokens, remainingTokens) = Prelude.splitAt targetCount scanState" . nl
+    , strstr "        paddedTokens = usedTokens Prelude.++ Prelude.replicate (targetCount Prelude.- Prelude.length usedTokens) \"0\"" . nl
+    , strstr "        scannedValues = Prelude.map parseBackendInt paddedTokens" . nl
+    , strstr "    in Prelude.return (Extracted.unsafeCoerce (scannedValues :: [Extracted.Val]), remainingTokens)" . nl
+    , nl
+    , strstr "renderBackendArg :: BackendArg -> Prelude.String" . nl
+    , strstr "renderBackendArg (expr, value) = renderBackendValueAs (exprType expr) value" . nl
+    , nl
+    , strstr "exprType :: Extracted." . strstr (ebExprType exprNames) . strstr " -> Extracted." . strstr (ebTypeType exprNames) . nl
+    , strstr "exprType expr =" . nl
+    , strstr "    case expr of" . nl
+    , strstr "        Extracted.Elit _ ty -> ty" . nl
+    , strstr "        Extracted.Evar _ ty -> ty" . nl
+    , strstr "        Extracted.Ederef _ ty -> ty" . nl
+    , strstr "        Extracted.Eaddrof _ ty -> ty" . nl
+    , strstr "        Extracted.Eunop _ _ ty -> ty" . nl
+    , strstr "        Extracted.Ebinop _ _ _ ty -> ty" . nl
+    , strstr "        Extracted.Ecast _ _ ty -> ty" . nl
+    , strstr "        Extracted.Efield _ _ ty -> ty" . nl
+    , strstr "        Extracted.Eindexop _ _ ty -> ty" . nl
+    , strstr "        Extracted.Esliceop _ _ _ ty -> ty" . nl
+    , nl
+    , strstr "renderBackendValueAs :: Extracted." . strstr (ebTypeType exprNames) . strstr " -> Extracted.Val -> Prelude.String" . nl
+    , strstr "renderBackendValueAs (Extracted." . strstr (ebTintCtor exprNames) . strstr " _ Extracted." . strstr (ebSignedCtor exprNames) . strstr ") (Extracted.Vint n) = Prelude.show (signedInteger 32 n)" . nl
+    , strstr "renderBackendValueAs (Extracted." . strstr (ebTintCtor exprNames) . strstr " _ Extracted." . strstr (ebUnsignedCtor exprNames) . strstr ") (Extracted.Vint n) = Prelude.show (unsignedInteger 32 n)" . nl
+    , strstr "renderBackendValueAs (Extracted." . strstr (ebTintCtor exprNames) . strstr " _ Extracted." . strstr (ebSignedCtor exprNames) . strstr ") (Extracted.Vlong n) = Prelude.show (signedInteger 64 n)" . nl
+    , strstr "renderBackendValueAs (Extracted." . strstr (ebTintCtor exprNames) . strstr " _ Extracted." . strstr (ebUnsignedCtor exprNames) . strstr ") (Extracted.Vlong n) = Prelude.show (unsignedInteger 64 n)" . nl
+    , strstr "renderBackendValueAs Extracted." . strstr (ebTboolCtor exprNames) . strstr " (Extracted.Vint n) = if unsignedInteger 32 n Prelude.== 0 then \"false\" else \"true\"" . nl
+    , strstr "renderBackendValueAs _ value = renderBackendValue value" . nl
+    , nl
+    ]
+
+backendValueText :: BackendNames -> ShowS
+backendValueText _ = strcat
+    [ strstr "parseBackendInt :: Prelude.String -> Extracted.Val" . nl
     , strstr "parseBackendInt token = backendIntValue (parseIntegerToken token)" . nl
     , nl
     , strstr "parseIntegerToken :: Prelude.String -> Prelude.Integer" . nl
@@ -211,13 +384,13 @@ backendIODriverText = strcat
     , strstr "backendIntValue :: Prelude.Integer -> Extracted.Val" . nl
     , strstr "backendIntValue n =" . nl
     , strstr "    if Extracted.ptr64" . nl
-    , strstr "        then Extracted.Vlong (Extracted.repr1 (integerToZ n))" . nl
-    , strstr "        else Extracted.Vint (Extracted.repr (integerToZ n))" . nl
+    , strstr "        then Extracted.Vlong (integerToZ (unsignedModulo 64 n))" . nl
+    , strstr "        else Extracted.Vint (integerToZ (unsignedModulo 32 n))" . nl
     , nl
     , strstr "renderBackendValue :: Extracted.Val -> Prelude.String" . nl
     , strstr "renderBackendValue Extracted.Vundef = \"<undef>\"" . nl
-    , strstr "renderBackendValue (Extracted.Vint n) = Prelude.show (zToInteger (Extracted.signed0 n))" . nl
-    , strstr "renderBackendValue (Extracted.Vlong n) = Prelude.show (zToInteger (Extracted.signed n))" . nl
+    , strstr "renderBackendValue (Extracted.Vint n) = Prelude.show (signedInteger 32 n)" . nl
+    , strstr "renderBackendValue (Extracted.Vlong n) = Prelude.show (signedInteger 64 n)" . nl
     , strstr "renderBackendValue (Extracted.Vfloat _) = \"<float>\"" . nl
     , strstr "renderBackendValue (Extracted.Vsingle _) = \"<float>\"" . nl
     , strstr "renderBackendValue (Extracted.Vptr _ _) = \"<ptr>\"" . nl
@@ -226,6 +399,19 @@ backendIODriverText = strcat
     , strstr "joinWords [] = \"\"" . nl
     , strstr "joinWords [x] = x" . nl
     , strstr "joinWords (x : xs) = x Prelude.++ Prelude.concatMap (\" \" Prelude.++) xs" . nl
+    , nl
+    , strstr "signedInteger :: Prelude.Integer -> Extracted.Z -> Prelude.Integer" . nl
+    , strstr "signedInteger bits z =" . nl
+    , strstr "    let x = unsignedInteger bits z" . nl
+    , strstr "        half = 2 Prelude.^ (bits Prelude.- 1)" . nl
+    , strstr "        modulus = 2 Prelude.^ bits" . nl
+    , strstr "    in if x Prelude.< half then x else x Prelude.- modulus" . nl
+    , nl
+    , strstr "unsignedInteger :: Prelude.Integer -> Extracted.Z -> Prelude.Integer" . nl
+    , strstr "unsignedInteger bits z = unsignedModulo bits (zToInteger z)" . nl
+    , nl
+    , strstr "unsignedModulo :: Prelude.Integer -> Prelude.Integer -> Prelude.Integer" . nl
+    , strstr "unsignedModulo bits n = n `Prelude.mod` (2 Prelude.^ bits)" . nl
     , nl
     , strstr "zToInteger :: Extracted.Z -> Prelude.Integer" . nl
     , strstr "zToInteger Extracted.Z0 = 0" . nl
@@ -310,7 +496,7 @@ modExtractConfigFromEnv coqFile = do
 deriveBackendRoot :: Maybe FilePath -> FilePath -> FilePath
 deriveBackendRoot Nothing backendRoot = backendRoot
 deriveBackendRoot (Just toolRoot) backendRoot
-    | backendRoot == mecBackendRoot defaultModExtractConfig = toolRoot </> "clightplus" </> "CRIS"
+    | backendRoot == mecBackendRoot defaultModExtractConfig = toolRoot </> "__PROJECT_A_BOOT_STACK_DIR__" </> "__PROJECT_A_BOOT_BACKEND_DIR__"
     | otherwise = backendRoot
 
 envString :: String -> String -> IO String

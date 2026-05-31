@@ -59,7 +59,7 @@ resetPath path = do
     else
         return ()
 
-saveFailureArchive :: FilePath -> CaseReport Program -> IO (Maybe FilePath)
+saveFailureArchive :: FilePath -> CaseReport program -> IO (Maybe FilePath)
 saveFailureArchive workDir report
     = case crStatus report of
         CaseFail _ -> do
@@ -73,15 +73,27 @@ writeInitialArtifacts dir tc = do
     writeTextFile (dir </> "seed.json") (seedJson tc)
     writeTextFile (dir </> "feature.json") (featureJson (featuresOf (tcProgram tc)))
     writeTextFile (dir </> "gofile.go") (prettyProgram (tcProgram tc))
-    writeTextFile (dir </> "input.stdin") (riStdin (tcInput tc))
-    writeTextFile (dir </> "args.txt") (unlines (riArgs (tcInput tc)))
-    writeTextFile (dir </> "env.json") (envJson (riEnv (tcInput tc)))
+    writeRuntimeInputArtifacts dir (tcInput tc)
+
+writeGoFileArtifacts :: FilePath -> FilePath -> RuntimeInput -> IO ()
+writeGoFileArtifacts dir sourcePath input = do
+    writeTextFile (dir </> "source.json") (sourceJson sourcePath)
+    writeRuntimeInputArtifacts dir input
+
+writeRuntimeInputArtifacts :: FilePath -> RuntimeInput -> IO ()
+writeRuntimeInputArtifacts dir input = do
+    writeTextFile (dir </> "input.stdin") (riStdin input)
+    writeTextFile (dir </> "args.txt") (unlines (riArgs input))
+    writeTextFile (dir </> "env.json") (envJson (riEnv input))
 
 writeProcessLog :: FilePath -> ProcessLog -> IO ()
 writeProcessLog path logValue = writeTextFile path (processLogJson logValue)
 
 writeResult :: FilePath -> CaseReport Program -> IO ()
 writeResult dir report = writeTextFile (dir </> "result.json") (caseReportJson report)
+
+writeGoFileResult :: FilePath -> CaseReport FilePath -> IO ()
+writeGoFileResult dir report = writeTextFile (dir </> "result.json") (goFileCaseReportJson report)
 
 writeTextFile :: FilePath -> String -> IO ()
 writeTextFile path content = do
@@ -144,6 +156,17 @@ envJson env = Json.object [Json.field "env" (Json.list pairJson env)] where
 
 caseReportJson :: CaseReport Program -> String
 caseReportJson report = Json.object [Json.field "caseDir" (Json.string (crCaseDir report)), Json.field "status" (Json.string (show (crStatus report))), Json.field "result" (pipelineResultJson (crResult report))]
+
+sourceJson :: FilePath -> String
+sourceJson sourcePath = Json.object [Json.field "source" (Json.string sourcePath)]
+
+goFileCaseReportJson :: CaseReport FilePath -> String
+goFileCaseReportJson report = Json.object
+    [ Json.field "caseDir" (Json.string (crCaseDir report))
+    , Json.field "source" (Json.string (tcProgram (crTestCase report)))
+    , Json.field "status" (Json.string (show (crStatus report)))
+    , Json.field "result" (pipelineResultJson (crResult report))
+    ]
 
 pipelineResultJson :: PipelineResult -> String
 pipelineResultJson (InvalidGo logValue) = tagged "InvalidGo" [Json.field "log" (processLogJson logValue)]

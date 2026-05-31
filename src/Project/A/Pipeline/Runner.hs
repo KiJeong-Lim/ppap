@@ -1,5 +1,6 @@
 module Project.A.Pipeline.Runner where
 
+import System.Directory
 import System.FilePath
 
 import Project.A.Artifact
@@ -19,18 +20,7 @@ runCase :: RunConfig -> TestCase Program -> IO (CaseReport Program)
 runCase config tc = do
     caseDir <- prepareCaseDirectory (cfgWorkDir config) (tcCaseId tc)
     writeInitialArtifacts caseDir tc
-    native <- runNativeGo config caseDir (tcInput tc)
-    writeProcessLog (caseDir </> "native" </> "gofmt.log") (noGofmtLog native)
-    writeProcessLog (caseDir </> "native" </> "build.log") (noBuildLog native)
-    maybe (return ()) (writeProcessLog (caseDir </> "native" </> "run.log")) (noRunLog native)
-    result <- case noResult native of
-        Left buildLog -> return (InvalidGo buildLog)
-        Right obsGo -> do
-            extraction <- runCoqExtraction config caseDir (tcInput tc)
-            writeExtractionLogs caseDir extraction
-            case eoResult extraction of
-                Left failure -> return failure
-                Right obsHs -> return (RanBoth obsGo obsHs)
+    result <- runPreparedPipeline config caseDir (tcInput tc)
     let report = CaseReport { crCaseDir = caseDir, crTestCase = tc, crResult = result, crStatus = classifyResult result }
     writeResult caseDir report
     let score = scoreOfReport report
@@ -40,6 +30,34 @@ runCase config tc = do
     writeCorpusDecision caseDir corpusDecision
     commitCorpusAdmission (cfgWorkDir config) corpusDecision report
     return report
+
+runGoFileCase :: RunConfig -> CaseId -> FilePath -> RuntimeInput -> IO (CaseReport FilePath)
+runGoFileCase config caseId sourcePath input = do
+    absSource <- makeAbsolute sourcePath
+    caseDir <- prepareCaseDirectory (cfgWorkDir config) caseId
+    copyFile absSource (caseDir </> "gofile.go")
+    writeGoFileArtifacts caseDir absSource input
+    result <- runPreparedPipeline config caseDir input
+    let tc = TestCase { tcCaseId = caseId, tcSeed = 0, tcSize = 0, tcProgram = absSource, tcInput = input }
+    let report = CaseReport { crCaseDir = caseDir, crTestCase = tc, crResult = result, crStatus = classifyResult result }
+    writeGoFileResult caseDir report
+    _ <- saveFailureArchive (cfgWorkDir config) report
+    return report
+
+runPreparedPipeline :: RunConfig -> FilePath -> RuntimeInput -> IO PipelineResult
+runPreparedPipeline config caseDir input = do
+    native <- runNativeGo config caseDir input
+    writeProcessLog (caseDir </> "native" </> "gofmt.log") (noGofmtLog native)
+    writeProcessLog (caseDir </> "native" </> "build.log") (noBuildLog native)
+    maybe (return ()) (writeProcessLog (caseDir </> "native" </> "run.log")) (noRunLog native)
+    case noResult native of
+        Left buildLog -> return (InvalidGo buildLog)
+        Right obsGo -> do
+            extraction <- runCoqExtraction config caseDir input
+            writeExtractionLogs caseDir extraction
+            case eoResult extraction of
+                Left failure -> return failure
+                Right obsHs -> return (RanBoth obsGo obsHs)
 
 writeExtractionLogs :: FilePath -> ExtractionOutcome -> IO ()
 writeExtractionLogs caseDir extraction = do

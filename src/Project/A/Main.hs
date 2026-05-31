@@ -43,6 +43,7 @@ mainWithArgs args
         Shrink options -> runShrink options
         ModExtract options -> runModExtract options
         TestItrExtract options -> runTestItrExtract options
+        GoFile options -> runGoFile options
 
 data Command
     = Help
@@ -54,7 +55,28 @@ data Command
     | Shrink Options
     | ModExtract ModExtractOptions
     | TestItrExtract TestItrExtractOptions
+    | GoFile GoFileOptions
     deriving (Eq, Ord, Show)
+
+data GoFileOptions
+    = GoFileOptions
+    { goFileOptFiles :: [FilePath]
+    , goFileOptWorkDir :: FilePath
+    , goFileOptStdin :: String
+    , goFileOptStdinFile :: Maybe FilePath
+    , goFileOptArgs :: [String]
+    , goFileOptEnv :: [(String, String)]
+    } deriving (Eq, Ord, Show)
+
+defaultGoFileOptions :: GoFileOptions
+defaultGoFileOptions = GoFileOptions
+    { goFileOptFiles = []
+    , goFileOptWorkDir = cfgWorkDir defaultRunConfig
+    , goFileOptStdin = ""
+    , goFileOptStdinFile = Nothing
+    , goFileOptArgs = []
+    , goFileOptEnv = []
+    }
 
 data TestItrExtractOptions
     = TestItrExtractOptions
@@ -148,11 +170,23 @@ parseCommand rawArgs
         "shrink" : rest -> Shrink (parseOptions rest)
         "mod-extract" : rest -> ModExtract (parseModExtractOptions rest)
         "test-itr-extract" : rest -> TestItrExtract (parseTestItrExtractOptions rest)
+        "go-file" : rest -> GoFile (parseGoFileOptions rest)
+        "go-files" : rest -> GoFile (parseGoFileOptions rest)
         "--help" : _ -> Help
         unknown : _ -> if unknown == "one" || unknown == "--one" then One defaultOptions else Help
 
 parseOptions :: [String] -> Options
 parseOptions args = defaultOptions { optSeed = intOption "seed" (optSeed defaultOptions) args, optSize = intOption "size" (optSize defaultOptions) args, optCases = max 1 (intOption "cases" (optCases defaultOptions) args), optWorkDir = stringOption "workdir" (optWorkDir defaultOptions) args, optExplicitWorkDir = stringOptionMaybe "workdir" args, optCaseDir = stringOptionMaybe "case-dir" args }
+
+parseGoFileOptions :: [String] -> GoFileOptions
+parseGoFileOptions args = defaultGoFileOptions
+    { goFileOptFiles = goFilesFromArgs args
+    , goFileOptWorkDir = stringOption "workdir" (goFileOptWorkDir defaultGoFileOptions) args
+    , goFileOptStdin = stringOption "stdin" (goFileOptStdin defaultGoFileOptions) args
+    , goFileOptStdinFile = stringOptionMaybe "stdin-file" args
+    , goFileOptArgs = stringOptions "arg" args
+    , goFileOptEnv = map splitEnvBinding (stringOptions "env" args)
+    }
 
 parseModExtractOptions :: [String] -> ModExtractOptions
 parseModExtractOptions args = defaultModExtractOptions
@@ -193,6 +227,32 @@ testItrCoqFileArg args
         Just path -> Just path
         Nothing -> lastMaybe [arg | arg <- map normalizeArg args, ".v" `isSuffixOf` arg, not ("-" `isPrefixOf` arg)]
 
+goFilesFromArgs :: [String] -> [FilePath]
+goFilesFromArgs args = nub (stringOptions "go-file" args ++ positionalGoFiles args)
+
+positionalGoFiles :: [String] -> [FilePath]
+positionalGoFiles rawArgs = go (map normalizeArg rawArgs) where
+    optionKeys = ["go-file", "workdir", "stdin", "stdin-file", "arg", "env"]
+
+    go [] = []
+    go [arg]
+        | isPositionalGoFile arg = [arg]
+        | otherwise = []
+    go (arg : value : rest)
+        | arg `elem` optionKeys = go rest
+        | any (\key -> (key ++ "=") `isPrefixOf` arg) optionKeys = go (value : rest)
+        | isPositionalGoFile arg = arg : go (value : rest)
+        | otherwise = go (value : rest)
+
+isPositionalGoFile :: String -> Bool
+isPositionalGoFile arg = ".go" `isSuffixOf` arg && not ("-" `isPrefixOf` arg) && '=' `notElem` arg
+
+splitEnvBinding :: String -> (String, String)
+splitEnvBinding binding
+    = case break (== '=') binding of
+        (key, '=' : value) -> (key, value)
+        (key, "") -> (key, "")
+
 lastMaybe :: [a] -> Maybe a
 lastMaybe [] = Nothing
 lastMaybe xs = Just (last xs)
@@ -211,6 +271,19 @@ intOption key fallback args
 
 stringOption :: String -> String -> [String] -> String
 stringOption key fallback args = maybe fallback id (stringOptionMaybe key args)
+
+stringOptions :: String -> [String] -> [String]
+stringOptions key rawArgs = go (map normalizeArg rawArgs) where
+    prefix = key ++ "="
+
+    go [] = []
+    go [arg]
+        | prefix `isPrefixOf` arg = [drop (length prefix) arg]
+        | otherwise = []
+    go (arg : value : rest)
+        | arg == key = value : go rest
+        | prefix `isPrefixOf` arg = drop (length prefix) arg : go (value : rest)
+        | otherwise = go (value : rest)
 
 stringOptionMaybe :: String -> [String] -> Maybe String
 stringOptionMaybe key rawArgs = go (map normalizeArg rawArgs) where
@@ -274,6 +347,37 @@ runPrintGo options = mapM_ printCase [1 .. optCases options] where
         putStrLn ("// randomgen case " ++ show caseId ++ ", seed=" ++ show seed ++ ", size=" ++ show (optSize options))
         putStr (prettyProgram (genProgram seed (optSize options)))
         when (caseId < optCases options) (putStrLn "")
+
+runGoFile :: GoFileOptions -> IO ()
+runGoFile rawOptions = do
+    options <- applyGoFileEnv rawOptions
+    input <- runtimeInputFromGoFileOptions options
+    if null (goFileOptFiles options) then
+        putStrLn "go-file-error: --go-file=FILE or a positional FILE.go is required"
+    else do
+        columns <- outputColumns
+        forM_ (zip [1 ..] (goFileOptFiles options)) $ \(caseId, sourcePath) -> do
+            exists <- doesFileExist sourcePath
+            if not exists then
+                putStrLn ("go-file-error: file does not exist: " ++ sourcePath)
+            else do
+                report <- runGoFileCase defaultRunConfig { cfgWorkDir = goFileOptWorkDir options } caseId sourcePath input
+                putStrLn ("source: " ++ tcProgram (crTestCase report))
+                putStr (renderCaseReport columns report)
+                when (length (goFileOptFiles options) > 1) (putStrLn "")
+
+applyGoFileEnv :: GoFileOptions -> IO GoFileOptions
+applyGoFileEnv options = do
+    workDir <- envString "PROJECT_A_WORKDIR" (goFileOptWorkDir defaultGoFileOptions) (goFileOptWorkDir options)
+    stdinText <- envString "PROJECT_A_STDIN" (goFileOptStdin defaultGoFileOptions) (goFileOptStdin options)
+    return options { goFileOptWorkDir = workDir, goFileOptStdin = stdinText }
+
+runtimeInputFromGoFileOptions :: GoFileOptions -> IO RuntimeInput
+runtimeInputFromGoFileOptions options = do
+    stdinText <- case goFileOptStdinFile options of
+        Nothing -> return (goFileOptStdin options)
+        Just path -> readRequiredFile path
+    return RuntimeInput { riArgs = goFileOptArgs options, riStdin = stdinText, riEnv = goFileOptEnv options }
 
 runSearch :: Options -> IO ()
 runSearch options
@@ -938,7 +1042,7 @@ applyModExtractEnv options = do
 deriveBackendRoot :: Maybe FilePath -> FilePath -> FilePath
 deriveBackendRoot Nothing backendRoot = backendRoot
 deriveBackendRoot (Just toolRoot) backendRoot
-    | backendRoot == modOptBackendRoot defaultModExtractOptions = toolRoot </> "clightplus" </> "CRIS"
+    | backendRoot == modOptBackendRoot defaultModExtractOptions = toolRoot </> "__PROJECT_A_BOOT_STACK_DIR__" </> "__PROJECT_A_BOOT_BACKEND_DIR__"
     | otherwise = backendRoot
 
 deriveOpamEnvDir :: Maybe FilePath -> Maybe FilePath -> Maybe FilePath
@@ -1058,12 +1162,14 @@ helpText' = strcat
     , strstr "  fuzz --cases=N --seed=N --size=N --workdir=DIR" . nl
     , strstr "  print-go --cases=N --seed=N --size=N" . nl
     , strstr "  search --cases=N --seed=N --size=N --workdir=DIR" . nl
+    , strstr "  go-file --go-file=FILE [--go-file=FILE2] [--workdir=DIR] [--stdin=TEXT | --stdin-file=FILE] [--arg=ARG] [--env=KEY=VALUE]" . nl
     , strstr "  replay --case-dir=DIR [--workdir=DIR]" . nl
     , strstr "  shrink --case-dir=DIR [--workdir=DIR]" . nl
     , strstr "  mod-extract --mod=TERM [--tool-root=DIR] [--coqproject=FILE] [--opam-env-dir=DIR] [--backend-root=DIR] [--coqc=COQC] [--coq-file=FILE] [--require=M1,M2] [--backend-logical=NAME] [--backend-dirs=D1,D2] [--gra=TERM] [--resource=TERM] [--arg=TERM] [--output=FILE]" . nl
     , strstr "  test-itr-extract [FILE.v] [--coq-file=FILE] [--term=TERM] [--tool-root=DIR] [--coqproject=FILE] [--opam-env-dir=DIR] [--coqc=COQC] [--ghc=GHC] [--require=M1,M2] [--output=FILE] [--binary=FILE]" . nl
     , strstr "  mod-extract also reads PROJECT_A_TOOL_ROOT, PROJECT_A_OPAM_ENV_DIR, PROJECT_A_COQPROJECTS, PROJECT_A_BACKEND_ROOT, PROJECT_A_COQC, PROJECT_A_EXTRACT_MOD, PROJECT_A_EXTRACT_REQUIRE." . nl
     , strstr "  test-itr-extract also reads PROJECT_A_TEST_ITR_TERM, PROJECT_A_GHC, PROJECT_A_TEST_ITR_BINARY, and the same Coq path variables as mod-extract." . nl
+    , strstr "  go-file also reads PROJECT_A_WORKDIR and PROJECT_A_STDIN." . nl
     , nl
     , strstr "The Coq/extraction path is enabled by PROJECT_A_TRANSLATOR." . nl
     , strstr "The translator command must read gofile.go and write generated Coq to stdout." . nl

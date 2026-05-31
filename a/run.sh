@@ -50,7 +50,8 @@ seed="${PROJECT_A_SEED:-1}"
 size="${PROJECT_A_SIZE:-3}"
 workdir="${PROJECT_A_WORKDIR:-.project-a-work}"
 translator="${PROJECT_A_TRANSLATOR:-}"
-tool_root="${PROJECT_A_TOOL_ROOT:-/home/lim/Desktop/GoCris/go2c}"
+unbooted_tool_root="__PROJECT_A_BOOT_"'TOOL_ROOT__'
+tool_root="${PROJECT_A_TOOL_ROOT:-__PROJECT_A_BOOT_TOOL_ROOT__}"
 mod_term="${PROJECT_A_EXTRACT_MOD:-Input.t}"
 requires="${PROJECT_A_EXTRACT_REQUIRE:-}"
 coqproject="${PROJECT_A_COQPROJECTS:-}"
@@ -209,7 +210,7 @@ if [[ -z "$translator" ]]; then
   exit 2
 fi
 
-if [[ "$tool_root" == "/home/lim/Desktop/GoCris/go2c" ]]; then
+if [[ "$tool_root" == "$unbooted_tool_root" ]]; then
   echo "error: this checkout has not been booted; run a/boot.sh or set PROJECT_A_TOOL_ROOT" >&2
   exit 2
 fi
