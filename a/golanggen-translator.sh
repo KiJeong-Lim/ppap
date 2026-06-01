@@ -8,7 +8,8 @@ Usage:
 
 Options:
   --golanggen-root=DIR  golanggen checkout.
-                        Default: PROJECT_A_GOLANGGEN_ROOT or /home/lim/coq82000/go2c/golanggen
+                        Default: PROJECT_A_GOLANGGEN_ROOT, or the first
+                        existing checkout under ~/Desktop/GoCris or ~/Desktop/coq82000.
   -h, --help            Show this help.
 
 The script implements Project A's translator contract: it receives gofile.go as
@@ -16,7 +17,15 @@ its last argument and writes only generated Coq to stdout.
 EOF
 }
 
-golanggen_root="${PROJECT_A_GOLANGGEN_ROOT:-/home/lim/coq82000/go2c/golanggen}"
+if [[ -n "${PROJECT_A_GOLANGGEN_ROOT:-}" ]]; then
+  golanggen_root="$PROJECT_A_GOLANGGEN_ROOT"
+elif [[ -d "$HOME/Desktop/GoCris/go2c/golanggen" ]]; then
+  golanggen_root="$HOME/Desktop/GoCris/go2c/golanggen"
+elif [[ -d "$HOME/Desktop/coq82000/go2c/golanggen" ]]; then
+  golanggen_root="$HOME/Desktop/coq82000/go2c/golanggen"
+else
+  golanggen_root="/home/lim/coq82000/go2c/golanggen"
+fi
 gofile=""
 
 while [[ $# -gt 0 ]]; do
@@ -103,6 +112,20 @@ fi
 
 cat >>"$generated" <<'EOF'
 
+Module ProjectAIO.
+  Variant Input : Type :=
+    | IntInput (val : Z)
+    | BoolInput (val : bool)
+    | StringInput (val : String.string).
+
+  Inductive Output : Type :=
+    | IntOutput (val : Z)
+    | BoolOutput (val : bool)
+    | StringOutput (val : String.string)
+    | ArrayOutput (elems : list Output)
+    | StructOutput (fields : list Output).
+End ProjectAIO.
+
 Section ProjectAExtraction.
   Context `{Sigma: GRA}.
   Definition project_a_builtin_args : Type := list (Go.expr * Go.val).
@@ -125,6 +148,16 @@ Section ProjectAExtraction.
     | [] => [(cell, val)]
     | (cell0, val0) :: rest =>
       if project_a_same_cell cell cell0 then (cell, val) :: rest else (cell0, val0) :: project_a_mem_update cell val rest
+    end.
+  Fixpoint project_a_mem_copy_range (count : nat) (dst src : project_a_mem_cell) (mem : project_a_mem_state) : project_a_mem_state :=
+    match count with
+    | O => mem
+    | S count' =>
+      let '(dst_block, dst_ofs) := dst in
+      let '(src_block, src_ofs) := src in
+      let val := match project_a_mem_lookup src mem with Some val => val | None => C.Vundef end in
+      let mem' := project_a_mem_update dst val mem in
+      project_a_mem_copy_range count' (dst_block, (dst_ofs + 1)%Z) (src_block, (src_ofs + 1)%Z) mem'
     end.
   Definition project_a_ptr_cell (ptr : Go.val) : itree crisE project_a_mem_cell :=
     match ptr with
@@ -161,26 +194,133 @@ Section ProjectAExtraction.
     | None => triggerUB
     end.
   Definition project_a_mem_memcpy (args : Z * Go.val * Go.val) : itree crisE unit :=
-    let '(_, dst, src) := args in
+    let '(size, dst, src) := args in
     src_cell <- project_a_ptr_cell src;;
     dst_cell <- project_a_ptr_cell dst;;
     mem_any <- trigger (SGet project_a_mem_key);;
     'mem : project_a_mem_state <- (Any.downcast mem_any)?;;
-    let val := match project_a_mem_lookup src_cell mem with Some val => val | None => C.Vundef end in
-    trigger (SPut project_a_mem_key (Any.upcast (project_a_mem_update dst_cell val mem))).
+    trigger (SPut project_a_mem_key (Any.upcast (project_a_mem_copy_range (Z.to_nat size) dst_cell src_cell mem))).
+  Definition project_a_bool_of_val (val : Go.val) : itree crisE bool :=
+    match val with
+    | C.Vint n => Ret (negb (Z.eqb (C.Int.unsigned n) 0))
+    | _ => triggerUB
+    end.
+  Definition project_a_ascii_of_val (val : Go.val) : itree crisE Ascii.ascii :=
+    match val with
+    | C.Vint n => Ret (Ascii.ascii_of_nat (Z.to_nat (C.Int.unsigned n)))
+    | _ => triggerUB
+    end.
+  Definition project_a_val_of_ascii (ch : Ascii.ascii) : Go.val :=
+    C.Vint (C.Int.repr (Z.of_nat (Ascii.nat_of_ascii ch))).
+  Fixpoint project_a_string_chars (str : String.string) : list Ascii.ascii :=
+    match str with
+    | EmptyString => []
+    | String ch rest => ch :: project_a_string_chars rest
+    end.
+  Definition project_a_uintptr_val (offset : Z) : itree crisE Go.val :=
+    AuxiliaryMethods.ZtoVal_uintptr offset.
+  Fixpoint project_a_store_string_chars (data : Go.val) (offset : Z) (chars : list Ascii.ascii) : itree crisE unit :=
+    match chars with
+    | [] => Ret tt
+    | ch :: rest =>
+      delta <- project_a_uintptr_val offset;;
+      '_ : () <- setv main.go_composites Go.types.byte data delta (project_a_val_of_ascii ch);;
+      project_a_store_string_chars data (offset + 1)%Z rest
+    end.
+  Definition project_a_string_to_val (str : String.string) : itree crisE Go.val :=
+    let chars := project_a_string_chars str in
+    content_size <- project_a_uintptr_val (Z.of_nat (List.length chars));;
+    content <- project_a_malloc_Go content_size;;
+    '_ : () <- project_a_store_string_chars content 0%Z chars;;
+    header_size <- project_a_uintptr_val (Z.of_nat (sizeof main.go_composites Go.types.Tstring));;
+    header <- project_a_malloc_Go header_size;;
+    zero <- project_a_uintptr_val 0%Z;;
+    '_ : () <- setv main.go_composites AuxiliaryMethods.__string_data_type header zero content;;
+    len_val <- AuxiliaryMethods.ZtoVal AuxiliaryMethods.__string_len_type (Z.of_nat (List.length chars));;
+    len_ofs <- lookup_field_offset main.go_composites Go.types.Tstring AuxiliaryMethods.__string_len;;
+    '_ : () <- setv main.go_composites AuxiliaryMethods.__string_len_type header len_ofs len_val;;
+    Ret header.
+  Fixpoint project_a_read_string_chars (data : Go.val) (offset : Z) (count : nat) : itree crisE String.string :=
+    match count with
+    | O => Ret EmptyString
+    | S count' =>
+      delta <- project_a_uintptr_val offset;;
+      char_val <- getv main.go_composites Go.types.byte data delta;;
+      ch <- project_a_ascii_of_val char_val;;
+      rest <- project_a_read_string_chars data (offset + 1)%Z count';;
+      Ret (String ch rest)
+    end.
+  Definition project_a_read_string (val : Go.val) : itree crisE String.string :=
+    vi_data_ofs <- lookup_field_offset main.go_composites Go.types.Tstring AuxiliaryMethods.__string_data;;
+    vi_len_ofs <- lookup_field_offset main.go_composites Go.types.Tstring AuxiliaryMethods.__string_len;;
+    data <- getv main.go_composites Go.types.Tuintptr val vi_data_ofs;;
+    len_val <- getv main.go_composites Go.types.int val vi_len_ofs;;
+    len_z <- AuxiliaryMethods.ValToZ Go.types.int len_val;;
+    project_a_read_string_chars data 0%Z (Z.to_nat len_z).
+  Definition project_a_output_of_val (arg : Go.expr * Go.val) : itree crisE ProjectAIO.Output :=
+    let '(expr, val) := arg in
+    match Go.typeof expr with
+    | Go.types.Tint _ _ =>
+      z <- AuxiliaryMethods.ValToZ (Go.typeof expr) val;;
+      Ret (ProjectAIO.IntOutput z)
+    | Go.types.Tbool =>
+      b <- project_a_bool_of_val val;;
+      Ret (ProjectAIO.BoolOutput b)
+    | Go.types.Tstring =>
+      str <- project_a_read_string val;;
+      Ret (ProjectAIO.StringOutput str)
+    | _ => triggerUB
+    end.
+  Fixpoint project_a_outputs_of_args (args : project_a_builtin_args) : itree crisE (list ProjectAIO.Output) :=
+    match args with
+    | [] => Ret []
+    | arg :: rest =>
+      out <- project_a_output_of_val arg;;
+      outs <- project_a_outputs_of_args rest;;
+      Ret (out :: outs)
+    end.
+  Definition project_a_scan_request (arg : Go.expr * Go.val) : itree crisE ProjectAIO.Input :=
+    match arg with
+    | (Eaddrof target _, _) =>
+      match Go.typeof target with
+      | Go.types.Tint _ _ => Ret (ProjectAIO.IntInput 0)
+      | Go.types.Tbool => Ret (ProjectAIO.BoolInput false)
+      | Go.types.Tstring => Ret (ProjectAIO.StringInput "")
+      | _ => triggerUB
+      end
+    | _ => triggerUB
+    end.
+  Fixpoint project_a_scan_requests (args : project_a_builtin_args) : itree crisE (list ProjectAIO.Input) :=
+    match args with
+    | [] => Ret []
+    | arg :: rest =>
+      input <- project_a_scan_request arg;;
+      inputs <- project_a_scan_requests rest;;
+      Ret (input :: inputs)
+    end.
+  Definition project_a_input_to_val (ty : Go.types.type) (input : ProjectAIO.Input) : itree crisE Go.val :=
+    match ty, input with
+    | Go.types.Tint _ _, ProjectAIO.IntInput z => AuxiliaryMethods.ZtoVal ty z
+    | Go.types.Tbool, ProjectAIO.BoolInput b => Ret (if b then C.Vone else C.Vzero)
+    | Go.types.Tstring, ProjectAIO.StringInput str => project_a_string_to_val str
+    | _, _ => triggerUB
+    end.
   Definition project_a_builtin_print (args : project_a_builtin_args) : itree crisE (list Go.val) :=
-    'ignored : Any.t <- trigger (IO "Go.builtin.print" args);; Ret ([] : list Go.val).
-  Fixpoint project_a_store_scan_values (args : project_a_builtin_args) (vals : list Go.val) : itree crisE (list Go.val) :=
-    match args, vals with
+    outputs <- project_a_outputs_of_args args;;
+    'ignored : Any.t <- trigger (IO "Go.builtin.print" outputs);; Ret ([] : list Go.val).
+  Fixpoint project_a_store_scan_values (args : project_a_builtin_args) (inputs : list ProjectAIO.Input) : itree crisE (list Go.val) :=
+    match args, inputs with
     | [], [] => Ret ([] : list Go.val)
-    | (Eaddrof target _, ptr) :: rest_args, val :: rest_vals =>
+    | (Eaddrof target _, ptr) :: rest_args, input :: rest_inputs =>
+      val <- project_a_input_to_val (Go.typeof target) input;;
       '_ : () <- assign_loc_go main.go_composites (Go.typeof target) ptr val;;
-      project_a_store_scan_values rest_args rest_vals
+      project_a_store_scan_values rest_args rest_inputs
     | _, _ => triggerUB
     end.
   Definition project_a_builtin_scan (args : project_a_builtin_args) : itree crisE (list Go.val) :=
-    'vals : list Go.val <- trigger (IO "Go.builtin.scan" args);;
-    project_a_store_scan_values args vals.
+    requests <- project_a_scan_requests args;;
+    'inputs : list ProjectAIO.Input <- trigger (IO "Go.builtin.scan" requests);;
+    project_a_store_scan_values args inputs.
   Definition project_a_entry_body (_ : Any.t) : itree crisE Any.t :=
     'rets : list Go.val <- ccallU "main" ([] : list Go.val);;
     match rets with | [] => Ret (Any.upcast tt) | _ :: _ => Ret (Any.upcast false) end.

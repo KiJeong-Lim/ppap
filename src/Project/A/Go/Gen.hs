@@ -21,12 +21,12 @@ genTestCase :: CaseId -> Seed -> Size -> TestCase Program
 genTestCase caseId seed size = TestCase { tcCaseId = caseId, tcSeed = seed, tcSize = size, tcProgram = genProgram seed size, tcInput = genRuntimeInput seed size }
 
 genRuntimeInput :: Seed -> Size -> RuntimeInput
-genRuntimeInput _ _ = RuntimeInput { riArgs = [], riStdin = "3\n", riEnv = [] }
+genRuntimeInput _ _ = RuntimeInput { riArgs = [], riStdin = "3 go true 7 seed\n", riEnv = [] }
 
 genProgram :: Seed -> Size -> Program
 genProgram seed size
     | size <= 0 = constantProgram
-    | otherwise = evalState (genStageOneProgram size) (initialGenState seed)
+    | otherwise = evalState (genProgramStmts size >>= \stmts -> return (Program [] stmts)) (initialGenState seed)
 
 genStageOneProgram :: Size -> State GenState Program
 genStageOneProgram size = do
@@ -64,10 +64,10 @@ genProgramStmts :: Size -> State GenState [Stmt]
 genProgramStmts size = do
     (decls, env) <- genInitialDecls initialVars
     body <- replicateM statementCount (genStmt env exprDepth)
-    return (decls ++ body ++ [SPrintln (map varExpr (reverse env))])
+    return (decls ++ body ++ [SPrint (map varExpr (reverse env))])
     where
         initialVars :: [(Ty, String)]
-        initialVars = take initialCount [(TInt, "x"), (TInt, "y"), (TBool, "ok"), (TString, "msg")]
+        initialVars = take initialCount [(TInt, "x"), (TString, "msg"), (TBool, "ok"), (TInt, "y")]
 
         initialCount :: Int
         initialCount = max 2 (min 4 (2 + size `div` 2))
@@ -82,8 +82,15 @@ genInitialDecls :: [(Ty, String)] -> State GenState ([Stmt], Env)
 genInitialDecls specs = go [] [] specs where
     go decls env [] = return (reverse decls, env)
     go decls env ((ty, name) : rest) = do
-        expr <- genLiteral ty
-        go (SVar ty name expr : decls) ((ty, name) : env) rest
+        initStmts <- genInitialValue ty name
+        go (reverse initStmts ++ decls) ((ty, name) : env) rest
+
+genInitialValue :: Ty -> String -> State GenState [Stmt]
+genInitialValue TString name =
+    return [SVarZero TString name, SExpr (ECall TInt "fmt.Scan" [EAddr (EVar TString name)])]
+genInitialValue ty name = do
+    expr <- genLiteral ty
+    return [SVarZero ty name, SAssign name expr]
 
 genStmt :: Env -> Int -> State GenState Stmt
 genStmt env depth = do
@@ -133,11 +140,12 @@ genPrint :: Env -> Int -> State GenState Stmt
 genPrint env depth = do
     count <- chooseBetween 1 3
     exprs <- replicateM count (genPrintableExpr env depth)
-    return (SPrintln exprs)
+    return (SPrint exprs)
 
 genPrintableExpr :: Env -> Int -> State GenState Expr
 genPrintableExpr env depth = do
-    ty <- chooseFrom TInt [TInt, TBool, TString]
+    let stringTypes = [TString | not (null (varsOfTy TString env))]
+    ty <- chooseFrom TInt ([TInt, TBool] ++ stringTypes)
     genExpr env ty depth
 
 genExpr :: Env -> Ty -> Int -> State GenState Expr
@@ -155,14 +163,12 @@ genExpr env ty depth
 
 genIntExpr :: Env -> Int -> State GenState Expr
 genIntExpr env depth = do
-    choice <- chooseInt 7
+    choice <- chooseInt 5
     case choice of
         0 -> genAtom env TInt
         1 -> genIntBin EAdd env depth
         2 -> genIntBin ESub env depth
         3 -> genIntBin EMul env depth
-        4 -> genSafeDivLike EDiv env depth
-        5 -> genSafeDivLike EMod env depth
         _ -> genAtom env TInt
 
 genIntBin :: (Expr -> Expr -> Expr) -> Env -> Int -> State GenState Expr
@@ -199,7 +205,7 @@ genCompare con env depth = do
 
 genEqLike :: (Expr -> Expr -> Expr) -> Env -> Int -> State GenState Expr
 genEqLike con env depth = do
-    ty <- chooseFrom TInt [TInt, TBool, TString]
+    ty <- chooseFrom TInt [TInt, TBool]
     lhs <- genExpr env ty (depth - 1)
     rhs <- genExpr env ty (depth - 1)
     return (con lhs rhs)
@@ -217,9 +223,15 @@ genNot env depth = do
     return (ENot arg)
 
 genStringExpr :: Env -> Int -> State GenState Expr
-genStringExpr env _ = genAtom env TString
+genStringExpr env _ =
+    case varsOfTy TString env of
+        [] -> return (EString "")
+        vars -> do
+            (_, name) <- chooseFrom (TString, "") vars
+            return (EVar TString name)
 
 genAtom :: Env -> Ty -> State GenState Expr
+genAtom env TString = genStringExpr env 0
 genAtom env ty = do
     useVar <- chooseInt 2
     case varsOfTy ty env of

@@ -5,6 +5,7 @@ module Project.A.Main
 
 import Control.Monad
 import Data.List
+import qualified Data.List as List
 import Data.Ord
 import System.Directory
 import System.Environment
@@ -900,21 +901,19 @@ stdoutCellLimit columns = max minimumCellWidth ((columns - frameWidth - fieldWid
 
 renderTable :: [[String]] -> String
 renderTable [] = ""
-renderTable rows@(header : body) = Doc.renderDoc (Doc.vcat ([ruleDoc, renderHeader header, ruleDoc] ++ map renderBody body ++ [ruleDoc])) where
-    widths = columnWidths rows
-    ruleDoc = Doc.text ("+" ++ intercalate "+" [replicate (width + 2) '-' | width <- widths] ++ "+")
-    renderHeader = renderRow (\width cell -> Doc.textbf (padRight width cell))
-    renderBody = renderRow (\width cell -> Doc.text (padRight width cell))
-    renderRow renderCell cells = Doc.hcat ([Doc.text "| "] ++ intersperse (Doc.text " | ") (zipWith renderCell widths cells) ++ [Doc.text " |"])
+renderTable rows = Doc.renderDoc (Doc.hcat (separatorColumn : concatMap renderColumn columns)) where
+    columnCount = maximum (map length rows)
+    bodyCount = length rows - 1
+    columns = List.transpose [take columnCount (row ++ repeat "") | row <- rows]
 
-columnWidths :: [[String]] -> [Int]
-columnWidths [] = []
-columnWidths rows
-    | any null rows = []
-    | otherwise = maximum (map (length . head) rows) : columnWidths (map tail rows)
+    renderColumn cells = [dataColumn cells, separatorColumn]
 
-padRight :: Int -> String -> String
-padRight width str = str ++ replicate (max 0 (width - length str)) ' '
+    dataColumn [] = Doc.vcat [Doc.beam '-', Doc.beam '-']
+    dataColumn (header : body) = Doc.vcat ([Doc.beam '-', headerCell header, Doc.beam '-'] ++ map bodyCell body ++ [Doc.beam '-'])
+
+    separatorColumn = Doc.vcat ([Doc.text "+", Doc.text "|", Doc.text "+"] ++ replicate bodyCount (Doc.text "|") ++ [Doc.text "+"])
+    headerCell cell = Doc.text " " <> Doc.textbf cell <> Doc.text " "
+    bodyCell cell = Doc.text (" " ++ cell ++ " ")
 
 oneLine :: Int -> String -> String
 oneLine limit str

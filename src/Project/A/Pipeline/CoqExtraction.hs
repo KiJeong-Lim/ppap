@@ -202,6 +202,7 @@ writeModHaskellDriver hsFile = do
 
 data BackendArgShape
     = NoBackendValues
+    | IOBackendValues IONames
     | UntypedBackendValues BackendNames
     | ExprBackendValues BackendNames ExprBackendNames
     deriving (Eq, Ord, Show)
@@ -220,14 +221,30 @@ data ExprBackendNames
     , ebUnsignedCtor :: String
     } deriving (Eq, Ord, Show)
 
+data IONames
+    = IONames
+    { ioInputType :: String
+    , ioOutputType :: String
+    , ioIntInputCtor :: String
+    , ioBoolInputCtor :: String
+    , ioStringInputCtor :: String
+    , ioIntOutputCtor :: String
+    , ioBoolOutputCtor :: String
+    , ioStringOutputCtor :: String
+    , ioArrayOutputCtor :: String
+    , ioStructOutputCtor :: String
+    } deriving (Eq, Ord, Show)
+
 extractedBackendShape :: String -> BackendArgShape
 extractedBackendShape extractedText
-    = case extractedBackendNames extractedText of
-        Nothing -> NoBackendValues
-        Just backendNames ->
-            case extractedExprBackendNames extractedText of
-                Just exprNames -> ExprBackendValues backendNames exprNames
-                Nothing -> UntypedBackendValues backendNames
+    = case extractedIONames extractedText of
+        Just ioNames -> IOBackendValues ioNames
+        Nothing -> case extractedBackendNames extractedText of
+            Nothing -> NoBackendValues
+            Just backendNames ->
+                case extractedExprBackendNames extractedText of
+                    Just exprNames -> ExprBackendValues backendNames exprNames
+                    Nothing -> UntypedBackendValues backendNames
 
 extractedBackendNames :: String -> Maybe BackendNames
 extractedBackendNames extractedText
@@ -252,6 +269,31 @@ extractedExprBackendNames extractedText = do
         , ebTboolCtor = tboolCtor
         , ebSignedCtor = signedCtor
         , ebUnsignedCtor = unsignedCtor
+        }
+
+extractedIONames :: String -> Maybe IONames
+extractedIONames extractedText = do
+    (inputType, intInputLine) <- dataBlockWithConstructor extractedText "IntInput"
+    (outputType, intOutputLine) <- dataBlockWithConstructor extractedText "IntOutput"
+    intInputCtor <- headMaybe (constructorWords intInputLine)
+    boolInputCtor <- constructorNameWithPrefix extractedText inputType "BoolInput"
+    stringInputCtor <- constructorNameWithPrefix extractedText inputType "StringInput"
+    intOutputCtor <- headMaybe (constructorWords intOutputLine)
+    boolOutputCtor <- constructorNameWithPrefix extractedText outputType "BoolOutput"
+    stringOutputCtor <- constructorNameWithPrefix extractedText outputType "StringOutput"
+    arrayOutputCtor <- constructorNameWithPrefix extractedText outputType "ArrayOutput"
+    structOutputCtor <- constructorNameWithPrefix extractedText outputType "StructOutput"
+    return IONames
+        { ioInputType = inputType
+        , ioOutputType = outputType
+        , ioIntInputCtor = intInputCtor
+        , ioBoolInputCtor = boolInputCtor
+        , ioStringInputCtor = stringInputCtor
+        , ioIntOutputCtor = intOutputCtor
+        , ioBoolOutputCtor = boolOutputCtor
+        , ioStringOutputCtor = stringOutputCtor
+        , ioArrayOutputCtor = arrayOutputCtor
+        , ioStructOutputCtor = structOutputCtor
         }
 
 constructorNameWithPrefix :: String -> String -> String -> Maybe String
@@ -370,17 +412,40 @@ modHaskellDriverText' backendShape extractedModule = strcat
     , strstr "coqStringToString Extracted.EmptyString = []" . nl
     , strstr "coqStringToString (Extracted.String0 ch rest) = asciiToChar ch : coqStringToString rest" . nl
     , nl
+    , strstr "stringToCoqString :: Prelude.String -> Extracted.String" . nl
+    , strstr "stringToCoqString [] = Extracted.EmptyString" . nl
+    , strstr "stringToCoqString (ch : rest) = Extracted.String0 (charToAscii ch) (stringToCoqString rest)" . nl
+    , nl
     , strstr "asciiToChar :: Extracted.Ascii0 -> Prelude.Char" . nl
     , strstr "asciiToChar (Extracted.Ascii b0 b1 b2 b3 b4 b5 b6 b7) = Char.chr (bit 0 b0 Prelude.+ bit 1 b1 Prelude.+ bit 2 b2 Prelude.+ bit 3 b3 Prelude.+ bit 4 b4 Prelude.+ bit 5 b5 Prelude.+ bit 6 b6 Prelude.+ bit 7 b7)" . nl
     , nl
+    , strstr "charToAscii :: Prelude.Char -> Extracted.Ascii0" . nl
+    , strstr "charToAscii ch = let n = Char.ord ch `Prelude.mod` 256 in Extracted.Ascii (bitSet 0 n) (bitSet 1 n) (bitSet 2 n) (bitSet 3 n) (bitSet 4 n) (bitSet 5 n) (bitSet 6 n) (bitSet 7 n)" . nl
+    , nl
     , strstr "bit :: Prelude.Int -> Prelude.Bool -> Prelude.Int" . nl
     , strstr "bit n flag = if flag then 2 Prelude.^ n else 0" . nl
+    , nl
+    , strstr "bitSet :: Prelude.Int -> Prelude.Int -> Prelude.Bool" . nl
+    , strstr "bitSet bitIndex n = ((n `Prelude.div` (2 Prelude.^ bitIndex)) `Prelude.mod` 2) Prelude.== 1" . nl
     ]
 
 backendIODriverText :: BackendArgShape -> ShowS
 backendIODriverText NoBackendValues = strstr "    | Prelude.otherwise = Prelude.return (ioValue, scanState)" . nl
+backendIODriverText (IOBackendValues ioNames) = backendIODriverBodyIO ioNames
 backendIODriverText (UntypedBackendValues backendNames) = backendIODriverBody backendNames (untypedBackendArgText backendNames)
 backendIODriverText (ExprBackendValues backendNames exprNames) = backendIODriverBody backendNames (exprBackendArgText backendNames exprNames)
+
+backendIODriverBodyIO :: IONames -> ShowS
+backendIODriverBodyIO ioNames = strcat
+    [ strstr "    | name Prelude.== \"Go.builtin.scan\" = scanBackendValues scanState args" . nl
+    , strstr "    | name Prelude.== \"Go.builtin.print\" = printBackendValuesNoNewline args Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , strstr "    | name Prelude.== \"fmt.Println\" = printBackendValues args Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , strstr "    | name Prelude.== \"fmt.Print\" = printBackendValuesNoNewline args Prelude.>> Prelude.return (ioValue, scanState)" . nl
+    , strstr "    | Prelude.otherwise = Prelude.return (ioValue, scanState)" . nl
+    , nl
+    , ioBackendArgText ioNames
+    , ioValueText
+    ]
 
 backendIODriverBody :: BackendNames -> ShowS -> ShowS
 backendIODriverBody backendNames argText = strcat
@@ -392,6 +457,72 @@ backendIODriverBody backendNames argText = strcat
     , nl
     , argText
     , backendValueText backendNames
+    ]
+
+ioBackendArgText :: IONames -> ShowS
+ioBackendArgText ioNames = strcat
+    [ strstr "type BackendInput = Extracted." . strstr (ioInputType ioNames) . nl
+    , strstr "type BackendOutput = Extracted." . strstr (ioOutputType ioNames) . nl
+    , nl
+    , strstr "printBackendValues :: Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "printBackendValues args = Prelude.putStrLn (joinWords (Prelude.map renderBackendOutput (Extracted.unsafeCoerce args :: [BackendOutput])))" . nl
+    , nl
+    , strstr "printBackendValuesNoNewline :: Extracted.Any -> Prelude.IO ()" . nl
+    , strstr "printBackendValuesNoNewline args = Prelude.putStr (formatPrintOutputs (Extracted.unsafeCoerce args :: [BackendOutput]))" . nl
+    , nl
+    , strstr "scanBackendValues :: ScanState -> Extracted.Any -> Prelude.IO (Extracted.Any, ScanState)" . nl
+    , strstr "scanBackendValues scanState args =" . nl
+    , strstr "    let requests = Extracted.unsafeCoerce args :: [BackendInput]" . nl
+    , strstr "        targetCount = Prelude.length requests" . nl
+    , strstr "        (usedTokens, remainingTokens) = Prelude.splitAt targetCount scanState" . nl
+    , strstr "        paddedTokens = usedTokens Prelude.++ Prelude.map defaultInputToken (Prelude.drop (Prelude.length usedTokens) requests)" . nl
+    , strstr "        scannedInputs = Prelude.zipWith parseBackendInput requests paddedTokens" . nl
+    , strstr "    in Prelude.return (Extracted.unsafeCoerce (scannedInputs :: [BackendInput]), remainingTokens)" . nl
+    , nl
+    , strstr "renderBackendOutput :: BackendOutput -> Prelude.String" . nl
+    , strstr "renderBackendOutput output =" . nl
+    , strstr "    case output of" . nl
+    , strstr "        Extracted." . strstr (ioIntOutputCtor ioNames) . strstr " n -> Prelude.show (zToInteger n)" . nl
+    , strstr "        Extracted." . strstr (ioBoolOutputCtor ioNames) . strstr " flag -> if flag then \"true\" else \"false\"" . nl
+    , strstr "        Extracted." . strstr (ioStringOutputCtor ioNames) . strstr " str -> coqStringToString str" . nl
+    , strstr "        Extracted." . strstr (ioArrayOutputCtor ioNames) . strstr " elems -> \"[\" Prelude.++ joinWords (Prelude.map renderBackendOutput elems) Prelude.++ \"]\"" . nl
+    , strstr "        Extracted." . strstr (ioStructOutputCtor ioNames) . strstr " fields -> \"{\" Prelude.++ joinWords (Prelude.map renderBackendOutput fields) Prelude.++ \"}\"" . nl
+    , nl
+    , strstr "outputIsString :: BackendOutput -> Prelude.Bool" . nl
+    , strstr "outputIsString output =" . nl
+    , strstr "    case output of" . nl
+    , strstr "        Extracted." . strstr (ioStringOutputCtor ioNames) . strstr " _ -> Prelude.True" . nl
+    , strstr "        _ -> Prelude.False" . nl
+    , nl
+    , strstr "formatPrintOutputs :: [BackendOutput] -> Prelude.String" . nl
+    , strstr "formatPrintOutputs [] = \"\"" . nl
+    , strstr "formatPrintOutputs [x] = renderBackendOutput x" . nl
+    , strstr "formatPrintOutputs (x : y : rest) = renderBackendOutput x Prelude.++ printOutputSeparator x y Prelude.++ formatPrintOutputs (y : rest)" . nl
+    , nl
+    , strstr "printOutputSeparator :: BackendOutput -> BackendOutput -> Prelude.String" . nl
+    , strstr "printOutputSeparator lhs rhs = if outputIsString lhs Prelude.|| outputIsString rhs then \"\" else \" \"" . nl
+    , nl
+    , strstr "defaultInputToken :: BackendInput -> Prelude.String" . nl
+    , strstr "defaultInputToken input =" . nl
+    , strstr "    case input of" . nl
+    , strstr "        Extracted." . strstr (ioIntInputCtor ioNames) . strstr " _ -> \"0\"" . nl
+    , strstr "        Extracted." . strstr (ioBoolInputCtor ioNames) . strstr " _ -> \"false\"" . nl
+    , strstr "        Extracted." . strstr (ioStringInputCtor ioNames) . strstr " _ -> \"\"" . nl
+    , nl
+    , strstr "parseBackendInput :: BackendInput -> Prelude.String -> BackendInput" . nl
+    , strstr "parseBackendInput input token =" . nl
+    , strstr "    case input of" . nl
+    , strstr "        Extracted." . strstr (ioIntInputCtor ioNames) . strstr " _ -> Extracted." . strstr (ioIntInputCtor ioNames) . strstr " (integerToZ (parseIntegerToken token))" . nl
+    , strstr "        Extracted." . strstr (ioBoolInputCtor ioNames) . strstr " _ -> Extracted." . strstr (ioBoolInputCtor ioNames) . strstr " (parseBoolToken token)" . nl
+    , strstr "        Extracted." . strstr (ioStringInputCtor ioNames) . strstr " _ -> Extracted." . strstr (ioStringInputCtor ioNames) . strstr " (stringToCoqString token)" . nl
+    , nl
+    , strstr "parseBoolToken :: Prelude.String -> Prelude.Bool" . nl
+    , strstr "parseBoolToken token =" . nl
+    , strstr "    case Prelude.map Char.toLower token of" . nl
+    , strstr "        \"true\" -> Prelude.True" . nl
+    , strstr "        \"1\" -> Prelude.True" . nl
+    , strstr "        _ -> Prelude.False" . nl
+    , nl
     ]
 
 untypedBackendArgText :: BackendNames -> ShowS
@@ -455,6 +586,42 @@ exprBackendArgText _ exprNames = strcat
     , strstr "renderBackendValueAs Extracted." . strstr (ebTboolCtor exprNames) . strstr " (Extracted.Vint n) = if unsignedInteger 32 n Prelude.== 0 then \"false\" else \"true\"" . nl
     , strstr "renderBackendValueAs _ value = renderBackendValue value" . nl
     , nl
+    ]
+
+ioValueText :: ShowS
+ioValueText = strcat
+    [ strstr "parseIntegerToken :: Prelude.String -> Prelude.Integer" . nl
+    , strstr "parseIntegerToken token =" . nl
+    , strstr "    case (Prelude.reads token :: [(Prelude.Integer, Prelude.String)]) of" . nl
+    , strstr "        [(n, \"\")] -> n" . nl
+    , strstr "        _ -> 0" . nl
+    , nl
+    , strstr "joinWords :: [Prelude.String] -> Prelude.String" . nl
+    , strstr "joinWords [] = \"\"" . nl
+    , strstr "joinWords [x] = x" . nl
+    , strstr "joinWords (x : xs) = x Prelude.++ Prelude.concatMap (\" \" Prelude.++) xs" . nl
+    , nl
+    , strstr "zToInteger :: Extracted.Z -> Prelude.Integer" . nl
+    , strstr "zToInteger Extracted.Z0 = 0" . nl
+    , strstr "zToInteger (Extracted.Zpos p) = positiveToInteger p" . nl
+    , strstr "zToInteger (Extracted.Zneg p) = Prelude.negate (positiveToInteger p)" . nl
+    , nl
+    , strstr "positiveToInteger :: Extracted.Positive -> Prelude.Integer" . nl
+    , strstr "positiveToInteger Extracted.XH = 1" . nl
+    , strstr "positiveToInteger (Extracted.XO p) = 2 Prelude.* positiveToInteger p" . nl
+    , strstr "positiveToInteger (Extracted.XI p) = 1 Prelude.+ 2 Prelude.* positiveToInteger p" . nl
+    , nl
+    , strstr "integerToZ :: Prelude.Integer -> Extracted.Z" . nl
+    , strstr "integerToZ n" . nl
+    , strstr "    | n Prelude.== 0 = Extracted.Z0" . nl
+    , strstr "    | n Prelude.> 0 = Extracted.Zpos (positiveFromInteger n)" . nl
+    , strstr "    | Prelude.otherwise = Extracted.Zneg (positiveFromInteger (Prelude.negate n))" . nl
+    , nl
+    , strstr "positiveFromInteger :: Prelude.Integer -> Extracted.Positive" . nl
+    , strstr "positiveFromInteger n" . nl
+    , strstr "    | n Prelude.<= 1 = Extracted.XH" . nl
+    , strstr "    | n `Prelude.mod` 2 Prelude.== 0 = Extracted.XO (positiveFromInteger (n `Prelude.div` 2))" . nl
+    , strstr "    | Prelude.otherwise = Extracted.XI (positiveFromInteger (n `Prelude.div` 2))" . nl
     ]
 
 backendValueText :: BackendNames -> ShowS

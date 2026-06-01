@@ -172,7 +172,7 @@ both lhs rhs = exprFeatures lhs ++ exprFeatures rhs
 tyFeatures :: Ty -> [Feature]
 tyFeatures TInt = []
 tyFeatures TBool = []
-tyFeatures TString = []
+tyFeatures TString = [UsesString]
 tyFeatures (TArray _ ty) = UsesArray : tyFeatures ty
 tyFeatures (TSlice ty) = UsesSlice : tyFeatures ty
 tyFeatures (TPointer ty) = UsesPointer : tyFeatures ty

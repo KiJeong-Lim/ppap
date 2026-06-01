@@ -26,6 +26,9 @@ Options:
 Runs the stage-one Project A E2E path:
   generated Go -> golanggen Coq -> Coq extraction -> Haskell execution -> comparison.
 
+It also runs fixed Go-file E2E smoke cases for string input/output and
+negative integer input/output.
+
 After a run, the script prints the generated source and extraction artifact
 paths, including the extracted Haskell file.
 EOF
@@ -66,6 +69,85 @@ print_artifacts() {
     printf -v case_dir '%s/cases/%06d' "$workdir" "$case_id"
     print_case_artifacts "$case_dir"
   done
+}
+
+run_go_dir_smoke_case() {
+  local label="$1"
+  local source_dir="$2"
+  local smoke_workdir="$3"
+  local stdin_text="$4"
+  local expected_stdout="$5"
+  local smoke_args=(
+    "--no-build"
+    "--workdir=$smoke_workdir"
+    "--translator=$repo_root/a/golanggen-translator.sh"
+    "--extract-mode=mod"
+    "--tool-root=$tool_root"
+    "--mod=Input.project_a_mod"
+    "--coqproject=$coqproject"
+    "--opam-env-dir=$opam_env_dir"
+    "--stdin=$stdin_text"
+  )
+
+  if [[ -n "$coqc_command" ]]; then
+    smoke_args+=("--coqc=$coqc_command")
+  fi
+
+  if [[ -n "$ghc_args" ]]; then
+    smoke_args+=("--ghc-args=$ghc_args")
+  fi
+
+  printf '\nfixed e2e smoke: %s\n' "$label"
+  PROJECT_A_GOLANGGEN_ROOT="$golanggen_root" \
+    "$repo_root/a/go-dir-diff.sh" "${smoke_args[@]}" "$source_dir"
+
+  grep -Fq "\"stdout\": \"$expected_stdout\"" "$smoke_workdir/cases/000001/result.json"
+  print_case_artifacts "$smoke_workdir/cases/000001"
+}
+
+run_fixed_io_smoke_cases() {
+  local string_source_dir="$workdir/fixed-string-io-src"
+  local neg_int_source_dir="$workdir/fixed-neg-int-io-src"
+
+  mkdir -p "$string_source_dir" "$neg_int_source_dir"
+
+  cat > "$string_source_dir/string_io.go" <<'EOF'
+package main
+
+import "fmt"
+
+func main() {
+	var s string
+	fmt.Scan(&s)
+	fmt.Print(7, s, false)
+}
+EOF
+
+  cat > "$neg_int_source_dir/neg_int_io.go" <<'EOF'
+package main
+
+import "fmt"
+
+func main() {
+	var x int
+	fmt.Scan(&x)
+	fmt.Print(x)
+}
+EOF
+
+  run_go_dir_smoke_case \
+    "string input/output" \
+    "$string_source_dir" \
+    "$workdir/fixed-string-io" \
+    "go" \
+    "7gofalse"
+
+  run_go_dir_smoke_case \
+    "negative integer input/output" \
+    "$neg_int_source_dir" \
+    "$workdir/fixed-neg-int-io" \
+    "-12" \
+    "-12"
 }
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -272,3 +354,4 @@ fi
 cd "$repo_root"
 PROJECT_A_GOLANGGEN_ROOT="$golanggen_root" a/run.sh "${run_args[@]}"
 print_artifacts
+run_fixed_io_smoke_cases
