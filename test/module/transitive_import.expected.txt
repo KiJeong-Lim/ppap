@@ -14,7 +14,7 @@ test.module.transitive_import> X := 200.
 test.module.transitive_import> Find more solutions? [Y/n] 
 test.module.transitive_import> no.
 test.module.transitive_import> 
-error: [HolBETA2-ParseError]
+error: [HolBETA-ParseError]
 Parsing failed at EOF.
 
 test.module.transitive_import> 

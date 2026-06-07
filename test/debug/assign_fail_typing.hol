@@ -1,4 +1,4 @@
-% Failed :assign by precondition (3) typing (BETA1 spec section 3.2.2).
+% Failed :assign by precondition (3) typing (BETA spec section 3.2.2).
 % At a debug prompt the user requests `:assign ?X := nil.` but the
 % query gives X the inferred type `nat` while `nil` has type
 % `list ?t`. The pipeline that compiles the synthetic `?- X = nil.`

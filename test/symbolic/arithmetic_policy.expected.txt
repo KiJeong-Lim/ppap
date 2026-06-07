@@ -20,7 +20,7 @@ test.symbolic.arithmetic_policy> The binding is:
 test.symbolic.arithmetic_policy> Find more solutions? [Y/n] 
 test.symbolic.arithmetic_policy> no.
 test.symbolic.arithmetic_policy> 
-error: [HolBETA2-RuntimeError]
+error: [HolBETA-RuntimeError]
 Unsupported arithmetic constraint.
 Only ground constraints and linear Presburger constraints can be used with comparison predicates.
 Constraint: X * Y > 10

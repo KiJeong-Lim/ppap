@@ -1,4 +1,4 @@
-% Failed :assign by precondition (5) scope/pattern (BETA1 spec section 3.2.2).
+% Failed :assign by precondition (5) scope/pattern (BETA spec section 3.2.2).
 % In `?- X = X.` the query's X is a polymorphic logic variable
 % (X : ?t4), so `:assign ?X := [].` survives the precondition (3)
 % type check (the RHS unifies with the polymorphic LHS). It then

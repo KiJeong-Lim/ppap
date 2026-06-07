@@ -1,6 +1,6 @@
 % Section 2.3.4 close-out: a parse error inside a `presburger "..."`
 % literal must attribute its position to the literal's column on the
-% source line, not the BETA1 placeholder `(0,0)-(0,0)`.  Here the
+% source line, not the placeholder `(0,0)-(0,0)`.  Here the
 % literal is malformed (unbalanced parenthesis), so loading must fail
 % with an install-pass error whose location includes the literal's
 % line and column from `test/sloc/install_pass_loc.hol`.

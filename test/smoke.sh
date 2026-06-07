@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test/smoke.sh — BETA1 smoke runner (spec section 4.6.2).
+# test/smoke.sh — BETA smoke runner (spec section 4.6.2).
 #
 # Runs every test/**/*.hol through the `ppap` executable using its
 # sibling *.input.txt as the REPL transcript, then diffs the captured

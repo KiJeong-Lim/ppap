@@ -27,7 +27,7 @@ test.debug.assign_fail_scope>
 --------------------------------
 
 test.debug.assign_fail_scope> Press the enter key to go to next state: 
-test.debug.assign_fail_scope> error: [HolBETA2-AssignError]
+test.debug.assign_fail_scope> error: [HolBETA-AssignError]
 scope violation for 'X' — out-of-scope: ?TV_6
 
 --------------------------------

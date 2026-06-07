@@ -1,4 +1,4 @@
-% Quantified literal (BETA1 spec section 2.3.4).
+% Quantified literal (BETA spec section 2.3.4).
 % Names bound by quantifiers inside the literal are scoped to the
 % formula; they do not introduce or shadow logic variables outside.
 % The presburger surface uses `exists X, phi` and `forall X, phi`.

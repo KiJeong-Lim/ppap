@@ -1,4 +1,4 @@
-% Consistency pruning via (T2) firing (BETA1 spec section 2.3.6).
+% Consistency pruning via (T2) firing (BETA spec section 2.3.6).
 % Adding `X > 5` then `X < 3` yields an inconsistent arithmetic
 % constraint set; the runtime aborts the branch immediately rather
 % than waiting for the user to evaluate the formula.

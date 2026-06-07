@@ -46,7 +46,7 @@ test.debug.assign_t4> Press the enter key to go to next state:
 --------------------------------
 
 test.debug.assign_t4> Press the enter key to go to next state: 
-test.debug.assign_t4> error: [HolBETA2-AssignError]
+test.debug.assign_t4> error: [HolBETA-AssignError]
 inconsistent with arithmetic constraints for 'X'
 
 test.debug.assign_t4> The remaining constraints are:

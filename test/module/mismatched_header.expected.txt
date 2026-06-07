@@ -4,7 +4,7 @@ ppap =<<
 ppap >>= exec (Hol.main "test")
 Hol =<< 
 Hol> Compiling test.module.mismatched_header ( test/module/mismatched_header.hol, interpreted )
-/home/lim/portfolio/ppap/test/module/mismatched_header.hol:3:1-3:18: error: [HolBETA2-ModuleError]
+/home/lim/portfolio/ppap/test/module/mismatched_header.hol:3:1-3:18: error: [HolBETA-ModuleError]
    |                   
  3 | module wrong.name.
    | ^^^^^^^^^^^^^^^^^^

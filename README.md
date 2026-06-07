@@ -4,7 +4,7 @@
 
 `ppap` is a collection of Haskell research and experiment projects packaged behind one executable. The public-facing documentation focuses on the logic programming interpreter, lexer/parser generators, and calculation experiments.
 
-- `Hol`: a lambda Prolog-style logic programming interpreter. The default implementation is currently `Hol.BETA2`.
+- `Hol`: a lambda Prolog-style logic programming interpreter. The default implementation is currently `Hol.BETA`.
 - `LGS`: a lexer generator.
 - `PGS`: a parser generator.
 - `Calc`: calculation experiments, including Presburger arithmetic and control-system diagrams.
@@ -51,7 +51,7 @@ The basic build requires a Haskell toolchain.
 ```text
 src/
   Main.hs                  top-level dispatcher
-  Hol/BETA2/               current Hol implementation
+  Hol/BETA/               current Hol implementation
   LGS/, PGS/               lexer/parser generators
   Calc/                    arithmetic and control-system experiments
   Json/                    generated lexer/parser example
@@ -112,8 +112,8 @@ cabal run -v0 ppap
 `LGS` and `PGS` are source generators. They read a `.txt` specification and write a sibling `.hs` file. If generation fails, they write a `.failed` file.
 
 ```bash
-printf 'LGS\nexample/BETA2/PlanHolLexer.txt\n\n' | cabal run -v0 ppap
-printf 'PGS\nexample/BETA2/PlanHolParser.txt\n\n' | cabal run -v0 ppap
+printf 'LGS\nexample/BETA/PlanHolLexer.txt\n\n' | cabal run -v0 ppap
+printf 'PGS\nexample/BETA/PlanHolParser.txt\n\n' | cabal run -v0 ppap
 ```
 
 Generated files such as `PlanHolLexer.hs` and `PlanHolParser.hs` should be regenerated from their `.txt` sources rather than edited by hand.

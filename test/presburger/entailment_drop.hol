@@ -1,5 +1,5 @@
 % Entailment-based residual pruning + deterministic ordering
-% (BETA1 spec section 2.5).
+% (BETA spec section 2.5).
 %
 % A surviving ArithmeticConstraint c is dropped from the residual set
 % iff the remaining Arithmetic hypotheses Phi \ {c} already imply c

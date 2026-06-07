@@ -1,4 +1,4 @@
-% Higher-order kinds are rejected at desugar time (BETA1 spec section 1.4).
+% Higher-order kinds are rejected at desugar time (BETA spec section 1.4).
 % Only first-order kinds (type, type -> type, ...) are allowed; an
 % argument position itself containing an arrow (e.g. `(type -> type) -> type`)
 % must produce a desugaring error and the load must fail.

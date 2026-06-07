@@ -1,4 +1,4 @@
-% Successful :assign (BETA1 spec section 3.2).
+% Successful :assign (BETA spec section 3.2).
 % With debugging on, the user may pin a flexible variable to a
 % concrete term at any "Press the enter key..." prompt. The success
 % line "*** :assign: X := 7." appears and the bound value carries

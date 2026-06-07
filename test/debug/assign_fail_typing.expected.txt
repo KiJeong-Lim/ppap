@@ -27,7 +27,7 @@ test.debug.assign_fail_typing>
 --------------------------------
 
 test.debug.assign_fail_typing> Press the enter key to go to next state: 
-test.debug.assign_fail_typing> error: [HolBETA2-AssignError]
+test.debug.assign_fail_typing> error: [HolBETA-AssignError]
 Type mismatch for 'X'; expected nat, got list ?t4
 
 --------------------------------

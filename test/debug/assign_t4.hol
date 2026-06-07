@@ -1,4 +1,4 @@
-% Failed :assign by (T4) consistency hook (BETA1 spec section 2.3.6 + 3.2.3).
+% Failed :assign by (T4) consistency hook (BETA spec section 2.3.6 + 3.2.3).
 % A query that adds an arithmetic constraint reaches a paused step at
 % which `_LeftConstraints = [X > 5]` is visible. Attempting
 % `:assign ?X := 3.` would make the candidate substitution inconsistent

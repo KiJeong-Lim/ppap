@@ -1,4 +1,4 @@
-% Residual constraint reporting (BETA1 spec section 2.5).
+% Residual constraint reporting (BETA spec section 2.5).
 % When a query reaches success with a non-empty constraint set
 % whose members can be made true by some grounding, the runtime
 % must print the remaining constraints and the binding, then ask

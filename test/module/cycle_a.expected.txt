@@ -4,7 +4,7 @@ ppap =<<
 ppap >>= exec (Hol.main "test")
 Hol =<< 
 Hol> Compiling test.module.cycle_a ( test/module/cycle_a.hol, interpreted )
-/home/lim/portfolio/ppap/test/module/cycle_b.hol:1:1-1:27: error: [HolBETA2-ModuleError]
+/home/lim/portfolio/ppap/test/module/cycle_b.hol:1:1-1:27: error: [HolBETA-ModuleError]
    |                            
  1 | import test.module.cycle_a.
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^

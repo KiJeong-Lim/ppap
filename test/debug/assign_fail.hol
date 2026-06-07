@@ -1,4 +1,4 @@
-% Failed :assign rolls back transactionally (BETA1 spec section 3.2.3).
+% Failed :assign rolls back transactionally (BETA spec section 3.2.3).
 % At a debug prompt the user attempts `:assign ?X := s X.`; the
 % runtime detects the occurs-check violation (precondition 4 of
 % section 3.2.2), prints "*** :assign error: occurs check failed for

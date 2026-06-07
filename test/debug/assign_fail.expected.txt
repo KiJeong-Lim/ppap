@@ -27,7 +27,7 @@ test.debug.assign_fail>
 --------------------------------
 
 test.debug.assign_fail> Press the enter key to go to next state: 
-test.debug.assign_fail> error: [HolBETA2-AssignError]
+test.debug.assign_fail> error: [HolBETA-AssignError]
 occurs check failed for 'X'
 
 --------------------------------

@@ -1,4 +1,4 @@
-% Presburger solver ground-truth regression (BETA1 spec section 2.3).
+% Presburger solver ground-truth regression (BETA spec section 2.3).
 % These four queries have unambiguous semantics over the naturals;
 % any deviation indicates a bug in `Calc.Presburger.Internal`
 % (the QE pipeline + truth-value evaluator).

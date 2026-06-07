@@ -39,37 +39,23 @@ executable ppap
     Hol.ALPHA2.Runtime
     Hol.ALPHA2.Compiler
     Hol.ALPHA2.Main
-    Hol.BETA1.Arith
-    Hol.BETA1.Compiler
-    Hol.BETA1.Constant
-    Hol.BETA1.Debugger
-    Hol.BETA1.Desugarer
-    Hol.BETA1.Header
-    Hol.BETA1.HOPU
-    Hol.BETA1.Main
-    Hol.BETA1.Notation
-    Hol.BETA1.PlanHolLexer
-    Hol.BETA1.PlanHolParser
-    Hol.BETA1.Runtime
-    Hol.BETA1.TermNode
-    Hol.BETA1.TypeChecker
-    Hol.BETA2.Arith
-    Hol.BETA2.Compiler
-    Hol.BETA2.Constant
-    Hol.BETA2.Debugger
-    Hol.BETA2.Desugarer
-    Hol.BETA2.Diagnostic
-    Hol.BETA2.FixityResolver
-    Hol.BETA2.Header
-    Hol.BETA2.HOPU
-    Hol.BETA2.Main
-    Hol.BETA2.ModuleLoader
-    Hol.BETA2.Notation
-    Hol.BETA2.PlanHolLexer
-    Hol.BETA2.PlanHolParser
-    Hol.BETA2.Runtime
-    Hol.BETA2.TermNode
-    Hol.BETA2.TypeChecker
+    Hol.BETA.Arith
+    Hol.BETA.Compiler
+    Hol.BETA.Constant
+    Hol.BETA.Debugger
+    Hol.BETA.Desugarer
+    Hol.BETA.Diagnostic
+    Hol.BETA.FixityResolver
+    Hol.BETA.Header
+    Hol.BETA.HOPU
+    Hol.BETA.Main
+    Hol.BETA.ModuleLoader
+    Hol.BETA.Notation
+    Hol.BETA.PlanHolLexer
+    Hol.BETA.PlanHolParser
+    Hol.BETA.Runtime
+    Hol.BETA.TermNode
+    Hol.BETA.TypeChecker
     Hol.V1.Main
     Hol.Main
     IsabelleHol.Dependecies

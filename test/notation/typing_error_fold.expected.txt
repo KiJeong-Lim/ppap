@@ -4,7 +4,7 @@ ppap =<<
 ppap >>= exec (Hol.main "test")
 Hol =<< 
 Hol> Compiling test.notation.typing_error_fold ( test/notation/typing_error_fold.hol, interpreted )
-/home/lim/portfolio/ppap/test/notation/typing_error_fold.hol:10:3-10:3: error: [HolBETA2-TypeError]
+/home/lim/portfolio/ppap/test/notation/typing_error_fold.hol:10:3-10:3: error: [HolBETA-TypeError]
     |     
  10 | p 7.
     |   ^ 

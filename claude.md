@@ -12,19 +12,19 @@
 
 ## 단기 계획 목록
 
-1. `Hol BETA1` (완료됨):
-   - 우선적으로 `doc/HolBETA1.txt` 참고할 것. 또한, claude는 `doc/HolBETA1.txt`를 편집할 수 있다.
+1. `Hol BETA` (완료됨):
+   - 우선적으로 `doc/HolBETA.txt` 참고할 것. 또한, claude는 `doc/HolBETA.txt`를 편집할 수 있다.
    - Hol ALPHA2를 상위호환으로 가져간다는 느낌으로 구현하되 필요하면 적극적으로 구조를 바꿔도 됨. 단, 테스트 {`einstein.sh`(성능 테스트), `fi.sh`(`=>`의 의미론, 산술 의미론 체크), `lbeta.sh`(hopu 체크)}를 통과해야 함.
-   - (폐기됨) 실행하는 동안 산술 제약(Presburger arithmetic을 기반으로 함, `doc/HolBETA1.txt`을 참고할 것)의 무모순성을 확인하는 로직을 내장하기. 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
+   - (폐기됨) 실행하는 동안 산술 제약(Presburger arithmetic을 기반으로 함, `doc/HolBETA.txt`을 참고할 것)의 무모순성을 확인하는 로직을 내장하기. 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
    - 원조 람다 프롤로그식 전위/중위 커스텀 노테이션을 다룰 수 있게 하기. 단, 런타임에 커스텀 노테이션을 그대로 보여줄 수 있어야 함.
    - 매크로 기능 지원(Coq의 abbrevation과 비슷하게). 그 예로 list char를 string로 단축한다.
    - 고급테크닉이지만, deBruijn index를 쓰되 named-lambda를 쓰는 것도 가능할까? (마치 Coq처럼).
    - 실행하는 동안 산술 제약을 모은다. 입력받은 문자열을 파싱하여, 주어진 산술 논리식이 현재 산술 제약들로부터 도출가능한지를 presburger (string -> o)라는 술어를 지원한다. 암묵적으로 매 호출마다 `presburger "_|_", !, fail`이 있는 것으로 간주하는 건 어떨까? 이때, 솔버는 `src/Calc/Presburger/Internal.hs`를 인용하라.
    - 디버깅하는 동안, 대화형으로 flexible variable (LVar)를 instantiate할 수 있게 하는 기능도 만들고 싶다. 이는 대화형 증명보조기의 택틱을 구현하는 데 핵심이 될 기술이다.
 
-1. `Hol BETA2` (진행 중):
+1. `Hol BETA` (진행 중):
    1. 발견된 버그 목록:
-      1. ★ (해결) `Hol BETA1`과 `Hol BETA2` 모두 `fib.sh`에서 오답이 나옴. 정답은 `N := 12`; `N := 1`; `N := 0`임. `Hol ALPHA2`는 이런 문제가 없음. 테스트 케이스를 `test/`에 추가할 것.
+      1. ★ (해결) `Hol BETA`과 `Hol BETA` 모두 `fib.sh`에서 오답이 나옴. 정답은 `N := 12`; `N := 1`; `N := 0`임. `Hol ALPHA2`는 이런 문제가 없음. 테스트 케이스를 `test/`에 추가할 것.
    2. (진행 중) 추가적인 구현 사항:
       3번 사항과 4번 사항은 다음 버전에 구현하거나 안 구현해도 괜찮지만, 1번 사항과 2번 사항은 이번 버전에서 구현하고 싶다. 5번 사항과 6번 사항은 이번 버전에 넣을지 다음 버전(`Hol V1`)에 넣을지 고민 중이다. 각 사항에 대해 claude의 의견을 듣고 싶다.
       1. (완료됨) 다음의 primitive 술어 추가할 것: `print`, `read`.
@@ -40,18 +40,18 @@
          그러나, 이 기능을 추가할 때, 기존의 의미론과 조화로운지를 반드시 검토해야 한다.
       3. (승인 대기 중) 분수(fraction) and/or 부동소수점(float) 자료형 추가. 굳이 필요할까 하는 생각이 든다. 게다가, 이 기능을 넣는다면 solver 만들어야 할 텐데, 그건 무리일 것 같다.
       4. (승인 대기 중) `:constraint X > 3.` 같이 산술제약을 가하는 기능을 넣고 싶다 (아직 이 기능이 없다면).
-      5. (완료됨) Z.Doc(Z.Text.Doc 아님)을 이용하여 에러 메세지 깔끔하게 출력하기. BETA2의 위치 있는 에러는 `src/Z/PC.hs`의 L307-L316처럼 `|`가 3줄로 이어지는 GHC식 위치 블록을 출력하고, 파일에서 온 진단은 실제 소스 라인과 caret을 함께 보여준다. `Hol BETA2`의 타입/디슈거/모듈/파서/렉서/런타임 에러 메시지의 레이아웃을 공통 GHC식 진단 포맷으로 정리했다.
+      5. (완료됨) Z.Doc(Z.Text.Doc 아님)을 이용하여 에러 메세지 깔끔하게 출력하기. BETA의 위치 있는 에러는 `src/Z/PC.hs`의 L307-L316처럼 `|`가 3줄로 이어지는 GHC식 위치 블록을 출력하고, 파일에서 온 진단은 실제 소스 라인과 caret을 함께 보여준다. `Hol BETA`의 타입/디슈거/모듈/파서/렉서/런타임 에러 메시지의 레이아웃을 공통 GHC식 진단 포맷으로 정리했다.
       6. (완료됨) `Hol` 또는 `Hol --pretty`는 유저용 컬러 진단을, `Hol --test`는 테스트용 무색 진단을 출력하도록 옵션을 분리했다.
       7. (완료됨) shelly 입력을 `ShellyT` 기반으로 정리하여 unsafe류 없이 좌/우 커서 이동과 위/아래 히스토리 탐색을 지원한다. `Hol` 프롬프트도 같은 입력 상태를 공유한다.
-      8. (완료됨) `Hol BETA2`의 unique 생성 의존성을 `Header.hs`의 `UniqueM` 타입클래스로 추상화했다. 별도 `Monad.hs` 모듈은 두지 않는다.
-      9. (대기 중) `Hol BETA2` 에러 메세지 개선점:
+      8. (완료됨) `Hol BETA`의 unique 생성 의존성을 `Header.hs`의 `UniqueM` 타입클래스로 추상화했다. 별도 `Monad.hs` 모듈은 두지 않는다.
+      9. (대기 중) `Hol BETA` 에러 메세지 개선점:
          - 먼저, 에러 메세지에 출력되는 코드에서 에러가 있는 부분에 빨간색 하이라이팅이 적용이 안 되는데, 이를 고칠 것.
-         - 또한, 예를 들어, `[example.stlc]:9:15-9:15: error: [HolBETA2-ParseError]`이 아니라, `/home/lim/portfolio/ppap/example/stlc.hol:9:15-9:15: error: [HolBETA2-ParseError]`처럼 출력되었으면 좋겠음. 이때 `error`에 빨간색 볼드체 하이라이팅이 들어가고 `example/stlc.hol:9:15-9:15`는 볼드체로 출력할 것.
+         - 또한, 예를 들어, `[example.stlc]:9:15-9:15: error: [HolBETA-ParseError]`이 아니라, `/home/lim/portfolio/ppap/example/stlc.hol:9:15-9:15: error: [HolBETA-ParseError]`처럼 출력되었으면 좋겠음. 이때 `error`에 빨간색 볼드체 하이라이팅이 들어가고 `example/stlc.hol:9:15-9:15`는 볼드체로 출력할 것.
    3. (대기 중) 확인할 점:
       - (완료됨) `A :- (pi x\ A1 & A2 :- G2) => G.` 같은 게 잘 돌아가는가? 내 생각에는 돌아가야 함---예를 들면, `A :- ((pi x\ A1 :- G2) => ((pi x\ A2 :- G2) => G)).`와 같아야 함.
       - (대기 중) 위 사항 이외의 Multi-head에서 발생할 수 있는 문제점 생각하기.
       - (대기 중) 현재의 산술 제약 처리 로직에서 생길 수 있는 문제점 생각하기.
-      - (대기 중) 프로젝트 완료 후, 코딩 가이드라인(`claude.md`의 부록 A)에 따라 `Hol BETA 1`과 `Hol BETA 2` 모두 리팩토링할 것. 하스켈 코드 포맷팅이 내 마음에 들지 않음.
+      - (대기 중) 프로젝트 완료 후, 코딩 가이드라인(`claude.md`의 부록 A)에 따라 `Hol BETA`를 리팩토링할 것. 하스켈 코드 포맷팅이 내 마음에 들지 않음.
 
 1. `Hol V1` (승인 대기 중):
    Hol 프로젝트의 첫 번째 정식 넘버링 (v1.0.0).
@@ -65,10 +65,10 @@
 
 1. `Hol V2` (승인 대기 중):
    Hol 프로젝트의 두 번째 정식 넘버링 (v2.0.0). `Hol V1`의 완전한 상위호환.
-   - 이것의 API로 `LoL BETA1`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
+   - 이것의 API로 `LoL BETA`의 인터프리터를 만들 수 있게 하는 것이 최종 목표이다.
    - [`elpi`](https://github.com/LPCIC/elpi)처럼 `main` 함수를 만들 것.
 
-1. `LoL BETA2` (승인 대기 중):
+1. `LoL BETA` (승인 대기 중):
    `LoL ALPHA1`을 계승한, CIC 기반의 증명 스크립트 언어.
    - 대화형 스크립트 실행기를 만드는 것이 목표이다.
    - tactic을 지원한다.

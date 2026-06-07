@@ -4,7 +4,7 @@ ppap =<<
 ppap >>= exec (Hol.main "test")
 Hol =<< 
 Hol> Compiling test.kind.higher_order_kind_rejected ( test/kind/higher_order_kind_rejected.hol, interpreted )
-/home/lim/portfolio/ppap/test/kind/higher_order_kind_rejected.hol:5:11-5:32: error: [HolBETA2-DesugarError]
+/home/lim/portfolio/ppap/test/kind/higher_order_kind_rejected.hol:5:11-5:32: error: [HolBETA-DesugarError]
    |                                   
  5 | kind foo ((type -> type) -> type).
    |           ^^^^^^^^^^^^^^^^^^^^^^  

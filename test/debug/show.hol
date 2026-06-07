@@ -1,4 +1,4 @@
-% Debugger `:show` command (BETA1 spec section 3.3).
+% Debugger `:show` command (BETA spec section 3.3).
 % With debugging mode enabled, `:show V` may be entered at any
 % "Press the enter key..." prompt; the debugger prints the current
 % binding of `?V` and then resumes single-stepping.
