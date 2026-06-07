@@ -18,9 +18,10 @@ import Z.Utils
 
 data NameCache
     = NameCache
-    { _toDisplay :: !(Map.Map LogicVar SmallId)
-    , _fromDisplay :: !(Map.Map SmallId LogicVar)
-    }
+        { _toDisplay :: !(Map.Map LogicVar SmallId)
+        , _fromDisplay :: !(Map.Map SmallId LogicVar)
+        }
+    deriving ()
 
 initialCache :: NameCache
 initialCache = NameCache { _toDisplay = Map.empty, _fromDisplay = Map.empty }

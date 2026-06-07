@@ -359,9 +359,11 @@ Loading is a topological walk of the import graph.
 ```
 
 Order within a module. Within a single module, declarations are
-processed in source order, unchanged from BETA. The processing order
-*across* modules is: built-ins → imports (in topological order, leaves
-first) → main file.
+processed in source order, except that fixity declarations are collected
+for the whole module before term fixity resolution. Thus a fixity
+declaration applies to every term in its module regardless of where the
+declaration appears. The processing order *across* modules is: built-ins
+→ imports (in topological order, leaves first) → main file.
 
 Idempotence. Loading a module twice in the same session is impossible
 under the topological walk; the loader's table maps `M` to its
@@ -398,11 +400,10 @@ declared. Clauses are never inconsistent with one another (alternation
 is the proof-search semantics).
 
 NotationDB (fixity table). The fixity table merges by name. Identical
-declarations collapse; conflicting declarations across imports are
-errors. The main file *may* override an imported fixity with a new
-declaration: such an override is silent ("last declared wins") and is
-part of the module's exported environment. Downstream importers see the
-override exactly as they see the module's other exported declarations.
+declarations collapse; conflicting declarations across imports, or between
+an import and the current module, are errors. The implicit built-in fixity
+table is only a default: a module may override a built-in fixity, and the
+override is part of the module's exported environment.
 
 NotationDB (fold table). Same rule. Two imports declaring the same
 abbreviation/notation name must agree on the right-hand side
@@ -468,7 +469,9 @@ wins" rule of BETA §2.7.4.
 Main-file shadowing. The main file's own declarations are not subject
 to (C1)-(C5) against imports either, *except* for kind/type constants
 which are closed (see §2.3). A main file may freely shadow imported
-abbreviations, notations, and fixities with its own declarations.
+abbreviations and notations with its own declarations. Fixity declarations
+must agree with imported user fixities; disagreement is a compile-time
+error. Built-in default fixities remain overridable.
 
 
 2.5 Multi-Head Clause Expansion

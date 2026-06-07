@@ -8,6 +8,8 @@ import Hol.BETA.Header
 import Hol.BETA.Notation (NotationDB, FixityKind (..), Precedence)
 import qualified Hol.BETA.Notation as Notation
 import Hol.BETA.PlanHolLexer
+import Control.Monad (foldM)
+import qualified Data.Map.Strict as Map
 
 
 data FixityError
@@ -19,16 +21,17 @@ data Piece
     | POper SLoc SmallId
     deriving ()
 
+data FixityOrigin
+    = FixityOrigin SLoc SmallId (FixityKind, Precedence)
+    deriving ()
+
 appPrec :: Precedence
 appPrec = 100
 
 resolveDeclsWithFixity :: NotationDB -> [DeclRep] -> Either FixityError [DeclRep]
-resolveDeclsWithFixity db0 decls0
-    = go db0 decls0 where
-    go _ [] = Right []
-    go db (decl : decls) = do
-        decl' <- resolveDecl db decl
-        (decl' :) <$> go (addFixityDecl decl db) decls
+resolveDeclsWithFixity db0 decls0 = do
+    db <- collectModuleFixities db0 decls0
+    traverse (resolveDecl db) decls0
 
 resolveDecl :: NotationDB -> DeclRep -> Either FixityError DeclRep
 resolveDecl db decl
@@ -37,14 +40,43 @@ resolveDecl db decl
         RNotationDecl loc name params body -> RNotationDecl loc name params <$> resolveTermWithFixity db body
         _ -> Right decl
 
-addFixityDecl :: DeclRep -> NotationDB -> NotationDB
-addFixityDecl (RFixityDecl _ form name prec) = Notation.addFixity name (toKind form) (fromInteger prec)
-    where
-        toKind FF_InfixL = FK_InfixL
-        toKind FF_InfixR = FK_InfixR
-        toKind FF_InfixN = FK_InfixN
-        toKind FF_Prefix = FK_Prefix
-addFixityDecl _ = id
+collectModuleFixities :: NotationDB -> [DeclRep] -> Either FixityError NotationDB
+collectModuleFixities db0 decls
+    = snd <$> foldM step (Map.empty, db0) decls where
+    step (local, db) decl = case decl of
+        RFixityDecl loc form name prec -> do
+            let fp@(kind, precedence) = (toKind form, fromInteger prec)
+            checkImportedFixity db0 loc name fp
+            checkLocalFixity local loc name fp
+            let origin = FixityOrigin loc name fp
+                local' = foldr (`Map.insert` origin) local (Notation.fixityAliases name)
+            return (local', Notation.addFixity name kind precedence db)
+        _ -> return (local, db)
+
+checkImportedFixity :: NotationDB -> SLoc -> SmallId -> (FixityKind, Precedence) -> Either FixityError ()
+checkImportedFixity db loc name fp
+    = mapM_ check (Notation.fixityAliases name) where
+    check alias = case Notation.lookupFixity alias db of
+        Just importedFp
+            | importedFp /= fp
+            , Notation.lookupFixity alias Notation.initial /= Just importedFp ->
+                Left (FixityError loc ("Fixity declaration for `" ++ name ++ "' conflicts with an imported fixity."))
+        _ -> Right ()
+
+checkLocalFixity :: Map.Map SmallId FixityOrigin -> SLoc -> SmallId -> (FixityKind, Precedence) -> Either FixityError ()
+checkLocalFixity local loc name fp
+    = mapM_ check (Notation.fixityAliases name) where
+    check alias = case Map.lookup alias local of
+        Just (FixityOrigin _ priorName priorFp)
+            | priorFp /= fp ->
+                Left (FixityError loc ("Conflicting fixity declarations for `" ++ name ++ "' and `" ++ priorName ++ "'."))
+        _ -> Right ()
+
+toKind :: FixityForm -> FixityKind
+toKind FF_InfixL = FK_InfixL
+toKind FF_InfixR = FK_InfixR
+toKind FF_InfixN = FK_InfixN
+toKind FF_Prefix = FK_Prefix
 
 resolveTermWithFixity :: NotationDB -> TermRep -> Either FixityError TermRep
 resolveTermWithFixity db term = do

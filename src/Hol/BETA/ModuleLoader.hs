@@ -35,37 +35,40 @@ import Z.Utils
 
 data ModuleEnv
     = ModuleEnv
-    { moduleEnvName :: String
-    , moduleEnvPath :: FilePath
-    , moduleEnvKinds :: KindEnv
-    , moduleEnvTypes :: TypeEnv
-    , moduleEnvFacts :: [TermNode]
-    , moduleEnvNotation :: NotationDB
-    , moduleEnvExpansion :: ExpansionDB
-    , moduleEnvImports :: [String]
-    , moduleEnvWarnings :: [ErrMsg]
-    } deriving ()
+        { moduleEnvName :: String
+        , moduleEnvPath :: FilePath
+        , moduleEnvKinds :: KindEnv
+        , moduleEnvTypes :: TypeEnv
+        , moduleEnvFacts :: [TermNode]
+        , moduleEnvNotation :: NotationDB
+        , moduleEnvExpansion :: ExpansionDB
+        , moduleEnvImports :: [String]
+        , moduleEnvWarnings :: [ErrMsg]
+        }
+    deriving ()
 
 data LoadedModule
     = LoadedModule
-    { loadedMain :: ModuleEnv
-    , loadedAll :: Map String ModuleEnv
-    , loadedOrder :: [String]
-    , loadedWarnings :: [ErrMsg]
-    } deriving ()
+        { loadedMain :: ModuleEnv
+        , loadedAll :: Map String ModuleEnv
+        , loadedOrder :: [String]
+        , loadedWarnings :: [ErrMsg]
+        }
+    deriving ()
 
 data LoaderState
     = LoaderState
-    { lsLoaded :: Map FilePath ModuleEnv
-    , lsLoading :: [(String, FilePath)]
-    , lsOrder :: [String]
-    , lsRoot :: FilePath
-    , lsInitialKinds :: KindEnv
-    , lsInitialTypes :: TypeEnv
-    , lsInitialFacts :: [TermNode]
-    , lsDiagnosticMode :: DiagnosticMode
-    , lsWarnings :: [ErrMsg]
-    }
+        { lsLoaded :: Map FilePath ModuleEnv
+        , lsLoading :: [(String, FilePath)]
+        , lsOrder :: [String]
+        , lsRoot :: FilePath
+        , lsInitialKinds :: KindEnv
+        , lsInitialTypes :: TypeEnv
+        , lsInitialFacts :: [TermNode]
+        , lsDiagnosticMode :: DiagnosticMode
+        , lsWarnings :: [ErrMsg]
+        }
+    deriving ()
 
 type Loader m a = ExceptT ErrMsg (State.StateT LoaderState m) a
 
@@ -241,12 +244,13 @@ mergeExpansion = Notation.mergeExpansion
 
 data Origins
     = Origins
-    { oKinds :: !(Map.Map TypeConstructor String)
-    , oTypes :: !(Map.Map DataConstructor String)
-    , oFixity :: !(Map.Map SmallId String)
-    , oAbbrev :: !(Map.Map SmallId String)
-    , oNotation :: !(Map.Map SmallId String)
-    } deriving ()
+        { oKinds :: !(Map.Map TypeConstructor String)
+        , oTypes :: !(Map.Map DataConstructor String)
+        , oFixity :: !(Map.Map SmallId String)
+        , oAbbrev :: !(Map.Map SmallId String)
+        , oNotation :: !(Map.Map SmallId String)
+        }
+    deriving ()
 
 emptyOrigins :: Origins
 emptyOrigins = Origins Map.empty Map.empty Map.empty Map.empty Map.empty

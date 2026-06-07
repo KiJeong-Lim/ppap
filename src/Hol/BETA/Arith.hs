@@ -26,16 +26,18 @@ import Z.Utils (ErrMsg)
 
 data ParseResult
     = ParseResult
-    { _formula :: MyPresburgerFormulaRep
-    , _freeOfFormula :: Map.Map MyVar LogicVar
-    , _updatedEnv :: Map.Map LargeId LogicVar
-    } deriving ()
+        { _formula :: MyPresburgerFormulaRep
+        , _freeOfFormula :: Map.Map MyVar LogicVar
+        , _updatedEnv :: Map.Map LargeId LogicVar
+        }
+    deriving ()
 
 data LiftResult
     = LiftResult
-    { _liftedFormula :: MyPresburgerFormulaRep
-    , _freeOfLifted :: Map.Map MyVar LogicVar
-    } deriving ()
+        { _liftedFormula :: MyPresburgerFormulaRep
+        , _freeOfLifted :: Map.Map MyVar LogicVar
+        }
+    deriving ()
 
 
 parsePresburger :: SLoc -> String -> Map.Map LargeId LogicVar -> Either ErrMsg ParseResult
@@ -62,13 +64,14 @@ parsePresburger sloc src env0
 
 data PState
     = PState
-    { psInput :: !String
-    , psNameToVar :: !(Map.Map LargeId LogicVar)
-    , psBoundStack :: ![(LargeId, MyVar)]
-    , psFreeMap :: !(Map.Map MyVar LogicVar)
-    , psInverseFree :: !(Map.Map LogicVar MyVar)
-    , psNextVar :: !MyVar
-    } deriving ()
+        { psInput :: !String
+        , psNameToVar :: !(Map.Map LargeId LogicVar)
+        , psBoundStack :: ![(LargeId, MyVar)]
+        , psFreeMap :: !(Map.Map MyVar LogicVar)
+        , psInverseFree :: !(Map.Map LogicVar MyVar)
+        , psNextVar :: !MyVar
+        }
+    deriving ()
 
 newtype P a
     = P { runP :: PState -> Either ErrMsg (a, PState) }
@@ -453,10 +456,11 @@ liftConstraint t
 
 data LiftState
     = LiftState
-    { lsFreeMap :: !(Map.Map MyVar LogicVar)
-    , lsInverse :: !(Map.Map LogicVar MyVar)
-    , lsNextVar :: !MyVar
-    } deriving ()
+        { lsFreeMap :: !(Map.Map MyVar LogicVar)
+        , lsInverse :: !(Map.Map LogicVar MyVar)
+        , lsNextVar :: !MyVar
+        }
+    deriving ()
 
 newtype L a
     = L { runLift :: LiftState -> Maybe (a, LiftState) }

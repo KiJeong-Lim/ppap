@@ -57,7 +57,13 @@ configFromOptions options = defaultRunConfig { cfgWorkDir = optWorkDir options }
 ```
 
 `where`를 선호한다. `let ... in`은 되도록 피한다. do 안의 짧은 `let`은 허용한다.
-그래도 `let ... in`을 써야 한다면 여러 바인딩을 세로 정렬하지 말고, `let x1 = t1 in let x2 = t2 in body`처럼 한 바인딩씩 이어 쓴다.
+그래도 `let ... in`을 써야 한다면 여러 바인딩을 세로 정렬하지 말고,
+```
+let x1 = t1 in
+let x2 = t2 in
+body
+```
+처럼 한 바인딩씩 이어 쓴다.
 
 줄바꿈이 필요한 `++` 체인은 `++`로 계속 잇지 말고 `concat [...]`으로 묶는다. 한 줄에 자연스럽게 들어가는 짧은 `++` 체인은 그대로 둘 수 있다.
 
@@ -65,7 +71,6 @@ configFromOptions options = defaultRunConfig { cfgWorkDir = optWorkDir options }
 stringOptionMaybe :: String -> [String] -> Maybe String
 stringOptionMaybe key rawArgs = go (map normalizeArg rawArgs) where
     prefix = key ++ "="
-
     go [] = Nothing
     go [arg]
         | prefix `isPrefixOf` arg = Just (drop (length prefix) arg)
@@ -76,16 +81,14 @@ stringOptionMaybe key rawArgs = go (map normalizeArg rawArgs) where
 
 `data`/`newtype` 선언에는 항상 `deriving`을 붙인다. 실제로 파생할 인스턴스가 없으면 기존 코드처럼 `deriving ()`를 둔다.
 
-레코드 생성자는 타입명 다음 줄에 둔다.
-record data type 선언에서는 `{ ... }` 블록을 생성자보다 한 단계 더 들여쓰지 않는다. `{`, `,`, `}`는 `= 생성자`와 같은 4칸 들여쓰기 기준에 맞춘다.
-
 ```hs
 data RuntimeInput
     = RuntimeInput
-    { riArgs :: [String]
-    , riStdin :: String
-    , riEnv :: [(String, String)]
-    } deriving (Eq, Ord, Show)
+        { riArgs :: [String]
+        , riStdin :: String
+        , riEnv :: [(String, String)]
+        }
+    deriving (Eq, Ord, Show)
 ```
 
 단일 필드 `newtype` 레코드는 생성자와 필드 블록을 같은 줄에 둔다.
@@ -195,12 +198,8 @@ LLM식 장황한 설명 주석은 피한다. 코드만으로 읽히는 내용은
 
 ## 금지/주의
 
-`unsafe` 계열은 쓰지 않는다.
-
-C FFI 작업은 `src/X/` 안에서만 한다.
-
-기존 사용자가 만든 변경을 되돌리지 않는다.
-
-생성 파일을 직접 손으로 고치는 것을 피한다.
-
-의미 변경 없이 스타일만 바꾸는 작업이라도 반드시 빌드 또는 관련 smoke test를 돌린다.
+1. `unsafe` 계열은 쓰지 않는다.
+1. C FFI 작업은 `src/X/` 안에서만 한다.
+1. 기존 사용자가 만든 변경을 되돌리지 않는다.
+1. 생성 파일을 직접 손으로 고치는 것을 피한다.
+1. 의미 변경 없이 스타일만 바꾸는 작업이라도 반드시 빌드 또는 관련 smoke test를 돌린다.

@@ -1,0 +1,6 @@
+Hol --test
+test/notation/module_wide_fixity.hol
+?- p (a op a).
+
+n
+:q

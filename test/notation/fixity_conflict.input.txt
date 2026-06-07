@@ -1,0 +1,4 @@
+Hol --test
+test/notation/fixity_conflict.hol
+
+:q

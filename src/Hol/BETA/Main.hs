@@ -39,6 +39,7 @@ type AnalyzerOuput = Either TermRep [DeclRep]
 data ReplResult
     = ReplQuit
     | ReplReload
+    deriving ()
 
 runAnalyzerWith :: DiagnosticMode -> NotationDB -> String -> Either ErrMsg AnalyzerOuput
 runAnalyzerWith mode notationDB src0

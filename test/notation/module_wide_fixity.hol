@@ -1,0 +1,6 @@
+kind i type.
+type a i.
+type op i -> i -> i.
+type p i -> o.
+p (a op a).
+infixl `op` 6.

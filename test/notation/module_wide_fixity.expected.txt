@@ -1,0 +1,11 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.module_wide_fixity ( test/notation/module_wide_fixity.hol, interpreted )
+test.notation.module_wide_fixity> Ok, one module loaded.
+test.notation.module_wide_fixity> 
+test.notation.module_wide_fixity> yes.
+test.notation.module_wide_fixity> 
+Hol >>= quit

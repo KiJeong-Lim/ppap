@@ -1,0 +1,17 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.fixity_conflict ( test/notation/fixity_conflict.hol, interpreted )
+/home/lim/portfolio/ppap/test/notation/fixity_conflict.hol:2:1-2:14: error: [HolBETA-ParseError]
+   |               
+ 2 | infixr `op` 6.
+   | ^^^^^^^^^^^^^^
+Parsing failed in `/home/lim/portfolio/ppap/test/notation/fixity_conflict.hol'.
+Conflicting fixity declarations for `op' and `op'.
+
+Hol =<< 
+Hol> Ok, no module loaded.
+Hol> 
+Hol >>= quit

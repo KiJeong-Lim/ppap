@@ -5,6 +5,7 @@ module Hol.BETA.Notation
     , initial
     , merge
     , addFixity
+    , fixityAliases
     , addAbbrev
     , addNotation
     , lookupFixity
@@ -56,19 +57,21 @@ data EntryKind
 
 data FoldEntry
     = FoldEntry
-    { _feName :: !SmallId
-    , _feParams :: ![LargeId]
-    , _feRhs :: !TermNode             -- type RHS pre-compiled to TermNode
-    , _feSeq :: !Int
-    , _feKind :: !EntryKind
-    } deriving ()
+        { _feName :: !SmallId
+        , _feParams :: ![LargeId]
+        , _feRhs :: !TermNode             -- type RHS pre-compiled to TermNode
+        , _feSeq :: !Int
+        , _feKind :: !EntryKind
+        }
+    deriving ()
 
 data NotationDB
     = NotationDB
-    { _fixity :: !(Map.Map SmallId (FixityKind, Precedence))
-    , _entries :: ![FoldEntry]
-    , _nextSeq :: !Int
-    } deriving ()
+        { _fixity :: !(Map.Map SmallId (FixityKind, Precedence))
+        , _entries :: ![FoldEntry]
+        , _nextSeq :: !Int
+        }
+    deriving ()
 
 
 compileTypeTemplate :: MonoType LargeId -> TermNode
@@ -275,9 +278,10 @@ firstJust (Nothing : xs) = firstJust xs
 
 data ExpansionDB
     = ExpansionDB
-    { _typeAbbrevs :: !(Map.Map SmallId ([LargeId], TypeRep))
-    , _termNotations :: !(Map.Map SmallId ([LargeId], TermRep))
-    }
+        { _typeAbbrevs :: !(Map.Map SmallId ([LargeId], TypeRep))
+        , _termNotations :: !(Map.Map SmallId ([LargeId], TermRep))
+        }
+    deriving ()
 
 emptyExpansionDB :: ExpansionDB
 emptyExpansionDB = ExpansionDB { _typeAbbrevs = Map.empty, _termNotations = Map.empty }

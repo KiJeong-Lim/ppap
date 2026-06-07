@@ -31,14 +31,15 @@ type HasChanged = Bool
 
 data Labeling
     = Labeling
-    { _ConLabel :: IntMap.IntMap ScopeLevel
-    , _VarLabel :: IntMap.IntMap ScopeLevel
-    , _ConTypes :: IntMap.IntMap (MonoType Int)
-    , _VarTypes :: IntMap.IntMap (MonoType Int)
-    , _NamedTypes :: Map.Map LargeId (MonoType Int)
-    , _TyVarKeys :: IntMap.IntMap ()
-    , _TypeEnv :: TypeEnv
-    }
+        { _ConLabel :: IntMap.IntMap ScopeLevel
+        , _VarLabel :: IntMap.IntMap ScopeLevel
+        , _ConTypes :: IntMap.IntMap (MonoType Int)
+        , _VarTypes :: IntMap.IntMap (MonoType Int)
+        , _NamedTypes :: Map.Map LargeId (MonoType Int)
+        , _TyVarKeys :: IntMap.IntMap ()
+        , _TypeEnv :: TypeEnv
+        }
+    deriving ()
 
 data Disagreement
     = TermNode :=?=: TermNode
@@ -46,9 +47,10 @@ data Disagreement
 
 data HopuSol
     = HopuSol
-    { _ChangedLabelingEnv :: Labeling
-    , _MostGeneralUnifier :: LogicVarSubst
-    }
+        { _ChangedLabelingEnv :: Labeling
+        , _MostGeneralUnifier :: LogicVarSubst
+        }
+    deriving ()
 
 data HopuFail
     = DownFail
