@@ -1,0 +1,11 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.infixr_fixity ( test/notation/infixr_fixity.hol, interpreted )
+test.notation.infixr_fixity> Ok, one module loaded.
+test.notation.infixr_fixity> 
+test.notation.infixr_fixity> yes.
+test.notation.infixr_fixity> 
+Hol >>= quit

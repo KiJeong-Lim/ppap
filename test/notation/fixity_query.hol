@@ -1,0 +1,4 @@
+% Fixity declarations affect REPL query parsing, not only answer display.
+% With `+` tighter than `*`, the query `1 + 2 * 3` parses as
+% `(1 + 2) * 3`.
+infixl + 8.

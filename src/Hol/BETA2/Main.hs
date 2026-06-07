@@ -6,6 +6,7 @@ import Hol.BETA2.Constant
 import Hol.BETA2.Debugger
 import Hol.BETA2.Diagnostic
 import Hol.BETA2.Desugarer
+import Hol.BETA2.FixityResolver (FixityError (..), resolveTermWithFixity)
 import Hol.BETA2.Header
 import Hol.BETA2.HOPU
 import Hol.BETA2.ModuleLoader (LoadedModule (..), ModuleEnv (..), loadMainWithDiagnostic)
@@ -39,15 +40,18 @@ data ReplResult
     = ReplQuit
     | ReplReload
 
-runAnalyzer :: DiagnosticMode -> String -> Either ErrMsg AnalyzerOuput
-runAnalyzer mode src0
+runAnalyzerWith :: DiagnosticMode -> NotationDB -> String -> Either ErrMsg AnalyzerOuput
+runAnalyzerWith mode notationDB src0
     = case runHolLexer src0 of
         Left (row, col) -> Left (diagnosticWith mode "HolBETA2-LexError" (Just (lines src0)) (SLoc (row, col) (row, col)) [Z.Doc.text "Lexing failed."])
         Right src1 -> case runHolParser src1 of
             Left Nothing -> Left (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text "Parsing failed at EOF."])
             Left (Just token) -> case getSLoc token of
                 loc -> Left (diagnosticWith mode "HolBETA2-ParseError" (Just (lines src0)) loc [Z.Doc.text "Parsing failed."])
-            Right output -> Right output
+            Right (Left termRep) -> case resolveTermWithFixity notationDB termRep of
+                Left (FixityError loc msg) -> Left (diagnosticWith mode "HolBETA2-ParseError" (Just (lines src0)) loc [Z.Doc.text "Parsing failed.", Z.Doc.text msg])
+                Right output -> Right (Left output)
+            Right (Right _) -> Left (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text "Parsing failed at EOF."])
 
 isYES :: String -> Bool
 isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
@@ -107,7 +111,7 @@ runREPL mode program notationDB expansionDB
                         liftIO $ writeIORef verboseTyping True
                         shellyM (moduleName program ++ "> " ++ "Typing display: verbose.")
                     go isDebugging verboseTyping nameCache
-                query0 -> case runAnalyzer mode query0 of
+                query0 -> case runAnalyzerWith mode notationDB query0 of
                     Left err_msg -> do
                         liftIO $ putStrLn err_msg
                         go isDebugging verboseTyping nameCache
@@ -356,7 +360,10 @@ runREPL mode program notationDB expansionDB
                         Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Parsing failed at EOF."])
                         Left (Just token) -> throwE (diagnosticWith mode "HolBETA2-AssignError" (Just (lines queryStr)) (getSLoc token) [Z.Doc.text "Parsing failed."])
                         Right (Right _) -> throwE (diagnosticNoLocWith mode "HolBETA2-AssignError" [Z.Doc.text "Expected a query, not a declaration."])
-                        Right (Left termRep) -> do
+                        Right (Left termRep0) -> do
+                            termRep <- case resolveTermWithFixity notationDB termRep0 of
+                                Left (FixityError loc msg) -> throwE (diagnosticWith mode "HolBETA2-AssignError" (Just (lines queryStr)) loc [Z.Doc.text "Parsing failed.", Z.Doc.text msg])
+                                Right termRep -> return termRep
                             (term2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB termRep)
                             (term3, (used_mtvs, assumptions)) <- checkTypeWithDiagnostic mode (Just (lines queryStr)) notationDB (_TypeDecls program) term2 mkTyO
                             term4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) term3

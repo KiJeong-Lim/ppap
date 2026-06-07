@@ -1,0 +1,3 @@
+% Prefix declarations affect how far the prefix argument extends.
+% The low-precedence `s` below parses `s 1 * 2` as `s (1 * 2)`.
+prefix s 5.

@@ -1,10 +1,10 @@
 % Section 1.5: user-defined fixity declarations are collected into the
 % program's NotationDB by the desugarer and consumed by the viewer.
 % Without the fixity declaration the answer to `?- p Y.` would
-% render as `Y := my_op 3 5.`; with `infixl my_op 6.` declared, the
+% render as `Y := my_op 3 5.`; with `infixl `my_op` 6.` declared, the
 % same answer should render as `Y := 3 my_op 5.`.
 kind myt type.
 type my_op (nat -> nat -> myt).
-infixl my_op 6.
+infixl `my_op` 6.
 type p (myt -> o).
-p (my_op 3 5).
+p (3 my_op 5).

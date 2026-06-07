@@ -1,0 +1,3 @@
+% Imported by import_fixity_override.hol; overrides the built-in `+`
+% precedence and exports that override.
+infixl + 8.

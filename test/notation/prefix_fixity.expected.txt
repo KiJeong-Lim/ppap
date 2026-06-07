@@ -1,0 +1,15 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.prefix_fixity ( test/notation/prefix_fixity.hol, interpreted )
+test.notation.prefix_fixity> Ok, one module loaded.
+test.notation.prefix_fixity> 
+test.notation.prefix_fixity> The answer substitution is:
+test.notation.prefix_fixity> Y := 3.
+test.notation.prefix_fixity> Find more solutions? [Y/n] 
+test.notation.prefix_fixity> Find more solutions? [Y/n] 
+test.notation.prefix_fixity> yes.
+test.notation.prefix_fixity> 
+Hol >>= quit

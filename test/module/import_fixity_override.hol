@@ -1,0 +1,3 @@
+% Imported fixity overrides are in scope while parsing this module and its
+% later REPL queries.
+import test.module.import_fixity_plus.

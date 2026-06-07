@@ -1,0 +1,15 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.fixity_query ( test/notation/fixity_query.hol, interpreted )
+test.notation.fixity_query> Ok, one module loaded.
+test.notation.fixity_query> 
+test.notation.fixity_query> The answer substitution is:
+test.notation.fixity_query> Y := 9.
+test.notation.fixity_query> Find more solutions? [Y/n] 
+test.notation.fixity_query> Find more solutions? [Y/n] 
+test.notation.fixity_query> yes.
+test.notation.fixity_query> 
+Hol >>= quit

@@ -11,6 +11,7 @@ import Hol.BETA2.Compiler (convertProgram)
 import Hol.BETA2.Desugarer (desugarProgramWithModule)
 import Hol.BETA2.Diagnostic
 import Hol.BETA2.Header
+import Hol.BETA2.FixityResolver (FixityError (..), resolveDeclsWithFixity)
 import Hol.BETA2.Notation (NotationDB, ExpansionDB)
 import qualified Hol.BETA2.Notation as Notation
 import Hol.BETA2.PlanHolLexer
@@ -136,13 +137,14 @@ loadFile canonicalPath importContext = do
                                     Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("Parsing failed at EOF in `" ++ canonicalPath ++ "'.")])
                                     Left (Just token) -> throwE (diagnosticWithModule mode "HolBETA2-ParseError" (Just canonicalPath) sourceLines (getSLoc token) [Z.Doc.text ("Parsing failed in `" ++ canonicalPath ++ "'.")])
                                     Right (Left _) -> throwE (diagnosticNoLocWith mode "HolBETA2-ParseError" [Z.Doc.text ("File `" ++ canonicalPath ++ "' is a query, not a program.")])
-                                    Right (Right decls) -> elaborate canonicalPath mname (lines src) decls
+                                    Right (Right decls0) -> case extractHeaderAndImports mode (Just canonicalPath) sourceLines decls0 of
+                                        Left err -> throwE err
+                                        Right (mHeader, imports, body0) -> elaborate canonicalPath mname (lines src) mHeader imports body0
 
-elaborate :: UniqueM m => FilePath -> String -> [String] -> [DeclRep] -> Loader m ModuleEnv
-elaborate canonicalPath mname sourceLines decls = do
+elaborate :: UniqueM m => FilePath -> String -> [String] -> Maybe (SLoc, String) -> [(SLoc, String)] -> [DeclRep] -> Loader m ModuleEnv
+elaborate canonicalPath mname sourceLines mHeader imports body0 = do
     st0 <- lift State.get
     let mode = lsDiagnosticMode st0
-    (mHeader, imports, body) <- liftEither (extractHeaderAndImports mode (Just canonicalPath) (Just sourceLines) decls)
     case mHeader of
         Just (loc, declared) | declared /= mname ->
             throwE (moduleErr mode (Just canonicalPath) (Just sourceLines) loc ("Module header `" ++ declared ++ "' does not match file path-derived name `" ++ mname ++ "'."))
@@ -162,6 +164,9 @@ elaborate canonicalPath mname sourceLines decls = do
         initialTypes = lsInitialTypes st
     (composedKinds, composedTypes, composedNotation, composedExpansion, _origins) <- foldM (combineImport mode (Just canonicalPath) (Just sourceLines)) (initialKinds, initialTypes, Notation.initial, Notation.initialExpansionDB, emptyOrigins) importedEnvsWithLocs
     let importedFacts = concatMap (drop (length initialFacts) . moduleEnvFacts . snd) importedEnvsWithLocs
+    body <- case resolveDeclsWithFixity composedNotation body0 of
+        Left (FixityError loc msg) -> throwE (diagnosticWithModule mode "HolBETA2-ParseError" (Just canonicalPath) (Just sourceLines) loc [Z.Doc.text ("Parsing failed in `" ++ canonicalPath ++ "'."), Z.Doc.text msg])
+        Right decls -> return decls
     (env1, ownNotation0, ownExpansion0) <- desugarProgramWithModule mode (Just canonicalPath) (Just sourceLines) composedKinds composedTypes mname body
     let ownNotation  = mergeNotation composedNotation ownNotation0
         ownExpansion = mergeExpansion composedExpansion ownExpansion0
@@ -292,16 +297,22 @@ showDC dc = show dc
 mergeFixityStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Map.Map SmallId String -> NotationDB -> NotationDB -> Either ErrMsg (NotationDB, Map.Map SmallId String)
 mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new
     = do
-        origin' <- foldr step (Right origin0) (Notation.fixityList new)
+        origin' <- foldr step (Right origin0) (nonSeedFixities new)
         Right (Notation.merge old new, origin')
     where
+        nonSeedFixities db =
+            [ (name, fp)
+            | (name, fp) <- Notation.fixityList db
+            , lookup name (Notation.fixityList Notation.initial) /= Just fp
+            ]
         step (name, fp) acc = do
             origin <- acc
             let prior = Map.lookup name origin
             case lookupFixity name old of
                 Nothing -> Right (Map.insert name iname origin)
                 Just fp'
-                    | fp == fp' -> Right origin
+                    | fp == fp' -> Right (Map.insert name iname origin)
+                    | Nothing <- prior -> Right (Map.insert name iname origin)
                     | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C5" prior iname name "fixity" (showFixity fp') (showFixity fp))
         lookupFixity name db = lookup name (Notation.fixityList db)
         showFixity (kind, prec) = shows kind (" " ++ shows prec "")

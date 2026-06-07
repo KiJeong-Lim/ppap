@@ -1,0 +1,6 @@
+Hol --test
+test/notation/custom_symbolic_fixity.hol
+?- p Y.
+
+n
+:q

@@ -1,0 +1,15 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.import_fixity_override ( test/module/import_fixity_override.hol, interpreted )
+test.module.import_fixity_override> Ok, one module loaded.
+test.module.import_fixity_override> 
+test.module.import_fixity_override> The answer substitution is:
+test.module.import_fixity_override> Y := 9.
+test.module.import_fixity_override> Find more solutions? [Y/n] 
+test.module.import_fixity_override> Find more solutions? [Y/n] 
+test.module.import_fixity_override> yes.
+test.module.import_fixity_override> 
+Hol >>= quit

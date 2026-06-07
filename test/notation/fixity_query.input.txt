@@ -1,0 +1,6 @@
+Hol --test
+test/notation/fixity_query.hol
+?- Y is 1 + 2 * 3.
+
+n
+:q

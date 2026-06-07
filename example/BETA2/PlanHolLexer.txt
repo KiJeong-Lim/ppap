@@ -15,6 +15,8 @@
 \define $Char = [. \ '\n' \ '\\' \ '\"'] + "\\n" + "\\\\" + "\\\"" + "\\\'" + "\\t"
 \define $SmallId = [$small_letter] [$small_letter $digit '_' $big_letter]*
 \define $LargeId = [$big_letter] [$small_letter $digit '_' $big_letter]* + "_"
+\define $SymbolStart = "!" + "@" + "#" + "$" + "^" + "&" + "*" + "+" + "-" + "=" + "<" + ">" + "?" + "/" + "|" + "~" + ":"
+\define $SymbolChar = $SymbolStart + "%"
 
 \xmatch "_":
     T_wildcard (SLoc (row1, col1) (row2, col2))
@@ -106,8 +108,30 @@
     T_import (SLoc (row1, col1) (row2, col2))
 \xmatch [$small_letter $big_letter] [$small_letter $digit '_' $big_letter]* ("." [$small_letter $big_letter] [$small_letter $digit '_' $big_letter]*)+:
     T_qid (SLoc (row1, col1) (row2, col2)) this
+\xmatch "`" $SmallId "`":
+    T_id (SLoc (row1, col1) (row2, col2)) (init (tail this))
 \xmatch $LargeId + $SmallId:
     T_id (SLoc (row1, col1) (row2, col2)) this
+\xmatch $SymbolStart $SymbolChar*:
+    case this of
+        "?-" -> T_quest (SLoc (row1, col1) (row2, col2))
+        ":-" -> T_if (SLoc (row1, col1) (row2, col2))
+        ":=" -> T_assign (SLoc (row1, col1) (row2, col2))
+        "=>" -> T_fatarrow (SLoc (row1, col1) (row2, col2))
+        "->" -> T_arrow (SLoc (row1, col1) (row2, col2))
+        "::" -> T_cons (SLoc (row1, col1) (row2, col2))
+        "=<" -> T_le (SLoc (row1, col1) (row2, col2))
+        ">=" -> T_ge (SLoc (row1, col1) (row2, col2))
+        "=" -> T_eq (SLoc (row1, col1) (row2, col2))
+        "<" -> T_lt (SLoc (row1, col1) (row2, col2))
+        ">" -> T_gt (SLoc (row1, col1) (row2, col2))
+        "+" -> T_plus (SLoc (row1, col1) (row2, col2))
+        "-" -> T_minus (SLoc (row1, col1) (row2, col2))
+        "*" -> T_star (SLoc (row1, col1) (row2, col2))
+        "/" -> T_slash (SLoc (row1, col1) (row2, col2))
+        "&" -> T_amp (SLoc (row1, col1) (row2, col2))
+        "!" -> T_cut (SLoc (row1, col1) (row2, col2))
+        _ -> T_id (SLoc (row1, col1) (row2, col2)) this
 \xmatch [$digit]+:
     T_nat_lit (SLoc (row1, col1) (row2, col2)) (read this)
 \xmatch "\"" $Char* "\"":
@@ -196,7 +220,6 @@
         = RKindDecl SLoc TypeConstructor KindRep
         | RTypeDecl SLoc DataConstructor TypeRep
         | RFactDecl SLoc TermRep
-        | RMultiHeadFactDecl SLoc [TermRep] (Maybe TermRep)
         | RFixityDecl SLoc FixityForm SmallId Integer
         | RAbbrevDecl SLoc SmallId [LargeId] TypeRep
         | RNotationDecl SLoc SmallId [LargeId] TermRep

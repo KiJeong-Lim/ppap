@@ -1,0 +1,6 @@
+Hol --test
+test/notation/infixr_fixity.hol
+?- p (a rop a rop a).
+
+n
+:q

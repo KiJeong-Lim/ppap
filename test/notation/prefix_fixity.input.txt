@@ -1,0 +1,6 @@
+Hol --test
+test/notation/prefix_fixity.hol
+?- Y is s 1 * 2.
+
+n
+:q

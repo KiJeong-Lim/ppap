@@ -1,0 +1,6 @@
+Hol --test
+test/module/import_fixity_override.hol
+?- Y is 1 + 2 * 3.
+
+n
+:q

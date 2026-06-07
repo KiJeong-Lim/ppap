@@ -97,21 +97,13 @@
         RKindDecl ($1.loc <> $4.loc) (TC_Named $2.contents) $3
     95 [$type, $id, $TypeRep0, $dot]:
         RTypeDecl ($1.loc <> $4.loc) (DC_Named $2.contents) $3
-    95 [$infixl, $id, $natlit, $dot]:
-        RFixityDecl ($1.loc <> $4.loc) FF_InfixL $2.contents $3.contents
-    95 [$infixr, $id, $natlit, $dot]:
-        RFixityDecl ($1.loc <> $4.loc) FF_InfixR $2.contents $3.contents
-    95 [$infix, $id, $natlit, $dot]:
-        RFixityDecl ($1.loc <> $4.loc) FF_InfixN $2.contents $3.contents
-    95 [$prefix, $id, $natlit, $dot]:
-        RFixityDecl ($1.loc <> $4.loc) FF_Prefix $2.contents $3.contents
-    95 [$infixl, $SymOp, $natlit, $dot]:
+    95 [$infixl, $FixityOp, $natlit, $dot]:
         RFixityDecl ($1.loc <> $4.loc) FF_InfixL $2 $3.contents
-    95 [$infixr, $SymOp, $natlit, $dot]:
+    95 [$infixr, $FixityOp, $natlit, $dot]:
         RFixityDecl ($1.loc <> $4.loc) FF_InfixR $2 $3.contents
-    95 [$infix, $SymOp, $natlit, $dot]:
+    95 [$infix, $FixityOp, $natlit, $dot]:
         RFixityDecl ($1.loc <> $4.loc) FF_InfixN $2 $3.contents
-    95 [$prefix, $SymOp, $natlit, $dot]:
+    95 [$prefix, $FixityOp, $natlit, $dot]:
         RFixityDecl ($1.loc <> $4.loc) FF_Prefix $2 $3.contents
     95 [$abbrev, $id, $Sequence $IdElem, $assign, $TypeRep0, $dot]:
         RAbbrevDecl ($1.loc <> $6.loc) $2.contents $3 $5
@@ -124,6 +116,33 @@
 \define $IdElem : "LargeId" {
     10 [$id]:
         $1.contents
+}
+
+\define $FixityOp : "SmallId" {
+    10 [$id]:
+        $1.contents
+    10 [$SymOp]:
+        $1
+    10 [$if]:
+        ":-"
+    10 [$semicolon]:
+        ";"
+    10 [$fatarrow]:
+        "=>"
+    10 [$comma]:
+        ","
+    10 [$amp]:
+        "&"
+    10 [$arrow]:
+        "->"
+    10 [$pi]:
+        "pi"
+    10 [$sigma]:
+        "sigma"
+    10 [$succ]:
+        "s"
+    10 [$is]:
+        "is"
 }
 
 \define $SymOp : "SmallId" {

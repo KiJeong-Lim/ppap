@@ -1,0 +1,9 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.module.import_fixity_plus ( test/module/import_fixity_plus.hol, interpreted )
+test.module.import_fixity_plus> Ok, one module loaded.
+test.module.import_fixity_plus> 
+Hol >>= quit

@@ -85,37 +85,43 @@ initial = addAbbrev "string" [] stringRhs seededFixity where
 
     seededFixity :: NotationDB
     seededFixity = NotationDB
-        { _fixity = Map.fromList seeds
+        { _fixity = seedFixities
         , _entries = []
         , _nextSeq = 0
         }
 
-    seeds :: [(SmallId, (FixityKind, Precedence))]
-    seeds =
-        [ ("Lambda", (FK_Prefix, 0))
-        , (":-", (FK_InfixR, 0))
-        , (";", (FK_InfixL, 1))
-        , ("=>", (FK_InfixR, 2))
-        , ("&", (FK_InfixL, 3))
-        , ("->", (FK_InfixR, 4))
-        , ("::", (FK_InfixR, 4))
-        , ("pi", (FK_Prefix, 5))
-        , ("sigma", (FK_Prefix, 5))
-        , ("=", (FK_InfixN, 5))
-        , ("=<", (FK_InfixN, 5))
-        , ("<", (FK_InfixN, 5))
-        , (">=", (FK_InfixN, 5))
-        , (">", (FK_InfixN, 5))
-        , ("is", (FK_InfixN, 5))
-        , ("+", (FK_InfixN, 6))
-        , ("-", (FK_InfixN, 6))
-        , ("*", (FK_InfixN, 7))
-        , ("/", (FK_InfixN, 7))
-        ]
+seedFixities :: Map.Map SmallId (FixityKind, Precedence)
+seedFixities = Map.fromList
+    [ ("Lambda", (FK_Prefix, 0))
+    , (":-", (FK_InfixR, 0))
+    , (";", (FK_InfixL, 1))
+    , ("=>", (FK_InfixR, 2))
+    , (",", (FK_InfixL, 3))
+    , ("&", (FK_InfixL, 3))
+    , ("->", (FK_InfixR, 4))
+    , ("::", (FK_InfixR, 4))
+    , ("pi", (FK_Prefix, 5))
+    , ("sigma", (FK_Prefix, 5))
+    , ("=", (FK_InfixN, 5))
+    , ("=<", (FK_InfixN, 5))
+    , ("<", (FK_InfixN, 5))
+    , (">=", (FK_InfixN, 5))
+    , (">", (FK_InfixN, 5))
+    , ("is", (FK_InfixN, 5))
+    , ("+", (FK_InfixL, 6))
+    , ("-", (FK_InfixL, 6))
+    , ("*", (FK_InfixL, 7))
+    , ("/", (FK_InfixL, 7))
+    ]
 
 
 addFixity :: SmallId -> FixityKind -> Precedence -> NotationDB -> NotationDB
-addFixity name k p db = db { _fixity = Map.insert name (k, p) (_fixity db) }
+addFixity name k p db = db { _fixity = foldr (`Map.insert` (k, p)) (_fixity db) (fixityAliases name) }
+
+fixityAliases :: SmallId -> [SmallId]
+fixityAliases "," = [",", "&"]
+fixityAliases "&" = ["&", ","]
+fixityAliases name = [name]
 
 addAbbrev :: SmallId -> [LargeId] -> MonoType LargeId -> NotationDB -> NotationDB
 addAbbrev name ps rhs = addEntry EK_Type name ps (compileTypeTemplate rhs)
@@ -138,10 +144,12 @@ addEntry kind name ps rhs db
 
 merge :: NotationDB -> NotationDB -> NotationDB
 merge older newer = NotationDB
-    { _fixity  = Map.union (_fixity newer) (_fixity older)
+    { _fixity  = Map.union (Map.filterWithKey nonSeed (_fixity newer)) (_fixity older)
     , _entries = _entries newer ++ _entries older
     , _nextSeq = max (_nextSeq older) (_nextSeq newer)
     }
+    where
+        nonSeed name fp = Map.lookup name seedFixities /= Just fp
 
 lookupFixity :: SmallId -> NotationDB -> Maybe (FixityKind, Precedence)
 lookupFixity name db = Map.lookup name (_fixity db)
