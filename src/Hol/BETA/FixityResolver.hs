@@ -11,7 +11,6 @@ import Hol.BETA.PlanHolLexer
 import Control.Monad (foldM)
 import qualified Data.Map.Strict as Map
 
-
 data FixityError
     = FixityError SLoc String
     deriving (Eq, Show)
@@ -41,8 +40,7 @@ resolveDecl db decl
         _ -> Right decl
 
 collectModuleFixities :: NotationDB -> [DeclRep] -> Either FixityError NotationDB
-collectModuleFixities db0 decls
-    = snd <$> foldM step (Map.empty, db0) decls where
+collectModuleFixities db0 decls = snd <$> foldM step (Map.empty, db0) decls where
     step (local, db) decl = case decl of
         RFixityDecl loc form name prec -> do
             let fp@(kind, precedence) = (toKind form, fromInteger prec)
@@ -54,8 +52,7 @@ collectModuleFixities db0 decls
         _ -> return (local, db)
 
 checkImportedFixity :: NotationDB -> SLoc -> SmallId -> (FixityKind, Precedence) -> Either FixityError ()
-checkImportedFixity db loc name fp
-    = mapM_ check (Notation.fixityAliases name) where
+checkImportedFixity db loc name fp = mapM_ check (Notation.fixityAliases name) where
     check alias = case Notation.lookupFixity alias db of
         Just importedFp
             | importedFp /= fp
@@ -64,8 +61,7 @@ checkImportedFixity db loc name fp
         _ -> Right ()
 
 checkLocalFixity :: Map.Map SmallId FixityOrigin -> SLoc -> SmallId -> (FixityKind, Precedence) -> Either FixityError ()
-checkLocalFixity local loc name fp
-    = mapM_ check (Notation.fixityAliases name) where
+checkLocalFixity local loc name fp = mapM_ check (Notation.fixityAliases name) where
     check alias = case Map.lookup alias local of
         Just (FixityOrigin _ priorName priorFp)
             | priorFp /= fp ->
@@ -106,8 +102,7 @@ flattenTerm db term
         _ -> return [atomOrOper db term]
 
 flattenApp :: NotationDB -> TermRep -> Either FixityError [Piece]
-flattenApp db term
-    = traverse atomOrOperM (collectApps term) where
+flattenApp db term = traverse atomOrOperM (collectApps term) where
     atomOrOperM part = case atomOrOper db part of
         PAtom part' -> PAtom <$> resolveTermWithFixity db part'
         oper -> Right oper
@@ -124,13 +119,13 @@ atomOrOper db term
         _ -> PAtom term
 
 parseExpr :: NotationDB -> Precedence -> Maybe (Precedence, FixityKind) -> [Piece] -> Either FixityError (TermRep, [Piece])
-parseExpr db minPrec used pieces0
-    = do
-        (left, pieces1) <- parsePrefixOrAtom db pieces0
-        parseRest db minPrec used left pieces1
+parseExpr db minPrec used pieces0 = do
+    (left, pieces1) <- parsePrefixOrAtom db pieces0
+    parseRest db minPrec used left pieces1
 
 parsePrefixOrAtom :: NotationDB -> [Piece] -> Either FixityError (TermRep, [Piece])
-parsePrefixOrAtom _ [] = Left (FixityError (SLoc (0, 0) (0, 0)) "Unexpected end of expression while resolving fixity.")
+parsePrefixOrAtom _ []
+    = Left (FixityError (SLoc (0, 0) (0, 0)) "Unexpected end of expression while resolving fixity.")
 parsePrefixOrAtom db (piece : pieces)
     = case piece of
         POper loc name
@@ -144,9 +139,7 @@ parseRest :: NotationDB -> Precedence -> Maybe (Precedence, FixityKind) -> TermR
 parseRest db minPrec used left pieces
     = case pieces of
         POper loc name : rest
-            | Just (kind, prec) <- Notation.lookupFixity name db
-            , isInfix kind
-            , prec >= minPrec -> do
+            | Just (kind, prec) <- Notation.lookupFixity name db, isInfix kind, prec >= minPrec -> do
                 checkSameLevel loc used prec kind
                 let rhsMin = case kind of
                         FK_InfixR -> prec
@@ -158,8 +151,7 @@ parseRest db minPrec used left pieces
                 let left' = applyOperator loc name left right
                 parseRest db minPrec (Just (prec, kind)) left' rest'
         piece : rest
-            | canStartAtom db piece
-            , appPrec >= minPrec -> do
+            | canStartAtom db piece, appPrec >= minPrec -> do
                 (arg, rest') <- parsePrefixOrAtom db (piece : rest)
                 let left' = RApp (getSLoc left <> getSLoc arg) left arg
                 parseRest db minPrec used left' rest'

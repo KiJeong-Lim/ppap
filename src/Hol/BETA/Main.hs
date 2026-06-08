@@ -303,31 +303,29 @@ runREPL mode program notationDB expansionDB
                                     badType = case mexpectedTy of
                                         Just expectedTy -> not (typeCompatible expectedTy inferredTy)
                                         Nothing -> False  -- anonymous targets: fall back to HOPU/kernel
-                                if not (null xconErrors)
-                                    then do
-                                        _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text (List.intercalate "; " xconErrors)])
-                                        return ()
-                                else if badType
-                                    then do
-                                        case mexpectedTy of
-                                            Just expectedTy -> do
-                                                _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text ("Type mismatch for '" ++ varName ++ "'; expected " ++ showsMonoType notationDB 0 expectedTy (", got " ++ showsMonoType notationDB 0 inferredTy ""))])
-                                                return ()
-                                            Nothing -> return ()  -- unreachable
-                                    else do
-                                        result <- runRuntime (cmdAssign varName t_resolved) env
-                                        case result of
-                                            Left err -> do
-                                                _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text err])
-                                                return ()
-                                            Right () -> do
-                                                composed_subst <- do
-                                                    ep <- readIORef pendingSubst
-                                                    return (ep <> _TotalVarBinding ctx)
-                                                let t_zonked = bindVars composed_subst t_resolved
-                                                    pp = prettyTerm notationDB cache
-                                                _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
-                                                return ()
+                                if not (null xconErrors) then do
+                                    _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text (List.intercalate "; " xconErrors)])
+                                    return ()
+                                else if badType then do
+                                    case mexpectedTy of
+                                        Just expectedTy -> do
+                                            _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text ("Type mismatch for '" ++ varName ++ "'; expected " ++ showsMonoType notationDB 0 expectedTy (", got " ++ showsMonoType notationDB 0 inferredTy ""))])
+                                            return ()
+                                        Nothing -> return ()  -- unreachable
+                                else do
+                                    result <- runRuntime (cmdAssign varName t_resolved) env
+                                    case result of
+                                        Left err -> do
+                                            _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text err])
+                                            return ()
+                                        Right () -> do
+                                            composed_subst <- do
+                                                ep <- readIORef pendingSubst
+                                                return (ep <> _TotalVarBinding ctx)
+                                            let t_zonked = bindVars composed_subst t_resolved
+                                                pp = prettyTerm notationDB cache
+                                            _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
+                                            return ()
                 mapConToLVar :: String -> String
                 mapConToLVar = go where
                     isIdChar c = c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "_")

@@ -134,9 +134,9 @@ makeTypeEnvInModule mode moduleName sourceLines kind_env = go where
             _ -> Left (desugarErrInModule mode moduleName sourceLines loc ("It is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "'."))
 
 desugarTerm :: MonadUnique m => [SmallId] -> TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
-desugarTerm _    (R_wc loc1) = do
+desugarTerm _ (R_wc loc1) = do
     return (Con loc1 DC_wc)
-desugarTerm _    (RVar loc1 var_rep) = do
+desugarTerm _ (RVar loc1 var_rep) = do
     env <- get
     case Map.lookup var_rep env of
         Nothing -> do
@@ -144,7 +144,7 @@ desugarTerm _    (RVar loc1 var_rep) = do
             put (Map.insert var_rep var env)
             return (Var loc1 var)
         Just var -> return (Var loc1 var)
-desugarTerm _    (RCon loc1 (DC_Named con)) = do
+desugarTerm _ (RCon loc1 (DC_Named con)) = do
     env <- get
     case Map.lookup con env of
         Nothing -> return (Con loc1 (DC_Named con))

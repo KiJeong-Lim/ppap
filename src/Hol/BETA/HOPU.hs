@@ -110,7 +110,6 @@ lookupLVarType :: LogicVar -> Labeling -> Maybe (MonoType Int)
 lookupLVarType (LV_Named nm) lbl = Map.lookup nm (_NamedTypes lbl)
 lookupLVarType v lbl = IntMap.lookup (lvKey v) (_VarTypes lbl)
 
-
 splitArrowsHOPU :: Int -> MonoType Int -> Maybe ([MonoType Int], MonoType Int)
 splitArrowsHOPU 0 t
     = Just ([], t)
@@ -359,13 +358,16 @@ bind outerHints var = go . rewrite HNF where
         = lift (throwE BindFail)
 
 paramHint :: [Maybe SmallId] -> TermNode -> Maybe SmallId
-paramHint _ (NCon (DC (DC_Unique _ (DispHint mh))) _) = mh
-paramHint _ (LVar (LV_Unique _ (DispHint mh))) = mh
+paramHint _ (NCon (DC (DC_Unique _ (DispHint mh))) _)
+    = mh
+paramHint _ (LVar (LV_Unique _ (DispHint mh)))
+    = mh
 paramHint outerHints (NIdx i)
     | i >= 0 && i < n = outerHints !! (n - 1 - i)
     where
         n = length outerHints
-paramHint _ _ = Nothing
+paramHint _ _
+    = Nothing
 
 mksubst :: UniqueM m => [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail m (Maybe HopuSol)
 mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr where

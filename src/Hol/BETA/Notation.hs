@@ -40,7 +40,6 @@ import Hol.BETA.Header
 import Hol.BETA.PlanHolLexer
 import Hol.BETA.TermNode
 
-
 type Precedence = Int
 
 data FixityKind
@@ -73,13 +72,11 @@ data NotationDB
         }
     deriving ()
 
-
 compileTypeTemplate :: MonoType LargeId -> TermNode
 compileTypeTemplate (TyVar x) = mkLVar (LV_Named x)
 compileTypeTemplate (TyCon (TCon tc _)) = mkNCon tc
 compileTypeTemplate (TyApp t1 t2) = mkNApp (compileTypeTemplate t1) (compileTypeTemplate t2)
 compileTypeTemplate (TyMTV m) = mkLVar (LV_ty_var m)
-
 
 initial :: NotationDB
 initial = addAbbrev "string" [] stringRhs seededFixity where
@@ -117,7 +114,6 @@ seedFixities = Map.fromList
     , ("/", (FK_InfixL, 7))
     ]
 
-
 addFixity :: SmallId -> FixityKind -> Precedence -> NotationDB -> NotationDB
 addFixity name k p db = db { _fixity = foldr (`Map.insert` (k, p)) (_fixity db) (fixityAliases name) }
 
@@ -133,24 +129,22 @@ addNotation :: SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
 addNotation name ps rhs = addEntry EK_Term name ps rhs
 
 addEntry :: EntryKind -> SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
-addEntry kind name ps rhs db
-    = db { _entries = entry : _entries db, _nextSeq = n + 1}
-    where
-        n = _nextSeq db
-        entry = FoldEntry
-            { _feName = name
-            , _feParams = ps
-            , _feRhs = rhs
-            , _feSeq = n
-            , _feKind = kind
-            }
+addEntry kind name ps rhs db = db { _entries = entry : _entries db, _nextSeq = n + 1} where
+    n = _nextSeq db
+    entry = FoldEntry
+        { _feName = name
+        , _feParams = ps
+        , _feRhs = rhs
+        , _feSeq = n
+        , _feKind = kind
+        }
 
 merge :: NotationDB -> NotationDB -> NotationDB
 merge older newer = NotationDB
-    { _fixity  = Map.union (Map.filterWithKey nonSeed (_fixity newer)) (_fixity older)
-    , _entries = _entries newer ++ _entries older
-    , _nextSeq = max (_nextSeq older) (_nextSeq newer)
-    }
+        { _fixity  = Map.union (Map.filterWithKey nonSeed (_fixity newer)) (_fixity older)
+        , _entries = _entries newer ++ _entries older
+        , _nextSeq = max (_nextSeq older) (_nextSeq newer)
+        }
     where
         nonSeed name fp = Map.lookup name seedFixities /= Just fp
 
@@ -175,7 +169,6 @@ notationCheckOper db con = fmap (viewerFixity stripped) (lookupFixity stripped d
 constructViewerWithDB :: NotationDB -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
 constructViewerWithDB db lookupName t =
     constructViewerCustom (notationCheckOper db) lookupName (foldTermAsNode db t)
-
 
 foldType :: NotationDB -> MonoType LargeId -> ViewNode
 foldType db = foldTerm db . compileTypeTemplate
@@ -254,7 +247,6 @@ matchTerm :: [LargeId] -> TermNode -> TermNode -> Maybe (Map.Map LargeId TermNod
 matchTerm params tmpl cand = go tmpl cand Map.empty where
     isParam (LV_Named n) = n `elem` params
     isParam _ = False
-
     go (LVar lv) c env
         | isParam lv
         = case Map.lookup n env of
@@ -262,19 +254,26 @@ matchTerm params tmpl cand = go tmpl cand Map.empty where
             Just prev -> if prev == c then Just env else Nothing
         where
             LV_Named n = lv
-    go (LVar lv1) (LVar lv2) env = if lv1 == lv2 then Just env else Nothing
-    go (NCon c1 _) (NCon c2 _) env = if c1 == c2 then Just env else Nothing
-    go (NIdx i) (NIdx j) env = if i == j then Just env else Nothing
-    go (NApp a1 a2 _) (NApp b1 b2 _) env = go a1 b1 env >>= go a2 b2
-    go (NLam _ _ t1 _) (NLam _ _ t2 _) env = go t1 t2 env
-    go _ _ _ = Nothing
-
+    go (LVar lv1) (LVar lv2) env
+        | lv1 == lv2 = Just env
+        | otherwise = Nothing
+    go (NCon c1 _) (NCon c2 _) env
+        | c1 == c2 = Just env
+        | otherwise = Nothing
+    go (NIdx i) (NIdx j) env
+        | i == j = Just env
+        | otherwise = Nothing
+    go (NApp a1 a2 _) (NApp b1 b2 _) env    
+        = go a1 b1 env >>= go a2 b2
+    go (NLam _ _ t1 _) (NLam _ _ t2 _) env
+        = go t1 t2 env
+    go _ _ _
+        = Nothing
 
 firstJust :: [Maybe a] -> Maybe a
 firstJust [] = Nothing
 firstJust (Just x : _) = Just x
 firstJust (Nothing : xs) = firstJust xs
-
 
 data ExpansionDB
     = ExpansionDB
@@ -316,7 +315,6 @@ typeAbbrevList db = [ (name, ps, rhs) | (name, (ps, rhs)) <- Map.toList (_typeAb
 
 termNotationList :: ExpansionDB -> [(SmallId, [LargeId], TermRep)]
 termNotationList db = [ (name, ps, rhs) | (name, (ps, rhs)) <- Map.toList (_termNotations db) ]
-
 
 unfoldlTermApp :: TermRep -> (TermRep, [TermRep])
 unfoldlTermApp = go [] where
@@ -360,11 +358,9 @@ substTermRep env t = case t of
     RCon loc c -> RCon loc c
     RApp loc t1 t2 -> RApp loc (substTermRep env t1) (substTermRep env t2)
     RAbs loc x body
-        | Map.member x env ->
-            RAbs loc x (substTermRep (Map.delete x env) body)
+        | Map.member x env -> RAbs loc x (substTermRep (Map.delete x env) body)
         | Set.member x rhsFV -> RAbs loc x' (substTermRep env renamed)
-        | otherwise ->
-            RAbs loc x (substTermRep env body)
+        | otherwise -> RAbs loc x (substTermRep env body)
         where
             rhsFV = Set.unions (map freeVarsOfTermRep (Map.elems env))
             bodyFV = freeVarsOfTermRep body
@@ -411,8 +407,7 @@ expandTermRep db = go where
         RCon loc (DC_Named name) -> case lookupTermNotation name db of
             Just (params, body)
                 | List.null params -> go body
-                | otherwise ->
-                    List.foldr (\p acc -> RAbs loc p acc) (go body) params
+                | otherwise -> List.foldr (\p acc -> RAbs loc p acc) (go body) params
             Nothing -> RCon loc (DC_Named name)
         RAbs loc x body -> RAbs loc x (go body)
         RPrn loc t' -> RPrn loc (go t')
@@ -426,8 +421,7 @@ expandTypeRep db = go where
                 RTyCon hloc (TC_Named name) -> case lookupTypeAbbrev name db of
                     Just (params, body)
                         | length args' >= length params -> expandFull loc params body args'
-                        | otherwise ->
-                            reapplyType loc head_ args'
+                        | otherwise -> reapplyType loc head_ args'
                     Nothing -> reapplyType loc head_ args'
                 _ -> reapplyType loc (go head_) args'
             where

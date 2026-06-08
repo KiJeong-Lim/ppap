@@ -31,8 +31,7 @@ convertType var_name_env env (TyCon (TCon tc _)) = mkNCon tc
 convertType var_name_env env _ = error "`convertType\'"
 
 convertCon :: FreeVariableEnv -> DeBruijnIndicesEnv -> Maybe SLoc -> DataConstructor -> [MonoType Int] -> TermNode
-convertCon var_name_env env sl con tapps =
-    List.foldl' (mkNAppLoc sl) (mkNConLoc sl con) (map (convertType var_name_env env) tapps)
+convertCon var_name_env env sl con tapps = List.foldl' (mkNAppLoc sl) (mkNConLoc sl con) (map (convertType var_name_env env) tapps)
 
 convertWithoutChecking :: MonadUnique m => FreeVariableEnv -> DeBruijnIndicesEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
 convertWithoutChecking var_name_env = go where
@@ -66,18 +65,18 @@ replaceWildcards t = return t
 
 convertQuery :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> FreeVariableEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
 convertQuery used_mtvs assumptions var_name_env query = do
-    node <- if Map.null used_mtvs then
-            convertWithoutChecking var_name_env [] query
-        else do
-            extra_env <- sequence
-                [ do
-                    uni <- getUnique
-                    return (mtv, uni)
-                | (mtv, small_id) <- Map.toDescList used_mtvs
-                ]
-            let var_name_env' = foldr (\(mtv, uni) env -> Map.insert mtv (LVar (LV_ty_var uni)) env) var_name_env extra_env
-            node0 <- convertWithoutChecking var_name_env' [] query
-            return (foldr (uncurry substTyMTV) node0 extra_env)
+    node <- case Map.null used_mtvs of
+            True -> convertWithoutChecking var_name_env [] query
+            False -> do
+                extra_env <- sequence
+                    [ do
+                        uni <- getUnique
+                        return (mtv, uni)
+                    | (mtv, small_id) <- Map.toDescList used_mtvs
+                    ]
+                let var_name_env' = foldr (\(mtv, uni) env -> Map.insert mtv (LVar (LV_ty_var uni)) env) var_name_env extra_env
+                node0 <- convertWithoutChecking var_name_env' [] query
+                return (foldr (uncurry substTyMTV) node0 extra_env)
     lift (replaceWildcards node)
 
 viewLam :: TermExpr dcon annot -> ([IVar], TermExpr dcon annot)

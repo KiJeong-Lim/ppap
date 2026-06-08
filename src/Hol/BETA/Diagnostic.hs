@@ -27,8 +27,7 @@ diagnostic :: String -> SourceLines -> SLoc -> [Doc.Doc] -> String
 diagnostic = diagnosticWith DiagnosticPretty
 
 diagnosticWith :: DiagnosticMode -> String -> SourceLines -> SLoc -> [Doc.Doc] -> String
-diagnosticWith mode tag sourceLines loc body =
-    diagnosticWithModule mode tag Nothing sourceLines loc body
+diagnosticWith mode tag sourceLines loc body = diagnosticWithModule mode tag Nothing sourceLines loc body
 
 diagnosticInModule :: String -> Maybe String -> SourceLines -> SLoc -> [Doc.Doc] -> String
 diagnosticInModule = diagnosticWithModule DiagnosticPretty

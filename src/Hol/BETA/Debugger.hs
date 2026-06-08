@@ -33,12 +33,8 @@ recordRename lv name nc
         , _fromDisplay = Map.insert name lv (evictOldDisplay (_fromDisplay nc))
         }
     where
-        evictOldDisplay m = case Map.lookup lv (_toDisplay nc) of
-            Just oldName -> Map.delete oldName m
-            Nothing -> m
-        evictOldOwner m = case Map.lookup name (_fromDisplay nc) of
-            Just oldLv -> Map.delete oldLv m
-            Nothing -> m
+        evictOldDisplay m = maybe m (\oldName -> Map.delete oldName m) (Map.lookup lv (_toDisplay nc))
+        evictOldOwner m = maybe m (\oldLv -> Map.delete oldLv m) (Map.lookup name (_fromDisplay nc))
 
 toDisplay :: LogicVar -> NameCache -> Maybe SmallId
 toDisplay lv = Map.lookup lv . _toDisplay
@@ -60,12 +56,13 @@ parseAnonymousLV nm
     = case nm of
         'T' : 'V' : '_' : rest -> mkAnon LV_ty_var rest
         'L' : 'V' : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
-        'V'       : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
+        'V' : '_' : rest -> mkAnon (\u -> LV_Unique u (DispHint Nothing)) rest
         _ -> Nothing
     where
-        mkAnon ctor digits = case reads digits of
-            [(n, "")] -> Just (ctor (Unique n))
-            _ -> Nothing
+        mkAnon ctor digits
+            = case reads digits of
+                [(n, "")] -> Just (ctor (Unique n))
+                _ -> Nothing
 
 prettyTerm :: NotationDB -> NameCache -> TermNode -> ShowS
 prettyTerm db cache t = pprint 0 (constructViewerWithDB db (viewerLookup cache) t)

@@ -23,7 +23,6 @@ import Hol.BETA.TermNode
 import qualified Z.Doc
 import Z.Utils (ErrMsg)
 
-
 data ParseResult
     = ParseResult
         { _formula :: MyPresburgerFormulaRep
@@ -39,11 +38,10 @@ data LiftResult
         }
     deriving ()
 
-
 parsePresburger :: SLoc -> String -> Map.Map LargeId LogicVar -> Either ErrMsg ParseResult
 parsePresburger sloc src env0
     = case runP parseTop initState of
-        Left msg       -> Left (locPrefix ++ msg)
+        Left msg -> Left (locPrefix ++ msg)
         Right (f, st') -> Right (ParseResult { _formula = f, _freeOfFormula = psFreeMap st', _updatedEnv = psNameToVar st' })
     where
         locPrefix = "presburger[" ++ shows (_BegPos sloc) "]: "
@@ -60,7 +58,6 @@ parsePresburger sloc src env0
             skipWS
             leftover <- getInput
             if null leftover then return f else throwP ("unexpected trailing input: " ++ shows (take 20 leftover) "")
-
 
 data PState
     = PState
@@ -217,7 +214,6 @@ withBound name v action = do
     modify $ \s -> s { psBoundStack = drop 1 (psBoundStack s) }
     return r
 
-
 parseArith :: P PresburgerTermRep
 parseArith
     = do
@@ -239,24 +235,23 @@ parseArithAtom = do
     skipWS
     inp <- getInput
     case inp of
-        ('(' : _) -> do
+        '(' : _ -> do
             mustLiteral "("
             t <- parseArith
             mustLiteral ")"
             return t
-        (c : _)
+        c : _
             | isDigit c -> do
                 mn <- decimalNat
                 case mn of
                     Just n -> return (natToTermRep n)
                     Nothing -> throwP "expected decimal literal"
-        (c : _)
+        c : _
             | isIdentStart c -> do
                 name <- mustUpperIdent
                 v <- resolveVar name
                 return (IVar v)
         _ -> throwP ("expected arithmetic atom, got: " ++ shows (take 20 inp) "")
-
 
 parseFormula :: P MyPresburgerFormulaRep
 parseFormula = parseLevel0
@@ -267,11 +262,11 @@ parseLevel0 = do
     skipWS
     inp <- getInput
     case inp of
-        ('<' : '-' : '>' : rest) -> do
+        '<' : '-' : '>' : rest -> do
             setInput rest
             f2 <- parseLevel0
             return (IffF f1 f2)
-        ('-' : '>' : rest) -> do
+        '-' : '>' : rest -> do
             setInput rest
             f2 <- parseLevel0
             return (ImpF f1 f2)
@@ -287,7 +282,7 @@ parseLevel1
             skipWS
             inp <- getInput
             case inp of
-                ('\\' : '/' : more) -> do
+                '\\' : '/' : more -> do
                     setInput more
                     f2 <- parseLevel2
                     rest (DisF acc f2)
@@ -303,7 +298,7 @@ parseLevel2
             skipWS
             inp <- getInput
             case inp of
-                ('/' : '\\' : more) -> do
+                '/' : '\\' : more -> do
                     setInput more
                     f2 <- parseLevel3
                     rest (ConF acc f2)
@@ -315,7 +310,7 @@ parseLevel3
         skipWS
         inp <- getInput
         case inp of
-            ('~' : rest) -> do
+            '~' : rest -> do
                 setInput rest
                 f <- parseLevel3
                 return (NegF f)
@@ -329,11 +324,12 @@ parseLevel3
                     parseQuantifierBody ExsF
             _ -> parseLevel4
     where
-        keywordAt kw s =
-            kw `List.isPrefixOf` s &&
-            case drop (length kw) s of
+        keywordAt kw s = and
+            [ kw `List.isPrefixOf` s
+            , case drop (length kw) s of
                 [] -> True
                 (c : _) -> not (isIdentCont c)
+            ]
 
 parseQuantifierBody :: (MyVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep) -> P MyPresburgerFormulaRep
 parseQuantifierBody ctor = do
@@ -348,10 +344,10 @@ parseLevel4 = do
     skipWS
     inp <- getInput
     case inp of
-        ('_' : '|' : '_' : rest) -> do
+        '_' : '|' : '_' : rest -> do
             setInput rest
             return (ValF False)
-        ('(' : _) -> do
+        '(' : _ -> do
             mResult <- tryP $ do
                 mustLiteral "("
                 f <- parseFormula
@@ -368,11 +364,11 @@ parseAtomFormula = do
     skipWS
     inp <- getInput
     case inp of
-        ('=' : '<' : rest) -> do
+        '=' : '<' : rest -> do
             setInput rest
             t2 <- parseArith
             return (LeqF t1 t2)
-        ('=' : '=' : '_' : '{' : rest) -> do
+        '=' : '=' : '_' : '{' : rest -> do
             setInput rest
             mn <- decimalNat
             mustLiteral "}"
@@ -381,24 +377,23 @@ parseAtomFormula = do
                 Just n
                     | n > 0 -> return (ModF t1 (fromInteger n) t2)
                 _ -> throwP "modulus must be a positive decimal literal"
-        ('=' : rest) -> do
+        '=' : rest -> do
             setInput rest
             t2 <- parseArith
             return (EqnF t1 t2)
-        ('<' : rest) -> do
+        '<' : rest -> do
             setInput rest
             t2 <- parseArith
             return (LtnF t1 t2)
-        ('>' : '=' : rest) -> do
+        '>' : '=' : rest -> do
             setInput rest
             t2 <- parseArith
             return (NegF (LtnF t1 t2))
-        ('>' : rest) -> do
+        '>' : rest -> do
             setInput rest
             t2 <- parseArith
             return (GtnF t1 t2)
         _ -> throwP ("expected a relational operator, got: " ++ shows (take 20 inp) "")
-
 
 zonkPresburger :: (LogicVar -> Maybe TermNode) -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 zonkPresburger theta freeOf = goFormula Set.empty where
@@ -438,15 +433,11 @@ zonkPresburger theta freeOf = goFormula Set.empty where
     asClosedNatLit (NCon (DC (DC_NatL n)) _) = Just n
     asClosedNatLit _ = Nothing
 
-
 liftConstraint :: TermNode -> Maybe LiftResult
 liftConstraint t
     = case runLift (liftFormula t) emptyLS of
         Nothing -> Nothing
-        Just (f, st) -> Just LiftResult
-            { _liftedFormula = f
-            , _freeOfLifted = lsFreeMap st
-            }
+        Just (f, st) -> Just (LiftResult { _liftedFormula = f, _freeOfLifted = lsFreeMap st })
     where
         emptyLS = LiftState
             { lsFreeMap = Map.empty
@@ -480,7 +471,6 @@ instance Applicative L where
             Just (x, s'') -> Just (h x, s'')
 
 instance Monad L where
-    return = pure
     L g >>= k = L $ \s -> case g s of
         Nothing -> Nothing
         Just (a, s') -> runLift (k a) s'
@@ -492,13 +482,7 @@ allocL :: LogicVar -> L MyVar
 allocL lv
     = L $ \s -> case Map.lookup lv (lsInverse s) of
         Just v -> Just (v, s)
-        Nothing -> Just (v, s') where
-            v = lsNextVar s
-            s' = s
-                { lsFreeMap = Map.insert v lv (lsFreeMap s)
-                , lsInverse = Map.insert lv v (lsInverse s)
-                , lsNextVar = v + 1
-                }
+        Nothing -> let v = lsNextVar s in Just (v, s { lsFreeMap = Map.insert v lv (lsFreeMap s), lsInverse = Map.insert lv v (lsInverse s), lsNextVar = v + 1 })
 
 liftFormula :: TermNode -> L MyPresburgerFormulaRep
 liftFormula t
@@ -526,44 +510,46 @@ liftFormula t
         _ -> fail_
 
 liftTerm :: TermNode -> L PresburgerTermRep
-liftTerm t = case t of
-    NCon (DC (DC_NatL n)) _
-        | n >= 0 -> return (natToTermRep n)
-        | otherwise -> fail_
-    NApp (NCon (DC DC_Succ) _) a _ -> do
-        a' <- liftTerm a
-        return (Succ a')
-    NApp (NApp (NCon (DC DC_plus) _) a _) b _ -> do
-        a' <- liftTerm a
-        b' <- liftTerm b
-        return (Plus a' b')
-    NApp (NApp (NCon (DC DC_mul) _) a _) b _ ->
-        case (closedNat a, closedNat b) of
-            (Just n, _) -> scaleTermRep n <$> liftTerm b
-            (_, Just n) -> scaleTermRep n <$> liftTerm a
-            _ -> fail_
-    LVar lv -> do
-        v <- allocL lv
-        return (IVar v)
-    _ -> fail_
+liftTerm t
+    = case t of
+        NCon (DC (DC_NatL n)) _
+            | n >= 0 -> return (natToTermRep n)
+            | otherwise -> fail_
+        NApp (NCon (DC DC_Succ) _) a _ -> do
+            a' <- liftTerm a
+            return (Succ a')
+        NApp (NApp (NCon (DC DC_plus) _) a _) b _ -> do
+            a' <- liftTerm a
+            b' <- liftTerm b
+            return (Plus a' b')
+        NApp (NApp (NCon (DC DC_mul) _) a _) b _ ->
+            case (closedNat a, closedNat b) of
+                (Just n, _) -> scaleTermRep n <$> liftTerm b
+                (_, Just n) -> scaleTermRep n <$> liftTerm a
+                _ -> fail_
+        LVar lv -> do
+            v <- allocL lv
+            return (IVar v)
+        _ -> fail_
 
 closedNat :: TermNode -> Maybe Integer
-closedNat t = case rewrite NF t of
-    NCon (DC (DC_NatL n)) _
-        | n >= 0 -> Just n
-        | otherwise -> Nothing
-    NApp (NCon (DC DC_Succ) _) a _ -> succ <$> closedNat a
-    NApp (NApp (NCon (DC DC_plus) _) a _) b _ -> (+) <$> closedNat a <*> closedNat b
-    NApp (NApp (NCon (DC DC_minus) _) a _) b _ -> do
-        x <- closedNat a
-        y <- closedNat b
-        if x >= y then Just (x - y) else Nothing
-    NApp (NApp (NCon (DC DC_mul) _) a _) b _ -> (*) <$> closedNat a <*> closedNat b
-    NApp (NApp (NCon (DC DC_div) _) a _) b _ -> do
-        x <- closedNat a
-        y <- closedNat b
-        if y == 0 then Nothing else Just (x `div` y)
-    _ -> Nothing
+closedNat t
+    = case rewrite NF t of
+        NCon (DC (DC_NatL n)) _
+            | n >= 0 -> Just n
+            | otherwise -> Nothing
+        NApp (NCon (DC DC_Succ) _) a _ -> succ <$> closedNat a
+        NApp (NApp (NCon (DC DC_plus) _) a _) b _ -> (+) <$> closedNat a <*> closedNat b
+        NApp (NApp (NCon (DC DC_minus) _) a _) b _ -> do
+            x <- closedNat a
+            y <- closedNat b
+            if x >= y then Just (x - y) else Nothing
+        NApp (NApp (NCon (DC DC_mul) _) a _) b _ -> (*) <$> closedNat a <*> closedNat b
+        NApp (NApp (NCon (DC DC_div) _) a _) b _ -> do
+            x <- closedNat a
+            y <- closedNat b
+            if y == 0 then Nothing else Just (x `div` y)
+        _ -> Nothing
 
 scaleTermRep :: Integer -> PresburgerTermRep -> PresburgerTermRep
 scaleTermRep n t
@@ -571,14 +557,11 @@ scaleTermRep n t
     | n == 1 = t
     | otherwise = Plus t (scaleTermRep (n - 1) t)
 
-
 renumberFormula :: Map.Map LogicVar MyVar -> Map.Map MyVar LogicVar -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 renumberFormula shared local rep = fst (goFormula startFresh Map.empty rep) where
     startFresh = maxMyVar (Map.elems shared) + 1
-
     maxMyVar :: [MyVar] -> MyVar
     maxMyVar = foldr max (theMinNumOfMyVar - 1)
-
     goFormula :: MyVar -> Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> (MyPresburgerFormulaRep, MyVar)
     goFormula n _ (ValF b) = (ValF b, n)
     goFormula n env (EqnF t1 t2) = (EqnF (goTerm env t1) (goTerm env t2), n)
@@ -608,7 +591,6 @@ renumberFormula shared local rep = fst (goFormula startFresh Map.empty rep) wher
         y' = n
         env' = Map.insert y y' env
         (f1', n1) = goFormula (n + 1) env' f1
-
     goTerm :: Map.Map MyVar MyVar -> PresburgerTermRep -> PresburgerTermRep
     goTerm env (IVar v)
         = case Map.lookup v env of
@@ -624,7 +606,6 @@ renumberFormula shared local rep = fst (goFormula startFresh Map.empty rep) wher
         = Succ (goTerm env t)
     goTerm env (Plus t1 t2)
         = Plus (goTerm env t1) (goTerm env t2)
-
 
 entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
 entails phis phi = checkTruthValueOfMyPresburgerFormula eliminated == Just True where
@@ -665,12 +646,10 @@ freeMyVarsF (ExsF y f1) = Set.delete y (freeMyVarsF f1)
 freeMyVarsT :: PresburgerTerm -> Set.Set MyVar
 freeMyVarsT (PresburgerTerm _ coeffs) = Map.keysSet (Map.filter (/= 0) coeffs)
 
-
 installPresburger :: TermNode -> Either ErrMsg TermNode
 installPresburger = go where
     placeholderSLoc :: SLoc
     placeholderSLoc = SLoc (0, 0) (0, 0)
-
     go :: TermNode -> Either ErrMsg TermNode
     go (NApp (NCon (DC (DC_Named "presburger")) _) arg sl)
         = case extractString arg of
@@ -692,13 +671,11 @@ installPresburger = go where
         env' <- traverse goSuspItem env
         return (Susp body' ol nl env')
     go t = return t
-
     goSuspItem :: SuspItem -> Either ErrMsg SuspItem
     goSuspItem (Dummy l) = return (Dummy l)
     goSuspItem (Binds t l) = do
         t' <- go t
         return (Binds t' l)
-
     extractString :: TermNode -> Maybe String
     extractString (NApp (NCon (DC DC_Nil) _) _ _) = Just ""
     extractString (NApp (NApp (NApp (NCon (DC DC_Cons) _) _typeArg _) (NCon (DC (DC_ChrL c)) _) _) rest _) = do

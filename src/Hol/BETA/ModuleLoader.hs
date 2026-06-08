@@ -100,14 +100,7 @@ loadMainWithDiagnostic mode initialKinds initialTypes initialFacts mainPath = do
     root <- liftIO getCurrentDirectory
     rootC <- liftIO (canonicalizePath root)
     canonicalMain <- liftIO (canonicalizePath mainPath)
-    let st0 = LoaderState
-            { lsLoaded = Map.empty, lsLoading = [], lsOrder = [], lsRoot = rootC
-            , lsInitialKinds = initialKinds
-            , lsInitialTypes = initialTypes
-            , lsInitialFacts = initialFacts
-            , lsDiagnosticMode = mode
-            , lsWarnings = []
-            }
+    let st0 = LoaderState { lsLoaded = Map.empty, lsLoading = [], lsOrder = [], lsRoot = rootC, lsInitialKinds = initialKinds, lsInitialTypes = initialTypes, lsInitialFacts = initialFacts, lsDiagnosticMode = mode, lsWarnings = []}
     (eMain, stN) <- State.runStateT (runExceptT (loadFile canonicalMain Nothing)) st0
     case eMain of
         Left err -> return (Left err)
@@ -176,17 +169,7 @@ elaborate canonicalPath mname sourceLines mHeader imports body0 = do
     facts2 <- sequence [ checkTypeWithModule mode (Just canonicalPath) (Just sourceLines) ownNotation (_TypeDecls env1) fact mkTyO | fact <- _FactDecls env1 ]
     facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
     ownFactsR <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
-    let env = ModuleEnv
-            { moduleEnvName = mname
-            , moduleEnvPath = canonicalPath
-            , moduleEnvKinds = _KindDecls env1
-            , moduleEnvTypes = _TypeDecls env1
-            , moduleEnvFacts = initialFacts ++ importedFacts ++ ownFactsR
-            , moduleEnvNotation = ownNotation
-            , moduleEnvExpansion = ownExpansion
-            , moduleEnvImports = [ m | (_, m) <- importsUnique ]
-            , moduleEnvWarnings = importWarnings
-            }
+    let env = ModuleEnv { moduleEnvName = mname, moduleEnvPath = canonicalPath, moduleEnvKinds = _KindDecls env1, moduleEnvTypes = _TypeDecls env1, moduleEnvFacts = initialFacts ++ importedFacts ++ ownFactsR, moduleEnvNotation = ownNotation, moduleEnvExpansion = ownExpansion, moduleEnvImports = [ m | (_, m) <- importsUnique ], moduleEnvWarnings = importWarnings}
     lift (State.modify (\s -> s { lsLoaded = Map.insert canonicalPath env (lsLoaded s), lsOrder  = mname : lsOrder s }))
     return env
 
@@ -304,11 +287,7 @@ mergeFixityStrict mode moduleName sourceLines iloc iname origin0 old new
         origin' <- foldr step (Right origin0) (nonSeedFixities new)
         Right (Notation.merge old new, origin')
     where
-        nonSeedFixities db =
-            [ (name, fp)
-            | (name, fp) <- Notation.fixityList db
-            , lookup name (Notation.fixityList Notation.initial) /= Just fp
-            ]
+        nonSeedFixities db = [ (name, fp) | (name, fp) <- Notation.fixityList db, lookup name (Notation.fixityList Notation.initial) /= Just fp ]
         step (name, fp) acc = do
             origin <- acc
             let prior = Map.lookup name origin
