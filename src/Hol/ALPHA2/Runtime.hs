@@ -43,29 +43,29 @@ data Constraint
 
 data Cell
     = Cell
-    { _GivenFacts :: Map.Map Constant [Fact]
-    , _GivenHypos :: [Fact]
-    , _ScopeLevel :: ScopeLevel
-    , _WantedGoal :: Goal
-    , _CellCallId :: CallId
-    }
+        { _GivenFacts :: Map.Map Constant [Fact]
+        , _GivenHypos :: [Fact]
+        , _ScopeLevel :: ScopeLevel
+        , _WantedGoal :: Goal
+        , _CellCallId :: CallId
+        }
     deriving ()
 
 data Context
     = Context
-    { _TotalVarBinding :: VarBinding
-    , _CurrentLabeling :: Labeling
-    , _LeftConstraints :: [Constraint]
-    , _ContextThreadId :: CallId
-    , _debuggindModeOn :: IORef Debugging
-    }
+        { _TotalVarBinding :: VarBinding
+        , _CurrentLabeling :: Labeling
+        , _LeftConstraints :: [Constraint]
+        , _ContextThreadId :: CallId
+        , _debuggindModeOn :: IORef Debugging
+        }
     deriving ()
 
 data RuntimeEnv
     = RuntimeEnv
-    { _PutStr :: Context -> String -> IO ()
-    , _Answer :: Context -> IO RunMore
-    }
+        { _PutStr :: Context -> String -> IO ()
+        , _Answer :: Context -> IO RunMore
+        }
     deriving ()
 
 instance ZonkLVar Context where
