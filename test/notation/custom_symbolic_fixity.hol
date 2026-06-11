@@ -1,7 +1,8 @@
 % User-defined symbolic operators are accepted in type, fixity, and term
 % positions even when they begin with a built-in operator character.
 kind myt type.
-type ++ (nat -> nat -> myt).
+type ++ (myt -> myt -> myt).
+type word (nat -> myt).
 type p (myt -> o).
-p (1 ++ 2).
+p (word 1 ++ word 2 ++ word 3).
 infixl ++ 6.

@@ -130,11 +130,11 @@ instance Outputable ViewNode where
         go (ViewIVar var) = strstr var
         go (ViewLVar var) = strstr var
         go (ViewDCon con) = strstr con
-        go (ViewIApp viewer1 viewer2) = parenthesize 6 (pprint 6 viewer1 . strstr " " . pprint 7 viewer2)
+        go (ViewIApp viewer1 viewer2) = parenthesize appViewPrec (pprint appViewPrec viewer1 . strstr " " . pprint (appViewPrec + 1) viewer2)
         go (ViewIAbs var viewer1) = parenthesize 0 (strstr var . strstr "\\ " . pprint 0 viewer1)
         go (ViewTVar var) = strstr var
         go (ViewTCon con) = strstr con
-        go (ViewTApp viewer1 viewer2) = parenthesize 6 (pprint 6 viewer1 . strstr " " . pprint 7 viewer2)
+        go (ViewTApp viewer1 viewer2) = parenthesize appViewPrec (pprint appViewPrec viewer1 . strstr " " . pprint (appViewPrec + 1) viewer2)
         go (ViewOper (oper, prec')) = case oper of
             Prefix str viewer1 -> parenthesize prec' (strstr str . pprint prec' viewer1)
             InfixL viewer1 str viewer2 -> parenthesize prec' (pprint prec' viewer1 . strstr str . pprint (prec' + 1) viewer2)
@@ -543,3 +543,6 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
     formatView (ViewDCon ('_' : '_' : c)) = return (ViewDCon c)
     formatView (ViewTCon ('_' : '_' : c)) = return (ViewTCon c)
     formatView viewer = return viewer
+
+appViewPrec :: Precedence
+appViewPrec = 100

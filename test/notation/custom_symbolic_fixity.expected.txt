@@ -7,7 +7,7 @@ Hol> Compiling test.notation.custom_symbolic_fixity ( test/notation/custom_symbo
 test.notation.custom_symbolic_fixity> Ok, one module loaded.
 test.notation.custom_symbolic_fixity> 
 test.notation.custom_symbolic_fixity> The answer substitution is:
-test.notation.custom_symbolic_fixity> Y := 1 ++ 2.
+test.notation.custom_symbolic_fixity> Y := word 1 ++ word 2 ++ word 3.
 test.notation.custom_symbolic_fixity> Find more solutions? [Y/n] 
 test.notation.custom_symbolic_fixity> Find more solutions? [Y/n] 
 test.notation.custom_symbolic_fixity> yes.
