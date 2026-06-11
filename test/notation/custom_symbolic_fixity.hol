@@ -2,6 +2,6 @@
 % positions even when they begin with a built-in operator character.
 kind myt type.
 type ++ (nat -> nat -> myt).
-infixl ++ 6.
 type p (myt -> o).
 p (1 ++ 2).
+infixl ++ 6.
