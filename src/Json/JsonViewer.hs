@@ -6,7 +6,7 @@ import Json.JsonParser
 import Y.Base
 
 prettyjson :: ValueRep -> String
-prettyjson js_input = cut (showsjson 0 0 js_input "") where
+prettyjson js_input = showsjson 0 0 js_input "" where
     tabjson :: Indentation -> Indentation
     tabjson space = space + 2
     showsjsnum :: NumberRep -> ShowS
