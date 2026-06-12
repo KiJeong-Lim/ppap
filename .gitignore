@@ -27,3 +27,6 @@ tmp.txt
 .claude/
 .project-a-*/
 doc/Project_A*.md
+
+# misc
+rocq/
