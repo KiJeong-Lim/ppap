@@ -28,8 +28,5 @@ prettyjson js_input = showsjson 0 0 js_input "" where
     showsjson prec space (ValueRep_true) = strstr "true"
     showsjson prec space (ValueRep_false) = strstr "false"
     showsjson prec space (ValueRep_null) = strstr "null"
-    cut :: String -> String
-    cut ('\n' : str) = str
-    cut str = str
     addField :: String -> ShowS
     addField field = strstr field . strstr ": "
