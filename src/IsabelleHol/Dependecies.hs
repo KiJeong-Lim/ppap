@@ -95,7 +95,7 @@ findDep pths pth
     | otherwise = do
         m <- loadthys
         imps <- case pth `Map.lookup` m of
-            Nothing -> return (Left ("error=" ++ show pth))
+            Nothing -> return (Left ("error=`" ++ shows pth "`"))
             Just cur -> readimports cur
         case imps of
             Left err -> return []
