@@ -38,51 +38,6 @@ newtype LamType
     = LamType { unLamType :: Maybe (MonoType Int) }
     deriving ()
 
-instance Eq LamType where
-    _ == _ = True
-
-instance Ord LamType where
-    compare _ _ = EQ
-
-noLamType :: LamType
-noLamType = LamType Nothing
-
-mkLamType :: MonoType Int -> LamType
-mkLamType = LamType . Just
-
-instance Eq TermNode where
-    LVar v1 == LVar v2 = v1 == v2
-    NCon c1 _ == NCon c2 _ = c1 == c2
-    NIdx i == NIdx j = i == j
-    NApp a1 b1 _ == NApp a2 b2 _ = a1 == a2 && b1 == b2
-    NLam _ _ b1 _ == NLam _ _ b2 _ = b1 == b2
-    Susp b1 ol1 nl1 e1 == Susp b2 ol2 nl2 e2 = b1 == b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
-    NPresburgerCheck f1 m1 _ == NPresburgerCheck f2 m2 _ = f1 == f2 && m1 == m2
-    _ == _ = False
-
-instance Ord TermNode where
-    compare = cmpTerm
-        where
-            ctorIdx :: TermNode -> Int
-            ctorIdx (LVar _) = 0
-            ctorIdx (NCon _ _) = 1
-            ctorIdx (NIdx _) = 2
-            ctorIdx (NApp _ _ _) = 3
-            ctorIdx (NLam _ _ _ _) = 4
-            ctorIdx (Susp {}) = 5
-            ctorIdx (NPresburgerCheck _ _ _) = 6
-            cmpTerm :: TermNode -> TermNode -> Ordering
-            cmpTerm (LVar v1) (LVar v2) = compare v1 v2
-            cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
-            cmpTerm (NIdx i) (NIdx j) = compare i j
-            cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = compare a1 a2 <> compare b1 b2
-            cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = compare b1 b2
-            cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
-                compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
-            cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
-                compare f1 f2 <> compare m1 m2
-            cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
-
 data SuspItem
     = Dummy {-# UNPACK #-} !Int
     | Binds TermNode {-# UNPACK #-} !Int
@@ -117,6 +72,44 @@ data ViewNode
     | ViewList [ViewNode]
     deriving ()
 
+instance Eq LamType where
+    _ == _ = True
+
+instance Ord LamType where
+    compare _ _ = EQ
+
+instance Eq TermNode where
+    LVar v1 == LVar v2 = v1 == v2
+    NCon c1 _ == NCon c2 _ = c1 == c2
+    NIdx i == NIdx j = i == j
+    NApp a1 b1 _ == NApp a2 b2 _ = a1 == a2 && b1 == b2
+    NLam _ _ b1 _ == NLam _ _ b2 _ = b1 == b2
+    Susp b1 ol1 nl1 e1 == Susp b2 ol2 nl2 e2 = b1 == b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
+    NPresburgerCheck f1 m1 _ == NPresburgerCheck f2 m2 _ = f1 == f2 && m1 == m2
+    _ == _ = False
+
+instance Ord TermNode where
+    compare = cmpTerm where
+        ctorIdx :: TermNode -> Int
+        ctorIdx (LVar _) = 0
+        ctorIdx (NCon _ _) = 1
+        ctorIdx (NIdx _) = 2
+        ctorIdx (NApp _ _ _) = 3
+        ctorIdx (NLam _ _ _ _) = 4
+        ctorIdx (Susp {}) = 5
+        ctorIdx (NPresburgerCheck _ _ _) = 6
+        cmpTerm :: TermNode -> TermNode -> Ordering
+        cmpTerm (LVar v1) (LVar v2) = compare v1 v2
+        cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
+        cmpTerm (NIdx i) (NIdx j) = compare i j
+        cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = compare a1 a2 <> compare b1 b2
+        cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = compare b1 b2
+        cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
+            compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
+        cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
+            compare f1 f2 <> compare m1 m2
+        cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
+
 instance Show TermNode where
     showsPrec prec = pprint prec . constructViewer
 
@@ -147,10 +140,14 @@ instance Outputable ViewNode where
 
 instance Show LogicVar where
     showsPrec prec (LV_ty_var uni) = strstr "?TV_" . showsPrec prec (unUnique uni)
-    showsPrec prec (LV_Unique uni (DispHint mhint)) = case mhint of
-        Just s -> strstr s
-        Nothing -> strstr "?V_" . showsPrec prec (unUnique uni)
+    showsPrec prec (LV_Unique uni (DispHint mhint)) = maybe (strstr "?V_" . showsPrec prec (unUnique uni)) strstr mhint
     showsPrec prec (LV_Named name) = strstr name
+
+noLamType :: LamType
+noLamType = LamType Nothing
+
+mkLamType :: MonoType Int -> LamType
+mkLamType = LamType . Just
 
 {-# INLINE mkLVar #-}
 mkLVar :: LogicVar -> TermNode
@@ -316,14 +313,14 @@ makeNestedNLamH (h : hs) t = mkNLamHint h (makeNestedNLamH hs t)
 
 freshenName :: SmallId -> [SmallId] -> SmallId
 freshenName h live
-    | h `notElem` live = h
-    | otherwise = pickFresh
+    | h `elem` live = pickFresh
+    | otherwise = h
     where
         isDigitChar c = c >= '0' && c <= '9'
         rev_rest = dropWhile isDigitChar (reverse h)
         base = if null rev_rest then h else reverse rev_rest
         pickFresh = go (1 :: Int)
-        go i = if cand `notElem` live then cand else go (i + 1) where
+        go i = if cand `elem` live then go (i + 1) else cand where
             cand = base ++ show i
 
 viewNestedNLam :: TermNode -> (Int, TermNode)
@@ -545,4 +542,4 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
     formatView viewer = return viewer
 
 appViewPrec :: Precedence
-appViewPrec = 100
+appViewPrec = 10

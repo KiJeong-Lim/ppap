@@ -1,9 +1,11 @@
-module Json.JsonViewer where
+module Json.JsonViewer (prettyjson) where
 
 import Json.JsonAst
 import Json.JsonLexer
 import Json.JsonParser
 import Y.Base
+
+type Precedence = Int
 
 prettyjson :: ValueRep -> String
 prettyjson js_input = showsjson 0 0 js_input "" where
