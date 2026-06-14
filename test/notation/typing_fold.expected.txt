@@ -20,7 +20,6 @@ test.notation.typing_fold>
             [ X : pp
             ]
         , _thread_id = 14
-        , _sloc = `[test.notation.typing_fold]:1:4-1:6'
         }
 
 * The rest of the current stack is:
@@ -41,7 +40,6 @@ test.notation.typing_fold> Press the enter key to go to next state:
             [ X : pp
             ]
         , _thread_id = 15
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:
@@ -60,7 +58,6 @@ test.notation.typing_fold> Press the enter key to go to next state:
             [ X : pp
             ]
         , _thread_id = 15
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:

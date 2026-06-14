@@ -567,16 +567,10 @@ inside the literal point at the literal's column position, not at
 
 2.6.2 Debug output
 
-The per-step debug print includes "source location of the goal, where known"
-whenever the current goal carries a recoverable SLoc. The line format mirrors
-the top-level error format:
-
-  _sloc = `[<module-name>]:<line>:<col>-<line>:<col>'
-
-The line is suppressed if the goal is a synthetic intermediary (e.g., a
-runtime-introduced cut frame) for which no surface position is
-available. The display does not try to reconstruct a fake SLoc; the
-*absence* of a position is informative.
+The per-step debug print intentionally omits source-location metadata. SLocs
+are still threaded through runtime nodes for diagnostics, but the interactive
+state view stays focused on goals, constraints, substitution, typing, and the
+thread id.
 
 2.6.3 Recovered diagnostics
 
@@ -618,7 +612,7 @@ Two clarifying notes about the module surface:
 Chapter 3. Runtime and Debugger
 ================================================================================
 
-3.1 SLoc-Aware Debug Output
+3.1 Debug Output
 --------------------------------------------------------------------------------
 
 The debug print has these lines:
@@ -627,11 +621,11 @@ The debug print has these lines:
   - the constraint multiset C
   - the binding substitution restricted to user-visible names
   - the typing context
-  - the source location of the goal, where known (§2.6.2 of this doc)
+  - the thread id
   - (unchanged) the prompt
 
-The SLoc line is shown in both `:short` and `:verbose` modes because it is
-short by construction.
+The debug print does not include an `_sloc` row; source locations are reserved
+for diagnostics (§2.6.3).
 
 
 3.2 Module-Aware Diagnostics
@@ -650,8 +644,7 @@ This applies uniformly to:
 
   - desugaring errors,
   - type-checking errors (still folded through `NotationDB`),
-  - runtime / HOPU disagreement reports,
-  - the debugger's per-step SLoc line (§3.1 of this doc).
+  - runtime / HOPU disagreement reports.
 
 Bare locations (without a module prefix) are reserved for diagnostics
 that genuinely have no module context (e.g., REPL command-line parse
@@ -738,14 +731,14 @@ within that namespace and does not import retired BETA-era modules.
       passes SLoc through disagreement
       reports (§2.6.3).
     Runtime.hs
-      per-step SLoc line in debug output (§3.1).
+      debug state printing and runtime diagnostics.
     Compiler.hs
       SLoc threading from `TermRep` into
       compiled `TermNode`.
     Main.hs
       loads the main file through
       `ModuleLoader` (§4.2) rather than directly.
-      Debug-mode prompt prints the new SLoc line.
+      Debug-mode prompt uses the runtime state printer.
     Arith.hs
       `installPresburger` receives
       the literal's actual SLoc (§2.6.3).
@@ -755,8 +748,7 @@ within that namespace and does not import retired BETA-era modules.
       rules of §2.4.
     Debugger.hs
       unchanged (no new debugger commands
-      in BETA — the SLoc threading lives in the
-      viewer and `Runtime.hs`).
+      in BETA).
     ModuleLoader.hs
       module loader;
       implements the topological load of §2.2,
@@ -908,7 +900,7 @@ formal counterpart of the advisory-hint lemma.
 The added field grows `TermNode` by one word per node. The most
 common operations (β-reduction, unification) do not allocate on the
 SLoc path. The cost is paid only by code that *emits diagnostics* —
-the type checker's error path, the debugger's print path, and the
+the type checker's error path, runtime / HOPU error reporting, and the
 arithmetic install pass — which are not hot.
 
 
@@ -919,10 +911,8 @@ arithmetic install pass — which are not hot.
 
 Every test case under `test/` must continue to pass with byte-identical
 output unless the expected output is intentionally updated for a documented
-surface change. The debug-output SLoc line (§3.1) is not emitted on inputs
-that do not enable debug mode. For the debug cases
-(`test/debug/*.hol`), the expected output is updated to include the
-new SLoc line.
+surface change. Debug-mode state dumps intentionally omit `_sloc` rows;
+source-location regressions are covered by diagnostic tests.
 
 4.4.2 BETA-only tests
 
@@ -983,8 +973,8 @@ The `test/` tree exercises BETA's additions.
         actual SLoc, not to `(0,0)-(0,0)`.
         Closes §2.6.3's literal-location requirement.
       goal_loc_in_debug.hol
-        debug-mode step boundary prints the
-        goal's SLoc per §3.1.
+        debug-mode step boundary omits the
+        goal's SLoc from state output.
       type_error_subterm.hol
         a sub-term of a clause body fails
         type-check; the error is attributed

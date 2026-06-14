@@ -1,7 +1,5 @@
-% Section 3.1: under `:d`, the per-step state print emits an
-% `_sloc = `l:c-l:c'` line for the topmost cell's goal whenever the
-% goal carries an `_sloc` annotation.  Runtime-introduced goals
-% (e.g. conjuncts of `,`) may show `(none)` instead.
+% Section 3.1: under `:d`, the per-step state print omits `_sloc`
+% metadata even when the topmost cell's goal carries an SLoc annotation.
 type p (nat -> o).
 type q (nat -> o).
 p X :- q X.

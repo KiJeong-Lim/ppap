@@ -20,7 +20,6 @@ test.debug.show>
             [ X : nat
             ]
         , _thread_id = 5
-        , _sloc = `[test.debug.show]:1:4-1:9'
         }
 
 * The rest of the current stack is:
@@ -40,7 +39,6 @@ test.debug.show> *** :show: ?X = unknown variable '?X'
             [ X : nat
             ]
         , _thread_id = 5
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:

@@ -351,8 +351,8 @@ showsMonoTypeIn db True labeling lv mtyp
     sepBy _ [x] = x
     sepBy sep (x : xs) = x . sep . sepBy sep xs
 
-showStackItem :: String -> NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
-showStackItem mname db verbose fvs typeMap space (ctx, cells)
+showStackItem :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Indentation -> (Context, [Cell]) -> ShowS
+showStackItem db verbose fvs typeMap space (ctx, cells)
     = strcat
         [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- [ " . showsvdash (space + 8) hyps goal . strstr " ] # call_id = " . shows call_id | Cell facts hyps level goal call_id <- cells ] . nl
         , pindent space . strstr "+ context = Context" . nl
@@ -360,7 +360,6 @@ showStackItem mname db verbose fvs typeMap space (ctx, cells)
         , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
         , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) typings . nl
         , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
-        , pindent (space + 4) . strstr ", " . strstr "_sloc = " . slocLine cells . nl
         , pindent (space + 4) . strstr "}" . nl
         ]
     where
@@ -378,24 +377,16 @@ showStackItem mname db verbose fvs typeMap space (ctx, cells)
             , let v = LV_Unique (Unique uni) noHint
             ]
 
-        slocLine :: [Cell] -> ShowS
-        slocLine []
-            = strstr "(none)"
-        slocLine (cell : _)
-            = case getNodeSLoc (_WantedGoal cell) of
-                Just l -> strstr "`" . pprintMSLoc (Just mname) l . strstr "'"
-                Nothing -> strstr "(none)"
-
-showsCurrentState :: String -> NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
-showsCurrentState mname db verbose fvs typeMap ctx cells stack = strcat
+showsCurrentState :: NotationDB -> Bool -> Set.Set LogicVar -> Map.Map LogicVar (MonoType Int) -> Context -> [Cell] -> Stack -> ShowS
+showsCurrentState db verbose fvs typeMap ctx cells stack = strcat
     [ strstr "--------------------------------" . nl
     , strstr "* The top of the current stack is:" . nl
-    , showStackItem mname db verbose fvs typeMap 4 (ctx, cells) . nl
+    , showStackItem db verbose fvs typeMap 4 (ctx, cells) . nl
     , strstr "* The rest of the current stack is:" . nl
     , strcat
         [ strcat
             [ pindent 0 . strstr "- (#" . shows i . strstr ")" . nl
-            , showStackItem mname db verbose fvs typeMap 4 item . nl
+            , showStackItem db verbose fvs typeMap 4 item . nl
             ]
         | (i, item) <- zip [1, 2 .. length stack] stack
         ]
@@ -893,7 +884,7 @@ runTransition env free_lvars = go where
                 liftIO $ do
                     dbg <- readIORef (_debuggindModeOn ctx)
                     verbose <- readIORef (_VerboseTyping env)
-                    when dbg $ _PutStr env env ctx (showsCurrentState (_ModuleName env) (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
+                    when dbg $ _PutStr env env ctx (showsCurrentState (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
                 stackAfterCb <- liftIO (readIORef (_StackRef env))
                 stack1 <- applyPending stackAfterCb
                 case stack1 of

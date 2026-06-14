@@ -20,7 +20,6 @@ test.sloc.goal_loc_in_debug>
             [ X : nat
             ]
         , _thread_id = 11
-        , _sloc = `[test.sloc.goal_loc_in_debug]:1:4-1:6'
         }
 
 * The rest of the current stack is:
@@ -43,7 +42,6 @@ test.sloc.goal_loc_in_debug> Press the enter key to go to next state:
             , ?V_14 : nat
             ]
         , _thread_id = 12
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:
@@ -66,7 +64,6 @@ test.sloc.goal_loc_in_debug> Press the enter key to go to next state:
             , ?V_14 : nat
             ]
         , _thread_id = 15
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:
@@ -87,7 +84,6 @@ test.sloc.goal_loc_in_debug> Press the enter key to go to next state:
             , ?V_14 : nat
             ]
         , _thread_id = 15
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:

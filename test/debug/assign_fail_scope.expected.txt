@@ -20,7 +20,6 @@ test.debug.assign_fail_scope>
             [ X : ?t4
             ]
         , _thread_id = 7
-        , _sloc = `[test.debug.assign_fail_scope]:1:4-1:8'
         }
 
 * The rest of the current stack is:
@@ -47,7 +46,6 @@ scope violation for 'X' — out-of-scope: ?TV_6
             , ?V_12 : ?TV_9
             ]
         , _thread_id = 8
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:
@@ -69,7 +67,6 @@ test.debug.assign_fail_scope> Press the enter key to go to next state:
             , ?V_12 : ?TV_9
             ]
         , _thread_id = 8
-        , _sloc = (none)
         }
 
 * The rest of the current stack is:
