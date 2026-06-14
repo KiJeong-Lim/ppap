@@ -1,4 +1,3 @@
-{-# LANGUAGE ScopedTypeVariables #-}
 module Z.Algorithms where
 
 import Control.Monad
@@ -86,16 +85,16 @@ getGCD x y
     | otherwise = Function.on euclid toInteger x y
     where
         euclid :: MyNat -> MyNat -> PositiveInteger
-        euclid a b = case a `mod` b of
-            0 -> b
-            c -> euclid b c
+        euclid a b
+            = case a `mod` b of
+                0 -> b
+                c -> euclid b c
 
-digraph :: forall vertex output. (Ord vertex, Monoid output, HasCallStack) => Set.Set vertex -> (vertex -> vertex -> Bool) -> (vertex -> output) -> Map.Map vertex output
-digraph your_X your_R your_F' = Map.map snd (snd (snd (Identity.runIdentity (runStateT (mapM_ (go 1) your_X) ([], Map.fromSet (const (0, mempty)) your_X))))) where
-    go :: Int -> vertex -> StateT ([vertex], Map.Map vertex (Int, output)) Identity.Identity ()
+digraph :: (Ord vertex, Monoid output, HasCallStack) => Set.Set vertex -> (vertex -> vertex -> Bool) -> (vertex -> output) -> Map.Map vertex output
+digraph your_X your_R your_F' = Map.map snd (snd (snd (Identity.runIdentity (runStateT (mapM_ (go one) your_X) ([], Map.fromSet (const (zero, mempty)) your_X))))) where
     go k x = do
         (stack, _N_F) <- get
-        when (fst (_N_F Map.! x) == 0) $ do
+        when (fst (_N_F Map.! x) == zero) $ do
             put (x : stack, Map.adjust (const (k, your_F' x)) x _N_F)
             forM_ your_X $ \y -> do
                 when (your_R x y) $ do
@@ -108,10 +107,16 @@ digraph your_X your_R your_F' = Map.map snd (snd (snd (Identity.runIdentity (run
             when (xN == k) $ do
                 Function.fix $ \loop -> do
                     (stack, _N_F) <- get
-                    let top = head stack
-                    put (tail stack, Map.adjust (const (maxBound, xF)) top _N_F)
-                    unless (top == x) $ do
-                        loop
+                    case stack of
+                        [] -> return ()
+                        top : stack' -> do
+                            put (stack', Map.adjust (const (maxBound, xF)) top _N_F)
+                            unless (top == x) $ do
+                                loop
+    one :: Int
+    one = 1
+    zero :: Int
+    zero = 0
 
 swords :: String -> [String]
 swords s = filter (not . null) (takeWhile cond s : go (dropWhile cond s)) where
@@ -193,8 +198,9 @@ tSortedSCCs = Identity.runIdentity . go where
 mSort :: IncreasingOrdering element -> [element] -> [element]
 mSort = go where
     merge :: IncreasingOrdering a -> [a] -> [a] -> [a]
+    merge leq [] zs = zs
+    merge leq ys [] = ys
     merge leq (y : ys) (z : zs) = if y `leq` z then y : merge leq ys (z : zs) else z : merge leq (y : ys) zs
-    merge leq ys zs = ys ++ zs
     go :: IncreasingOrdering a -> [a] -> [a]
     go leq xs
         = case length xs `div` 2 of
