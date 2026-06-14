@@ -1,0 +1,4 @@
+Hol --test
+test/notation/if_right_fixity.hol
+:q
+

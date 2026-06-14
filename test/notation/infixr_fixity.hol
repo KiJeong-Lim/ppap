@@ -2,5 +2,5 @@ kind i type.
 type a i.
 type p i -> o.
 type rop i -> i -> i.
-infixr `rop` 6.
+infixr rop 6.
 p (a rop (a rop a)).

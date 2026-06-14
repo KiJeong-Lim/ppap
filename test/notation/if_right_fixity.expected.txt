@@ -1,0 +1,9 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.if_right_fixity ( test/notation/if_right_fixity.hol, interpreted )
+test.notation.if_right_fixity> Ok, one module loaded.
+test.notation.if_right_fixity> 
+Hol >>= quit

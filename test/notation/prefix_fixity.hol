@@ -1,3 +1,13 @@
-% Prefix declarations affect how far the prefix argument extends.
-% The low-precedence `s` below parses `s 1 * 2` as `s (1 * 2)`.
-prefix s 5.
+% Prefix declarations accept bare identifier operators, matching infix
+% declarations.  The low-precedence `sizeof` below parses `sizeof a op b`
+% as `sizeof (a op b)`, like a C-style prefix operator.
+kind i type.
+kind size type.
+type a i.
+type b i.
+type sizeof (i -> size).
+type op (i -> i -> i).
+type p (size -> o).
+prefix sizeof 5.
+infixl op 6.
+p (sizeof a op b).

@@ -25,7 +25,10 @@ data FixityOrigin
     deriving ()
 
 appPrec :: Precedence
-appPrec = 100
+appPrec = 10
+
+maxFixityPrec :: Precedence
+maxFixityPrec = appPrec - 1
 
 resolveDeclsWithFixity :: NotationDB -> [DeclRep] -> Either FixityError [DeclRep]
 resolveDeclsWithFixity db0 decls0 = do
@@ -44,12 +47,18 @@ collectModuleFixities db0 decls = snd <$> foldM step (Map.empty, db0) decls wher
     step (local, db) decl = case decl of
         RFixityDecl loc form name prec -> do
             let fp@(kind, precedence) = (toKind form, fromInteger prec)
+            checkFixityPrecedence loc precedence
             checkImportedFixity db0 loc name fp
             checkLocalFixity local loc name fp
             let origin = FixityOrigin loc name fp
                 local' = foldr (`Map.insert` origin) local (Notation.fixityAliases name)
             return (local', Notation.addFixity name kind precedence db)
         _ -> return (local, db)
+
+checkFixityPrecedence :: SLoc -> Precedence -> Either FixityError ()
+checkFixityPrecedence loc precedence
+    | precedence <= maxFixityPrec = Right ()
+    | otherwise = Left (FixityError loc ("Fixity precedence must be between 0 and " ++ show maxFixityPrec ++ "."))
 
 checkImportedFixity :: NotationDB -> SLoc -> SmallId -> (FixityKind, Precedence) -> Either FixityError ()
 checkImportedFixity db loc name fp = mapM_ check (Notation.fixityAliases name) where

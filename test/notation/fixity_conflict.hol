@@ -1,2 +1,2 @@
-infixl `op` 6.
-infixr `op` 6.
+infixl op 6.
+infixr op 6.

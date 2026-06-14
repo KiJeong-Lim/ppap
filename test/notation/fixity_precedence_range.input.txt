@@ -1,0 +1,5 @@
+Hol --test
+test/notation/fixity_precedence_range.hol
+
+:q
+

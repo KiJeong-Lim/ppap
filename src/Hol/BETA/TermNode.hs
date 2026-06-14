@@ -357,10 +357,10 @@ defaultCheckOper "<" = Just (InfixN () " < " (), 5)
 defaultCheckOper ">=" = Just (InfixN () " >= " (), 5)
 defaultCheckOper ">" = Just (InfixN () " > " (), 5)
 defaultCheckOper "is" = Just (InfixN () " is " (), 5)
-defaultCheckOper "+" = Just (InfixN () " + " (), 6)
-defaultCheckOper "-" = Just (InfixN () " - " (), 6)
-defaultCheckOper "*" = Just (InfixN () " * " (), 7)
-defaultCheckOper "/" = Just (InfixN () " / " (), 7)
+defaultCheckOper "+" = Just (InfixL () " + " (), 6)
+defaultCheckOper "-" = Just (InfixL () " - " (), 6)
+defaultCheckOper "*" = Just (InfixL () " * " (), 7)
+defaultCheckOper "/" = Just (InfixL () " / " (), 7)
 defaultCheckOper _ = Nothing
 
 constructViewerCustom :: (String -> Maybe (Fixity (), Precedence)) -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode

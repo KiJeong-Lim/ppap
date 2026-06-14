@@ -1,0 +1,3 @@
+% The parser must be permissive enough for the fixity resolver's right
+% associativity for `:-`.
+true :- true :- true.

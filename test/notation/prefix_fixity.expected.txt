@@ -7,7 +7,7 @@ Hol> Compiling test.notation.prefix_fixity ( test/notation/prefix_fixity.hol, in
 test.notation.prefix_fixity> Ok, one module loaded.
 test.notation.prefix_fixity> 
 test.notation.prefix_fixity> The answer substitution is:
-test.notation.prefix_fixity> Y := 3.
+test.notation.prefix_fixity> Y := sizeof a op b.
 test.notation.prefix_fixity> Find more solutions? [Y/n] 
 test.notation.prefix_fixity> Find more solutions? [Y/n] 
 test.notation.prefix_fixity> yes.

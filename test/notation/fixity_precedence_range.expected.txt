@@ -1,0 +1,17 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.fixity_precedence_range ( test/notation/fixity_precedence_range.hol, interpreted )
+/home/lim/portfolio/ppap/test/notation/fixity_precedence_range.hol:1:1-1:13: error: [HolBETA-ParseError]
+   |              
+ 1 | infixl op 10.
+   | ^^^^^^^^^^^^^
+Parsing failed in `/home/lim/portfolio/ppap/test/notation/fixity_precedence_range.hol'.
+Fixity precedence must be between 0 and 9.
+
+Hol =<< 
+Hol> Ok, no module loaded.
+Hol> 
+Hol >>= quit
