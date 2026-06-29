@@ -1,0 +1,7 @@
+Hol --test
+test/presburger/quantifier_order.hol
+?- sigma X\ p (s X).
+?- pi X\ p (s X).
+?- sigma X\ pi C\ presburger "X = C".
+?- pi C\ sigma X\ presburger "X = C".
+:q

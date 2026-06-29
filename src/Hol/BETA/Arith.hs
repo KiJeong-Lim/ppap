@@ -7,11 +7,13 @@ module Hol.BETA.Arith
     , renumberFormula
     , entails
     , arithEntails
+    , presburgerGoalHolds
     , installPresburger
     , installPresburgerWithEnv
     ) where
 
 import Calc.Presburger.Internal
+import Control.Monad.Trans.State.Strict (State, get, put, runState)
 import Data.Char (isAlphaNum, isDigit, isSpace)
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
@@ -22,7 +24,7 @@ import Hol.BETA.Diagnostic
 import Hol.BETA.Header
 import Hol.BETA.TermNode
 import qualified Z.Doc
-import Z.Utils (ErrMsg)
+import Z.Utils (ErrMsg, unUnique)
 
 data ParseResult
     = ParseResult
@@ -628,6 +630,160 @@ arithEntails hyps phi
             hypReps = [ renumberFormula shared (_freeOfLifted h) (_liftedFormula h) | h <- liftedHs ]
             compiledPhi = fmap compilePresburgerTerm phiRep
             compiledHyps = map (fmap compilePresburgerTerm) hypReps
+
+-- | Quantifier attached to a free atom when closing a presburger goal.
+data FreeQuant
+    = FQAll
+    | FQExs
+    deriving (Eq)
+
+-- | Prenex ordering key for a free atom; smaller is more outer. @(0, 0)@ marks
+--   top-level query variables (introduced before proof search). @(1, u)@ orders
+--   by the creation 'unUnique' of a sigma/pi/clause variable, which is exactly
+--   the proof-state introduction order.
+type FreeKey = (Int, Int)
+
+data LeafSt
+    = LeafSt
+        { leafInverse :: !(Map.Map TermNode MyVar)
+        , leafTable :: !(Map.Map MyVar (FreeQuant, FreeKey))
+        , leafNext :: !MyVar
+        }
+
+-- | Decide a @presburger@ goal under the lia-style semantics.
+--
+--   Every free term is decomposed arithmetically (0/s/+/constant-scaling);
+--   irreducible leaves are atomized to one fresh variable each (the same term
+--   always reuses the same variable). The formula is then closed with one
+--   quantifier per atom:
+--
+--     * a logic variable (sigma\/query\/clause var) becomes existential,
+--     * an eigenvariable (from @pi@) or an opaque non-linear term becomes
+--       universal (treating it as uninterpreted - sound, possibly incomplete).
+--
+--   Quantifiers are ordered by the atom's introduction order so the prenex
+--   respects the proof-state scoping (e.g. @sigma X\\ pi C\\@ closes to
+--   @exists X. forall C.@, but @pi C\\ sigma X\\@ to @forall C. exists X.@).
+--   The body is @(/\\ hyps) /\\ phi@: the deferred arithmetic constraints
+--   conjoined with the goal.
+presburgerGoalHolds :: [TermNode] -> Map.Map MyVar TermNode -> MyPresburgerFormulaRep -> Bool
+presburgerGoalHolds hypTerms freeOf rep
+    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman fullyClosed) == Just True
+    where
+        (body0, finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
+        build :: State LeafSt MyPresburgerFormulaRep
+        build = do
+            phi' <- renumF Map.empty rep
+            hyps' <- mapM leafFormula hypTerms
+            let hypConj = foldr ConF (ValF True) [ h | Just h <- hyps' ]
+            return (ConF hypConj phi')
+        bodyC :: MyPresburgerFormula
+        bodyC = fmap compilePresburgerTerm body0
+        orderedLeaves :: [(MyVar, (FreeQuant, FreeKey))]
+        orderedLeaves = List.sortBy (\p q -> compare (snd (snd p)) (snd (snd q))) (Map.toList (leafTable finalSt))
+        closedC :: MyPresburgerFormula
+        closedC = foldr wrap bodyC orderedLeaves where
+            wrap (v, (FQAll, _)) acc = AllF v acc
+            wrap (v, (FQExs, _)) acc = ExsF v acc
+        -- Safety net: any stray free variable (should not arise for well-formed
+        -- input) is universally closed, matching 'entails'.
+        leftover :: [MyVar]
+        leftover = Set.toAscList (freeMyVarsF bodyC `Set.difference` Map.keysSet (leafTable finalSt))
+        fullyClosed :: MyPresburgerFormula
+        fullyClosed = foldr AllF closedC leftover
+
+        renumF :: Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> State LeafSt MyPresburgerFormulaRep
+        renumF env f = case f of
+            ValF b -> return (ValF b)
+            EqnF a b -> EqnF <$> renumT env a <*> renumT env b
+            LtnF a b -> LtnF <$> renumT env a <*> renumT env b
+            LeqF a b -> LeqF <$> renumT env a <*> renumT env b
+            GtnF a b -> GtnF <$> renumT env a <*> renumT env b
+            ModF a r b -> (\a' b' -> ModF a' r b') <$> renumT env a <*> renumT env b
+            NegF f1 -> NegF <$> renumF env f1
+            DisF f1 f2 -> DisF <$> renumF env f1 <*> renumF env f2
+            ConF f1 f2 -> ConF <$> renumF env f1 <*> renumF env f2
+            ImpF f1 f2 -> ImpF <$> renumF env f1 <*> renumF env f2
+            IffF f1 f2 -> IffF <$> renumF env f1 <*> renumF env f2
+            AllF y f1 -> do { y' <- freshBound; AllF y' <$> renumF (Map.insert y y' env) f1 }
+            ExsF y f1 -> do { y' <- freshBound; ExsF y' <$> renumF (Map.insert y y' env) f1 }
+
+        renumT :: Map.Map MyVar MyVar -> PresburgerTermRep -> State LeafSt PresburgerTermRep
+        renumT env t = case t of
+            IVar v -> case Map.lookup v env of
+                Just v' -> return (IVar v')
+                Nothing -> case Map.lookup v freeOf of
+                    Just term -> leafTerm term
+                    Nothing -> IVar <$> freshBound
+            Zero -> return Zero
+            Succ t1 -> Succ <$> renumT env t1
+            Plus t1 t2 -> Plus <$> renumT env t1 <*> renumT env t2
+
+-- | Allocate a fresh bound variable (for a quantifier the source string itself
+--   introduced); it is not recorded as a closable free atom.
+freshBound :: State LeafSt MyVar
+freshBound = do
+    st <- get
+    let v = leafNext st
+    put st { leafNext = v + 1 }
+    return v
+
+-- | Intern a free atom, reusing the same variable for equal terms.
+internAtom :: TermNode -> FreeQuant -> FreeKey -> State LeafSt MyVar
+internAtom key quant order = do
+    st <- get
+    case Map.lookup key (leafInverse st) of
+        Just v -> return v
+        Nothing -> do
+            let v = leafNext st
+            put st
+                { leafInverse = Map.insert key v (leafInverse st)
+                , leafTable = Map.insert v (quant, order) (leafTable st)
+                , leafNext = v + 1
+                }
+            return v
+
+-- | Decompose a zonked nat term into a presburger term, atomizing leaves.
+leafTerm :: TermNode -> State LeafSt PresburgerTermRep
+leafTerm t = case t of
+    NCon (DC (DC_NatL n)) _
+        | n >= 0 -> return (natToTermRep n)
+    NApp (NCon (DC DC_Succ) _) a _ -> Succ <$> leafTerm a
+    NApp (NApp (NCon (DC DC_plus) _) a _) b _ -> Plus <$> leafTerm a <*> leafTerm b
+    NApp (NApp (NCon (DC DC_mul) _) a _) b _
+        | Just n <- closedNat a -> scaleTermRep n <$> leafTerm b
+        | Just n <- closedNat b -> scaleTermRep n <$> leafTerm a
+    LVar lv -> IVar <$> internAtom t FQExs (lvOrderKey lv)
+    NCon (DC (DC_Unique uni _)) _ -> IVar <$> internAtom t FQAll (1, unUnique uni)
+    _
+        | Just n <- closedNat t -> return (natToTermRep n)
+        | otherwise -> IVar <$> internAtom t FQAll (opaqueOrderKey t)
+
+-- | A comparison hypothesis lifted into a formula, decomposing both sides; an
+--   unrecognized constraint is dropped (Nothing), matching 'liftConstraint'.
+leafFormula :: TermNode -> State LeafSt (Maybe MyPresburgerFormulaRep)
+leafFormula t = case t of
+    NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) a _) b _ -> Just <$> (EqnF <$> leafTerm a <*> leafTerm b)
+    NApp (NApp (NCon (DC DC_lt) _) a _) b _ -> Just <$> (LtnF <$> leafTerm a <*> leafTerm b)
+    NApp (NApp (NCon (DC DC_le) _) a _) b _ -> Just <$> (LeqF <$> leafTerm a <*> leafTerm b)
+    NApp (NApp (NCon (DC DC_gt) _) a _) b _ -> Just <$> (GtnF <$> leafTerm a <*> leafTerm b)
+    NApp (NApp (NCon (DC DC_ge) _) a _) b _ -> Just <$> ((\a' b' -> NegF (LtnF a' b')) <$> leafTerm a <*> leafTerm b)
+    _ -> return Nothing
+
+-- | Introduction-order key of a logic variable.
+lvOrderKey :: LogicVar -> FreeKey
+lvOrderKey (LV_Named _) = (0, 0)
+lvOrderKey (LV_Unique uni _) = (1, unUnique uni)
+lvOrderKey (LV_ty_var uni) = (1, unUnique uni)
+
+-- | Place an opaque atom just inside its constituents (max introduction key).
+opaqueOrderKey :: TermNode -> FreeKey
+opaqueOrderKey = foldr max (0, 0) . atomKeys where
+    atomKeys :: TermNode -> [FreeKey]
+    atomKeys (LVar lv) = [lvOrderKey lv]
+    atomKeys (NCon (DC (DC_Unique uni _)) _) = [(1, unUnique uni)]
+    atomKeys (NApp a b _) = atomKeys a ++ atomKeys b
+    atomKeys _ = []
 
 freeMyVarsF :: MyPresburgerFormula -> Set.Set MyVar
 freeMyVarsF (ValF _) = Set.empty

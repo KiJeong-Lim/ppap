@@ -1,0 +1,17 @@
+% Lia-style closure of `presburger` goals (BETA spec section 2.3.4).
+% A logic variable substituted into a presburger literal is closed
+% existentially -- even under a constructor such as `s _` -- while an
+% eigenvariable introduced by `pi` is closed universally. The prenex
+% follows the proof-state introduction order, so `sigma`/`pi` nesting
+% is honoured (this last point guards against an earlier unsoundness
+% where the order was always forall-outside-exists).
+%
+% Expected:
+%   ?- sigma X\ p (s X).                    => yes.  (exists X. exists Y. (s X) + Y = 6)
+%   ?- pi X\ p (s X).                       => no.   (not for every X)
+%   ?- sigma X\ pi C\ presburger "X = C".   => no.   (exists X. forall C. X = C)
+%   ?- pi C\ sigma X\ presburger "X = C".   => yes.  (forall C. exists X. X = C)
+
+type p nat -> o.
+
+p X :- presburger "exists Y, X + Y = 6".

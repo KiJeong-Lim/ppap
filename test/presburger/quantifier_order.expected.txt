@@ -1,0 +1,17 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.presburger.quantifier_order ( test/presburger/quantifier_order.hol, interpreted )
+test.presburger.quantifier_order> Ok, one module loaded.
+test.presburger.quantifier_order> 
+test.presburger.quantifier_order> yes.
+test.presburger.quantifier_order> 
+test.presburger.quantifier_order> no.
+test.presburger.quantifier_order> 
+test.presburger.quantifier_order> no.
+test.presburger.quantifier_order> 
+test.presburger.quantifier_order> yes.
+test.presburger.quantifier_order> 
+Hol >>= quit

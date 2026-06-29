@@ -674,61 +674,15 @@ runDebugger loc_str ctx facts hyps level call_id cells stack = do
     return ((ctx, cells) : stack)
 
 runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> Context -> [Cell] -> Stack -> Stack
-runPresburger rep freeOf ctx cells stack = if entails compiledHyps compiledPhi then (ctx, cells) : stack  else stack where
+runPresburger rep freeOf ctx cells stack = if presburgerGoalHolds hypTerms freeOfZonked rep then (ctx, cells) : stack else stack where
     freeOfZonked :: Map.Map MyVar TermNode
     freeOfZonked = Map.map (rewrite NF . bindVars (_TotalVarBinding ctx)) freeOf
 
-    repZonked :: MyPresburgerFormulaRep
-    repZonked = zonkPresburger freeOfZonked rep
-
-    arithTerms :: [TermNode]
-    arithTerms =
-        [ bindVars (_TotalVarBinding ctx) t
+    hypTerms :: [TermNode]
+    hypTerms =
+        [ rewrite NF (bindVars (_TotalVarBinding ctx) t)
         | ArithmeticConstraint t <- _LeftConstraints ctx
         ]
-
-    liftedResults :: [LiftResult]
-    liftedResults = mapMaybe liftConstraint arithTerms
-
-    hypFreeTerms :: Set.Set TermNode
-    hypFreeTerms = Set.unions [ Set.fromList (map (rewrite NF) (Map.elems (_freeOfLifted lr))) | lr <- liftedResults ]
-
-    allFreeTerms :: [TermNode]
-    allFreeTerms = Set.toAscList $ Set.union (Set.fromList (Map.elems freeOfZonked)) hypFreeTerms
-
-    shared :: Map.Map TermNode MyVar
-    shared = Map.fromAscList (zip allFreeTerms [theMinNumOfMyVar ..])
-
-    phiRep :: MyPresburgerFormulaRep
-    phiRep = foldr ExsF phiRep0 localWitnessVars where
-        phiRep0 = renumberFormula shared freeOfZonked repZonked
-
-    localWitnessVars :: [MyVar]
-    localWitnessVars =
-        Set.toAscList $ Set.fromList
-            [ v
-            | t0 <- Map.elems freeOfZonked
-            , let t = rewrite NF t0
-            , t `Set.notMember` hypFreeTerms
-            , isLocalWitness t
-            , Just v <- [Map.lookup t shared]
-            ]
-
-    isLocalWitness :: TermNode -> Bool
-    isLocalWitness (LVar (LV_Unique _ _)) = True
-    isLocalWitness _ = False
-
-    hypReps :: [MyPresburgerFormulaRep]
-    hypReps =
-        [ renumberFormula shared (_freeOfLifted lr) (_liftedFormula lr)
-        | lr <- liftedResults
-        ]
-
-    compiledPhi :: MyPresburgerFormula
-    compiledPhi = fmap compilePresburgerTerm phiRep
-
-    compiledHyps :: [MyPresburgerFormula]
-    compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 isInconsistent :: [TermNode] -> Bool
 isInconsistent arithTerms
