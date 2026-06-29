@@ -6,4 +6,7 @@
 %
 % Expected:
 %   ?- presburger "exists Y, Y + Y = 6".   => yes.     (Y = 3)
+%   ?- sigma X\ presburger "exists Y, X + Y = 6". => yes.
+%   ?- pi X\ presburger "X = X".           => yes.
+%   ?- pi X\ presburger "exists Y, X + Y = 6". => no.
 %   ?- presburger "forall Y, Y > 0".       => no.      (Y = 0 counterexample)

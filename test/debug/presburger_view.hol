@@ -1,0 +1,2 @@
+% Debug rendering for presburger literals should show outer variables
+% through the string formula and fold natural number literals.

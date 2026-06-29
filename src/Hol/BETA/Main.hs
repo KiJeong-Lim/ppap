@@ -1,6 +1,6 @@
 module Hol.BETA.Main where
 
-import Hol.BETA.Arith (arithEntails, installPresburger)
+import Hol.BETA.Arith (arithEntails, installPresburgerWithEnv)
 import Hol.BETA.Compiler
 import Hol.BETA.Constant
 import Hol.BETA.Debugger
@@ -121,8 +121,10 @@ runREPL mode program notationDB expansionDB
                             result <- runExceptT $ do
                                 (query2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB query1)
                                 (query3, (used_mtvs, assumptions)) <- checkTypeWithDiagnostic mode (Just (lines query0)) notationDB (_TypeDecls program) query2 mkTyO
-                                query4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) query3
-                                query5 <- either throwE return (installPresburger query4)
+                                let freeVarEnv = Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]
+                                    presburgerEnv = Map.fromList [ (name, term) | (name, ivar) <- Map.toList free_vars, Just term <- [Map.lookup ivar freeVarEnv] ]
+                                query4 <- convertQuery used_mtvs assumptions freeVarEnv query3
+                                query5 <- either throwE return (installPresburgerWithEnv presburgerEnv query4)
                                 let typeMap = Map.fromList
                                         [ (LV_Named name, typ)
                                         | (name, ivar) <- Map.toList free_vars
@@ -365,8 +367,10 @@ runREPL mode program notationDB expansionDB
                                 Right termRep -> return termRep
                             (term2, free_vars) <- desugarQuery (Notation.expandTermRep expansionDB termRep)
                             (term3, (used_mtvs, assumptions)) <- checkTypeWithDiagnostic mode (Just (lines queryStr)) notationDB (_TypeDecls program) term2 mkTyO
-                            term4 <- convertQuery used_mtvs assumptions (Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]) term3
-                            term5 <- either throwE return (installPresburger term4)
+                            let freeVarEnv = Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]
+                                presburgerEnv = Map.fromList [ (name, term) | (name, ivar) <- Map.toList free_vars, Just term <- [Map.lookup ivar freeVarEnv] ]
+                            term4 <- convertQuery used_mtvs assumptions freeVarEnv term3
+                            term5 <- either throwE return (installPresburgerWithEnv presburgerEnv term4)
                             inferredTy <- case Map.lookup varName free_vars >>= \ivar -> Map.lookup ivar assumptions of
                                 Just typ -> return typ
                                 Nothing -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "Could not infer type for the binding."])

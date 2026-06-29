@@ -182,7 +182,7 @@ accLVarsTerm (NIdx _) = id
 accLVarsTerm (NApp t1 t2 _) = accLVarsTerm t1 . accLVarsTerm t2
 accLVarsTerm (NLam _ _ t _) = accLVarsTerm t
 accLVarsTerm (Susp t _ _ env) = accLVarsTerm t . accLVarsSuspEnv env
-accLVarsTerm (NPresburgerCheck _ freeOf _) = Set.union (Set.fromList (Map.elems freeOf))
+accLVarsTerm (NPresburgerCheck _ freeOf _) = foldr (.) id (map accLVarsTerm (Map.elems freeOf))
 
 accLVarsSuspEnv :: SuspEnv -> Set.Set LogicVar -> Set.Set LogicVar
 accLVarsSuspEnv [] = id
@@ -518,6 +518,7 @@ flatten (VarBinding mapsto)
         go t@(NIdx _) = t
         go (NApp t1 t2 _) = mkNApp (go t1) (go t2)
         go (NLam h ty t _) = mkNLamHintTy h ty (go t)
+        go (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map go freeOf) sl
         go t = t
 
 (+->) :: Monad m => LogicVar -> TermNode -> ExceptT HopuFail m VarBinding
@@ -549,6 +550,7 @@ etaReduce = go . rewrite NF where
     isFreeIn i (NIdx j) = i == j
     isFreeIn i (NApp t1 t2 _) = isFreeIn i t1 || isFreeIn i t2
     isFreeIn i (NLam _ _ t1 _) = isFreeIn (i + 1) t1
+    isFreeIn i (NPresburgerCheck _ freeOf _) = any (isFreeIn i) (Map.elems freeOf)
     isFreeIn i _ = False
     decr :: TermNode -> TermNode
     decr (LVar x) = mkLVar x
@@ -556,10 +558,12 @@ etaReduce = go . rewrite NF where
     decr (NCon c _) = mkNCon c
     decr (NApp t1 t2 _) = mkNApp (decr t1) (decr t2)
     decr (NLam h ty t1 _) = mkNLamHintTy h ty (decr t1)
+    decr (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map decr freeOf) sl
     go :: TermNode -> TermNode
     go (NApp t1 t2 _) = mkNApp (go t1) (go t2)
     go (NLam h ty t1 _) = case go t1 of
         NApp t1' (NIdx 0) _
             | not (isFreeIn 0 t1') -> decr t1'
         t1' -> mkNLamHintTy h ty t1'
+    go (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map go freeOf) sl
     go t = t

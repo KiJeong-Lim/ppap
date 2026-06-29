@@ -1,6 +1,6 @@
 module Hol.BETA.TermNode where
 
-import Calc.Presburger.Internal (MyPresburgerFormulaRep, MyVar)
+import Calc.Presburger.Internal (MyPresburgerFormulaRep, MyVar, PresburgerFormula (..), PresburgerTermRep (..), showsMyVar)
 import Hol.BETA.Constant
 import Hol.BETA.Header
 import Control.Monad
@@ -31,7 +31,7 @@ data TermNode
     | NApp !TermNode !TermNode !(Maybe SLoc)
     | NLam !(Maybe SmallId) !LamType !TermNode !(Maybe SLoc)
     | Susp { getSuspBody :: !TermNode , getSuspOL :: {-# UNPACK #-} !Int , getSuspNL :: {-# UNPACK #-} !Int , getSuspEnv :: !SuspEnv }
-    | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar LogicVar) !(Maybe SLoc)
+    | NPresburgerCheck !MyPresburgerFormulaRep !(Map.Map MyVar TermNode) !(Maybe SLoc)
     deriving ()
 
 newtype LamType
@@ -266,8 +266,8 @@ rewriteWithSusp t ol nl env option = dispatch t where
         | ol' == 0 && nl' == 0 = rewriteWithSusp t' ol nl env option
         | ol == 0 = rewriteWithSusp t' ol' (nl + nl') env' option
         | otherwise = rewriteWithSusp (rewriteWithSusp t' ol' nl' env' WHNF) ol nl env option
-    dispatch (NPresburgerCheck {})
-        = t
+    dispatch (NPresburgerCheck rep freeOf sl)
+        = NPresburgerCheck rep (Map.map (\t' -> rewriteWithSusp t' ol nl env option) freeOf) sl
 
 {-# INLINE rewrite #-}
 rewrite :: ReduceOption -> TermNode -> TermNode
@@ -275,7 +275,7 @@ rewrite option t = case t of
     LVar {} -> t
     NCon {} -> t
     NIdx {} -> t
-    NPresburgerCheck {} -> t
+    NPresburgerCheck rep freeOf sl -> NPresburgerCheck rep (Map.map (rewrite option) freeOf) sl
     _ -> rewriteWithSusp t 0 0 [] option
 
 unfoldlNApp :: TermNode -> (TermNode, [TermNode])
@@ -419,9 +419,105 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
             chosen = freshenName preferred vars
         t_rep <- makeView (chosen : vars) t
         return (ViewIAbs chosen t_rep)
-    makeView vars (NPresburgerCheck rep _ _) =
-        return (ViewDCon ("presburger \"" ++ shows rep "\""))
+    makeView vars (NPresburgerCheck rep freeOf _) = do
+        rendered <- renderPresburger vars rep freeOf
+        return (ViewDCon rendered)
     makeView vars (Susp body _ _ _) = makeView vars body
+
+    renderPresburger :: [SmallId] -> MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> StateT Int Identity SmallId
+    renderPresburger vars rep freeOf = do
+        body <- renderFormula 0 Map.empty rep
+        return ("presburger \"" ++ body ++ "\"")
+        where
+            parensText :: Bool -> String -> String
+            parensText True s = "(" ++ s ++ ")"
+            parensText False s = s
+
+            varName :: MyVar -> SmallId
+            varName v = showsMyVar v ""
+
+            renderFormula :: Precedence -> Map.Map MyVar SmallId -> MyPresburgerFormulaRep -> StateT Int Identity SmallId
+            renderFormula prec bound formula =
+                case formula of
+                    ValF b ->
+                        return (parensText (prec > 4) (if b then "~ _|_" else "_|_"))
+                    EqnF t1 t2 ->
+                        renderRelation "=" t1 t2
+                    LtnF t1 t2 ->
+                        renderRelation "<" t1 t2
+                    LeqF t1 t2 ->
+                        renderRelation "=<" t1 t2
+                    GtnF t1 t2 ->
+                        renderRelation ">" t1 t2
+                    ModF t1 r t2 ->
+                        renderRelation ("==_{" ++ show r ++ "}") t1 t2
+                    NegF f1 -> do
+                        s1 <- renderFormula 4 bound f1
+                        return (parensText (prec > 3) ("~ " ++ s1))
+                    DisF f1 f2 -> do
+                        s1 <- renderFormula 1 bound f1
+                        s2 <- renderFormula 2 bound f2
+                        return (parensText (prec > 1) (s1 ++ " \\/ " ++ s2))
+                    ConF f1 f2 -> do
+                        s1 <- renderFormula 3 bound f1
+                        s2 <- renderFormula 2 bound f2
+                        return (parensText (prec > 2) (s1 ++ " /\\ " ++ s2))
+                    ImpF f1 f2 -> do
+                        s1 <- renderFormula 1 bound f1
+                        s2 <- renderFormula 0 bound f2
+                        return (parensText (prec > 0) (s1 ++ " -> " ++ s2))
+                    IffF f1 f2 -> do
+                        s1 <- renderFormula 1 bound f1
+                        s2 <- renderFormula 1 bound f2
+                        return (parensText (prec > 0) (s1 ++ " <-> " ++ s2))
+                    AllF y f1 ->
+                        renderQuantifier "forall" y f1
+                    ExsF y f1 ->
+                        renderQuantifier "exists" y f1
+                where
+                    renderRelation oper t1 t2 = do
+                        s1 <- renderTerm 0 bound t1
+                        s2 <- renderTerm 0 bound t2
+                        return (parensText (prec > 4) (s1 ++ " " ++ oper ++ " " ++ s2))
+                    renderQuantifier kw y f1 = do
+                        let yName = varName y
+                        s1 <- renderFormula 3 (Map.insert y yName bound) f1
+                        return (parensText (prec > 3) (kw ++ " " ++ yName ++ ", " ++ s1))
+
+            renderTerm :: Precedence -> Map.Map MyVar SmallId -> PresburgerTermRep -> StateT Int Identity SmallId
+            renderTerm prec bound term =
+                case foldedNat term of
+                    Just n ->
+                        return (show n)
+                    Nothing ->
+                        case term of
+                            IVar v ->
+                                case Map.lookup v bound of
+                                    Just name -> return name
+                                    Nothing -> case Map.lookup v freeOf of
+                                        Just t -> renderFreeTerm vars t
+                                        Nothing -> return (varName v)
+                            Zero ->
+                                return "O"
+                            Succ t1 -> do
+                                s1 <- renderTerm 2 bound t1
+                                return (parensText (prec > 1) ("S " ++ s1))
+                            Plus t1 t2 -> do
+                                s1 <- renderTerm 0 bound t1
+                                s2 <- renderTerm 1 bound t2
+                                return (parensText (prec > 0) (s1 ++ " + " ++ s2))
+
+            renderFreeTerm :: [SmallId] -> TermNode -> StateT Int Identity SmallId
+            renderFreeTerm boundVars t = do
+                v <- makeView boundVars (rewrite NF t)
+                v' <- formatView (eraseType v)
+                return (pprint 0 v' "")
+
+            foldedNat :: PresburgerTermRep -> Maybe Integer
+            foldedNat Zero = Just 0
+            foldedNat (Succ t1) = succ <$> foldedNat t1
+            foldedNat (Plus t1 t2) = (+) <$> foldedNat t1 <*> foldedNat t2
+            foldedNat (IVar _) = Nothing
     eraseType :: ViewNode -> ViewNode
     eraseType (ViewIApp (ViewDCon "[]") (ViewTCon "__char")) = ViewStrL ""
     eraseType (ViewTCon c) = ViewTCon c

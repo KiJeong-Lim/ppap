@@ -1,0 +1,8 @@
+Hol --test
+test/debug/presburger_view.hol
+:d
+?- sigma X\ presburger "exists Y, X + Y = 6".
+
+
+
+:q

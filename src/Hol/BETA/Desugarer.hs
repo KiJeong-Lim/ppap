@@ -171,16 +171,16 @@ desugarTerm live (RAbs loc1 var_rep term_rep) = do
             return (Lam loc1 var (Just storedHint) term)
 desugarTerm live (RPrn loc1 term_rep) = desugarTerm live term_rep
 
-desugarProgram :: MonadUnique m => KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
+desugarProgram :: MonadUnique m => KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc, Map.Map LargeId IVar), NotationDB, ExpansionDB)
 desugarProgram = desugarProgramWithSource Nothing
 
-desugarProgramWithSource :: MonadUnique m => SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
+desugarProgramWithSource :: MonadUnique m => SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc, Map.Map LargeId IVar), NotationDB, ExpansionDB)
 desugarProgramWithSource = desugarProgramWithDiagnostic DiagnosticPretty
 
-desugarProgramWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
+desugarProgramWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc, Map.Map LargeId IVar), NotationDB, ExpansionDB)
 desugarProgramWithDiagnostic mode sourceLines kind_env type_env file_name program0 = desugarProgramWithModule mode Nothing sourceLines kind_env type_env file_name program0
 
-desugarProgramWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc), NotationDB, ExpansionDB)
+desugarProgramWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc, Map.Map LargeId IVar), NotationDB, ExpansionDB)
 desugarProgramWithModule mode moduleName sourceLines kind_env type_env file_name program0
     = case makeKindEnvInModule mode moduleName sourceLines [ (loc, (tcon, krep)) | RKindDecl loc tcon krep <- program ] kind_env of
         Left err_msg -> throwE err_msg
@@ -190,7 +190,7 @@ desugarProgramWithModule mode moduleName sourceLines kind_env type_env file_name
                 Left err_msg -> throwE err_msg
                 Right notation_db1 -> do
                     notation_db <- populateTermFoldTableInModule mode moduleName sourceLines type_env' expansion_db notation_db1
-                    facts' <- lift (mapM (fmap fst . flip runStateT Map.empty . desugarTerm []) expandedFacts)
+                    facts' <- lift (mapM (flip runStateT Map.empty . desugarTerm []) expandedFacts)
                     return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name }, notation_db, expansion_db)
     where
         program = program0

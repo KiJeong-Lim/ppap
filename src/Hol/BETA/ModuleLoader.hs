@@ -166,12 +166,23 @@ elaborate canonicalPath mname sourceLines mHeader imports body0 = do
     (env1, ownNotation0, ownExpansion0) <- desugarProgramWithModule mode (Just canonicalPath) (Just sourceLines) composedKinds composedTypes mname body
     let ownNotation  = mergeNotation composedNotation ownNotation0
         ownExpansion = mergeExpansion composedExpansion ownExpansion0
-    facts2 <- sequence [ checkTypeWithModule mode (Just canonicalPath) (Just sourceLines) ownNotation (_TypeDecls env1) fact mkTyO | fact <- _FactDecls env1 ]
-    facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
+    facts2 <- sequence
+        [ do
+            checked <- checkTypeWithModule mode (Just canonicalPath) (Just sourceLines) ownNotation (_TypeDecls env1) fact mkTyO
+            return (factNames, checked)
+        | (fact, factNames) <- _FactDecls env1
+        ]
+    facts3 <- sequence
+        [ convertProgram (invertNameEnv factNames) used_mtvs assumptions fact
+        | (factNames, (fact, (used_mtvs, assumptions))) <- facts2
+        ]
     ownFactsR <- sequence [ either throwE return (installPresburger f) | f <- facts3 ]
     let env = ModuleEnv { moduleEnvName = mname, moduleEnvPath = canonicalPath, moduleEnvKinds = _KindDecls env1, moduleEnvTypes = _TypeDecls env1, moduleEnvFacts = initialFacts ++ importedFacts ++ ownFactsR, moduleEnvNotation = ownNotation, moduleEnvExpansion = ownExpansion, moduleEnvImports = [ m | (_, m) <- importsUnique ], moduleEnvWarnings = importWarnings}
     lift (State.modify (\s -> s { lsLoaded = Map.insert canonicalPath env (lsLoaded s), lsOrder  = mname : lsOrder s }))
     return env
+
+invertNameEnv :: Map.Map LargeId IVar -> Map.Map IVar LargeId
+invertNameEnv = Map.fromList . map (\(name, ivar) -> (ivar, name)) . Map.toList
 
 loadImport :: UniqueM m => String -> FilePath -> SourceLines -> (SLoc, String) -> Loader m ModuleEnv
 loadImport importerName importerPath sourceLines (importLoc, importedName) = do

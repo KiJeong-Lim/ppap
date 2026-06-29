@@ -1,0 +1,10 @@
+% A variable mentioned inside a presburger string is the same HOL
+% variable as an outer variable with the same source name.
+%
+% Expected:
+%   ?- p 6. => yes.
+%   ?- p 7. => no.
+
+type p nat -> o.
+
+p X :- presburger "exists Y, X + Y = 6".

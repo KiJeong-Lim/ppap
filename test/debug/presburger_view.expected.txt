@@ -1,0 +1,63 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.debug.presburger_view ( test/debug/presburger_view.hol, interpreted )
+test.debug.presburger_view> Ok, one module loaded.
+test.debug.presburger_view> 
+test.debug.presburger_view> Debugging mode on.
+test.debug.presburger_view> 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- sigma (X\ presburger "exists v1, X + v1 = 6") ] # call_id = 64
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = []
+        , _thread_id = 64
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.presburger_view> Press the enter key to go to next state: 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- presburger "exists v1, X + v1 = 6" ] # call_id = 64
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ ?V_65 : ?TV_63
+            ]
+        , _thread_id = 64
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.presburger_view> Press the enter key to go to next state: 
+--------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ ?V_65 : ?TV_63
+            ]
+        , _thread_id = 64
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.presburger_view> Press the enter key to go to next state: 
+test.debug.presburger_view> yes.
+test.debug.presburger_view> 
+Hol >>= quit

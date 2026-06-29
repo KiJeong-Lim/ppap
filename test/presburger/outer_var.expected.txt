@@ -1,0 +1,13 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.presburger.outer_var ( test/presburger/outer_var.hol, interpreted )
+test.presburger.outer_var> Ok, one module loaded.
+test.presburger.outer_var> 
+test.presburger.outer_var> yes.
+test.presburger.outer_var> 
+test.presburger.outer_var> no.
+test.presburger.outer_var> 
+Hol >>= quit

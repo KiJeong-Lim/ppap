@@ -47,13 +47,13 @@ convertWithoutChecking var_name_env = go where
     go :: MonadUnique m => DeBruijnIndicesEnv -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
     go env = return . loop env . reduceTermExpr
 
-convertProgram :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
-convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithoutChecking Map.empty initialEnv where
+convertProgram :: MonadUnique m => Map.Map IVar LargeId -> Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
+convertProgram nameHints used_mtvs assumptions = fmap makeUniversalClosure . convertWithoutChecking Map.empty initialEnv where
     initialEnv :: DeBruijnIndicesEnv
     initialEnv = Set.toList (Map.keysSet assumptions `Set.union` Map.keysSet used_mtvs)
     makeUniversalClosure :: TermNode -> TermNode
     makeUniversalClosure body = foldr wrapTyVar afterAssumed (Map.toDescList used_mtvs) where
-        wrapAssumption (_, ty) acc = mkNApp (mkNCon LO_pi) (mkNLamHintTy Nothing (mkLamType ty) acc)
+        wrapAssumption (ivar, ty) acc = mkNApp (mkNCon LO_pi) (mkNLamHintTy (Map.lookup ivar nameHints) (mkLamType ty) acc)
         wrapTyVar (mtv, _) acc = mkNApp (mkNCon LO_ty_pi) (mkNLamHintTy Nothing (mkLamType (TyMTV mtv)) acc)
         afterAssumed = foldr wrapAssumption body (Map.toDescList assumptions)
 

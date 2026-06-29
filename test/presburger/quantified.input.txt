@@ -1,6 +1,8 @@
 Hol --test
 test/presburger/quantified.hol
 ?- presburger "exists Y, Y + Y = 6".
+?- sigma X\ presburger "exists Y, X + Y = 6".
+?- pi X\ presburger "X = X".
+?- pi X\ presburger "exists Y, X + Y = 6".
 ?- presburger "forall Y, Y > 0".
 :q
-

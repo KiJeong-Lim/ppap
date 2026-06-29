@@ -1,0 +1,5 @@
+Hol --test
+test/presburger/outer_var.hol
+?- p 6.
+?- p 7.
+:q

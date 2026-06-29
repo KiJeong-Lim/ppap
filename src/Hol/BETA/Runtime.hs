@@ -180,6 +180,7 @@ scopeEscaping labeling targetScope targetLV = walk where
     walk (NApp t1 t2 _) = combine (walk t1) (walk t2)
     walk (NLam _ _ t _) = walk t
     walk (Susp body _ _ _) = walk body
+    walk (NPresburgerCheck _ freeOf _) = foldr (combine . walk) ([], []) (Map.elems freeOf)
     walk _ = ([], [])
     combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
 
@@ -407,7 +408,7 @@ instantiateFact fact level
                     Nothing -> fact1
             modify (enrollLabel var level)
             modify (\lbl -> lbl { _TyVarKeys = IntMap.insert (unUnique uni) () (_TyVarKeys lbl) })
-            instantiateFact (mkNApp fact1' (mkLVar var)) level
+            instantiateFact (rewrite HNF (mkNApp fact1' (mkLVar var))) level
         (NCon (DC (DC_LO LO_pi)) _, [fact1]) -> do
             uni <- getUnique
             let (mhint, mty) = case rewrite HNF fact1 of
@@ -418,7 +419,7 @@ instantiateFact fact level
             case mty of
                 Just ty -> modify (\lbl -> lbl { _VarTypes = IntMap.insert (unUnique uni) ty (_VarTypes lbl) })
                 Nothing -> return ()
-            instantiateFact (mkNApp fact1 (mkLVar var)) level
+            instantiateFact (rewrite HNF (mkNApp fact1 (mkLVar var))) level
         (NCon (DC (DC_LO LO_if)) _, [conclusion, premise]) -> return (conclusion, premise)
         (NCon (DC (DC_LO logical_operator)) _, args) -> lift (throwE (BadFactGiven (foldlNApp (mkNCon logical_operator) args)))
         (t, ts) -> return (foldlNApp t ts, mkNCon LO_true)
@@ -449,7 +450,8 @@ runLogicalOperator LO_sigma [goal1] ctx facts hyps level call_id cells stack
             labeling1 = case mty of
                 Just ty -> labeling0 { _VarTypes = IntMap.insert (unUnique uni) ty (_VarTypes labeling0) }
                 Nothing -> labeling0
-        return ((ctx { _CurrentLabeling = labeling1 }, mkCell facts hyps level (mkNApp goal1 (mkLVar var)) call_id : cells) : stack)
+            goal' = rewrite HNF (mkNApp goal1 (mkLVar var))
+        return ((ctx { _CurrentLabeling = labeling1 }, mkCell facts hyps level goal' call_id : cells) : stack)
 runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack
     = do
         uni <- getUnique
@@ -461,7 +463,8 @@ runLogicalOperator LO_pi [goal1] ctx facts hyps level call_id cells stack
             labeling1 = case mty of
                 Just ty -> labeling0 { _ConTypes = IntMap.insert (unUnique uni) ty (_ConTypes labeling0) }
                 Nothing -> labeling0
-        return ((ctx { _CurrentLabeling = labeling1 }, mkCell facts hyps (level + 1) (mkNApp goal1 (mkNCon con)) call_id : cells) : stack)
+            goal' = rewrite HNF (mkNApp goal1 (mkNCon con))
+        return ((ctx { _CurrentLabeling = labeling1 }, mkCell facts hyps (level + 1) goal' call_id : cells) : stack)
 runLogicalOperator LO_is [lhs, rhs] ctx facts hyps level call_id cells stack
     | Left "ill" == rhsValue
     = return stack
@@ -670,16 +673,13 @@ runDebugger loc_str ctx facts hyps level call_id cells stack = do
     liftIO $ putStrLn ("*** debugger called with " ++ shows loc_str "")
     return ((ctx, cells) : stack)
 
-runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar LogicVar -> Context -> [Cell] -> Stack -> Stack
+runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> Context -> [Cell] -> Stack -> Stack
 runPresburger rep freeOf ctx cells stack = if entails compiledHyps compiledPhi then (ctx, cells) : stack  else stack where
-    theta :: LogicVar -> Maybe TermNode
-    theta lv
-        = case bindVars (_TotalVarBinding ctx) (LVar lv) of
-            LVar lv' | lv == lv' -> Nothing
-            t -> Just t
+    freeOfZonked :: Map.Map MyVar TermNode
+    freeOfZonked = Map.map (rewrite NF . bindVars (_TotalVarBinding ctx)) freeOf
 
     repZonked :: MyPresburgerFormulaRep
-    repZonked = zonkPresburger theta freeOf rep
+    repZonked = zonkPresburger freeOfZonked rep
 
     arithTerms :: [TermNode]
     arithTerms =
@@ -690,14 +690,33 @@ runPresburger rep freeOf ctx cells stack = if entails compiledHyps compiledPhi t
     liftedResults :: [LiftResult]
     liftedResults = mapMaybe liftConstraint arithTerms
 
-    allLVs :: [LogicVar]
-    allLVs = Set.toAscList $ Set.union (Set.fromList (Map.elems freeOf)) (Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ])
+    hypFreeTerms :: Set.Set TermNode
+    hypFreeTerms = Set.unions [ Set.fromList (map (rewrite NF) (Map.elems (_freeOfLifted lr))) | lr <- liftedResults ]
 
-    shared :: Map.Map LogicVar MyVar
-    shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+    allFreeTerms :: [TermNode]
+    allFreeTerms = Set.toAscList $ Set.union (Set.fromList (Map.elems freeOfZonked)) hypFreeTerms
+
+    shared :: Map.Map TermNode MyVar
+    shared = Map.fromAscList (zip allFreeTerms [theMinNumOfMyVar ..])
 
     phiRep :: MyPresburgerFormulaRep
-    phiRep = renumberFormula shared freeOf repZonked
+    phiRep = foldr ExsF phiRep0 localWitnessVars where
+        phiRep0 = renumberFormula shared freeOfZonked repZonked
+
+    localWitnessVars :: [MyVar]
+    localWitnessVars =
+        Set.toAscList $ Set.fromList
+            [ v
+            | t0 <- Map.elems freeOfZonked
+            , let t = rewrite NF t0
+            , t `Set.notMember` hypFreeTerms
+            , isLocalWitness t
+            , Just v <- [Map.lookup t shared]
+            ]
+
+    isLocalWitness :: TermNode -> Bool
+    isLocalWitness (LVar (LV_Unique _ _)) = True
+    isLocalWitness _ = False
 
     hypReps :: [MyPresburgerFormulaRep]
     hypReps =
@@ -722,11 +741,11 @@ isInconsistent arithTerms
         liftedResults :: [LiftResult]
         liftedResults = mapMaybe liftConstraint arithTerms
 
-        allLVs :: [LogicVar]
-        allLVs = Set.toAscList $ Set.unions [ Set.fromList (Map.elems (_freeOfLifted lr)) | lr <- liftedResults ]
+        allFreeTerms :: [TermNode]
+        allFreeTerms = Set.toAscList $ Set.unions [ Set.fromList (map (rewrite NF) (Map.elems (_freeOfLifted lr))) | lr <- liftedResults ]
 
-        shared :: Map.Map LogicVar MyVar
-        shared = Map.fromAscList (zip allLVs [theMinNumOfMyVar ..])
+        shared :: Map.Map TermNode MyVar
+        shared = Map.fromAscList (zip allFreeTerms [theMinNumOfMyVar ..])
 
         hypReps :: [MyPresburgerFormulaRep]
         hypReps =

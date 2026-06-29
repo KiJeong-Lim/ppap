@@ -8,6 +8,12 @@ test.presburger.quantified> Ok, one module loaded.
 test.presburger.quantified> 
 test.presburger.quantified> yes.
 test.presburger.quantified> 
+test.presburger.quantified> yes.
+test.presburger.quantified> 
+test.presburger.quantified> yes.
+test.presburger.quantified> 
+test.presburger.quantified> no.
+test.presburger.quantified> 
 test.presburger.quantified> no.
 test.presburger.quantified> 
 Hol >>= quit
