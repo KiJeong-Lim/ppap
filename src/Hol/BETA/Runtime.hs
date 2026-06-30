@@ -679,29 +679,51 @@ runDebugger loc_str ctx facts hyps level call_id cells stack = do
 
 -- | A @presburger phi@ goal retains @phi@ as a deferred constraint and succeeds
 --   iff the whole store (existing constraints conjoined with @phi@) stays
---   satisfiable. The retained constraint is carried along, re-checked as
+--   satisfiable under the arithmetic assumptions in scope (left-hand sides of
+--   enclosing @=>@). The retained constraint is carried along, re-checked as
 --   bindings accumulate, and reported as a residual at query success.
-runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> Context -> [Cell] -> Stack -> Stack
-runPresburger rep freeOf ctx cells stack
-    | storeSatisfiable ctx' = (ctx', cells) : stack
-    | otherwise = stack
+runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> [Fact] -> Context -> [Cell] -> Stack -> Stack
+runPresburger rep freeOf hyps ctx cells stack
+    | not (storeSatisfiable hyps ctx') = stack
+    | presburgerEntails (arithAssumptions hyps ctx) (rep, freeOfBound) = (ctx, cells) : stack
+    | otherwise = (ctx', cells) : stack
     where
         ctx' :: Context
         ctx' = ctx { _LeftConstraints = PresburgerConstraint rep freeOf : _LeftConstraints ctx }
+        -- For the entailment test, resolve the goal's free terms under the
+        -- current binding (the store-sat path zonks internally via the store).
+        freeOfBound :: Map.Map MyVar TermNode
+        freeOfBound = Map.map (bindVars (_TotalVarBinding ctx)) freeOf
 
 hasPresburgerConstraint :: Context -> Bool
 hasPresburgerConstraint ctx = not (null [ () | PresburgerConstraint _ _ <- _LeftConstraints ctx ])
 
--- | Satisfiability of the whole arithmetic store (comparison constraints plus
---   retained presburger constraints), under the current variable binding.
-storeSatisfiable :: Context -> Bool
-storeSatisfiable ctx = presburgerStoreSat hypTerms presForms where
+-- | The arithmetic assumptions in scope: the comparison/presburger facts among
+--   the hypotheses introduced by enclosing @=>@. Non-arithmetic hypotheses are
+--   ignored (comparisons are filtered downstream by 'leafFormula').
+arithAssumptions :: [Fact] -> Context -> ArithStore
+arithAssumptions hyps ctx = (cmpTerms, presForms) where
     bound :: HasLVar a => a -> a
     bound = bindVars (_TotalVarBinding ctx)
-    hypTerms :: [TermNode]
-    hypTerms = [ bound t | ArithmeticConstraint t <- _LeftConstraints ctx ]
+    boundHyps :: [TermNode]
+    boundHyps = map (rewrite NF . bound) hyps
+    cmpTerms :: [TermNode]
+    cmpTerms = boundHyps
     presForms :: [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)]
-    presForms = [ (rep, Map.map bound freeOf) | PresburgerConstraint rep freeOf <- _LeftConstraints ctx ]
+    presForms = [ (rep, Map.map bound freeOf) | NPresburgerCheck rep freeOf _ <- boundHyps ]
+
+-- | Satisfiability of the whole arithmetic store (comparison constraints plus
+--   retained presburger constraints) under the in-scope assumptions and the
+--   current variable binding.
+storeSatisfiable :: [Fact] -> Context -> Bool
+storeSatisfiable hyps ctx = presburgerStoreSat (arithAssumptions hyps ctx) obligations where
+    bound :: HasLVar a => a -> a
+    bound = bindVars (_TotalVarBinding ctx)
+    obligations :: ArithStore
+    obligations =
+        ( [ bound t | ArithmeticConstraint t <- _LeftConstraints ctx ]
+        , [ (rep, Map.map bound freeOf) | PresburgerConstraint rep freeOf <- _LeftConstraints ctx ]
+        )
 
 isInconsistent :: [TermNode] -> Bool
 isInconsistent arithTerms
@@ -735,12 +757,12 @@ runTransition env free_lvars = go where
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr m Stack
     success with = return [with]
-    arithOpCheck :: CallId -> Context -> [Cell] -> Constant -> [Fact] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr m Stack
-    arithOpCheck call_id ctx cells predicate args op
+    arithOpCheck :: CallId -> [Fact] -> Context -> [Cell] -> Constant -> [TermNode] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr m Stack
+    arithOpCheck call_id hyps ctx cells predicate args op
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
             Left "non" -> case liftConstraint candidate of
                 Nothing -> throwE (UnsupportedArithmeticConstraint candidate)
-                Just _ -> if isInconsistent arithTerms || (hasPresburgerConstraint newCtx && not (storeSatisfiable newCtx)) then failure else success (newCtx, cells)
+                Just _ -> if isInconsistent arithTerms || (hasPresburgerConstraint newCtx && not (storeSatisfiable hyps newCtx)) then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
         where
@@ -799,7 +821,7 @@ runTransition env free_lvars = go where
     search facts hyps level predicate args ctx cells
         = do
             call_id <- getUnique
-            let arithOpCheck' = arithOpCheck call_id ctx cells predicate args
+            let arithOpCheck' = arithOpCheck call_id hyps ctx cells predicate args
             ans0 <- case predicate of
                 DC DC_eq -> sequence (eqOpCheck ctx cells args)
                 DC DC_ge -> Just <$> arithOpCheck' (>=)
@@ -852,8 +874,8 @@ runTransition env free_lvars = go where
         = do
             stack' <- search facts hyps level predicate args ctx cells
             go (stack' ++ stack)
-    dispatch ctx _facts _hyps _level (NPresburgerCheck rep freeOf _, []) _call_id cells stack
-        = go (runPresburger rep freeOf ctx cells stack)
+    dispatch ctx _facts hyps _level (NPresburgerCheck rep freeOf _, []) _call_id cells stack
+        = go (runPresburger rep freeOf hyps ctx cells stack)
     dispatch ctx facts hyps level (t, ts) call_id cells stack
         = throwE (BadGoalGiven (foldlNApp t ts))
     applyPending :: Stack -> ExceptT KernelErr m Stack

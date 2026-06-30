@@ -105,10 +105,10 @@ lia 클로저가 그대로 **defer의 일관성 오라클**이 된다.
 
 1. **store 종류.** `Constraint` 에 `PresburgerConstraint rep freeOf` 추가
    (`Hol.BETA.Runtime`). 비교제약과 달리 formula라 단일 TermNode로는 부족하다.
-2. **gate.** `runPresburger` 는 phi를 store에 넣고 `storeSatisfiable ctx'`
-   (= `presburgerStoreSat` 로 전체 store 판정)이 참일 때만 성공. `arithOpCheck` 도
-   presburger 제약이 있으면 전체 store를 함께 검사(비교제약을 retained
-   presburger와 교차 검증).
+2. **gate.** `runPresburger` 는 phi를 store에 넣고 `storeSatisfiable hyps ctx'`
+   (= `presburgerStoreSat` 로 전체 store 판정, 산술 가정 포함 — §4 참조)이 참일 때만
+   성공. `arithOpCheck` 도 presburger 제약이 있으면 전체 store를 함께 검사(비교제약을
+   retained presburger와 교차 검증).
 3. **zonk.** `zonkLVar (PresburgerConstraint rep freeOf)` 가 freeOf 항을 재작성
    (`NPresburgerCheck` 의 rewrite와 같은 원리).
 4. **리포팅.** `Show Constraint` 가 `NPresburgerCheck` 렌더(`renderPresburger`)를
@@ -130,7 +130,36 @@ lia 클로저가 그대로 **defer의 일관성 오라클**이 된다.
 - `?- presburger "X = 5", X > 3.` → `yes`, 잔여 `X > 3` / `presburger "X = 5"` 보고
 - `?- p 6.` → `yes` 깨끗 / `?- sigma X\ p (s X).` → `yes` 깨끗(로컬 드롭)
 
-회귀 가드: `test/presburger/residual_presburger.hol`. 전체 smoke 71/71.
+회귀 가드: `test/presburger/residual_presburger.hol`.
+
+### 산술 가정 (`=>` 좌변)
+
+`c > 3 => Goal` 같은 **국소 함의의 좌변**에 산술 fact가 올 수 있다. 이는 Goal을
+증명하는 동안의 **가정(antecedent)** 이다. 이전에는 가정이 `_GivenHypos`(fact
+리스트)에만 들어가 presburger 추론에서 무시됐다(예: `pi C\ (C > 3 => presburger
+"C > 1")` 가 `∀C. C>1` 로 잘못 판정돼 `no`).
+
+이제 `runPresburger` 에 그 시점의 in-scope hyps(`[Fact]`)를 넘기고,
+`arithAssumptions` 가 비교/presburger fact를 추려 `ArithStore` 로 만든다.
+`closeStore` 의 body 는 **`(/\ assumptions) -> (/\ obligations)`** 이고, 양화는
+이전과 동일(∃/∀/scope순). 즉 목표 phi 는 `assumptions => phi` 의 충족가능성으로
+판정된다.
+
+가정의 **스코프**는 `=>` 안으로 한정되지만 retained 제약은 branch-global 이라,
+가정으로 정당화된 phi 를 그대로 retain 하면 `=>` 를 벗어난 성공 시점에 가정 없이
+재검사돼 모순으로 오판된다. 그래서 **가정이 phi 를 함의하면(`presburgerEntails`,
+즉 `(/\A) -> phi` 보편타당) phi 를 retain 하지 않고 방출(discharge)** 한다.
+eigenvariable-only phi 는 충족가능 ⟺ 함의이므로 항상 방출되어 이 문제가 없다.
+`arithOpCheck`(비교 goal)에도 같은 hyps 를 넘겨 가정을 반영한다.
+
+검증:
+
+- `?- pi C\ (C > 3 => presburger "C > 1").` → `yes` (이전 `no`)
+- `?- pi C\ (C > 3 => presburger "C > 5").` → `no` (C=4 반례)
+- `?- (1 > 3) => presburger "5 > 100".` → `yes` (거짓 antecedent → 공허)
+- `?- pi C\ (C > 3 => presburger "C + 1 > 4").` → `yes` (분해된 목표)
+
+회귀 가드: `test/presburger/assumption.hol`. 전체 smoke 72/72.
 
 ### 2b단계 — 완전 통일 (후속, 미구현)
 
@@ -157,15 +186,17 @@ lia 클로저가 그대로 **defer의 일관성 오라클**이 된다.
 
 ## 6. 코드 위치
 
-- `Hol.BETA.Arith` — `closeStore`/`presburgerStoreSat`(store 충족가능성, lia식
-  닫음), `presburgerValid`(잔여 드롭용 보편타당성), `renumFormulaDecomp`/
-  `renumTermDecomp`/`leafTerm`/`internAtom`/`leafFormula`/`lvOrderKey`/
-  `opaqueOrderKey`.
+- `Hol.BETA.Arith` — `ArithStore`(비교+presburger 번들), `closeStore`/
+  `presburgerStoreSat`(`assumptions => obligations` 충족가능성, lia식 닫음),
+  `presburgerEntails`(가정의 목표 함의 → 방출 판정), `presburgerValid`(잔여 드롭용
+  보편타당성), `conjoinStore`/`renumFormulaDecomp`/`renumTermDecomp`/`leafTerm`/
+  `internAtom`/`leafFormula`/`lvOrderKey`/`opaqueOrderKey`.
 - `Hol.BETA.Runtime` — `Constraint` 의 `PresburgerConstraint`, `runPresburger`
-  (retain+gate), `storeSatisfiable`/`hasPresburgerConstraint`, `arithOpCheck`
-  (교차 검사), `zonkLVar`/`Show Constraint` 의 presburger 케이스.
+  (hyps 받아 gate→entails-방출→retain), `arithAssumptions`(in-scope 가정 추출),
+  `storeSatisfiable`/`hasPresburgerConstraint`, `arithOpCheck`(가정+교차 검사),
+  `zonkLVar`/`Show Constraint` 의 presburger 케이스, dispatch 가 `_hyps` 전달.
 - `Hol.BETA.Main` — `groundDropped`(presburger 드롭: `presburgerValid` 또는
   로컬+충족) / `contradicts`(단독 불충족) / `hasNamedFreeVar`.
-- 테스트: `test/presburger/{quantifier_order,residual_presburger,outer_var,
-  quantified,solver_sanity,basic,consistency,residual,entailment_drop}.hol`,
-  `test/debug/presburger_view.hol`.
+- 테스트: `test/presburger/{quantifier_order,residual_presburger,assumption,
+  outer_var,quantified,solver_sanity,basic,consistency,residual,
+  entailment_drop}.hol`, `test/debug/presburger_view.hol`.

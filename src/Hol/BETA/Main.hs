@@ -438,7 +438,7 @@ runREPL mode program notationDB expansionDB
                                     -- it is valid, or it has no escaping (named) variable and was already
                                     -- discharged as satisfiable during proof search.
                                     | presburgerValid rep freeOf -> []
-                                    | not (any hasNamedFreeVar (Map.elems freeOf)) && presburgerStoreSat [] [(rep, freeOf)] -> []
+                                    | not (any hasNamedFreeVar (Map.elems freeOf)) && presburgerStoreSat ([], []) ([], [(rep, freeOf)]) -> []
                                     | otherwise -> pure it
                                 it -> pure it
                         hasNamedFreeVar :: TermNode -> Bool
@@ -478,7 +478,7 @@ runREPL mode program notationDB expansionDB
                                 (Left "ill", _) -> True
                                 (_, Left "ill") -> True
                                 _ -> False
-                        contradicts (PresburgerConstraint rep freeOf) = not (presburgerStoreSat [] [(rep, freeOf)])
+                        contradicts (PresburgerConstraint rep freeOf) = not (presburgerStoreSat ([], []) ([], [(rep, freeOf)]))
                         contradicts _ = False
                         askToRunMore :: IO RunMore
                         askToRunMore = do

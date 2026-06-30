@@ -1,0 +1,7 @@
+Hol --test
+test/presburger/assumption.hol
+?- pi C\ (C > 3 => presburger "C > 1").
+?- pi C\ (C > 3 => presburger "C > 5").
+?- (1 > 3) => presburger "5 > 100".
+?- pi C\ (C > 3 => presburger "C + 1 > 4").
+:q

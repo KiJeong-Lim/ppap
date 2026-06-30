@@ -7,7 +7,9 @@ module Hol.BETA.Arith
     , renumberFormula
     , entails
     , arithEntails
+    , ArithStore
     , presburgerStoreSat
+    , presburgerEntails
     , presburgerValid
     , installPresburger
     , installPresburgerWithEnv
@@ -651,14 +653,18 @@ data LeafSt
         , leafNext :: !MyVar
         }
 
+-- | An arithmetic store: comparison terms plus presburger formulas (each with
+--   its own freeOf linking the formula's free variables to HOL terms).
+type ArithStore = ([TermNode], [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)])
+
 -- | Close a constraint store into a single presburger formula under the
---   lia-style semantics.
+--   lia-style semantics, as @assumptions => obligations@.
 --
 --   Every free term is decomposed arithmetically (0/s/+/constant-scaling);
 --   irreducible leaves are atomized to one fresh variable each (the same term
---   always reuses the same variable, across all constraints). The conjunction
---   of the comparison hypotheses and presburger constraints is then closed with
---   one quantifier per atom:
+--   always reuses the same variable, across assumptions and obligations alike).
+--   The formula @(/\\ assumptions) -> (/\\ obligations)@ is then closed with one
+--   quantifier per atom:
 --
 --     * a logic variable (sigma\/query\/clause var) becomes existential,
 --     * an eigenvariable (from @pi@) or an opaque non-linear term becomes
@@ -667,14 +673,16 @@ data LeafSt
 --   Quantifiers are ordered by the atom's introduction order so the prenex
 --   respects the proof-state scoping (e.g. @sigma X\\ pi C\\@ closes to
 --   @exists X. forall C.@, but @pi C\\ sigma X\\@ to @forall C. exists X.@).
-closeStore :: [TermNode] -> [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)] -> MyPresburgerFormula
-closeStore hypTerms presForms = fullyClosed where
+--   Assumptions are the arithmetic facts in scope (the left-hand sides of @=>@);
+--   obligations are the deferred goal constraints and the goal itself.
+closeStore :: ArithStore -> ArithStore -> MyPresburgerFormula
+closeStore assumptions obligations = fullyClosed where
     (body0, finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
     build :: State LeafSt MyPresburgerFormulaRep
     build = do
-        phis <- mapM (\(rep, freeOf) -> renumFormulaDecomp (Map.map (rewrite NF) freeOf) Map.empty rep) presForms
-        hyps' <- mapM (leafFormula . rewrite NF) hypTerms
-        return (foldr ConF (ValF True) ([ h | Just h <- hyps' ] ++ phis))
+        antecedent <- conjoinStore assumptions
+        consequent <- conjoinStore obligations
+        return (ImpF antecedent consequent)
     bodyC :: MyPresburgerFormula
     bodyC = fmap compilePresburgerTerm body0
     orderedLeaves :: [(MyVar, (FreeQuant, FreeKey))]
@@ -690,11 +698,38 @@ closeStore hypTerms presForms = fullyClosed where
     fullyClosed :: MyPresburgerFormula
     fullyClosed = foldr AllF closedC leftover
 
--- | Is the constraint store satisfiable? Used both to gate a @presburger@ goal
---   (store conjoined with the new goal) and to prune inconsistent branches.
-presburgerStoreSat :: [TermNode] -> [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)] -> Bool
-presburgerStoreSat hypTerms presForms
-    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeStore hypTerms presForms)) == Just True
+-- | Is the constraint store satisfiable under its assumptions? Used both to
+--   gate a @presburger@ goal (store conjoined with the new goal) and to prune
+--   inconsistent branches.
+presburgerStoreSat :: ArithStore -> ArithStore -> Bool
+presburgerStoreSat assumptions obligations
+    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeStore assumptions obligations)) == Just True
+
+-- | Lift a store (comparisons + presburger formulas) into one conjunction,
+--   atomizing free leaves into the shared 'LeafSt'.
+conjoinStore :: ArithStore -> State LeafSt MyPresburgerFormulaRep
+conjoinStore (cmpTerms, presForms) = do
+    cmps <- mapM (leafFormula . rewrite NF) cmpTerms
+    phis <- mapM (\(rep, freeOf) -> renumFormulaDecomp (Map.map (rewrite NF) freeOf) Map.empty rep) presForms
+    return (foldr ConF (ValF True) ([ c | Just c <- cmps ] ++ phis))
+
+-- | Do the assumptions entail the goal, i.e. is @(/\\ assumptions) -> phi@ valid
+--   (true for all valuations)? A goal entailed by the in-scope @=>@ assumptions
+--   is fully discharged and need not be retained as a residual.
+presburgerEntails :: ArithStore -> (MyPresburgerFormulaRep, Map.Map MyVar TermNode) -> Bool
+presburgerEntails assumptions (rep, freeOf)
+    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
+    where
+        (body0, _finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
+        build :: State LeafSt MyPresburgerFormulaRep
+        build = do
+            antecedent <- conjoinStore assumptions
+            phi <- renumFormulaDecomp (Map.map (rewrite NF) freeOf) Map.empty rep
+            return (ImpF antecedent phi)
+        bodyC :: MyPresburgerFormula
+        bodyC = fmap compilePresburgerTerm body0
+        validClosed :: MyPresburgerFormula
+        validClosed = foldr AllF bodyC (Set.toAscList (freeMyVarsF bodyC))
 
 -- | A retained presburger constraint is redundant (carries no information) when
 --   its universal closure already holds; such a residual can be dropped.
