@@ -7,7 +7,8 @@ module Hol.BETA.Arith
     , renumberFormula
     , entails
     , arithEntails
-    , presburgerGoalHolds
+    , presburgerStoreSat
+    , presburgerValid
     , installPresburger
     , installPresburgerWithEnv
     ) where
@@ -650,12 +651,14 @@ data LeafSt
         , leafNext :: !MyVar
         }
 
--- | Decide a @presburger@ goal under the lia-style semantics.
+-- | Close a constraint store into a single presburger formula under the
+--   lia-style semantics.
 --
 --   Every free term is decomposed arithmetically (0/s/+/constant-scaling);
 --   irreducible leaves are atomized to one fresh variable each (the same term
---   always reuses the same variable). The formula is then closed with one
---   quantifier per atom:
+--   always reuses the same variable, across all constraints). The conjunction
+--   of the comparison hypotheses and presburger constraints is then closed with
+--   one quantifier per atom:
 --
 --     * a logic variable (sigma\/query\/clause var) becomes existential,
 --     * an eigenvariable (from @pi@) or an opaque non-linear term becomes
@@ -664,60 +667,76 @@ data LeafSt
 --   Quantifiers are ordered by the atom's introduction order so the prenex
 --   respects the proof-state scoping (e.g. @sigma X\\ pi C\\@ closes to
 --   @exists X. forall C.@, but @pi C\\ sigma X\\@ to @forall C. exists X.@).
---   The body is @(/\\ hyps) /\\ phi@: the deferred arithmetic constraints
---   conjoined with the goal.
-presburgerGoalHolds :: [TermNode] -> Map.Map MyVar TermNode -> MyPresburgerFormulaRep -> Bool
-presburgerGoalHolds hypTerms freeOf rep
-    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman fullyClosed) == Just True
+closeStore :: [TermNode] -> [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)] -> MyPresburgerFormula
+closeStore hypTerms presForms = fullyClosed where
+    (body0, finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
+    build :: State LeafSt MyPresburgerFormulaRep
+    build = do
+        phis <- mapM (\(rep, freeOf) -> renumFormulaDecomp (Map.map (rewrite NF) freeOf) Map.empty rep) presForms
+        hyps' <- mapM (leafFormula . rewrite NF) hypTerms
+        return (foldr ConF (ValF True) ([ h | Just h <- hyps' ] ++ phis))
+    bodyC :: MyPresburgerFormula
+    bodyC = fmap compilePresburgerTerm body0
+    orderedLeaves :: [(MyVar, (FreeQuant, FreeKey))]
+    orderedLeaves = List.sortBy (\p q -> compare (snd (snd p)) (snd (snd q))) (Map.toList (leafTable finalSt))
+    closedC :: MyPresburgerFormula
+    closedC = foldr wrap bodyC orderedLeaves where
+        wrap (v, (FQAll, _)) acc = AllF v acc
+        wrap (v, (FQExs, _)) acc = ExsF v acc
+    -- Safety net: any stray free variable (should not arise for well-formed
+    -- input) is universally closed, matching 'entails'.
+    leftover :: [MyVar]
+    leftover = Set.toAscList (freeMyVarsF bodyC `Set.difference` Map.keysSet (leafTable finalSt))
+    fullyClosed :: MyPresburgerFormula
+    fullyClosed = foldr AllF closedC leftover
+
+-- | Is the constraint store satisfiable? Used both to gate a @presburger@ goal
+--   (store conjoined with the new goal) and to prune inconsistent branches.
+presburgerStoreSat :: [TermNode] -> [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)] -> Bool
+presburgerStoreSat hypTerms presForms
+    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeStore hypTerms presForms)) == Just True
+
+-- | A retained presburger constraint is redundant (carries no information) when
+--   its universal closure already holds; such a residual can be dropped.
+presburgerValid :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> Bool
+presburgerValid rep freeOf
+    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
     where
-        (body0, finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
-        build :: State LeafSt MyPresburgerFormulaRep
-        build = do
-            phi' <- renumF Map.empty rep
-            hyps' <- mapM leafFormula hypTerms
-            let hypConj = foldr ConF (ValF True) [ h | Just h <- hyps' ]
-            return (ConF hypConj phi')
+        (body0, _finalSt) = runState (renumFormulaDecomp (Map.map (rewrite NF) freeOf) Map.empty rep) (LeafSt Map.empty Map.empty theMinNumOfMyVar)
         bodyC :: MyPresburgerFormula
         bodyC = fmap compilePresburgerTerm body0
-        orderedLeaves :: [(MyVar, (FreeQuant, FreeKey))]
-        orderedLeaves = List.sortBy (\p q -> compare (snd (snd p)) (snd (snd q))) (Map.toList (leafTable finalSt))
-        closedC :: MyPresburgerFormula
-        closedC = foldr wrap bodyC orderedLeaves where
-            wrap (v, (FQAll, _)) acc = AllF v acc
-            wrap (v, (FQExs, _)) acc = ExsF v acc
-        -- Safety net: any stray free variable (should not arise for well-formed
-        -- input) is universally closed, matching 'entails'.
-        leftover :: [MyVar]
-        leftover = Set.toAscList (freeMyVarsF bodyC `Set.difference` Map.keysSet (leafTable finalSt))
-        fullyClosed :: MyPresburgerFormula
-        fullyClosed = foldr AllF closedC leftover
+        validClosed :: MyPresburgerFormula
+        validClosed = foldr AllF bodyC (Set.toAscList (freeMyVarsF bodyC))
 
-        renumF :: Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> State LeafSt MyPresburgerFormulaRep
-        renumF env f = case f of
-            ValF b -> return (ValF b)
-            EqnF a b -> EqnF <$> renumT env a <*> renumT env b
-            LtnF a b -> LtnF <$> renumT env a <*> renumT env b
-            LeqF a b -> LeqF <$> renumT env a <*> renumT env b
-            GtnF a b -> GtnF <$> renumT env a <*> renumT env b
-            ModF a r b -> (\a' b' -> ModF a' r b') <$> renumT env a <*> renumT env b
-            NegF f1 -> NegF <$> renumF env f1
-            DisF f1 f2 -> DisF <$> renumF env f1 <*> renumF env f2
-            ConF f1 f2 -> ConF <$> renumF env f1 <*> renumF env f2
-            ImpF f1 f2 -> ImpF <$> renumF env f1 <*> renumF env f2
-            IffF f1 f2 -> IffF <$> renumF env f1 <*> renumF env f2
-            AllF y f1 -> do { y' <- freshBound; AllF y' <$> renumF (Map.insert y y' env) f1 }
-            ExsF y f1 -> do { y' <- freshBound; ExsF y' <$> renumF (Map.insert y y' env) f1 }
+-- | Renumber a parsed formula, α-renaming its own binders and splicing each
+--   free reference's decomposed term (via 'leafTerm') in place.
+renumFormulaDecomp :: Map.Map MyVar TermNode -> Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> State LeafSt MyPresburgerFormulaRep
+renumFormulaDecomp freeOf = go where
+    go env f = case f of
+        ValF b -> return (ValF b)
+        EqnF a b -> EqnF <$> renumTermDecomp freeOf env a <*> renumTermDecomp freeOf env b
+        LtnF a b -> LtnF <$> renumTermDecomp freeOf env a <*> renumTermDecomp freeOf env b
+        LeqF a b -> LeqF <$> renumTermDecomp freeOf env a <*> renumTermDecomp freeOf env b
+        GtnF a b -> GtnF <$> renumTermDecomp freeOf env a <*> renumTermDecomp freeOf env b
+        ModF a r b -> (\a' b' -> ModF a' r b') <$> renumTermDecomp freeOf env a <*> renumTermDecomp freeOf env b
+        NegF f1 -> NegF <$> go env f1
+        DisF f1 f2 -> DisF <$> go env f1 <*> go env f2
+        ConF f1 f2 -> ConF <$> go env f1 <*> go env f2
+        ImpF f1 f2 -> ImpF <$> go env f1 <*> go env f2
+        IffF f1 f2 -> IffF <$> go env f1 <*> go env f2
+        AllF y f1 -> do { y' <- freshBound; AllF y' <$> go (Map.insert y y' env) f1 }
+        ExsF y f1 -> do { y' <- freshBound; ExsF y' <$> go (Map.insert y y' env) f1 }
 
-        renumT :: Map.Map MyVar MyVar -> PresburgerTermRep -> State LeafSt PresburgerTermRep
-        renumT env t = case t of
-            IVar v -> case Map.lookup v env of
-                Just v' -> return (IVar v')
-                Nothing -> case Map.lookup v freeOf of
-                    Just term -> leafTerm term
-                    Nothing -> IVar <$> freshBound
-            Zero -> return Zero
-            Succ t1 -> Succ <$> renumT env t1
-            Plus t1 t2 -> Plus <$> renumT env t1 <*> renumT env t2
+renumTermDecomp :: Map.Map MyVar TermNode -> Map.Map MyVar MyVar -> PresburgerTermRep -> State LeafSt PresburgerTermRep
+renumTermDecomp freeOf env t = case t of
+    IVar v -> case Map.lookup v env of
+        Just v' -> return (IVar v')
+        Nothing -> case Map.lookup v freeOf of
+            Just term -> leafTerm term
+            Nothing -> IVar <$> freshBound
+    Zero -> return Zero
+    Succ t1 -> Succ <$> renumTermDecomp freeOf env t1
+    Plus t1 t2 -> Plus <$> renumTermDecomp freeOf env t1 <*> renumTermDecomp freeOf env t2
 
 -- | Allocate a fresh bound variable (for a quantifier the source string itself
 --   introduced); it is not recorded as a closable free atom.

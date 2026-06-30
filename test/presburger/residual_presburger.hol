@@ -1,0 +1,11 @@
+% Retained presburger constraints (BETA spec section 2.5).
+% A `presburger phi` goal defers phi as a residual constraint and is
+% carried along, so several presburger checks (and later comparisons)
+% are decided jointly, not one-shot in isolation. Without retention the
+% first two queries would each pass their checks independently and wrongly
+% report yes.
+%
+% Expected:
+%   ?- presburger "X > 10", presburger "X < 8".  => no.  (jointly unsat)
+%   ?- presburger "X = 5", X > 7.                => no.  (comparison kills it)
+%   ?- presburger "X = 5", X > 3.                => yes, residual kept.

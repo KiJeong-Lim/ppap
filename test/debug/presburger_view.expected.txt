@@ -47,7 +47,9 @@ test.debug.presburger_view> Press the enter key to go to next state:
     + progressings = []
     + context = Context
         { _substitution = []
-        , _constraints = []
+        , _constraints = 
+            [ presburger "exists v1, X + v1 = 6"
+            ]
         , _typing = 
             [ ?V_65 : ?TV_63
             ]

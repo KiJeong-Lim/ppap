@@ -1,6 +1,6 @@
 module Hol.BETA.Main where
 
-import Hol.BETA.Arith (arithEntails, installPresburgerWithEnv)
+import Hol.BETA.Arith (arithEntails, installPresburgerWithEnv, presburgerStoreSat, presburgerValid)
 import Hol.BETA.Compiler
 import Hol.BETA.Constant
 import Hol.BETA.Debugger
@@ -433,7 +433,19 @@ runREPL mode program notationDB expansionDB
                                 EvalutionConstraint lhs rhs -> case (evaluateA lhs, evaluateA rhs) of
                                     (Right x, Right y) -> if x == y then [] else pure it
                                     _ -> pure it
+                                PresburgerConstraint rep freeOf
+                                    -- Drop a retained presburger constraint that carries no information:
+                                    -- it is valid, or it has no escaping (named) variable and was already
+                                    -- discharged as satisfiable during proof search.
+                                    | presburgerValid rep freeOf -> []
+                                    | not (any hasNamedFreeVar (Map.elems freeOf)) && presburgerStoreSat [] [(rep, freeOf)] -> []
+                                    | otherwise -> pure it
                                 it -> pure it
+                        hasNamedFreeVar :: TermNode -> Bool
+                        hasNamedFreeVar t = any isNamedLVar (Set.toList (getLVars t))
+                        isNamedLVar :: LogicVar -> Bool
+                        isNamedLVar (LV_Named _) = True
+                        isNamedLVar _ = False
                         entailmentDropped :: [Constraint]
                         entailmentDropped = go [] groundDropped where
                             go kept [] = reverse kept
@@ -466,6 +478,7 @@ runREPL mode program notationDB expansionDB
                                 (Left "ill", _) -> True
                                 (_, Left "ill") -> True
                                 _ -> False
+                        contradicts (PresburgerConstraint rep freeOf) = not (presburgerStoreSat [] [(rep, freeOf)])
                         contradicts _ = False
                         askToRunMore :: IO RunMore
                         askToRunMore = do

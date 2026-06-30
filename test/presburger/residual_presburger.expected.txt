@@ -1,0 +1,20 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.presburger.residual_presburger ( test/presburger/residual_presburger.hol, interpreted )
+test.presburger.residual_presburger> Ok, one module loaded.
+test.presburger.residual_presburger> 
+test.presburger.residual_presburger> no.
+test.presburger.residual_presburger> 
+test.presburger.residual_presburger> no.
+test.presburger.residual_presburger> 
+test.presburger.residual_presburger> The remaining constraints are:
+test.presburger.residual_presburger> X > 3
+test.presburger.residual_presburger> presburger "X = 5"
+test.presburger.residual_presburger> The binding is:
+test.presburger.residual_presburger> Find more solutions? [Y/n] 
+test.presburger.residual_presburger> yes.
+test.presburger.residual_presburger> 
+Hol >>= quit

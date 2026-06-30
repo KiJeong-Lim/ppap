@@ -1,0 +1,7 @@
+Hol --test
+test/presburger/residual_presburger.hol
+?- presburger "X > 10", presburger "X < 8".
+?- presburger "X = 5", X > 7.
+?- presburger "X = 5", X > 3.
+n
+:q

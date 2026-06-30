@@ -48,6 +48,7 @@ data Constraint
     = DisagreementConstraint Disagreement
     | EvalutionConstraint TermNode TermNode
     | ArithmeticConstraint !(TermNode)
+    | PresburgerConstraint !MyPresburgerFormulaRep !(Map.Map MyVar TermNode)
     deriving (Eq, Ord)
 
 data Cell
@@ -256,6 +257,8 @@ instance ZonkLVar Constraint where
         | otherwise = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
     zonkLVar theta (ArithmeticConstraint arith)
         = ArithmeticConstraint (bindVars theta arith)
+    zonkLVar theta (PresburgerConstraint rep freeOf)
+        = PresburgerConstraint rep (Map.map (bindVars theta) freeOf)
 
 instance ZonkLVar Cell where
     zonkLVar theta (Cell facts hyps level goal call_id)
@@ -265,6 +268,7 @@ instance Show Constraint where
     showsPrec prec (DisagreementConstraint eqn) = showsPrec prec eqn
     showsPrec prec (EvalutionConstraint lhs rhs) = showsPrec prec lhs . strstr " is " . showsPrec prec rhs
     showsPrec prec (ArithmeticConstraint arith) = showsPrec prec arith
+    showsPrec prec (PresburgerConstraint rep freeOf) = showsPrec prec (NPresburgerCheck rep freeOf Nothing)
 
 mkCell :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Goal -> CallId -> Cell
 mkCell facts hyps level goal call_id = goal `seq` Cell { _GivenFacts = facts, _GivenHypos = hyps, _ScopeLevel = level, _WantedGoal = goal, _CellCallId = call_id }
@@ -673,16 +677,31 @@ runDebugger loc_str ctx facts hyps level call_id cells stack = do
     liftIO $ putStrLn ("*** debugger called with " ++ shows loc_str "")
     return ((ctx, cells) : stack)
 
+-- | A @presburger phi@ goal retains @phi@ as a deferred constraint and succeeds
+--   iff the whole store (existing constraints conjoined with @phi@) stays
+--   satisfiable. The retained constraint is carried along, re-checked as
+--   bindings accumulate, and reported as a residual at query success.
 runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> Context -> [Cell] -> Stack -> Stack
-runPresburger rep freeOf ctx cells stack = if presburgerGoalHolds hypTerms freeOfZonked rep then (ctx, cells) : stack else stack where
-    freeOfZonked :: Map.Map MyVar TermNode
-    freeOfZonked = Map.map (rewrite NF . bindVars (_TotalVarBinding ctx)) freeOf
+runPresburger rep freeOf ctx cells stack
+    | storeSatisfiable ctx' = (ctx', cells) : stack
+    | otherwise = stack
+    where
+        ctx' :: Context
+        ctx' = ctx { _LeftConstraints = PresburgerConstraint rep freeOf : _LeftConstraints ctx }
 
+hasPresburgerConstraint :: Context -> Bool
+hasPresburgerConstraint ctx = not (null [ () | PresburgerConstraint _ _ <- _LeftConstraints ctx ])
+
+-- | Satisfiability of the whole arithmetic store (comparison constraints plus
+--   retained presburger constraints), under the current variable binding.
+storeSatisfiable :: Context -> Bool
+storeSatisfiable ctx = presburgerStoreSat hypTerms presForms where
+    bound :: HasLVar a => a -> a
+    bound = bindVars (_TotalVarBinding ctx)
     hypTerms :: [TermNode]
-    hypTerms =
-        [ rewrite NF (bindVars (_TotalVarBinding ctx) t)
-        | ArithmeticConstraint t <- _LeftConstraints ctx
-        ]
+    hypTerms = [ bound t | ArithmeticConstraint t <- _LeftConstraints ctx ]
+    presForms :: [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)]
+    presForms = [ (rep, Map.map bound freeOf) | PresburgerConstraint rep freeOf <- _LeftConstraints ctx ]
 
 isInconsistent :: [TermNode] -> Bool
 isInconsistent arithTerms
@@ -721,7 +740,7 @@ runTransition env free_lvars = go where
         = case liftM2 op (evaluateA (args !! 0)) (evaluateA (args !! 1)) of
             Left "non" -> case liftConstraint candidate of
                 Nothing -> throwE (UnsupportedArithmeticConstraint candidate)
-                Just _ -> if isInconsistent arithTerms then failure else success (newCtx, cells)
+                Just _ -> if isInconsistent arithTerms || (hasPresburgerConstraint newCtx && not (storeSatisfiable newCtx)) then failure else success (newCtx, cells)
             Right okay -> if okay then success (ctx, cells) else failure
             _ -> failure
         where
