@@ -18,7 +18,7 @@ prettyjson js_input = showsjson 0 0 js_input "" where
     showsobject :: Precedence -> Indentation -> ObjectRep -> ShowS
     showsobject prec space [] = strstr "{}"
     showsobject prec space ((field1, val1) : elements) = strcat
-        [ (if prec > 0 then nl . pindent space else id) . strstr "{ " . addField field1. showsjson 1 (tabjson space) val1
+        [ (if prec > 0 then nl . pindent space else id) . strstr "{ " . addField field1 . showsjson 1 (tabjson space) val1
         , strcat $ map (uncurry $ \field -> \val -> nl . pindent space . strstr ", " . addField field . showsjson 1 (tabjson space) val) elements
         , nl . pindent space . strstr "}"
         ]
