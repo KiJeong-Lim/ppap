@@ -1,4 +1,15 @@
-module LGS.Alpha1 where
+-- LGS.Alpha2 is LGS.Alpha1 with support for non-ASCII input in the *generated* lexer.
+-- In Alpha1, the wildcard `.' (`CsUniv') only ever stood for a fixed table of ASCII
+-- characters, so a generated lexer could never match "." against e.g. Korean text.
+-- Enumerating the whole Unicode range instead is not an option, since every character
+-- of the alphabet is emitted as a literal transition-table entry in the generated
+-- source file. So here, the alphabet used to build the DFA is exactly the set of
+-- characters that are actually written down in the `.lgs' spec, plus one extra symbol
+-- `AnyChar' standing for "every other character" (`.' expands to that alphabet plus
+-- `AnyChar'). The generated lexer classifies each input character against the (small,
+-- literally embedded) explicit alphabet and falls back to `AnyChar' otherwise, so any
+-- non-ASCII character not mentioned in the spec is accepted wherever "." is accepted.
+module LGS.Alpha2 where
 
 import Control.Applicative
 import Control.Monad
@@ -52,11 +63,19 @@ data RegEx
     | ReCharSet CharSet
     deriving (Eq, Show)
 
+-- A symbol of the alphabet that the NFA/DFA are actually built over: either one
+-- specific character, or `AnyChar', the catch-all for every character that is not
+-- individually tracked (see the module comment above).
+data DFAChar
+    = LitChar Char
+    | AnyChar
+    deriving (Eq, Ord, Show)
+
 data NFA
     = NFA
         { getInitialQOfNFA :: !(ParserS)
         , getFinalQsOfNFA :: !(Map.Map ParserS ExitNumber)
-        , getTransitionsOfNFA :: !(Map.Map (ParserS, Maybe Char) (Set.Set ParserS))
+        , getTransitionsOfNFA :: !(Map.Map (ParserS, Maybe DFAChar) (Set.Set ParserS))
         , getMarkedQsOfNFA :: !(Map.Map ParserS (Bool, ParserS))
         , getPseudoFinalsOfNFA :: !(Map.Map ExitNumber ParserS)
         }
@@ -66,7 +85,7 @@ data DFA
     = DFA
         { getInitialQOfDFA :: !(ParserS)
         , getFinalQsOfDFA :: !(Map.Map ParserS ExitNumber)
-        , getTransitionsOfDFA :: !(Map.Map (ParserS, Char) ParserS)
+        , getTransitionsOfDFA :: !(Map.Map (ParserS, DFAChar) ParserS)
         , getMarkedQsOfDFA :: !(Map.Map ParserS (Bool, Set.Set ParserS))
         , getPseudoFinalsOfDFA :: !(Set.Set ParserS)
         }
@@ -251,35 +270,62 @@ readBlock = mconcat
             }
     ]
 
-theCsUniv :: Set.Set Char
-theCsUniv = Set.fromList (['a' .. 'z'] ++ ['A' .. 'Z'] ++ " `~0123456789!@#$%^&*()-=_+[]\\{}|;\':\"\n,./<>?")
+-- The alphabet the DFA is built over: every character that is written down somewhere
+-- in the spec (as a literal char, a range bound, or inside a quoted word), across every
+-- `\xmatch' rule and its right context. `CsUniv' (".") itself contributes nothing here
+-- -- it is resolved against this alphabet (plus `AnyChar') by `runCharSet' below.
+computeAlphabet :: [(RegEx, RightContext)] -> Set.Set Char
+computeAlphabet xmatch_defns = Set.unions (concatMap collectPair xmatch_defns) where
+    collectPair :: (RegEx, RightContext) -> [Set.Set Char]
+    collectPair (regex1, right_ctx) = collectRE regex1 : case right_ctx of
+        NilRCtx -> []
+        PosRCtx regex2 -> [collectRE regex2]
+        OddRCtx regex2 -> [collectRE regex2]
+        NegRCtx regex2 -> [collectRE regex2]
+    collectRE :: RegEx -> Set.Set Char
+    collectRE (ReVar _) = Set.empty
+    collectRE (ReZero) = Set.empty
+    collectRE (regex1 `ReUnion` regex2) = collectRE regex1 `Set.union` collectRE regex2
+    collectRE (ReWord str) = Set.fromList str
+    collectRE (regex1 `ReConcat` regex2) = collectRE regex1 `Set.union` collectRE regex2
+    collectRE (ReStar regex1) = collectRE regex1
+    collectRE (ReDagger regex1) = collectRE regex1
+    collectRE (ReQuest regex1) = collectRE regex1
+    collectRE (ReCharSet chs) = collectCS chs
+    collectCS :: CharSet -> Set.Set Char
+    collectCS (CsVar _) = Set.empty
+    collectCS (CsSingle ch) = Set.singleton ch
+    collectCS (CsEnum ch1 ch2) = Set.fromAscList [ch1 .. ch2]
+    collectCS (chs1 `CsUnion` chs2) = collectCS chs1 `Set.union` collectCS chs2
+    collectCS (chs1 `CsDiff` chs2) = collectCS chs1 `Set.union` collectCS chs2
+    collectCS (CsUniv) = Set.empty
 
-runCharSet :: CharSet -> Set.Set Char
-runCharSet = go where
-    go :: CharSet -> Set.Set Char
-    go (CsSingle ch) = Set.singleton ch
-    go (CsEnum ch1 ch2) = Set.fromList [ch1 .. ch2]
+runCharSet :: Set.Set Char -> CharSet -> Set.Set DFAChar
+runCharSet alphabet = go where
+    go :: CharSet -> Set.Set DFAChar
+    go (CsSingle ch) = Set.singleton (LitChar ch)
+    go (CsEnum ch1 ch2) = Set.fromAscList [ LitChar ch | ch <- [ch1 .. ch2] ]
     go (chs1 `CsUnion` chs2) = go chs1 `Set.union` go chs2
     go (chs1 `CsDiff` chs2) = go chs1 `Set.difference` go chs2
-    go (CsUniv) = theCsUniv
+    go (CsUniv) = Set.insert AnyChar (Set.map LitChar alphabet)
 
 mkstrict :: (a, b) -> (a, b)
 mkstrict pair = fst pair `seq` snd pair `seq` pair
 
-getUnitedNFAfromREs :: [(RegEx, RightContext)] -> NFA
-getUnitedNFAfromREs = runIdentity . go where
-    getNewQ :: StateT (ParserS, Map.Map (ParserS, Maybe Char) (Set.Set ParserS)) Identity ParserS
+getUnitedNFAfromREs :: Set.Set Char -> [(RegEx, RightContext)] -> NFA
+getUnitedNFAfromREs alphabet = runIdentity . go where
+    getNewQ :: StateT (ParserS, Map.Map (ParserS, Maybe DFAChar) (Set.Set ParserS)) Identity ParserS
     getNewQ = do
         (maximumOfQs, deltas) <- get
         put (maximumOfQs + 1, deltas)
         return maximumOfQs
-    drawTransition :: ((ParserS, Maybe Char), ParserS) -> StateT (ParserS, Map.Map (ParserS, Maybe Char) (Set.Set ParserS)) Identity ()
+    drawTransition :: ((ParserS, Maybe DFAChar), ParserS) -> StateT (ParserS, Map.Map (ParserS, Maybe DFAChar) (Set.Set ParserS)) Identity ()
     drawTransition (key, q) = do
         (maximumOfQs, deltas) <- get
         case Map.lookup key deltas of
             Nothing -> put (maximumOfQs, Map.insert key (Set.singleton q) deltas)
             Just qs -> put (maximumOfQs, Map.update (const (Just (Set.insert q qs))) key deltas)
-    loop :: RegEx -> StateT (ParserS, Map.Map (ParserS, Maybe Char) (Set.Set ParserS)) Identity (ParserS, ParserS)
+    loop :: RegEx -> StateT (ParserS, Map.Map (ParserS, Maybe DFAChar) (Set.Set ParserS)) Identity (ParserS, ParserS)
     loop (ReUnion regex1 regex2) = do
         (qi1, qf1) <- loop regex1
         (qi2, qf2) <- loop regex2
@@ -311,12 +357,12 @@ getUnitedNFAfromREs = runIdentity . go where
     loop (ReWord str) = do
         let n = length str
         qs <- mapM (\_ -> getNewQ) [0, 1 .. n]
-        mapM drawTransition (zip (zip (take n qs) (map Just str)) (drop 1 qs))
+        mapM drawTransition (zip (zip (take n qs) (map (Just . LitChar) str)) (drop 1 qs))
         return (qs !! 0, qs !! n)
     loop (ReCharSet chs) = do
         qi <- getNewQ
         qf <- getNewQ
-        mapM drawTransition (zip (zip (repeat qi) (map Just (Set.toList (runCharSet chs)))) (repeat qf))
+        mapM drawTransition (zip (zip (repeat qi) (map Just (Set.toList (runCharSet alphabet chs)))) (repeat qf))
         return (qi, qf)
     loop (ReDagger regex1) = do
         (qi1, qf1) <- loop regex1
@@ -386,8 +432,10 @@ getUnitedNFAfromREs = runIdentity . go where
             , getPseudoFinalsOfNFA = Map.fromList [ my_item | Just my_item <- map (fst . snd) pragments ]
             }
 
-makeDFAfromNFA :: NFA -> DFA
-makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result where
+makeDFAfromNFA :: Set.Set Char -> NFA -> DFA
+makeDFAfromNFA alphabet (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result where
+    theSymAlphabet :: Set.Set DFAChar
+    theSymAlphabet = Set.insert AnyChar (Set.map LitChar alphabet)
     eClosure :: Set.Set ParserS -> Set.Set ParserS
     eClosure qs = if qs == qs' then qs' else eClosure qs' where
         qs' :: Set.Set ParserS
@@ -397,29 +445,29 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
                 Just ps -> ps
             | q <- Set.toList qs
             ]
-    getNexts :: Set.Set ParserS -> Char -> Set.Set ParserS
-    getNexts qs ch = Set.unions
-        [ case Map.lookup (q, Just ch) deltas of
+    getNexts :: Set.Set ParserS -> DFAChar -> Set.Set ParserS
+    getNexts qs sym = Set.unions
+        [ case Map.lookup (q, Just sym) deltas of
             Nothing -> Set.empty
             Just ps -> ps
         | q <- Set.toList qs
         ]
-    drawGraph :: Map.Map (Set.Set ParserS) ParserS -> [((Set.Set ParserS, ParserS), Char)] -> StateT (Map.Map (ParserS, Char) ParserS) Identity (Map.Map (Set.Set ParserS) ParserS)
+    drawGraph :: Map.Map (Set.Set ParserS) ParserS -> [((Set.Set ParserS, ParserS), DFAChar)] -> StateT (Map.Map (ParserS, DFAChar) ParserS) Identity (Map.Map (Set.Set ParserS) ParserS)
     drawGraph mapOldToNew [] = return mapOldToNew
-    drawGraph mapOldToNew (((qs, q'), ch) : triples) = do
-        let ps = eClosure (getNexts qs ch)
+    drawGraph mapOldToNew (((qs, q'), sym) : triples) = do
+        let ps = eClosure (getNexts qs sym)
         deltas' <- get
         case Map.lookup ps mapOldToNew of
             Nothing -> do
                 let p' = Map.size mapOldToNew
-                put (Map.insert (q', ch) p' deltas')
+                put (Map.insert (q', sym) p' deltas')
                 drawGraph (Map.insert ps p' mapOldToNew) triples
             Just p' -> do
-                put (Map.insert (q', ch) p' deltas')
+                put (Map.insert (q', sym) p' deltas')
                 drawGraph mapOldToNew triples
-    loop :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, Char) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
+    loop :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, DFAChar) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
     loop mapOldToNew = do
-        mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theCsUniv)
+        mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theSymAlphabet)
         let addItem (qf, label) = if and [ maybe True (\q -> not (q `Set.member` qs)) (Map.lookup label pseudo_finals) | (qs, p) <- Map.toList mapOldToNew', p == qf ] then Map.alter (Just . maybe label (min label)) qf else id
         if mapOldToNew == mapOldToNew' then
             return
@@ -441,7 +489,7 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
             { getInitialQOfDFA = new_q0
             , getFinalQsOfDFA = new_qfs
             , getTransitionsOfDFA = new_deltas
-            , getMarkedQsOfDFA = Map.fromList
+            , getMarkedQsOfDFA = Map.fromAscList
                 [ mkstrict
                     ( i
                     , mkstrict
@@ -475,8 +523,8 @@ makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
         , Set.unions (map snd (Map.elems markeds))
         , pseudo_finals
         ]
-    theCharSet :: Set.Set Char
-    theCharSet = Set.map snd (Map.keysSet deltas)
+    theSymSet :: Set.Set DFAChar
+    theSymSet = Set.map snd (Map.keysSet deltas)
     initialKlasses :: [Set.Set ParserS]
     initialKlasses = filter (not . Set.null) theList where
         theList :: [Set.Set ParserS]
@@ -491,11 +539,11 @@ makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
         splitKlasses :: [Set.Set ParserS] -> [Set.Set ParserS] -> [Set.Set ParserS]
         splitKlasses result stack
             | null stack = result
-            | otherwise = uncurry splitKlasses (Set.foldr (uncurry . loop1 (head stack)) (result, tail stack) theCharSet)
-        loop1 :: Set.Set ParserS -> Char -> [Set.Set ParserS] -> [Set.Set ParserS] -> ([Set.Set ParserS], [Set.Set ParserS])
-        loop1 top ch = foldr (>=>) return . map loop2 where
+            | otherwise = uncurry splitKlasses (Set.foldr (uncurry . loop1 (head stack)) (result, tail stack) theSymSet)
+        loop1 :: Set.Set ParserS -> DFAChar -> [Set.Set ParserS] -> [Set.Set ParserS] -> ([Set.Set ParserS], [Set.Set ParserS])
+        loop1 top sym = foldr (>=>) return . map loop2 where
             focused :: Set.Set ParserS
-            focused = Set.filter (\q -> maybe False (\p -> p `Set.member` top) (Map.lookup (q, ch) deltas)) theSetOfAllStates
+            focused = Set.filter (\q -> maybe False (\p -> p `Set.member` top) (Map.lookup (q, sym) deltas)) theSetOfAllStates
             loop2 :: Set.Set ParserS -> [Set.Set ParserS] -> ([Set.Set ParserS], [Set.Set ParserS])
             loop2 klass stack
                 | Set.null myintersection = ([klass], stack)
@@ -525,8 +573,8 @@ makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
             | (qf, label) <- Map.toList qfs
             ]
         , getTransitionsOfDFA = Map.fromList
-            [ ((convert q, ch), convert p)
-            | ((q, ch), p) <- Map.toList deltas
+            [ ((convert q, sym), convert p)
+            | ((q, sym), p) <- Map.toList deltas
             ]
         , getMarkedQsOfDFA = Map.map (fmap (Set.map convert)) markeds
         , getPseudoFinalsOfDFA = Set.map convert pseudo_finals
@@ -535,7 +583,7 @@ makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
 deleteDeadStates :: DFA -> DFA
 deleteDeadStates (DFA q0 qfs deltas markeds pseudo_finals) = result where
     edges :: Map.Map ParserS (Set.Set ParserS)
-    edges = foldr go Map.empty [ (p, q) | ((q, ch), p) <- Map.toList deltas ] where
+    edges = foldr go Map.empty [ (p, q) | ((q, sym), p) <- Map.toList deltas ] where
         go :: (ParserS, ParserS) -> Map.Map ParserS (Set.Set ParserS) -> Map.Map ParserS (Set.Set ParserS)
         go (p, q) = Map.alter (Just . maybe (Set.singleton q) (Set.insert q)) p
     winners :: Set.Set ParserS
@@ -547,9 +595,9 @@ deleteDeadStates (DFA q0 qfs deltas markeds pseudo_finals) = result where
     result = DFA
         { getInitialQOfDFA = q0
         , getFinalQsOfDFA = qfs
-        , getTransitionsOfDFA = Map.fromList
-            [ ((q, ch), p)
-            | ((q, ch), p) <- Map.toAscList deltas
+        , getTransitionsOfDFA = Map.fromAscList
+            [ ((q, sym), p)
+            | ((q, sym), p) <- Map.toAscList deltas
             , q `Set.member` winners
             , p `Set.member` winners
             ]
@@ -557,8 +605,8 @@ deleteDeadStates (DFA q0 qfs deltas markeds pseudo_finals) = result where
         , getPseudoFinalsOfDFA = Set.filter (\q -> q `Set.member` winners) pseudo_finals
         }
 
-makeDFAfromREs :: [(RegEx, RightContext)] -> DFA
-makeDFAfromREs = deleteDeadStates . makeMinimalDFA . makeDFAfromNFA . getUnitedNFAfromREs
+makeDFAfromREs :: Set.Set Char -> [(RegEx, RightContext)] -> DFA
+makeDFAfromREs alphabet xmatch_defns = deleteDeadStates (makeMinimalDFA (makeDFAfromNFA alphabet (getUnitedNFAfromREs alphabet xmatch_defns)))
 
 mkCsSingle :: Char -> CharSet
 mkCsSingle ch1 = ch1 `seq` CsSingle ch1
@@ -683,7 +731,7 @@ genLexer xblocks = do
             put (Map.insert var re' env)
         | ReVDef var re <- xblocks
         ]
-    theDFA <- fmap makeDFAfromREs $ sequence
+    xmatch_res <- sequence
         [ case right_ctx of
             NilRCtx -> do
                 regex1' <- substituteRE re_env regex1
@@ -709,6 +757,8 @@ genLexer xblocks = do
                 return (regex1'', NegRCtx regex2'')
         | XMatch (regex1, right_ctx) _ <- xblocks
         ]
+    let theAlphabet = computeAlphabet xmatch_res
+        theDFA = makeDFAfromREs theAlphabet xmatch_res
     (token_type, lexer_name) <- case [ (token_type, lexer_name) | Target token_type lexer_name <- xblocks ] of
         [pair] -> return pair
         _ -> throwE "A target must exist unique."
@@ -723,6 +773,9 @@ genLexer xblocks = do
             theRegexTable = generateRegexTable theDFA
             theMaxLen = length (show (maybe 0 fst (Set.maxView (Map.keysSet theRegexTable))))
             tellLine string_stream = tell [string_stream "\n"]
+            symToMaybeChar :: DFAChar -> Maybe Char
+            symToMaybeChar (LitChar ch) = Just ch
+            symToMaybeChar (AnyChar) = Nothing
         tellLine (ppunc "\n" (map strstr hshead))
         tellLine (strstr "import qualified Control.Monad.Trans.State.Strict as XState")
         tellLine (strstr "import qualified Data.Functor.Identity as XIdentity")
@@ -737,7 +790,7 @@ genLexer xblocks = do
         tellLine (strstr "    = DFA")
         tellLine (strstr "        { getInitialQOfDFA :: Int")
         tellLine (strstr "        , getFinalQsOfDFA :: XMap.Map Int Int")
-        tellLine (strstr "        , getTransitionsOfDFA :: XMap.Map (Int, Char) Int")
+        tellLine (strstr "        , getTransitionsOfDFA :: XMap.Map (Int, Maybe Char) Int")
         tellLine (strstr "        }")
         tellLine (strstr "    deriving ()")
         tellLine (strstr "")
@@ -746,16 +799,20 @@ genLexer xblocks = do
         tellLine (strstr "    theDFA :: DFA")
         tellLine (strstr "    theDFA = DFA")
         tellLine (strstr "        { getInitialQOfDFA = " . shows (getInitialQOfDFA theDFA))
-        tellLine (strstr "        , getFinalQsOfDFA = XMap.fromList [" . ppunc ", " [ strstr "(" . shows q . strstr ", " . shows p . strstr ")" | (q, p) <- Map.toAscList (getFinalQsOfDFA theDFA) ] . strstr "]")
-        tellLine (strstr "        , getTransitionsOfDFA = XMap.fromList " . plist 12 [ ppunc ", " [ strstr "((" . shows q . strstr ", " . shows ch . strstr "), " . shows p . strstr ")" | ((q, ch), p) <- deltas ] | deltas <- splitUnless (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList (getTransitionsOfDFA theDFA)) ])
+        tellLine (strstr "        , getFinalQsOfDFA = XMap.fromAscList [" . ppunc ", " [ strstr "(" . shows q . strstr ", " . shows p . strstr ")" | (q, p) <- Map.toAscList (getFinalQsOfDFA theDFA) ] . strstr "]")
+        tellLine (strstr "        , getTransitionsOfDFA = XMap.fromList " . plist 12 [ ppunc ", " [ strstr "((" . shows q . strstr ", " . shows (symToMaybeChar sym) . strstr "), " . shows p . strstr ")" | ((q, sym), p) <- deltas ] | deltas <- splitUnless (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList (getTransitionsOfDFA theDFA)) ])
         tellLine (strstr "        }")
+        tellLine (strstr "    theAlphabet :: XSet.Set Char")
+        tellLine (strstr "    theAlphabet = XSet.fromAscList " . shows (Set.toAscList theAlphabet))
         tellLine (strstr "    runDFA :: DFA -> [((Int, Int), Char)] -> Either (Int, Int) ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
         tellLine (strstr "    runDFA (DFA q0 qfs deltas) = Right . XIdentity.runIdentity . runFast where")
+        tellLine (strstr "        classify :: Char -> Maybe Char")
+        tellLine (strstr "        classify ch = if ch `XSet.member` theAlphabet then Just ch else Nothing")
         tellLine (strstr "        loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]")
         tellLine (strstr "        loop1 q buffer [] = return buffer")
         tellLine (strstr "        loop1 q buffer (ch : str) = do")
         tellLine (strstr "            (latest, accepted) <- XState.get")
-        tellLine (strstr "            case XMap.lookup (q, snd ch) deltas of")
+        tellLine (strstr "            case XMap.lookup (q, classify (snd ch)) deltas of")
         tellLine (strstr "                Nothing -> return (buffer ++ [ch] ++ str)")
         tellLine (strstr "                Just p -> case XMap.lookup p qfs of")
         tellLine (strstr "                    Nothing -> loop1 p (buffer ++ [ch]) str")

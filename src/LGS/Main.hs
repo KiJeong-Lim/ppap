@@ -1,6 +1,6 @@
 module LGS.Main (main) where
 
-import qualified LGS.Alpha1 as Alpha1
+import qualified LGS.Alpha2 as Alpha2
 
 main :: IO ()
-main = Alpha1.main
+main = Alpha2.main

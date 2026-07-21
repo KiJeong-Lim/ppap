@@ -65,6 +65,7 @@ executable ppap
     Json.JsonTest
     Json.JsonViewer
     LGS.Alpha1
+    LGS.Alpha2
     LGS.Main
     PGS.Alpha1
     PGS.LALR
