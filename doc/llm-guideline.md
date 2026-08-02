@@ -1,6 +1,6 @@
 # LLM Guideline
 
-이 문서는 LLM이 이 저장소의 Haskell 코드를 수정할 때 따라야 할 로컬 스타일 지침이다. 기준 예시는 `src/Project/A/`, `src/LGS/`, `src/PGS/`이다.
+이 문서는 LLM이 이 저장소의 Haskell 코드를 수정할 때 따라야 할 로컬 스타일 지침이다. 기준 예시는 `src/Hol/BETA/`, `src/LGS/`, `src/PGS/`이다.
 
 ## 기본 원칙
 
@@ -17,16 +17,17 @@
 공개 API가 분명한 진입점 모듈은 export list를 둘 수 있다.
 
 ```hs
-module Project.A.Main
-    ( main
-    , mainWithArgs
+module Z.System.Shelly
+    ( ShellyState
+    , ShellyT
+    , emptyShellyState
     ) where
 ```
 
 내부 모듈은 보통 export list 없이 둔다.
 
 ```hs
-module Project.A.Types where
+module Hol.BETA.TermNode where
 ```
 
 ## 함수 배치
@@ -151,7 +152,7 @@ helpText = helpText' ""
 
 helpText' :: ShowS
 helpText' = strcat
-    [ strstr "Project A differential fuzzing" . nl
+    [ strstr "Hol BETA interpreter" . nl
     , nl
     , strstr "Commands:" . nl
     ]

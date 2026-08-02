@@ -5,7 +5,6 @@ import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
-import qualified Project.Main as Project
 import Control.Monad.IO.Class
 import Z.Algo.Function
 import Z.System.Shelly
@@ -26,7 +25,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = takeFirstOf matchPrefix ["Hol", "Calc", "LGS", "PGS", "TEST", "Project"]
+    | otherwise = takeFirstOf matchPrefix ["Hol", "Calc", "LGS", "PGS", "TEST"]
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix cmd = go (splitAt (length cmd) str) where
@@ -63,9 +62,6 @@ ppap = do
             | null args -> do
                 shellyM ("ppap >>= exec (TEST.main)")
                 liftIO TEST.main
-        Just ("Project", args) -> do
-            shellyM ("ppap >>= exec (Project.main" ++ shownArgs args ++ ")")
-            liftIO (Project.mainWithArgs args)
         Just (cmd, args) -> do
             shellyM ("ppap >>= abort (" ++ shows "unimplemented..." ")")
             return ()
