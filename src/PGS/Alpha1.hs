@@ -145,6 +145,11 @@ data Conflict
         }
     deriving ()
 
+data ParserGenErr
+    = CONFLICT Conflict
+    | UNDEFINED_NSYMS (Set.Set NSym)
+    deriving ()
+
 readTSym :: P.P TSym
 readTSym = mconcat
     [ P.consume "\\$" $> TSEOF
@@ -347,7 +352,7 @@ readBlock = mconcat
     , Target <$> readTarget
     ]
 
-makeCollectionAndLALR1Parser :: CFGrammar -> ExceptT Conflict Identity ((Cannonical0, (Map.Map NSym TerminalSet, [((ParserS, ProductionRule), Set.Set TSym)])), LR1Parser)
+makeCollectionAndLALR1Parser :: CFGrammar -> ExceptT ParserGenErr Identity ((Cannonical0, (Map.Map NSym TerminalSet, [((ParserS, ProductionRule), Set.Set TSym)])), LR1Parser)
 makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult where
     maxPrec :: Precedence
     maxPrec = 100
@@ -362,13 +367,18 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     getMarkSym (LR0Item _ _ (sym : _)) = Just sym
     getCannonical0 :: Cannonical0
     getCannonical0 = runIdentity makeCannonical0 where
+        rulesOf :: Map.Map NSym [[Sym]]
+        -- productions grouped by LHS, so that `getClosure` need not rescan `productions'`
+        rulesOf = Map.fromListWith (++) [ (lhs, [rhs]) | (lhs, rhs) <- Map.keys productions' ]
         getClosure :: Set.Set LR0Item -> Identity (Set.Set LR0Item)
         getClosure items = if items == items' then return items' else getClosure items' where
+            marks :: Set.Set NSym
+            marks = Set.fromList [ ns | Just (NS ns) <- map getMarkSym (Set.toList items) ]
             items' :: Set.Set LR0Item
             items' = foldr Set.insert items
                 [ LR0Item lhs [] rhs
-                | ((lhs, rhs), prec) <- Map.toList productions'
-                , any (\item -> getMarkSym item == Just (NS lhs)) (Set.toList items)
+                | lhs <- Set.toList marks
+                , rhs <- Map.findWithDefault [] lhs rulesOf
                 ]
         calcGOTO :: (Set.Set LR0Item, Sym) -> Identity (Set.Set LR0Item)
         calcGOTO (items, sym) = getClosure $ Set.fromList
@@ -376,34 +386,34 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             | LR0Item lhs left (sym' : right) <- Set.toList items
             , sym == sym'
             ]
-        loop :: Cannonical0 -> Identity Cannonical0
-        loop collection = do
-            (_, collection') <- flip runStateT collection $ sequence_
-                [ do
-                    cl <- lift (getClosure items)
-                    sequence_
-                        [ do 
-                            items' <- lift (calcGOTO (items, sym))
-                            if Set.null items' then
-                                return () 
-                            else do
-                                Cannonical0 vertices root edges <- get
-                                let ps = [ _p | (_p, _items') <- Map.toAscList vertices, items' == _items' ]
-                                case ps of
-                                    [] -> do
-                                        let p = Map.size vertices
-                                        put (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges))
-                                    [p] -> put (Cannonical0 vertices root (Map.insert (q, sym) p edges))
-                                    _ -> error "makeCollectionAndLALR1Parser.getCannonical0.loop"
-                        | Just sym <- Set.toList (Set.map getMarkSym cl)
-                        ]
-                | (q, items) <- Map.toList (getVertices collection)
-                ]
-            if collection == collection' then return collection' else loop collection'
+        visit :: ParserS -> Set.Set LR0Item -> (Cannonical0, Map.Map (Set.Set LR0Item) ParserS) -> Sym -> Identity (Cannonical0, Map.Map (Set.Set LR0Item) ParserS)
+        visit q items (Cannonical0 vertices root edges, lut) sym = do
+            items' <- calcGOTO (items, sym)
+            if Set.null items' then
+                -- `emptyset` is not a state: this is what makes the loop build `Q` rather
+                -- than the whole collection, from which `emptyset` would have to be removed.
+                -- With the enumeration below it is in fact unreachable, since `sym` ranges
+                -- over the mark symbols of `items` and `items` is already closed.
+                return (Cannonical0 vertices root edges, lut)
+            else case Map.lookup items' lut of
+                Just p -> return (Cannonical0 vertices root (Map.insert (q, sym) p edges), lut)
+                Nothing -> do
+                    let p = Map.size vertices
+                    return (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges), Map.insert items' p lut)
+        loop :: ParserS -> (Cannonical0, Map.Map (Set.Set LR0Item) ParserS) -> Identity Cannonical0
+        -- every vertex stored is already closed, so its mark symbols need no further closure;
+        -- states are visited once each, in increasing index order, which is the order in
+        -- which the previous fixpoint formulation discovered them
+        loop q state@(Cannonical0 vertices _ _, _)
+            | q >= Map.size vertices = return (fst state)
+            | otherwise = do
+                let items = vertices Map.! q
+                state' <- foldM (visit q items) state [ sym | Just sym <- Set.toList (Set.map getMarkSym items) ]
+                loop (q + 1) state'
         makeCannonical0 :: Identity Cannonical0
         makeCannonical0 = do
             items0 <- getClosure (Set.singleton (LR0Item start' [] [NS start, TS TSEOF]))
-            loop (Cannonical0 (Map.singleton 0 items0) 0 Map.empty)
+            loop 0 (Cannonical0 (Map.singleton 0 items0) 0 Map.empty, Map.singleton items0 0)
     getFIRST :: Map.Map NSym TerminalSet
     getFIRST = loop base where
         base :: Map.Map NSym TerminalSet
@@ -422,12 +432,19 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             mapping' = foldr (Map.update <$> go <*> fst) mapping (map fst (Map.toList productions'))
     getLATable :: [((ParserS, ProductionRule), Set.Set TSym)]
     getLATable = runIdentity makeLATable where
+        vertices0 :: Map.Map ParserS (Set.Set LR0Item)
+        vertices0 = getVertices getCannonical0
+        edges0 :: Map.Map (ParserS, Sym) ParserS
+        edges0 = getEdges getCannonical0
+        outOf :: Map.Map ParserS (Set.Set TSym)
+        -- the terminals shiftable out of each state, read off the GOTO table once
+        outOf = Map.fromListWith Set.union [ (q, Set.singleton t) | ((q, TS t), _) <- Map.toList edges0 ]
         call :: Map.Map (ParserS, NSym) (Set.Set TSym) -> (ParserS, NSym) -> Set.Set TSym
         call _R _x = _R Map.! _x
         calcGOTO :: ParserS -> [Sym] -> Maybe ParserS
         calcGOTO q [] = return q
         calcGOTO q (sym : syms) = do
-            p <- Map.lookup (q, sym) (getEdges getCannonical0)
+            p <- Map.lookup (q, sym) edges0
             calcGOTO p syms
         getFirstOf :: [Sym] -> TerminalSet
         getFirstOf [] = mempty
@@ -435,32 +452,57 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         getFirstOf (TS ts : _) = TerminalSet (Set.singleton (Just ts))
         isNullable :: [Sym] -> Bool
         isNullable omega = Nothing `Set.member` unTerminalSet (getFirstOf omega)
+        splitsAt :: [Sym] -> [([Sym], [Sym])]
+        splitsAt rhs = [ splitAt i rhs | i <- [0 .. length rhs] ]
         _Domain :: Set.Set (ParserS, NSym)
-        _Domain = Set.fromList [ (p, _A) | (p, items') <- Map.toAscList (getVertices getCannonical0), LR0Item _ _ (NS _A : _) <- Set.toAscList items' ]
+        _Domain = Set.fromList [ (p, _A) | (p, items') <- Map.toAscList vertices0, LR0Item _ _ (NS _A : _) <- Set.toAscList items' ]
+        marksOf :: ParserS -> [NSym]
+        -- the nonterminals `_A` with `(p, _A)` in `_Domain`, ascending
+        marksOf p = Set.toAscList (Set.fromList [ _A | LR0Item _ _ (NS _A : _) <- Set.toAscList (vertices0 Map.! p) ])
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Read = digraph _Domain _reads _DR where
-            _reads (p, _A) (r, _C) = calcGOTO p [NS _A] == Just r && isNullable [NS _C]
-            _DR (p, _A) = Set.fromList [ t | t <- Set.toAscList (Map.keysSet terminals'), isJust (calcGOTO p [NS _A, TS t]) ]
+            _reads (p, _A) = case Map.lookup (p, NS _A) edges0 of
+                Nothing -> []
+                Just r -> [ (r, _C) | _C <- marksOf r, isNullable [NS _C] ]
+            _DR (p, _A) = case Map.lookup (p, NS _A) edges0 of
+                Nothing -> Set.empty
+                Just r -> Map.findWithDefault Set.empty r outOf
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Follow = digraph _Domain _includes (call _Read) where
-            _includes (p, _A) (p', _B) = or
-                [ calcGOTO p' _beta == Just p && isNullable _gamma
-                | LR0Item _B' _beta (NS _A' : _gamma) <- Set.toAscList (getVertices getCannonical0 Map.! p)
-                , _A == _A' && _B == _B'
+            -- the `includes` edges are built forwards, from `(p', _B)` and a production
+            -- `_B ::= _beta _A _gamma` with `_gamma` nullable, walking `_beta` from `p'`
+            -- to reach `p`; testing the relation pairwise would visit every pair of
+            -- `_Domain` and walk `_beta` each time
+            _includesMap :: Map.Map (ParserS, NSym) (Set.Set (ParserS, NSym))
+            _includesMap = Map.fromListWith Set.union
+                [ ((p, _A), Set.singleton (p', _B))
+                | (p', _B) <- Set.toAscList _Domain
+                , (_B', rhs) <- Map.keys productions'
+                , _B' == _B
+                , (_beta, NS _A : _gamma) <- splitsAt rhs
+                , isNullable _gamma
+                , Just p <- [calcGOTO p' _beta]
+                , (p, _A) `Set.member` _Domain
                 ]
+            _includes _x = Set.toAscList (Map.findWithDefault Set.empty _x _includesMap)
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
-        makeLATable = sequence
-            [ do
-                result <- sequence
-                    [ return (_Follow Map.! (p, _A))
-                    | (p, items') <- Map.toAscList (getVertices getCannonical0)
-                    , calcGOTO p _omega == Just q
-                    , isJust (calcGOTO p [NS _A])
-                    ]
-                return ((q, (_A, _omega)), Set.unions result)
-            | (q, items) <- Map.toAscList (getVertices getCannonical0)
-            , LR0Item _A _omega [] <- Set.toAscList items
-            ]
+        makeLATable = return (Map.toAscList (Map.unionWith Set.union seeded lookaheads)) where
+            -- a completed item that no `(p, _A)` reaches still gets an entry, with the
+            -- empty lookahead set, as the pairwise formulation gave it
+            seeded :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
+            seeded = Map.fromList
+                [ ((q, (_A, _omega)), Set.empty)
+                | (q, items) <- Map.toAscList vertices0
+                , LR0Item _A _omega [] <- Set.toAscList items
+                ]
+            lookaheads :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
+            lookaheads = Map.fromListWith Set.union
+                [ ((q, (_A, _omega)), _Follow Map.! (p, _A))
+                | (p, _A) <- Set.toAscList _Domain
+                , (_A', _omega) <- Map.keys productions'
+                , _A' == _A
+                , Just q <- [calcGOTO p _omega]
+                ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
     resolveConflicts = foldr loop (Right base) [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- getLATable, t <- Set.toList ts ] where
         base :: Map.Map (ParserS, TSym) Action
@@ -485,9 +527,26 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     | prec1 > prec2 -> Right getActionT
                     | prec1 < prec2 -> Right (Map.adjust (const ra) (q, t) getActionT)
                 _ -> Left (Conflict { because = (Reduce production', ra), whereIs = (q, t), withEnv = getCannonical0 })
-    theResult :: ExceptT Conflict Identity ((Cannonical0, (Map.Map NSym TerminalSet, [((ParserS, ProductionRule), Set.Set TSym)])), LR1Parser)
-    theResult = case resolveConflicts of
-        Left conflict -> throwE conflict
+    undefinedNSyms :: Set.Set NSym
+    -- nonterminals that occur on a RHS but head no production rule.
+    -- `getFIRST` is defined only at the LHSs, so without this check reaching one of
+    -- them is a `Map.!` failure in the middle of the construction rather than a
+    -- diagnosable rejection.  The augmented rule is included in `productions'`, so a
+    -- start symbol with no production is caught here too.
+    undefinedNSyms = Set.fromList
+        [ ns
+        | (_, rhs) <- Map.keys productions'
+        , NS ns <- rhs
+        , not (ns `Set.member` definedNSyms)
+        ]
+        where
+            definedNSyms :: Set.Set NSym
+            definedNSyms = Set.fromList [ lhs | (lhs, _) <- Map.keys productions' ]
+    theResult :: ExceptT ParserGenErr Identity ((Cannonical0, (Map.Map NSym TerminalSet, [((ParserS, ProductionRule), Set.Set TSym)])), LR1Parser)
+    theResult
+        | not (Set.null undefinedNSyms) = throwE (UNDEFINED_NSYMS undefinedNSyms)
+        | otherwise = case resolveConflicts of
+        Left conflict -> throwE (CONFLICT conflict)
         Right getActionT -> return 
             ( (getCannonical0, (getFIRST, getLATable))
             , LR1Parser
@@ -1017,6 +1076,17 @@ instance Outputable LR1Parser where
         , strstr "actionT: " . plist 2 [ strstr "(" . shows q . strstr ", " . pprint 0 (TS t) . strstr ") +-> " . pprint 0 action | ((q, t), action) <- Map.toList actionT ] . nl
         , strstr "reduceT: " . plist 2 [ strstr "(" . shows q . strstr ", " . pprint 0 (NS nt) . shows p | ((q, nt), p) <- Map.toList reduceT ] . nl
         ]
+
+instance Show ParserGenErr where
+    show = flip (shows) ""
+    showList = undefined
+    showsPrec _ (CONFLICT conflict) = shows conflict
+    showsPrec _ (UNDEFINED_NSYMS nsyms)
+        = strcat
+            [ strstr "the following nonterminal symbols head no production rule:" . nl
+            , ppunc "\n" [ strstr "  ? " . pprint 0 nsym | nsym <- Set.toAscList nsyms ]
+            , nl
+            ]
 
 instance Show Conflict where
     show = flip (shows) ""

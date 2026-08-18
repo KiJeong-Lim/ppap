@@ -90,14 +90,32 @@ getGCD x y
                 0 -> b
                 c -> euclid b c
 
-digraph :: (Ord vertex, Monoid output, HasCallStack) => Set.Set vertex -> (vertex -> vertex -> Bool) -> (vertex -> output) -> Map.Map vertex output
+-- Kleene iteration with a stable-value exit: the same least fixed point as
+-- `digraph`, computed by repeated sweeps instead of by Tarjan's algorithm.
+-- This is the shape a verified port takes: `propagate_equation` of PnVRocqLib's
+-- `Graph.v` is exactly the equation `m == m'` witnesses, so the two are
+-- interchangeable and this one is provable.  It is not slower on the graphs
+-- `PGS.Alpha1` builds: `reads` converges in one sweep and `includes` in about
+-- four, whatever the size of the domain.
+digraphIter :: (Ord vertex, Eq output, Monoid output) => Set.Set vertex -> (vertex -> [vertex]) -> (vertex -> output) -> Map.Map vertex output
+digraphIter your_X your_R your_F' = go (Map.fromSet your_F' your_X) where
+    go m
+        | m == m' = m
+        | otherwise = go m'
+        where
+            m' = Map.mapWithKey (\x v -> mconcat (v : [ m Map.! y | y <- your_R x ])) m
+
+digraph :: (Ord vertex, Monoid output, HasCallStack) => Set.Set vertex -> (vertex -> [vertex]) -> (vertex -> output) -> Map.Map vertex output
+-- `your_R x` lists the successors of `x`; they must all be members of `your_X`, and
+-- listing them in ascending order makes the traversal visit them in the order that
+-- a scan of `your_X` filtered by a relation would have.
 digraph your_X your_R your_F' = Map.map snd (snd (snd (Identity.runIdentity (runStateT (mapM_ (go one) your_X) ([], Map.fromSet (const (zero, mempty)) your_X))))) where
     go k x = do
         (stack, _N_F) <- get
         when (fst (_N_F Map.! x) == zero) $ do
             put (x : stack, Map.adjust (const (k, your_F' x)) x _N_F)
-            forM_ your_X $ \y -> do
-                when (your_R x y) $ do
+            forM_ (your_R x) $ \y -> do
+                do
                     (go $! succ k) y
                     (stack, _N_F) <- get
                     let (yN, yF) = _N_F Map.! y
