@@ -92,9 +92,11 @@ getGCD x y
 
 -- Kleene iteration with a stable-value exit: the same least fixed point as
 -- `digraph`, computed by repeated sweeps instead of by Tarjan's algorithm.
--- This is the shape a verified port takes: `propagate_equation` of PnVRocqLib's
--- `Graph.v` is exactly the equation `m == m'` witnesses, so the two are
--- interchangeable and this one is provable.  It is not slower on the graphs
+-- This is `propagate_kleene` of PnVRocqLib's `PnV.Data.Graph`, started one sweep
+-- in: `go`'s `m` is that development's `sweeps (n + 1) empty`, the `m == m'`
+-- guard is its `eqb m' m` early exit, and `propagate_kleene_iff_closure` proves
+-- the result is the least solution of `propagate_equation`, the same fixed point
+-- `digraph` returns.  It is not slower on the graphs
 -- `PGS.Alpha1` builds: `reads` converges in one sweep and `includes` in about
 -- four, whatever the size of the domain.
 digraphIter :: (Ord vertex, Eq output, Monoid output) => Set.Set vertex -> (vertex -> [vertex]) -> (vertex -> output) -> Map.Map vertex output

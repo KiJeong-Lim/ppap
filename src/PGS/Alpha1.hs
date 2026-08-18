@@ -460,7 +460,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         -- the nonterminals `_A` with `(p, _A)` in `_Domain`, ascending
         marksOf p = Set.toAscList (Set.fromList [ _A | LR0Item _ _ (NS _A : _) <- Set.toAscList (vertices0 Map.! p) ])
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Read = digraph _Domain _reads _DR where
+        _Read = digraphIter _Domain _reads _DR where
             _reads (p, _A) = case Map.lookup (p, NS _A) edges0 of
                 Nothing -> []
                 Just r -> [ (r, _C) | _C <- marksOf r, isNullable [NS _C] ]
@@ -468,7 +468,7 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 Nothing -> Set.empty
                 Just r -> Map.findWithDefault Set.empty r outOf
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
-        _Follow = digraph _Domain _includes (call _Read) where
+        _Follow = digraphIter _Domain _includes (call _Read) where
             -- the `includes` edges are built forwards, from `(p', _B)` and a production
             -- `_B ::= _beta _A _gamma` with `_gamma` nullable, walking `_beta` from `p'`
             -- to reach `p`; testing the relation pairwise would visit every pair of
