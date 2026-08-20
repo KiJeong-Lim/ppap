@@ -460,10 +460,6 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 Just r -> Map.findWithDefault Set.empty r outOf
         _Follow :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Follow = digraphIter _Domain _includes (call _Read) where
-            -- the `includes` edges are built forwards, from `(p', _B)` and a production
-            -- `_B ::= _beta _A _gamma` with `_gamma` nullable, walking `_beta` from `p'`
-            -- to reach `p`; testing the relation pairwise would visit every pair of
-            -- `_Domain` and walk `_beta` each time
             _includesMap :: Map.Map (ParserS, NSym) (Set.Set (ParserS, NSym))
             _includesMap = Map.fromListWith Set.union
                 [ ((p, _A), Set.singleton (p', _B))
