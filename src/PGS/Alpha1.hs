@@ -513,17 +513,13 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                     | prec1 < prec2 -> Right (Map.adjust (const ra) (q, t) getActionT)
                 _ -> Left (Conflict { because = (Reduce production', ra), whereIs = (q, t), withEnv = getCannonical0 })
     undefinedNSyms :: Set.Set NSym
-    -- nonterminals that occur on a RHS but head no production rule.
-    -- `getFIRST` is defined only at the LHSs, so without this check reaching one of
-    -- them is a `Map.!` failure in the middle of the construction rather than a
-    -- diagnosable rejection.  The augmented rule is included in `productions'`, so a
-    -- start symbol with no production is caught here too.
-    undefinedNSyms = Set.fromList
-        [ ns
-        | (_, rhs) <- Map.keys productions'
-        , NS ns <- rhs
-        , not (ns `Set.member` definedNSyms)
-        ]
+    undefinedNSyms
+        = Set.fromList
+            [ ns
+            | (_, rhs) <- Map.keys productions'
+            , NS ns <- rhs
+            , not (ns `Set.member` definedNSyms)
+            ]
         where
             definedNSyms :: Set.Set NSym
             definedNSyms = Set.fromList [ lhs | (lhs, _) <- Map.keys productions' ]
@@ -531,18 +527,18 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     theResult
         | not (Set.null undefinedNSyms) = throwE (UNDEFINED_NSYMS undefinedNSyms)
         | otherwise = case resolveConflicts of
-        Left conflict -> throwE (CONFLICT conflict)
-        Right getActionT -> return 
-            ( (getCannonical0, (getFIRST, getLATable))
-            , LR1Parser
-                { getInitialS = getRoot getCannonical0
-                , getActionTable = getActionT
-                , getReduceTable = Map.fromList
-                    [ ((q, nt), p)
-                    | ((q, NS nt), p) <- Map.toList (getEdges getCannonical0)
-                    ]
-                }
-            )
+            Left conflict -> throwE (CONFLICT conflict)
+            Right getActionT -> return 
+                ( (getCannonical0, (getFIRST, getLATable))
+                , LR1Parser
+                    { getInitialS = getRoot getCannonical0
+                    , getActionTable = getActionT
+                    , getReduceTable = Map.fromList
+                        [ ((q, nt), p)
+                        | ((q, NS nt), p) <- Map.toList (getEdges getCannonical0)
+                        ]
+                    }
+                )
 
 unFoldNSApp :: NSym -> (String, [NSym])
 unFoldNSApp = flip loop [] where
