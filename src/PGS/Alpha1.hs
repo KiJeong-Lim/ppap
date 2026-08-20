@@ -368,7 +368,6 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
     getCannonical0 :: Cannonical0
     getCannonical0 = runIdentity makeCannonical0 where
         rulesOf :: Map.Map NSym [[Sym]]
-        -- productions grouped by LHS, so that `getClosure` need not rescan `productions'`
         rulesOf = Map.fromListWith (++) [ (lhs, [rhs]) | (lhs, rhs) <- Map.keys productions' ]
         getClosure :: Set.Set LR0Item -> Identity (Set.Set LR0Item)
         getClosure items = if items == items' then return items' else getClosure items' where
@@ -390,20 +389,14 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         visit q items (Cannonical0 vertices root edges, lut) sym = do
             items' <- calcGOTO (items, sym)
             if Set.null items' then
-                -- `emptyset` is not a state: this is what makes the loop build `Q` rather
-                -- than the whole collection, from which `emptyset` would have to be removed.
-                -- With the enumeration below it is in fact unreachable, since `sym` ranges
-                -- over the mark symbols of `items` and `items` is already closed.
                 return (Cannonical0 vertices root edges, lut)
-            else case Map.lookup items' lut of
-                Just p -> return (Cannonical0 vertices root (Map.insert (q, sym) p edges), lut)
-                Nothing -> do
-                    let p = Map.size vertices
-                    return (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges), Map.insert items' p lut)
+            else
+                case Map.lookup items' lut of
+                    Just p -> return (Cannonical0 vertices root (Map.insert (q, sym) p edges), lut)
+                    Nothing -> do
+                        let p = Map.size vertices
+                        return (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges), Map.insert items' p lut)
         loop :: ParserS -> (Cannonical0, Map.Map (Set.Set LR0Item) ParserS) -> Identity Cannonical0
-        -- every vertex stored is already closed, so its mark symbols need no further closure;
-        -- states are visited once each, in increasing index order, which is the order in
-        -- which the previous fixpoint formulation discovered them
         loop q state@(Cannonical0 vertices _ _, _)
             | q >= Map.size vertices = return (fst state)
             | otherwise = do
@@ -437,7 +430,6 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         edges0 :: Map.Map (ParserS, Sym) ParserS
         edges0 = getEdges getCannonical0
         outOf :: Map.Map ParserS (Set.Set TSym)
-        -- the terminals shiftable out of each state, read off the GOTO table once
         outOf = Map.fromListWith Set.union [ (q, Set.singleton t) | ((q, TS t), _) <- Map.toList edges0 ]
         call :: Map.Map (ParserS, NSym) (Set.Set TSym) -> (ParserS, NSym) -> Set.Set TSym
         call _R _x = _R Map.! _x
@@ -457,7 +449,6 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         _Domain :: Set.Set (ParserS, NSym)
         _Domain = Set.fromList [ (p, _A) | (p, items') <- Map.toAscList vertices0, LR0Item _ _ (NS _A : _) <- Set.toAscList items' ]
         marksOf :: ParserS -> [NSym]
-        -- the nonterminals `_A` with `(p, _A)` in `_Domain`, ascending
         marksOf p = Set.toAscList (Set.fromList [ _A | LR0Item _ _ (NS _A : _) <- Set.toAscList (vertices0 Map.! p) ])
         _Read :: Map.Map (ParserS, NSym) (Set.Set TSym)
         _Read = digraphIter _Domain _reads _DR where
@@ -487,8 +478,6 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
             _includes _x = Set.toAscList (Map.findWithDefault Set.empty _x _includesMap)
         makeLATable :: Identity [((ParserS, ProductionRule), Set.Set TSym)]
         makeLATable = return (Map.toAscList (Map.unionWith Set.union seeded lookaheads)) where
-            -- a completed item that no `(p, _A)` reaches still gets an entry, with the
-            -- empty lookahead set, as the pairwise formulation gave it
             seeded :: Map.Map (ParserS, ProductionRule) (Set.Set TSym)
             seeded = Map.fromList
                 [ ((q, (_A, _omega)), Set.empty)
