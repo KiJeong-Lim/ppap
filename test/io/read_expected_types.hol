@@ -1,0 +1,7 @@
+type read_nat (nat -> o).
+type read_char (char -> o).
+type read_string (list char -> o).
+
+read_nat X :- read X.
+read_char X :- read X.
+read_string X :- read X.

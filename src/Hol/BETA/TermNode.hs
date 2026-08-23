@@ -1,6 +1,6 @@
 module Hol.BETA.TermNode where
 
-import Calc.Presburger.Internal (MyPresburgerFormulaRep, MyVar, PresburgerFormula (..), PresburgerTermRep (..), showsMyVar)
+import Calc.Presburger.Internal (MyPresburgerFormulaRep, MyVar, PresburgerFormula (..), PresburgerTermRep (..))
 import Hol.BETA.Constant
 import Hol.BETA.Header
 import Control.Monad
@@ -50,13 +50,16 @@ data SuspItem
 assertNonnegativeIndices :: TermNode -> ()
 assertNonnegativeIndices term = case term of
     LVar _ -> ()
+    NCon (DC (DC_NatL n)) _
+        | n < 0 -> undefined
+        | otherwise -> ()
     NCon _ _ -> ()
     NIdx i
         | i >= 0 -> ()
         | otherwise -> undefined
     NApp t1 t2 _ -> assertNonnegativeIndices t1 `seq` assertNonnegativeIndices t2
     NLam _ _ body _ -> assertNonnegativeIndices body
-    Susp body _ _ env -> assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv env
+    Susp body ol nl env -> assertSuspension body ol nl env
     NPresburgerCheck _ freeOf _ -> assertNonnegativeTerms (Map.elems freeOf)
 
 assertNonnegativeTerms :: [TermNode] -> ()
@@ -65,12 +68,43 @@ assertNonnegativeTerms (term : rest) = assertNonnegativeIndices term `seq` asser
 
 assertNonnegativeSuspEnv :: SuspEnv -> ()
 assertNonnegativeSuspEnv [] = ()
-assertNonnegativeSuspEnv (Dummy _ : rest) = assertNonnegativeSuspEnv rest
-assertNonnegativeSuspEnv (Binds body _ : rest) = assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv rest
+assertNonnegativeSuspEnv (Dummy level : rest)
+    | level >= 0 = assertNonnegativeSuspEnv rest
+    | otherwise = undefined
+assertNonnegativeSuspEnv (Binds body level : rest)
+    | level >= 0 = assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv rest
+    | otherwise = undefined
 
 assertNonnegativeSuspItem :: SuspItem -> ()
-assertNonnegativeSuspItem (Dummy _) = ()
-assertNonnegativeSuspItem (Binds body _) = assertNonnegativeIndices body
+assertNonnegativeSuspItem (Dummy level)
+    | level >= 0 = ()
+    | otherwise = undefined
+assertNonnegativeSuspItem (Binds body level)
+    | level >= 0 = assertNonnegativeIndices body
+    | otherwise = undefined
+
+assertSuspension :: TermNode -> Int -> Int -> SuspEnv -> ()
+assertSuspension body ol nl env
+    | ol < 0 || nl < 0 = undefined
+    | length env /= ol = undefined
+    | otherwise = assertNonnegativeIndices body `seq` checkItems env
+  where
+    checkItems [] = ()
+    checkItems (item : rest) = case item of
+        Dummy level
+            | level >= 0 && level <= nl -> checkItems rest
+            | otherwise -> undefined
+        Binds itemBody level
+            | level >= 0 && level <= nl ->
+                assertNonnegativeIndices itemBody `seq` checkItems rest
+            | otherwise -> undefined
+
+validSuspensionMetadata :: Int -> Int -> SuspEnv -> Bool
+validSuspensionMetadata ol nl env
+    = ol >= 0 && nl >= 0 && length env == ol && all validItem env
+  where
+    validItem (Dummy level) = level >= 0 && level <= nl
+    validItem (Binds _ level) = level >= 0 && level <= nl
 
 instance Eq SuspItem where
     lhs == rhs
@@ -244,31 +278,43 @@ mkNIdx i
 
 {-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
-mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = n' `seq` mkNCon (DC_NatL n') where
+mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
+    | n < 0 = undefined
+    | otherwise = n' `seq` mkNCon (DC_NatL n')
+  where
     n' = n + 1
-mkNApp t1 t2 = NApp t1 t2 Nothing
+mkNApp t1 t2
+    = assertNonnegativeIndices t1 `seq`
+      assertNonnegativeIndices t2 `seq`
+      NApp t1 t2 Nothing
 
 {-# INLINE mkNAppLoc #-}
 mkNAppLoc :: Maybe SLoc -> TermNode -> TermNode -> TermNode
-mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _) = n' `seq` mkNConLoc sl (DC_NatL n') where
+mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
+    | n < 0 = undefined
+    | otherwise = n' `seq` mkNConLoc sl (DC_NatL n')
+  where
     n' = n + 1
-mkNAppLoc sl t1 t2 = NApp t1 t2 sl
+mkNAppLoc sl t1 t2
+    = assertNonnegativeIndices t1 `seq`
+      assertNonnegativeIndices t2 `seq`
+      NApp t1 t2 sl
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
-mkNLam t = NLam Nothing noLamType t Nothing
+mkNLam t = assertNonnegativeIndices t `seq` NLam Nothing noLamType t Nothing
 
 {-# INLINE mkNLamHint #-}
 mkNLamHint :: Maybe SmallId -> TermNode -> TermNode
-mkNLamHint h t = NLam h noLamType t Nothing
+mkNLamHint h t = assertNonnegativeIndices t `seq` NLam h noLamType t Nothing
 
 {-# INLINE mkNLamHintTy #-}
 mkNLamHintTy :: Maybe SmallId -> LamType -> TermNode -> TermNode
-mkNLamHintTy h ty t = NLam h ty t Nothing
+mkNLamHintTy h ty t = assertNonnegativeIndices t `seq` NLam h ty t Nothing
 
 {-# INLINE mkNLamLoc #-}
 mkNLamLoc :: Maybe SLoc -> Maybe SmallId -> LamType -> TermNode -> TermNode
-mkNLamLoc sl h ty t = NLam h ty t sl
+mkNLamLoc sl h ty t = assertNonnegativeIndices t `seq` NLam h ty t sl
 
 getNodeSLoc :: TermNode -> Maybe SLoc
 getNodeSLoc (NCon _ sl) = sl
@@ -279,16 +325,25 @@ getNodeSLoc _ = Nothing
 
 {-# INLINE mkSusp #-}
 mkSusp :: TermNode -> Int -> Int -> SuspEnv -> TermNode
-mkSusp t 0 0 [] = t
-mkSusp t ol nl env = Susp { getSuspBody = t, getSuspOL = ol, getSuspNL = nl, getSuspEnv = env }
+mkSusp t 0 0 [] = assertNonnegativeIndices t `seq` t
+mkSusp t ol nl env
+    | validSuspensionMetadata ol nl env =
+        assertNonnegativeIndices t `seq`
+        assertNonnegativeSuspEnv env `seq`
+        Susp { getSuspBody = t, getSuspOL = ol, getSuspNL = nl, getSuspEnv = env }
+    | otherwise = undefined
 
 {-# INLINE mkDummy #-}
 mkDummy :: Int -> SuspItem
-mkDummy l = Dummy l
+mkDummy l
+    | l >= 0 = Dummy l
+    | otherwise = undefined
 
 {-# INLINE mkBinds #-}
 mkBinds :: TermNode -> Int -> SuspItem
-mkBinds t l = Binds t l
+mkBinds t l
+    | l >= 0 = assertNonnegativeIndices t `seq` Binds t l
+    | otherwise = undefined
 
 substTyMTV :: MetaTVar -> Unique -> TermNode -> TermNode
 substTyMTV mtv uni term = assertNonnegativeIndices term `seq` go term where
@@ -312,8 +367,7 @@ substTyMTV mtv uni term = assertNonnegativeIndices term `seq` go term where
 
 rewriteWithSusp :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
 rewriteWithSusp t ol nl env option
-    = assertNonnegativeIndices t `seq`
-        assertNonnegativeSuspEnv env `seq`
+    = assertSuspension t ol nl env `seq`
         rewriteWithSuspUnchecked t ol nl env option
 
 rewriteWithSuspUnchecked :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
@@ -370,7 +424,7 @@ unfoldlNApp term = assertNonnegativeIndices term `seq` go term [] where
     go t@(NCon (DC (DC_NatL n)) _) ts
         | n == 0 = (mkNCon (DC_NatL 0), ts)
         | n > 0 = n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
-        | otherwise = (t, ts)
+        | otherwise = undefined
         where
             n' = n - 1
     go (NApp t1 t2 _) ts
@@ -379,22 +433,22 @@ unfoldlNApp term = assertNonnegativeIndices term `seq` go term [] where
         = (t, ts)
 
 lensForSuspEnv :: (TermNode -> TermNode) -> SuspEnv -> SuspEnv
-lensForSuspEnv delta = map go where
+lensForSuspEnv delta env = assertNonnegativeSuspEnv env `seq` map go env where
     go :: SuspItem -> SuspItem
     go (Dummy l) = mkDummy l
     go (Binds t l) = mkBinds (delta t) l
 
 foldlNApp :: TermNode -> [TermNode] -> TermNode
-foldlNApp = List.foldl' mkNApp
+foldlNApp t ts = assertNonnegativeIndices t `seq` List.foldl' mkNApp t ts
 
 makeNestedNLam :: Int -> TermNode -> TermNode
 makeNestedNLam n
-    | n == 0 = id
+    | n == 0 = \t -> assertNonnegativeIndices t `seq` t
     | n > 0 = makeNestedNLam (n - 1) . mkNLam
     | otherwise = undefined
 
 makeNestedNLamH :: [Maybe SmallId] -> TermNode -> TermNode
-makeNestedNLamH [] t = t
+makeNestedNLamH [] t = assertNonnegativeIndices t `seq` t
 makeNestedNLamH (h : hs) t = mkNLamHint h (makeNestedNLamH hs t)
 
 freshenName :: SmallId -> [SmallId] -> SmallId
@@ -449,6 +503,56 @@ defaultCheckOper "*" = Just (InfixL () " * " (), 7)
 defaultCheckOper "/" = Just (InfixL () " / " (), 7)
 defaultCheckOper _ = Nothing
 
+-- A reserved word can still be declared as a named constructor through its
+-- backtick-quoted identifier spelling.  Keep that distinction at write
+-- boundaries: emitting the bare word would be reparsed as a primitive logical
+-- operator or declaration keyword rather than the named constructor.
+renderNamedConstructor :: SmallId -> SmallId
+renderNamedConstructor name
+    | isReservedNamedIdentifier name = renderNamedIdentifier name
+    | otherwise = "__" ++ name
+
+validPresburgerIdentifier :: String -> Bool
+validPresburgerIdentifier (first : rest) =
+    ((first >= 'A' && first <= 'Z') || first == '_')
+        && all isRest rest
+  where
+    isRest ch = (ch >= 'A' && ch <= 'Z')
+        || (ch >= 'a' && ch <= 'z')
+        || (ch >= '0' && ch <= '9')
+        || ch == '_'
+validPresburgerIdentifier [] = False
+
+presburgerIdentifiers :: String -> Set.Set SmallId
+presburgerIdentifiers = go Set.empty where
+    go found [] = found
+    go found (ch : rest)
+        | (ch >= 'A' && ch <= 'Z') || ch == '_' =
+            let (suffix, remaining) = span isRest rest
+            in go (Set.insert (ch : suffix) found) remaining
+        | otherwise = go found rest
+      where
+        isRest c = (c >= 'A' && c <= 'Z')
+            || (c >= 'a' && c <= 'z')
+            || (c >= '0' && c <= '9')
+            || c == '_'
+
+presburgerVarStem :: String -> MyVar -> SmallId
+presburgerVarStem prefix v
+    | v >= 0 = prefix ++ "_" ++ show v
+    | otherwise = prefix ++ "_N_" ++ show (abs v)
+
+freshPresburgerName :: Set.Set SmallId -> SmallId -> SmallId
+freshPresburgerName forbidden base
+    | Set.notMember base forbidden = base
+    | otherwise = go (1 :: Int)
+  where
+    go n
+        | Set.notMember candidate forbidden = candidate
+        | otherwise = go (n + 1)
+      where
+        candidate = base ++ "_" ++ show n
+
 constructViewerCustom :: (String -> Maybe (Fixity (), Precedence)) -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
 constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT (formatView rendered_names (eraseType raw_view)) next_fresh where
     normalized :: TermNode
@@ -458,6 +562,14 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
     (raw_view, next_fresh) = runIdentity (runStateT (makeView [] normalized) 1)
     free_names :: Set.Set SmallId
     free_names = collectFreeNames normalized
+    ambient_names :: Map.Map DeBruijn LargeId
+    ambient_names = Map.fromList allocated_ambient_names
+    (_, allocated_ambient_names) = List.mapAccumL allocateAmbientName occupied_names
+        (Set.toAscList (collectAmbientSlots 0 normalized))
+    occupied_names :: Set.Set SmallId
+    occupied_names = collectOccupiedNames normalized
+    binder_forbidden_names :: Set.Set SmallId
+    binder_forbidden_names = Set.union free_names (Set.fromList (Map.elems ambient_names))
     rendered_names :: Set.Set SmallId
     rendered_names = collectViewNames raw_view
     displayLogicName :: LogicVar -> SmallId
@@ -469,6 +581,54 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
                 Just hint -> hint
                 Nothing -> "?V_" ++ show v
             LV_Named name -> name
+    allocateAmbientName :: Set.Set SmallId -> DeBruijn -> (Set.Set SmallId, (DeBruijn, LargeId))
+    allocateAmbientName used slot =
+        let name = freshAmbientName used slot
+        in (Set.insert name used, (slot, name))
+    freshAmbientName :: Set.Set SmallId -> DeBruijn -> LargeId
+    freshAmbientName used slot
+        | Set.notMember base used = base
+        | otherwise = pick (1 :: Int)
+      where
+        base = "DB_" ++ show slot
+        pick suffix
+            | Set.notMember candidate used = candidate
+            | otherwise = pick (suffix + 1)
+          where
+            candidate = base ++ "_" ++ show suffix
+    collectAmbientSlots :: Int -> TermNode -> Set.Set DeBruijn
+    collectAmbientSlots depth node = case node of
+        LVar _ -> Set.empty
+        NCon _ _ -> Set.empty
+        NIdx idx
+            | idx < 0 -> undefined
+            | idx < depth -> Set.empty
+            | otherwise -> Set.singleton (idx - depth)
+        NApp t1 t2 _ -> Set.union (collectAmbientSlots depth t1) (collectAmbientSlots depth t2)
+        NLam _ _ body _ -> collectAmbientSlots (depth + 1) body
+        Susp body _ _ _ -> collectAmbientSlots depth body
+        NPresburgerCheck _ freeOf _ -> Set.unions (map (collectAmbientSlots depth) (Map.elems freeOf))
+    collectOccupiedNames :: TermNode -> Set.Set SmallId
+    collectOccupiedNames node = case node of
+        LVar var -> Set.singleton (displayLogicName var)
+        NCon con _ -> case con of
+            DC (DC_Named name) -> Set.singleton name
+            DC (DC_Unique uni (DispHint mhint)) -> Set.singleton (case mhint of
+                Just hint -> hint
+                Nothing -> "c_" ++ show uni)
+            TC (TC_Named name) -> Set.singleton name
+            TC (TC_Unique uni) -> Set.singleton ("tc_" ++ show uni)
+            _ -> Set.empty
+        NIdx idx
+            | idx >= 0 -> Set.empty
+            | otherwise -> undefined
+        NApp t1 t2 _ -> Set.union (collectOccupiedNames t1) (collectOccupiedNames t2)
+        NLam mhint _ body _ -> maybe id Set.insert mhint (collectOccupiedNames body)
+        Susp body _ _ env -> Set.unions (collectOccupiedNames body : map collectItemNames env)
+          where
+            collectItemNames (Dummy _) = Set.empty
+            collectItemNames (Binds itemBody _) = collectOccupiedNames itemBody
+        NPresburgerCheck _ freeOf _ -> Set.unions (map collectOccupiedNames (Map.elems freeOf))
     collectFreeNames :: TermNode -> Set.Set SmallId
     collectFreeNames (LVar var) = case var of
         LV_ty_var _ -> Set.empty
@@ -532,7 +692,7 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
     makeView vars (NCon con _) = case con of
         DC data_constructor -> case data_constructor of
             DC_LO logical_operator -> return (ViewDCon (show logical_operator))
-            DC_Named name -> return (ViewDCon ("__" ++ name))
+            DC_Named name -> return (ViewDCon (renderNamedConstructor name))
             DC_Unique uni (DispHint mhint) -> return (ViewDCon (case mhint of Just s -> s; Nothing -> "c_" ++ show uni))
             DC_Nil -> return (ViewDCon "[]")
             DC_Cons -> return (ViewDCon "::")
@@ -552,10 +712,11 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
         TC type_constructor -> case type_constructor of
             TC_Arrow -> return (ViewTCon "->")
             TC_Unique uni -> return (ViewTCon ("tc_" ++ show uni))
-            TC_Named name -> return (ViewTCon ("__" ++ name))
+            TC_Named name -> return (ViewTCon (renderNamedConstructor name))
     makeView vars (NIdx idx)
         | idx < 0 = undefined
         | var : _ <- drop idx vars = return (ViewIVar var)
+        | Just name <- Map.lookup (idx - length vars) ambient_names = return (ViewLVar name)
         | otherwise = undefined
     makeView vars (NApp t1 t2 _) = do
         t1_rep <- makeView vars t1
@@ -567,28 +728,39 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
         let preferred = case mhint of
                 Just s -> s
                 Nothing -> "W_" ++ show counter
-            chosen = freshenName preferred (vars ++ Set.toList free_names)
+            chosen = freshenName preferred (vars ++ Set.toList binder_forbidden_names)
         t_rep <- makeView (chosen : vars) t
         return (ViewIAbs chosen t_rep)
     makeView vars (NPresburgerCheck rep freeOf _) = do
-        rendered <- renderPresburger vars rep freeOf
-        return (ViewDCon rendered)
+        body <- renderPresburger vars rep freeOf
+        -- Use a real string-literal view node so the outer Hol writer escapes
+        -- the Presburger connectives' backslashes and any quotes exactly once.
+        return (ViewIApp (ViewDCon "__presburger") (ViewStrL body))
     makeView vars (Susp body _ _ _) = makeView vars body
 
     renderPresburger :: [SmallId] -> MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> StateT Int Identity SmallId
     renderPresburger vars rep freeOf = do
-        body <- renderFormula 0 Map.empty rep
-        return ("presburger \"" ++ body ++ "\"")
+        candidates <- traverse (renderFreeCandidate vars) freeOf
+        let initialUsed = Set.unions
+                [ presburgerIdentifiers text
+                | Just text <- Map.elems candidates
+                ]
+            (_, renderedFree) = Map.mapAccumWithKey allocateFree initialUsed candidates
+            freeIdentifiers = Set.unions (map presburgerIdentifiers (Map.elems renderedFree))
+        renderFormula renderedFree freeIdentifiers 0 Map.empty rep
         where
             parensText :: Bool -> String -> String
             parensText True s = "(" ++ s ++ ")"
             parensText False s = s
 
-            varName :: MyVar -> SmallId
-            varName v = showsMyVar v ""
+            allocateFree used v candidate = case candidate of
+                Just text -> (Set.union used (presburgerIdentifiers text), text)
+                Nothing ->
+                    let name = freshPresburgerName used (presburgerVarStem "V" v)
+                    in (Set.insert name used, name)
 
-            renderFormula :: Precedence -> Map.Map MyVar SmallId -> MyPresburgerFormulaRep -> StateT Int Identity SmallId
-            renderFormula prec bound formula =
+            renderFormula :: Map.Map MyVar SmallId -> Set.Set SmallId -> Precedence -> Map.Map MyVar SmallId -> MyPresburgerFormulaRep -> StateT Int Identity SmallId
+            renderFormula renderedFree forbidden prec bound formula =
                 case formula of
                     ValF b ->
                         return (parensText (prec > 4) (if b then "~ _|_" else "_|_"))
@@ -603,23 +775,23 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
                     ModF t1 r t2 ->
                         renderRelation ("==_{" ++ show r ++ "}") t1 t2
                     NegF f1 -> do
-                        s1 <- renderFormula 4 bound f1
+                        s1 <- renderFormula renderedFree forbidden 4 bound f1
                         return (parensText (prec > 3) ("~ " ++ s1))
                     DisF f1 f2 -> do
-                        s1 <- renderFormula 1 bound f1
-                        s2 <- renderFormula 2 bound f2
+                        s1 <- renderFormula renderedFree forbidden 1 bound f1
+                        s2 <- renderFormula renderedFree forbidden 2 bound f2
                         return (parensText (prec > 1) (s1 ++ " \\/ " ++ s2))
                     ConF f1 f2 -> do
-                        s1 <- renderFormula 3 bound f1
-                        s2 <- renderFormula 2 bound f2
+                        s1 <- renderFormula renderedFree forbidden 3 bound f1
+                        s2 <- renderFormula renderedFree forbidden 2 bound f2
                         return (parensText (prec > 2) (s1 ++ " /\\ " ++ s2))
                     ImpF f1 f2 -> do
-                        s1 <- renderFormula 1 bound f1
-                        s2 <- renderFormula 0 bound f2
+                        s1 <- renderFormula renderedFree forbidden 1 bound f1
+                        s2 <- renderFormula renderedFree forbidden 0 bound f2
                         return (parensText (prec > 0) (s1 ++ " -> " ++ s2))
                     IffF f1 f2 -> do
-                        s1 <- renderFormula 1 bound f1
-                        s2 <- renderFormula 1 bound f2
+                        s1 <- renderFormula renderedFree forbidden 1 bound f1
+                        s2 <- renderFormula renderedFree forbidden 1 bound f2
                         return (parensText (prec > 0) (s1 ++ " <-> " ++ s2))
                     AllF y f1 ->
                         renderQuantifier "forall" y f1
@@ -627,16 +799,17 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
                         renderQuantifier "exists" y f1
                 where
                     renderRelation oper t1 t2 = do
-                        s1 <- renderTerm 0 bound t1
-                        s2 <- renderTerm 0 bound t2
+                        s1 <- renderTerm renderedFree forbidden 0 bound t1
+                        s2 <- renderTerm renderedFree forbidden 0 bound t2
                         return (parensText (prec > 4) (s1 ++ " " ++ oper ++ " " ++ s2))
                     renderQuantifier kw y f1 = do
-                        let yName = varName y
-                        s1 <- renderFormula 3 (Map.insert y yName bound) f1
+                        let used = Set.union forbidden (Set.fromList (Map.elems bound))
+                            yName = freshPresburgerName used (presburgerVarStem "Q" y)
+                        s1 <- renderFormula renderedFree forbidden 3 (Map.insert y yName bound) f1
                         return (parensText (prec > 3) (kw ++ " " ++ yName ++ ", " ++ s1))
 
-            renderTerm :: Precedence -> Map.Map MyVar SmallId -> PresburgerTermRep -> StateT Int Identity SmallId
-            renderTerm prec bound term =
+            renderTerm :: Map.Map MyVar SmallId -> Set.Set SmallId -> Precedence -> Map.Map MyVar SmallId -> PresburgerTermRep -> StateT Int Identity SmallId
+            renderTerm renderedFree forbidden prec bound term =
                 case foldedNat term of
                     Just n ->
                         return (show n)
@@ -645,24 +818,45 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
                             IVar v ->
                                 case Map.lookup v bound of
                                     Just name -> return name
-                                    Nothing -> case Map.lookup v freeOf of
-                                        Just t -> renderFreeTerm vars t
-                                        Nothing -> return (varName v)
+                                    Nothing -> case Map.lookup v renderedFree of
+                                        Just text -> return text
+                                        Nothing ->
+                                            let used = Set.union forbidden (Set.fromList (Map.elems bound))
+                                            in return (freshPresburgerName used (presburgerVarStem "V" v))
                             Zero ->
                                 return "O"
                             Succ t1 -> do
-                                s1 <- renderTerm 2 bound t1
-                                return (parensText (prec > 1) ("S " ++ s1))
+                                s1 <- renderTerm renderedFree forbidden 1 bound t1
+                                return (parensText (prec > 0) ("1 + " ++ s1))
                             Plus t1 t2 -> do
-                                s1 <- renderTerm 0 bound t1
-                                s2 <- renderTerm 1 bound t2
+                                s1 <- renderTerm renderedFree forbidden 0 bound t1
+                                s2 <- renderTerm renderedFree forbidden 1 bound t2
                                 return (parensText (prec > 0) (s1 ++ " + " ++ s2))
 
-            renderFreeTerm :: [SmallId] -> TermNode -> StateT Int Identity SmallId
-            renderFreeTerm boundVars t = do
-                v <- makeView boundVars (rewrite NF t)
-                v' <- formatView (collectViewNames v) (eraseType v)
-                return (pprint 0 v' "")
+            -- Only syntax in the Presburger source grammar may be embedded in
+            -- the displayed string.  A source-visible upper-case variable and
+            -- a non-negative decimal/addition can be preserved verbatim;
+            -- anonymous variables and opaque/non-linear terms receive a fresh
+            -- valid Presburger identifier instead of leaking strings such as
+            -- @?V_4@ or @v1@.
+            renderFreeCandidate :: [SmallId] -> TermNode -> StateT Int Identity (Maybe SmallId)
+            renderFreeCandidate boundVars = goFree . rewrite NF
+              where
+                goFree (NCon (DC (DC_NatL n)) _)
+                    | n >= 0 = return (Just (show n))
+                    | otherwise = return Nothing
+                goFree (NApp (NApp (NCon (DC DC_plus) _) left _) right _) = do
+                    mleft <- goFree left
+                    mright <- goFree right
+                    return ((\leftText rightText -> "(" ++ leftText ++ " + " ++ rightText ++ ")") <$> mleft <*> mright)
+                goFree t@(LVar _) = renderVariable t
+                goFree t@(NIdx _) = renderVariable t
+                goFree _ = return Nothing
+                renderVariable t = do
+                    v <- makeView boundVars t
+                    v' <- formatView (collectViewNames v) (eraseType v)
+                    let text = pprint 0 v' ""
+                    return (if validPresburgerIdentifier text then Just text else Nothing)
 
             foldedNat :: PresburgerTermRep -> Maybe Integer
             foldedNat Zero = Just 0
@@ -680,6 +874,13 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
     eraseType (ViewIApp t1 t2) = if isType t2 then eraseType t1 else ViewIApp (eraseType t1) (eraseType t2)
     eraseType (ViewNatL nat) = ViewNatL nat
     eraseType (ViewChrL chr) = ViewChrL chr
+    eraseType (ViewStrL str) = ViewStrL str
+    eraseType (ViewList ts) = ViewList (map eraseType ts)
+    eraseType (ViewOper (oper, prec)) = ViewOper (mapOper oper, prec) where
+        mapOper (Prefix text t) = Prefix text (eraseType t)
+        mapOper (InfixL t1 text t2) = InfixL (eraseType t1) text (eraseType t2)
+        mapOper (InfixR t1 text t2) = InfixR (eraseType t1) text (eraseType t2)
+        mapOper (InfixN t1 text t2) = InfixN (eraseType t1) text (eraseType t2)
     eraseType (ViewDCon c) = ViewDCon c
     formatView :: Set.Set SmallId -> ViewNode -> StateT Int Identity ViewNode
     formatView _ (ViewDCon "[]") = return (ViewList [])

@@ -1,0 +1,12 @@
+Hol --test
+test/notation/quoted_reserved.hol
+?- p X.
+n
+?- p `true`.
+?- q X.
+n
+?- q `pi`.
+?- r X.
+n
+?- r (1 `is` 2).
+:q

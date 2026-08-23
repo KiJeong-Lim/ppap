@@ -25,11 +25,12 @@ test.multi_head.simple>
 test.multi_head.simple> yes.
 test.multi_head.simple> 
 test.multi_head.simple> The remaining constraints are:
-test.multi_head.simple> ?V_153 > 0
-test.multi_head.simple> ?V_157 > 0
+test.multi_head.simple> exists E_1, E_2.
+test.multi_head.simple> E_1 > 0
+test.multi_head.simple> E_2 > 0
 test.multi_head.simple> The binding is:
-test.multi_head.simple> X := ?V_153.
-test.multi_head.simple> Y := ?V_157.
+test.multi_head.simple> X := E_1.
+test.multi_head.simple> Y := E_2.
 test.multi_head.simple> Find more solutions? [Y/n] 
 test.multi_head.simple> yes.
 test.multi_head.simple> 

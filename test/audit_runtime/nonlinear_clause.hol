@@ -1,0 +1,3 @@
+% A clause-body runtime error must not be labeled with the active query lines.
+type bad o.
+bad :- sigma X\ sigma Y\ X * Y > 10.

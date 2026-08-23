@@ -219,10 +219,16 @@ viewerFixity op (FK_InfixR, p) = (InfixR () (" " ++ op ++ " ") (), p)
 viewerFixity op (FK_InfixN, p) = (InfixN () (" " ++ op ++ " ") (), p)
 
 notationCheckOper :: NotationDB -> SmallId -> Maybe (Fixity (), Precedence)
-notationCheckOper db con = fmap (viewerFixity stripped) (lookupFixity stripped db) where
-    stripped = case con of
-        '_' : '_' : rest -> rest
-        _ -> con
+notationCheckOper db con = fmap (viewerFixity displayed) fixity where
+    fixity
+        | quotedNamed = lookup lookupName (declaredFixityList db)
+        | otherwise = lookupFixity lookupName db
+    (lookupName, displayed, quotedNamed) = case con of
+        '_' : '_' : rest -> (rest, rest, False)
+        '`' : rest
+            | not (null rest)
+            , last rest == '`' -> (init rest, con, True)
+        _ -> (con, con, False)
 
 constructViewerWithDB :: NotationDB -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
 constructViewerWithDB db lookupName t =
@@ -263,30 +269,42 @@ monoTypeIntToNode (TyCon (TCon tc _)) = mkNCon tc
 monoTypeIntToNode (TyApp t1 t2) = mkNApp (monoTypeIntToNode t1) (monoTypeIntToNode t2)
 
 nodeToMonoTypeInt :: TermNode -> Maybe (MonoType Int)
-nodeToMonoTypeInt (LVar (LV_ty_var m)) = Just (TyMTV m)
-nodeToMonoTypeInt (NCon (TC tc) _) = Just (TyCon (TCon tc Star))
-nodeToMonoTypeInt (NApp t1 t2 _) = TyApp <$> nodeToMonoTypeInt t1 <*> nodeToMonoTypeInt t2
-nodeToMonoTypeInt _ = Nothing
+nodeToMonoTypeInt term = assertNonnegativeIndices term `seq` go term where
+    go (LVar (LV_ty_var m)) = Just (TyMTV m)
+    go (NCon (TC tc) _) = Just (TyCon (TCon tc Star))
+    go (NApp t1 t2 _) = TyApp <$> go t1 <*> go t2
+    go _ = Nothing
 
 foldTermAsNode :: NotationDB -> TermNode -> TermNode
 foldTermAsNode db term
     = assertNonnegativeTerms (map _feRhs (_entries db)) `seq`
       assertNonnegativeIndices term `seq`
-      go term
+      go Set.empty term
   where
-    go (NIdx i)
+    go _ (NIdx i)
         | i < 0 = undefined
-    go t = tryHere $ case t of
-        NApp t1 t2 sl -> NApp (go t1) (go t2) sl
-        NLam mhint ty body sl -> NLam mhint ty (go body) sl
-        Susp body env_n env_l mtv -> Susp (go body) env_n env_l mtv
+    go active t = tryHere active $ case t of
+        NApp t1 t2 sl -> NApp (go active t1) (go active t2) sl
+        NLam mhint ty body sl -> NLam mhint ty (go active body) sl
+        Susp body env_n env_l mtv -> Susp (go active body) env_n env_l mtv
         _ -> t
-    tryHere t = case tryMatch (_entries db) t of
-        Just (kind, name, args) -> List.foldl' mkNApp head_ (map go args) where
+    tryHere active t = case tryMatch available t of
+        Just (kind, name, args) ->
+            List.foldl' mkNApp head_ (map (go (Set.insert key active)) args)
+          where
+            key = (kind, name)
             head_ = case kind of
                 EK_Type -> mkNCon (TC_Named name)
                 EK_Term -> mkNCon (DC_Named name)
         Nothing -> t
+      where
+        -- A template such as @notation id X := X@ legitimately matches every
+        -- term.  While rendering its captured arguments, disable that entry
+        -- (and every enclosing fold entry) so presentation folding cannot
+        -- recursively re-fold the very term it just captured.  Keeping the
+        -- complete active set also terminates mutually overlapping catch-all
+        -- templates without rejecting useful identity declarations.
+        available = filter ((`Set.notMember` active) . entryKey) (_entries db)
 
 matchTerm :: [LargeId] -> TermNode -> TermNode -> Maybe (Map.Map LargeId TermNode)
 matchTerm params tmpl cand
@@ -577,19 +595,28 @@ expansionCycle :: SmallId -> [SmallId] -> [SmallId]
 expansionCycle name active = name : reverse (takeWhile (/= name) active) ++ [name]
 
 expandTermRepChecked :: ExpansionDB -> TermRep -> Either ExpansionError TermRep
-expandTermRepChecked db = go [] where
-    go active t = case t of
+expandTermRepChecked db = go [] Set.empty where
+    templateNames = Set.unions
+        ( Map.keysSet (_termNotations db)
+        : [ Set.union (Set.fromList params) (allNamesOfTermRep body)
+          | (params, body) <- Map.elems (_termNotations db)
+          ]
+        )
+    go active bound t = case t of
         RApp loc _ _ -> do
-            args' <- traverse (go active) args
+            args' <- traverse (go active bound) args
             case head_ of
-                RCon hloc (DC_Named name) -> case lookupTermNotation name db of
-                    Just (params, body)
-                        | name `elem` active -> Left (TermExpansionCycle hloc (expansionCycle name active))
-                        | length args' >= length params -> expandFull name hloc loc params body args'
-                        | otherwise -> expandPartial name hloc params body args'
-                    Nothing -> Right (reapplyTerm loc head_ args')
+                RCon hloc (DC_Named name)
+                    | Set.member name bound ->
+                        Right (reapplyTerm loc head_ args')
+                    | otherwise -> case lookupTermNotation name db of
+                        Just (params, body)
+                            | name `elem` active -> Left (TermExpansionCycle hloc (expansionCycle name active))
+                            | length args' >= length params -> expandFull name hloc loc params body args'
+                            | otherwise -> expandPartial name hloc params body args'
+                        Nothing -> Right (reapplyTerm loc head_ args')
                 _ -> do
-                    head' <- go active head_
+                    head' <- go active bound head_
                     return (reapplyTerm loc head' args')
             where
                 (head_, args) = unfoldlTermApp t
@@ -597,7 +624,7 @@ expandTermRepChecked db = go [] where
                     let (consumed, remaining) = splitAt (length params) expandedArgs
                         callLoc = List.foldl' (<>) headLoc (map termRepLoc consumed)
                         env = Map.fromList (zip params consumed)
-                    expanded <- go (name : active) (substTermRep env (rebaseTermRep callLoc body))
+                    expanded <- go (name : active) bound (substTermRep env (rebaseTermRep callLoc body))
                     return (reapplyTerm loc expanded remaining)
                 expandPartial name headLoc params body expandedArgs = do
                     let n = length expandedArgs
@@ -607,17 +634,38 @@ expandTermRepChecked db = go [] where
                         callLoc = List.foldl' (<>) headLoc (map termRepLoc consumed)
                         env = Map.fromList (zip taken consumed)
                         etaExpanded = List.foldr (\p acc -> RAbs callLoc p acc) (rebaseTermRep callLoc body) remaining
-                    go (name : active) (substTermRep env etaExpanded)
-        RCon loc (DC_Named name) -> case lookupTermNotation name db of
-            Just (params, body)
-                | name `elem` active -> Left (TermExpansionCycle loc (expansionCycle name active))
-                | List.null params -> go (name : active) (rebaseTermRep loc body)
-                | otherwise -> do
-                    inner <- go (name : active) (rebaseTermRep loc body)
-                    return (List.foldr (\p acc -> RAbs loc p acc) inner params)
-            Nothing -> Right (RCon loc (DC_Named name))
-        RAbs loc x body -> RAbs loc x <$> go active body
-        RPrn loc t' -> RPrn loc <$> go active t'
+                    go (name : active) bound (substTermRep env etaExpanded)
+        RCon loc (DC_Named name)
+            | Set.member name bound -> Right (RCon loc (DC_Named name))
+            | otherwise -> case lookupTermNotation name db of
+                Just (params, body)
+                    | name `elem` active -> Left (TermExpansionCycle loc (expansionCycle name active))
+                    | List.null params -> go (name : active) bound (rebaseTermRep loc body)
+                    | otherwise -> do
+                        inner <- go (name : active) bound (rebaseTermRep loc body)
+                        return (List.foldr (\p acc -> RAbs loc p acc) inner params)
+                Nothing -> Right (RCon loc (DC_Named name))
+        RAbs loc x body -> do
+            -- Give the source binder a private temporary spelling before any
+            -- template is copied underneath it.  Existing bound occurrences
+            -- are renamed with it, whereas a free same-named constructor
+            -- introduced by a notation remains @x@ and therefore cannot be
+            -- captured at the later desugaring pass.  Restore the user's
+            -- spelling when expansion introduced no such free name.
+            let avoid = Set.unions
+                    [ Set.singleton x
+                    , bound
+                    , templateNames
+                    , allNamesOfTermRep body
+                    ]
+                private = freshNameAvoiding avoid x
+                renamedBody = renameBoundTermRep x private body
+            expandedBody <- go active (Set.insert private bound) renamedBody
+            if Set.member x (freeNamesOfTermRep expandedBody) then
+                return (RAbs loc private expandedBody)
+            else
+                return (RAbs loc x (renameBoundTermRep private x expandedBody))
+        RPrn loc t' -> RPrn loc <$> go active bound t'
         _ -> Right t
 
 expandTypeRepChecked :: ExpansionDB -> TypeRep -> Either ExpansionError TypeRep

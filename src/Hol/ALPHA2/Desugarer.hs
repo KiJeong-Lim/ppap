@@ -10,6 +10,12 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Z.Utils
 
+desugaringError :: SLoc -> [String] -> ErrMsg
+desugaringError loc details = concat
+    [ "*** desugaring-error[", pprint 0 loc "]:\n"
+    , concatMap (\detail -> "  " ++ detail ++ "\n") details
+    ]
+
 makeKindEnv :: [(SLoc, (TypeConstructor, KindRep))] -> KindEnv -> Either ErrMsg KindEnv
 makeKindEnv = go where
     getRank :: KindExpr -> Int
@@ -27,14 +33,24 @@ makeKindEnv = go where
                 kin <- unRep krep
                 return (kin, loc)
         if getRank kin > 1
-            then Left ("*** desugaring-error[" ++ pprint 0 loc "]:\n  ? the higher-order kind expression is not allowed.")
+            then Left (desugaringError loc
+                [ "Higher-order kind expressions are not supported."
+                , "Expected a kind whose arguments are all `type'."
+                ])
             else return kin
     go :: [(SLoc, (TypeConstructor, KindRep))] -> KindEnv -> Either ErrMsg KindEnv
     go [] kind_env = return kind_env
     go ((loc, (tcon, krep)) : triples) kind_env
-        | TC_Named tc <- tcon, head tc `elem` ['A' .. 'Z'] = Left ("*** desugaring-error[" ++ pprint 0 loc "]:\n  ? the identifier of a type constructor must be started with a small letter.")
+        | TC_Named [] <- tcon = Left (desugaringError loc
+            ["A type-constructor name must not be empty."])
+        | TC_Named (first : _) <- tcon, first `elem` ['A' .. 'Z'] =
+            Left (desugaringError loc
+                ["A type-constructor name must start with a lowercase letter."])
         | otherwise = case Map.lookup tcon kind_env of
-            Just _ -> Left ("*** desugaring-error[" ++ pprint 0 loc "]:\n  ? it is wrong to redeclare an already declared type construtor.")
+            Just _ -> Left (desugaringError loc
+                [ "Type constructor `" ++ showsPrec 0 tcon "' is already declared."
+                , "Remove one declaration or choose a different name."
+                ])
             Nothing -> do
                 kin <- unRep krep
                 go triples (Map.insert tcon kin kind_env)
@@ -45,21 +61,29 @@ makeTypeEnv kind_env = go where
     applyModusPonens (kin1 `KArr` kin2) kin3
         | kin1 == kin3 = Right kin2
     applyModusPonens (kin1 `KArr` kin2) kin3
-        = Left ("  ? couldn't solve `" ++ pprint 0 kin1 ("\' ~ `" ++ pprint 0 kin3 "\'"))
+        = Left ("kind mismatch: expected `" ++ pprint 0 kin1
+            ("' but received `" ++ pprint 0 kin3 "'"))
     applyModusPonens Star kin1
-        = Left ("  ? coudln't solve `type\' ~ `" ++ pprint 1 kin1 " -> _\'")
+        = Left ("cannot apply a type of kind `type' to an argument of kind `"
+            ++ pprint 0 kin1 "'")
     unRep :: TypeRep -> Either ErrMsg (KindExpr, MonoType LargeId)
     unRep trep = case trep of
         RTyVar loc tvrep -> return (Star, TyVar tvrep)
         RTyCon loc (TC_Named "string") -> return (Star, mkTyList mkTyChr)
         RTyCon loc type_constructor -> case Map.lookup type_constructor kind_env of
-            Nothing -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? the type constructor `" ++ showsPrec 0 type_constructor "hasn't declared.\n"))
+            Nothing -> Left (desugaringError loc
+                [ "Unknown type constructor `" ++ showsPrec 0 type_constructor "'."
+                , "No kind declaration for this name is visible here."
+                ])
             Just kin -> return (kin, TyCon (TCon type_constructor kin))
         RTyApp loc trep1 trep2 -> do
             (kin1, typ1) <- unRep trep1
             (kin2, typ2) <- unRep trep2
             case applyModusPonens kin1 kin2 of
-                Left msg -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n " ++ msg ++ ".\n"))
+                Left msg -> Left (desugaringError loc
+                    [ "Malformed type application."
+                    , "Reason: " ++ msg ++ "."
+                    ])
                 Right kin -> return (kin, TyApp typ1 typ2)
         RTyPrn loc trep -> unRep trep
     generalize :: MonoType LargeId -> PolyType
@@ -92,6 +116,13 @@ makeTypeEnv kind_env = go where
     go :: [(SLoc, (DataConstructor, TypeRep))] -> TypeEnv -> Either ErrMsg TypeEnv
     go [] type_env
         = return type_env
+    go ((loc, (DC_Named [], _)) : _) _
+        = Left (desugaringError loc
+            ["A data-constructor name must not be empty."])
+    go ((loc, (DC_Named (first : _), _)) : _) _
+        | first `elem` ['A' .. 'Z']
+        = Left (desugaringError loc
+            ["A data-constructor name must start with a lowercase letter."])
     go ((loc, (con, trep)) : triples) type_env
         = case Map.lookup con type_env of
             Nothing -> do
@@ -100,10 +131,22 @@ makeTypeEnv kind_env = go where
                     if hasValidHead typ then
                         go triples (Map.insert con (generalize typ) type_env)
                     else
-                        Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? the head of the type `" ++ showsPrec 0 con "\' is invalid."))
+                        Left (desugaringError loc
+                            [ "The declaration for `" ++ showsPrec 0 con
+                                "' has an invalid result type."
+                            , "A declared predicate or constructor must return a user-defined type or `o'."
+                            ])
                 else
-                    Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? couldn't solve `" ++ pprint 0 kin "\' ~ `type\'."))
-            _ -> Left ("*** desugaring-error[" ++ pprint 0 loc ("]:\n  ? it is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "\'."))
+                    Left (desugaringError loc
+                        [ "The declaration for `" ++ showsPrec 0 con
+                            "' does not produce a value type."
+                        , "Expected kind `type', but inferred `" ++ pprint 0 kin "'."
+                        ])
+            _ -> Left (desugaringError loc
+                [ "Predicate or constructor `" ++ showsPrec 0 con
+                    "' is already declared."
+                , "Remove one declaration or choose a different name."
+                ])
 
 desugarTerm :: MonadUnique m => TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
 desugarTerm (R_wc loc1) = do

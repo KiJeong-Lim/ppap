@@ -1,0 +1,5 @@
+Hol --test
+test/notation/binder_shadow.hol
+?- (duplo\ duplo) (pair 1 2) = pair 1 2.
+?- (x\ n) = (z\ x).
+:q

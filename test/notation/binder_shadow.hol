@@ -1,0 +1,10 @@
+% A lambda binder shadows a same-spelled notation name, including a lower-case
+% name whose body occurrence was initially parsed as a constructor token.
+kind myt type.
+type pair (nat -> nat -> myt).
+notation duplo X := pair X X.
+
+% Expansion is hygienic in the other direction too: the free global `x`
+% copied from `n` must not be captured by the use-site lambda binder `x`.
+type x myt.
+notation n := x.

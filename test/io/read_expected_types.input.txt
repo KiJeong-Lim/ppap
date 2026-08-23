@@ -1,0 +1,12 @@
+Hol --test
+test/io/read_expected_types.hol
+?- read_nat X.
+42
+n
+?- read_char X.
+'A'
+n
+?- read_string X.
+"abc"
+n
+:q

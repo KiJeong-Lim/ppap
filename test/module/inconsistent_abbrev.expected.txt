@@ -8,7 +8,7 @@ Hol> Compiling test.module.inconsistent_abbrev ( test/module/inconsistent_abbrev
    |                                 
  5 | import test.module.inc_abbrev_b.
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Import inconsistency (C3): `pair' is declared by both `test.module.inc_abbrev_a' and `test.module.inc_abbrev_b' with disagreeing abbreviation. (`test.module.inc_abbrev_a': <prior body>; `test.module.inc_abbrev_b': <current body>.)
+Import inconsistency (C3): `pair' is declared by both `test.module.inc_abbrev_a' (<PROJECT_ROOT>/test/module/inc_abbrev_a.hol) and `test.module.inc_abbrev_b' (<PROJECT_ROOT>/test/module/inc_abbrev_b.hol) with disagreeing abbreviation. (`test.module.inc_abbrev_a' (<PROJECT_ROOT>/test/module/inc_abbrev_a.hol): <prior body>; `test.module.inc_abbrev_b' (<PROJECT_ROOT>/test/module/inc_abbrev_b.hol): <current body>.)
 
 Hol =<< 
 Hol >>= quit

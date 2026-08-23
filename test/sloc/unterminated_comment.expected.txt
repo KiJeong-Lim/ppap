@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.sloc.unterminated_comment ( test/sloc/unterminated_comment.hol, interpreted )
+<PROJECT_ROOT>/test/sloc/unterminated_comment.hol:3:1-3:1: error: [HolBETA-LexError]
+   |                
+ 3 | (* unterminated
+   | ^              
+Lexing failed in `<PROJECT_ROOT>/test/sloc/unterminated_comment.hol'.
+
+Hol =<< 
+Hol >>= quit

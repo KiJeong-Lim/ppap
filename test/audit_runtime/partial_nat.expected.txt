@@ -1,0 +1,63 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.partial_nat ( test/audit_runtime/partial_nat.hol, interpreted )
+test.audit_runtime.partial_nat> Ok, one module loaded.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> yes.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> yes.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> The answer substitution is:
+test.audit_runtime.partial_nat> X := 1.
+test.audit_runtime.partial_nat> Y := 2.
+test.audit_runtime.partial_nat> Find more solutions? [Y/n] 
+test.audit_runtime.partial_nat> yes.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> The answer substitution is:
+test.audit_runtime.partial_nat> X := 1.
+test.audit_runtime.partial_nat> Y := 2.
+test.audit_runtime.partial_nat> Find more solutions? [Y/n] 
+test.audit_runtime.partial_nat> yes.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> no.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> yes.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> yes.
+test.audit_runtime.partial_nat> 
+test.audit_runtime.partial_nat> yes.
+test.audit_runtime.partial_nat> 
+Hol >>= quit

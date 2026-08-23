@@ -87,6 +87,8 @@
     T_kind (SLoc (row1, col1) (row2, col2))
 \xmatch "type":
     T_type (SLoc (row1, col1) (row2, col2))
+\xmatch "`" $SmallId "`":
+    T_id (SLoc (row1, col1) (row2, col2)) (init (tail this))
 \xmatch $LargeId + $SmallId:
     T_id (SLoc (row1, col1) (row2, col2)) this
 \xmatch [$digit]+:
@@ -240,10 +242,58 @@
 
     runHolLexer :: String -> Either (Int, Int) [Token]
     runHolLexer src = do
+        case unterminatedBlockComment src of
+            Just start -> Left start
+            Nothing -> return ()
         tokens <- runHolLexerRaw src
         case [start | T_lex_error (SLoc start _) <- tokens] of
             start : _ -> Left start
             [] -> Right tokens
+
+    -- Keep the hand-written lexical policy in sync with the generated DFA.  The
+    -- DFA recognizes complete, non-nesting `(* ... *)' comments; this preflight
+    -- prevents an unterminated opener from falling back to ordinary punctuation.
+    unterminatedBlockComment :: String -> Maybe (Int, Int)
+    unterminatedBlockComment = normal 1 1 where
+        normal _ _ [] = Nothing
+        normal row col ('(' : '*' : rest) = block (row, col) row (col + 2) rest
+        normal row col ('%' : rest) = lineComment row (col + 1) rest
+        normal row col ('"' : rest) = quoted '"' row (col + 1) rest
+        normal row col ('\'' : rest) = quoted '\'' row (col + 1) rest
+        normal row col input@(ch : _)
+            | isSymbolStart ch =
+                let ((row', col'), rest) = consumeSymbol row col input
+                in normal row' col' rest
+        normal row col (ch : rest) = uncurry normal (advance row col ch) rest
+
+        lineComment _ _ [] = Nothing
+        lineComment row col ('\n' : rest) = normal (row + 1) 1 rest
+        lineComment row col (_ : rest) = lineComment row (col + 1) rest
+
+        quoted _ _ _ [] = Nothing
+        quoted quote row col ('\\' : escaped : rest) =
+            let (row', col') = advance row col '\\'
+                (row'', col'') = advance row' col' escaped
+            in quoted quote row'' col'' rest
+        quoted quote row col (ch : rest)
+            | ch == quote = uncurry normal (advance row col ch) rest
+            | otherwise = uncurry (quoted quote) (advance row col ch) rest
+
+        block start _ _ [] = Just start
+        block _ row col ('*' : ')' : rest) = normal row (col + 2) rest
+        block start row col (ch : rest) = uncurry (block start) (advance row col ch) rest
+
+        consumeSymbol row col [] = ((row, col), [])
+        consumeSymbol row col input@(ch : rest)
+            | isSymbolRest ch =
+                let (row', col') = advance row col ch
+                in consumeSymbol row' col' rest
+            | otherwise = ((row, col), input)
+
+        isSymbolStart ch = ch `elem` ("!@#$^&*+-=<>?/|~:" :: String)
+        isSymbolRest ch = isSymbolStart ch || ch == '%'
+        advance row _ '\n' = (row + 1, 1)
+        advance row col _ = (row, col + 1)
 
     isHolLiteralChar :: Char -> Bool
     isHolLiteralChar ch = isPrint ch || ch == '\n' || ch == '\t'

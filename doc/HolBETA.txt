@@ -78,8 +78,14 @@ Chapter 1. Source Language
 1.1 Lexical forms
 --------------------------------------------------------------------------------
 
-Whitespace separates tokens. `%` begins a line comment. Block comments use
-`(* ... *)`. Identifiers may be ordinary alphanumeric identifiers (with `_`),
+Lexical whitespace is exactly space (U+0020), horizontal tab (U+0009), carriage
+return (U+000D), and line feed (U+000A). Only line feed advances to the next
+source row and resets the column to one; each of the other three consumes one
+source column. Whitespace separates tokens. `%` begins a line comment. Block
+comments use `(* ... *)` and do not nest: the first subsequent `*)` closes the comment.
+Reaching EOF first is a lexical error attributed to the opening `(*`. Comment
+markers inside line comments, character literals, and string literals have no
+comment meaning. Identifiers may be ordinary alphanumeric identifiers (with `_`),
 quoted identifiers, or accepted symbolic identifiers. An unbound ordinary term
 identifier beginning with an ASCII upper-case letter is a logic variable; an
 ordinary lower-case identifier is a constant. A lambda binder shadows either
@@ -94,10 +100,17 @@ The exact identifier spellings are:
   symbol-rest   ::= symbol-start | '%'
   symbolic-id   ::= symbol-start symbol-rest*
   ident         ::= small-id | large-id | quoted-id | non-reserved-symbolic-id
+  decl-ident    ::= small-id | quoted-id | non-reserved-symbolic-id
 
 Reserved words and reserved operator spellings are tokenized before `ident`.
 Thus a reserved word is not an identifier merely because its characters match
 `small-id`, and punctuation such as `+`, `:-`, or `=>` is not an `ident`.
+Declaration-name positions use `decl-ident`, not `large-id`: an ordinary
+upper-case spelling denotes a type or logic variable at every reference site
+and would therefore make the declaration unreachable. Reserved lower-case
+names remain available through `quoted-id`. A writer MUST retain those
+backticks when displaying such a named constructor; for example the named
+constructor `` `true` `` is distinct from the logical primitive `true`.
 Lexing uses maximal munch. In particular, `foo.bar.` contains the dotted module
 token `foo.bar`, not two adjacent declarations `foo.` and `bar.`; separate such
 declarations with whitespace.
@@ -112,15 +125,15 @@ spellings (for example `\r` and `\NUL`) are lexical errors. A string denotes a
 
 A surface module name is:
 
-  module-name    ::= simple-module-name
-                   | module-segment ('.' module-segment)+
+  module-name    ::= module-segment ('.' module-segment)* | quoted-id
   module-segment ::= ASCII-letter (ASCII-letter | digit | '_')*
 
-A `simple-module-name` is any single token classified by the lexer as an
-ordinary `id`: a non-reserved ordinary identifier, a backtick-quoted lower-case
-identifier, or a non-reserved symbolic identifier. Dotted names use the
-stricter `module-segment` spelling shown above; quoted or symbolic segments are
-not accepted inside a dotted name.
+In particular, symbolic identifiers and filesystem path separators are not
+module locators. A quoted identifier is allowed only as the whole one-segment
+name and is decoded to its enclosed `small-id` before resolution. Any unquoted
+one-segment name such as `util` follows the same spelling rule as every segment
+of a dotted name; it is not interpreted as an operating-system path supplied by
+the source program.
 
 Module names occur only after `module` and `import`; they are locators or
 path-derived display names, not term-level qualified names.
@@ -134,8 +147,8 @@ The top-level grammar is:
   module-header ::= 'module' module-name '.'
   import-decl   ::= 'import' module-name '.'
 
-  declaration   ::= 'kind' ident kind-expr '.'
-                  | 'type' ident type-expr '.'
+  declaration   ::= 'kind' decl-ident kind-expr '.'
+                  | 'type' decl-ident type-expr '.'
                   | fixity-decl
                   | abbrev-decl
                   | notation-decl
@@ -143,12 +156,12 @@ The top-level grammar is:
 
   fixity-decl   ::= ('infixl' | 'infixr' | 'infix' | 'prefix')
                     operator precedence '.'
-  abbrev-decl   ::= 'abbrev' ident ident* ':=' type-expr '.'
-  notation-decl ::= 'notation' ident ident* ':=' term '.'
+  abbrev-decl   ::= 'abbrev' decl-ident ident* ':=' type-expr '.'
+  notation-decl ::= 'notation' decl-ident ident* ':=' term '.'
   query         ::= '?-' term '.'
 
 `precedence` is an integer from 0 through 9. `infix` is non-associative.
-Here `operator` is an `ident` or one of `+`, `-`, `*`, `/`, `=`, `=<`, `<`,
+Here `operator` is a `decl-ident` or one of `+`, `-`, `*`, `/`, `=`, `=<`, `<`,
 `>=`, `>`, `::`, `:-`, `;`, `=>`, `,`, `&`, `->`, `pi`, `sigma`, `s`, and
 `is`. Other reserved words and punctuation cannot be named by a fixity
 declaration.
@@ -236,6 +249,11 @@ Application has precedence 10. The initial fixities are:
 All fixity declarations in a module are collected before any term or notation
 body in that module is resolved, so a declaration is module-wide regardless of
 its textual position. Imported fixities are already in scope during this pass.
+An initial fixity belongs to its primitive constructor, not to a quoted named
+constructor with the same decoded text. Thus named `` `pi` `` is an ordinary
+atom/application unless an explicit fixity declaration for that named spelling
+is in scope; resolving such an explicit use preserves `DC_Named` rather than
+turning it into the logical `pi` constructor.
 
 Comma and `&` are aliases for the same logical constructor, conjunction. A
 fixity declaration for either spelling applies to both. They have identical
@@ -261,14 +279,33 @@ arguments, and eta-expands an under-application with lambdas for the missing
 parameters. Expansion is recursive. A direct or indirect expansion cycle is a
 compile-time error rather than an infinite rewrite.
 
+Lexical binders take precedence over expansion lookup. After `x\`, every
+bound occurrence of `x` in that lambda body denotes the bound variable and is
+not expanded as a same-named notation, regardless of whether the occurrence
+was initially classified as an upper-case variable or lower-case/symbolic
+constructor token.
+
+Expansion is hygienic in both directions. A free global constructor copied
+from a notation template is not captured by a same-named binder surrounding
+the notation use; the surrounding binder is alpha-renamed when necessary.
+Together with capture-avoiding parameter substitution, this preserves both the
+template's free names and each actual argument's free names.
+
 The notation database also records inverse, presentation-only fold templates.
 At user-facing write boundaries the pretty-printer MAY replace a matching
 expanded term or type with the most recently applicable surface name. Folding
 must not change the internal term and must not affect equality or search.
+Identity and other catch-all declarations such as `notation id X := X.` and
+`abbrev id X := X.` are legal. Presentation folding MUST terminate for them:
+while formatting the arguments captured by a fold entry, that active entry and
+all enclosing active fold entries are ineligible for another fold. This
+restriction affects presentation only, not read expansion.
 
 Within one module, a later abbreviation or notation with the same name shadows
-an earlier one. Import composition and cross-module conflicts are specified in
-Chapter 5.
+an earlier one. The resulting complete declaration set is module-wide: every
+type and fact body in the module may use an abbreviation or notation declared
+later in the file. Textual order decides same-name shadowing, not visibility.
+Import composition and cross-module conflicts are specified in Chapter 5.
 
 
 ================================================================================
@@ -289,6 +326,19 @@ inferred and checked against `o` using the main module's `exportEnv`. Source
 abbreviations and term notations are expanded before checking. Compilation then
 introduces explicit type and term quantifiers for inferred free variables and
 converts named binders to the kernel representation.
+
+A predicate-variable call in a global clause body must be operationally
+anchored. It is anchored when that same variable occurs in the clause conclusion
+(for example `call P :- P`) or when it is introduced by an explicit `pi`
+surrounding the call in the body. A `pi` binder creates a dispatchable rigid
+predicate parameter; a `sigma` binder creates a fresh flexible variable and
+does not by itself anchor a predicate call. An otherwise free predicate variable
+such as the `P` in `p :- P` is only an implicit clause parameter with no caller
+or local binder capable of supplying a predicate; the declaration is rejected
+instead of installing a clause that can never dispatch that call. This anchor
+rule applies to global program-clause bodies. A top-level query may still call
+a predicate variable supplied by its own explicit higher-order context, and
+local assumptions follow the admissibility rules in 3.3.
 
 2.2 Multi-head shared typing
 --------------------------------------------------------------------------------
@@ -353,6 +403,39 @@ passing a negative nesting count to the kernel's nested-lambda constructor are
 deliberately `undefined`. A negative index is outside the term domain; it is not
 an ill-formed term that an implementation may preserve or recover as an ordinary
 error value.
+
+A non-negative index need not be closed at a presentation boundary. At lexical
+lambda depth `d`, an index `i < d` denotes the corresponding displayed binder;
+an index `i >= d` denotes ambient slot `i - d`. The term viewer renders ambient
+slot `n` with the stable valid `LargeId` placeholder `DB_n`. Every occurrence
+of the same slot in one displayed term uses the same placeholder, including
+occurrences below additional lambdas. If that spelling conflicts with a free
+logic variable, named data/type constructor, displayed binder, or another
+visible name, the viewer appends the least available numeric suffix, beginning
+with `_1`. Thus a term already containing `DB_0` displays ambient slot zero as
+`DB_0_1`; this freshening is presentation only.
+
+The same domain policy applies to the kernel's other natural-valued metadata.
+A natural literal `DC_NatL n` is in the term domain exactly when `n >= 0`;
+neither a raw constructor nor the `Constant` overload may use a negative literal
+and then rely on `s` or another rewrite to move it back into the domain.
+
+A suspension `(body, ol, nl, env)` is in the term domain exactly when `ol` and
+`nl` are non-negative, `length env = ol`, every dummy/binding level lies in the
+closed interval `0..nl`, and every term stored in the suspension is itself in
+the term domain. Smart constructors enforce these conditions, and every public
+semantic boundary that accepts raw `TermNode` values MUST reject an internally
+forged violation as `undefined`; it must not normalize the violation away.
+In particular, every public application and lambda smart constructor forces the
+complete domain invariant of each child before returning its outer constructor;
+merely demanding the result to weak head normal form cannot launder a forged
+negative index or literal into a valid-looking parent.
+
+Runtime scope levels and the integer keys used for generated rigid/flexible
+labels are likewise non-negative. A raw stack containing a negative scope or
+label is outside the runtime API domain. Stack-consuming boundaries, including
+transition, snapshot, and restore, force this invariant rather than preserving
+the malformed state for later execution.
 
 
 ================================================================================
@@ -499,7 +582,21 @@ Chapter 4. Arithmetic, Presburger Constraints, and I/O
 
 Natural literals and `s` denote non-negative integers. `+`, `-`, `*`, and `/`
 have type `nat -> nat -> nat`. Evaluation of a ground expression is exact;
-subtraction underflow and division by zero fail the branch.
+subtraction underflow and division by zero fail the branch. Every arithmetic
+constructor is strict in all of its operands: an undefined subexpression is not
+erased by a polynomial identity, so `0 * (1 / 0)` is undefined rather than
+zero. When one operand is not yet known, a definitely undefined sibling still
+decides the result; in particular a known zero denominator is an error even if
+the numerator is flexible.
+
+Symbolic arithmetic carries a definition obligation in addition to its value
+formula. The obligation recurses through `s`, `+`, and `*`; `A - B` additionally
+requires `A >= B`, and `A / B` additionally requires `B > 0`. Polynomial and
+Presburger reasoning may discharge the value formula only while retaining this
+obligation. Every HOPU or debugger substitution rechecks it. Thus a variable
+used by `Y = Y`, `0 * Y >= 0`, or `presburger "Y >= 0"` cannot subsequently be
+bound to `1 / 0` on that proof branch. Arithmetic goal order consequently does
+not change which fully instantiated answers are admitted.
 
 `is` deliberately retains the polymorphic type `A -> A -> o`. Its behavior is
 selected by the instantiated operand type and term shape. At `nat`, or whenever
@@ -516,10 +613,20 @@ it with `L`:
   * otherwise the goal leaves an evaluation constraint to be rechecked after
     later substitutions.
 
+A delayed evaluation remains the directional relation `L is R`; binding `L`
+does not convert it into a weaker solver equality. If later substitutions make
+`R` a ground natural while `L` is still flexible, rechecking binds `L` to that
+value. All delayed evaluations and their definition conditions are checked as
+one shared store, so individually feasible but jointly inconsistent pairs such
+as `X is Y + 1, X is Y + 2` fail.
+
 The symbolic `+`/`*` fragment is normalized as a polynomial. Thus
 `20 * 20` normalizes to `400`, and
 `C * (x + 1) = C * x + C` is recognized as an identity. A contradictory closed
 arithmetic equality fails rather than becoming a residual constraint.
+These normalization equalities are conditional on the strict definition
+obligations above; a zero coefficient never licenses removal of a partial
+subexpression.
 
 When neither operand has type `nat` and neither contains a natural-arithmetic
 constructor, `is` normalizes both operands and submits their disagreement to the
@@ -554,6 +661,10 @@ an unresolved guarded constraint is reported as `(premise) => consequent`.
 Nested premises are captured and displayed in lexical outer-to-inner source
 order.
 
+The strict definition obligations of both comparison operands survive even
+when the comparison itself is a Presburger tautology and is omitted. They are
+rechecked after every later binding together with all retained comparisons.
+
 4.3 `presburger`
 --------------------------------------------------------------------------------
 
@@ -572,6 +683,18 @@ The formula language is:
   connectives      : `~`, `/\`, `\/`, `->`, `<->`
   quantifiers      : `forall X, f` and `exists X, f`
   false            : `_|_`
+
+A retained Presburger constraint is displayed as an ordinary Hol application
+to a string literal. Consequently its `\` and `"` characters are escaped by
+the Hol string writer, and copying the complete displayed term back into a
+query is lexically valid. Generated Presburger variables use identifiers
+beginning with an ASCII upper-case letter (or `_`) and avoid the free
+identifiers present in the formula; internal spellings such as `v1` and
+`?V_4` MUST NOT leak into the formula source.
+
+Each Hol term substituted for a free Presburger name also retains its strict
+natural-definition obligation. Entailment of the represented formula does not
+authorize a later substitution of that term by undefined arithmetic.
 
 From weakest to strongest, connective precedence is `<->`/`->`, `\/`, `/\`,
 then prefix `~`/quantification and atomic relations. Implication and equivalence
@@ -645,6 +768,11 @@ For a canonical path under the project root, its path-derived name is the
 root-relative path with the final `.hol` removed and path separators replaced
 by dots. No case folding occurs. For example, canonical file
 `<root>/lib/list.hol` has path-derived name `lib.list`.
+
+Path-derived display names are not identities and need not be injective. For
+example, `a/b.hol` and `a.b.hol` both display as `a.b`. Whenever a diagnostic
+mentions an imported declaration origin, it includes the canonical path as
+well as this display name, so two such modules remain distinguishable.
 
 An optional `module N.` header is an assertion, not a second identity. `N` MUST
 equal the path-derived name exactly or loading fails. Headerless files retain
@@ -753,6 +881,15 @@ load. No partially loaded environment becomes the active REPL program. Warnings,
 including ignored duplicate imports, are emitted only for a successful load or
 as otherwise explicitly reported by the loader.
 
+The source reader preserves the file's exact character sequence. In particular,
+it MUST NOT synthesize a newline after a final unterminated line; parsing and EOF
+diagnostics observe whether the file actually ended with a newline. Filesystem
+inspection and opening are one fallible operation from the language's point of
+view: disappearance, permission failure, or another `IOException` between the
+existence check and the completed strict read becomes a `HolBETA-FileError`, not
+an uncaught host exception. For an import, that error is located at the import
+declaration; a direct main-file read failure may be locationless.
+
 
 ================================================================================
 Chapter 6. Source Locations and Diagnostics
@@ -816,7 +953,21 @@ available offending subterm. For a term-notation use, 2.3 determines whether
 that subterm has the call-site or actual-argument span. A Presburger parse error
 points to its literal. Some runtime and HOPU failures have no trustworthy term
 annotation and are therefore conformingly locationless; the specification does
-not promise a location on every runtime error.
+not promise a location on every runtime error. An unsupported arithmetic
+constraint reached directly from the active query retains the real query span
+and caret. The same error reached in an installed or imported clause body is
+locationless unless source-file provenance for that body is available; clause
+coordinates MUST NOT be rendered against the active query text.
+
+A type-unification diagnostic uses source-level types and explains the expected
+and actual requirements; a kind mismatch, occurs-check failure, or malformed
+type application also states that reason. Application checking distinguishes a
+non-function value (highlight the function position), a wrong argument type
+(highlight the argument), and self-application requiring an infinite type
+(highlight the complete application). When two occurrences of one logic
+variable impose incompatible types, the diagnostic identifies both the earlier
+and conflicting occurrence and their respective requirements. Internal labels
+such as `expected_typ` are never user-facing explanations.
 
 
 ================================================================================
@@ -831,6 +982,37 @@ fresh search stack and query-variable type map, and enumerates answers in search
 order. Query variables retain stable display names within the load generation.
 When an answer has further alternatives, the REPL may ask whether to continue;
 declining abandons the remaining stack.
+
+Answer projection treats wildcard and `sigma` variables that are disconnected
+from named query variables as existential. After universally valid residuals
+are removed, remaining constraints form a hypergraph whose vertices are
+constraints and whose hyperedges are their shared logic variables (including
+transitive sharing). A jointly satisfiable disconnected component is omitted
+only when every constraint in that component has complete value and definition
+semantics representable by the arithmetic solver. Projection is all-or-nothing
+per component: a complete comparison or Presburger formula sharing a witness
+with an unsupported partial evaluation remains visible with it. An unsupported
+partial expression is therefore not silently weakened: the answer prints one
+explicit `exists E_1, ...` scope for the surviving conjunction and consistently
+renames hidden implementation
+variables within it. Bare internal names such as `?V_4` are not an implicit
+existential notation. Generated display names are valid upper-case Hol
+identifiers and skip any spelling appearing in the rendered query or observable
+answer, including rigid constants, lambda hints, and cached debugger names, so
+the displayed terms can be parsed without capture.
+The heading `exists E_1, ... .` is REPL meta-syntax declaring the scope of the
+following answer lines; it is not a term or declaration in the Chapter 1 Hol
+grammar and is not pasted as a standalone query. Each following displayed term
+or residual constraint is valid pasteable Hol syntax when its generated `E_n`
+names are interpreted under that announced scope.
+
+Before a terminal empty goal stack is exposed as an answer, delayed `is`
+relations are normalized and rechecked under the complete substitution, and
+the arithmetic store is checked jointly. A now-solvable directional `L is R`
+binds `L`; a true comparison is discharged; a false or undefined evaluation or
+comparison discards the branch; and a genuinely unknown obligation remains as
+a residual. This finalization also applies when an embedding calls the Runtime
+API with a raw context rather than reaching the answer through parsed goals.
 
 At the top-level prompt:
 
@@ -890,6 +1072,13 @@ identifier supplies may continue, and external effects remain visible. User
 program meaning, module composition, diagnostics, and fresh REPL control state
 must match a new load from the same filesystem state.
 
+Reload replacement is atomic. If rereading or elaborating any file fails, the
+diagnostic is printed and the preceding active program remains installed. Its
+top-level debugging toggle, type-display mode, and display-name cache also
+remain active; no partly rebuilt environment or fresh generation replaces it.
+Only a successful reload invalidates the old generation and creates fresh REPL
+control state.
+
 
 ================================================================================
 Chapter 8. Observable Compatibility Requirements
@@ -919,6 +1108,22 @@ or explicit warning text.
 The regression suite's `.expected.txt` files define exact CLI presentation
 only where the test invokes the same diagnostic mode and canonical-path
 normalization. They do not override the logical rules in this specification.
+
+`Hol.BETA` is the implementation selected by the public `Hol` entry points.
+`Hol.ALPHA2` remains a supported compatibility implementation for the language
+features it contains. It does not acquire BETA-only modules, notation,
+Presburger, or debugger facilities, but its shared lexer, kernel term domain,
+suspension reduction, viewer safety, typed HOPU, cut barrier, and strict natural
+definedness MUST agree with the corresponding rules here. In particular,
+ALPHA2 may not turn a shared invalid program into a host exception merely
+because its diagnostic presentation is implementation-specific. Shared
+conformance tests exercise both implementations where their feature sets
+overlap. This includes the open
+non-negative index presentation from 2.4: both viewers use the same stable,
+collision-free ambient-slot placeholders. ALPHA2 also accepts the shared
+backtick-quoted small-identifier spelling as a decoded identifier and retains
+those backticks when a lexical reserved word is a named constructor rather than
+the same-spelled primitive.
 
 
 ================================================================================
@@ -992,7 +1197,23 @@ implementation interfaces, not stable Hol language syntax.
 interfaces are internal integration surfaces. The semantic requirements in
 Chapter 7 apply even if their Haskell representation changes.
 
-The normative De Bruijn-index domain and failure policy are specified in 2.4.
+Direct API callers receive the same occurs, type, scope, and arithmetic-store
+checks as parsed debugger commands. Elaborated `[]`/`(::)` values retain their
+explicit element-type arguments at this boundary; an explicitly typed
+`list nat` is not a polymorphic empty list and cannot satisfy `list char`.
+Each explicit type argument is kind-checked against the composed program kind
+environment and must itself have kind `*`; a syntactic type tree such as
+`nat nat` is outside the Runtime value domain even for a still-polymorphic list
+target.
+Scope escape is checked before type recovery so an out-of-universe type
+variable is diagnosed as a scope violation rather than mislabeled as an
+ill-typed value. Rejected assignments and malformed snapshots do not mutate
+runtime state. If an embedding's debugger-output callback replaces the exposed
+stack reference, Runtime forces the complete stack invariant immediately when
+the callback returns; a malformed tail cannot hide behind a terminal frame.
+
+The complete internal natural-valued domain and failure policy are specified
+in 2.4.
 
 
 ================================================================================
@@ -1016,9 +1237,15 @@ A conforming test suite must cover at least:
   M9  deterministic DFS source-order postorder and main-last composition;
   M10 identical and conflicting C1-C5 declarations, including both origins;
   M11 local abbreviation/notation shadowing and imported user-fixity rejection;
-  M12 reload after an imported file changes, with no stale loader cache;
+  M12 successful reload after an imported file changes, with no stale loader
+      cache, and failed reload preserving the preceding active program and REPL
+      controls;
   M13 rejection of an out-of-root main path and an in-root symlink whose
-      canonical import target escapes the root.
+      canonical import target escapes the root;
+  M14 rejection of symbolic and path-separator module locators before filesystem
+      resolution; and
+  M15 conflicting declarations from distinct canonical modules whose
+      path-derived display names collide, with both paths in the diagnostic.
 
 10.2 Multi-head and local assumptions
 --------------------------------------------------------------------------------
@@ -1040,7 +1267,13 @@ Required cases are:
   H9  a bare nat equality is both a searchable local hypothesis and an
       arithmetic premise, including syntactically normalized equalities; its
       nonempty local match block suppresses built-in enumeration, while an
-      empty block falls back normally.
+      empty block falls back normally;
+  H10 a global `p :- P` body and `p :- sigma P\ P` are rejected as
+      unanchored predicate-variable calls, while `call P :- P` and a
+      `pi`-bound predicate call are accepted;
+  H11 a clause constructor is rejected inside a global clause conclusion,
+      both directly in `(p :- q) :- r` and as one conjunct of a multi-head
+      conclusion.
 
 10.3 Cut barrier matrix
 --------------------------------------------------------------------------------
@@ -1065,6 +1298,8 @@ The suite must distinguish all of these cases:
 Each case must demand another answer or force post-cut failure where necessary;
 merely accepting the first answer and declining enumeration does not prove that
 alternatives were pruned.
+The shared ALPHA2 Runtime suite must execute at least C1, C3, C4, and C5 while
+enumerating every answer, in addition to the complete BETA matrix.
 
 10.4 I/O and snapshot effects
 --------------------------------------------------------------------------------
@@ -1085,13 +1320,37 @@ Required cases are:
 --------------------------------------------------------------------------------
 
 Required cases include multiline `SLoc` rendering both with and without source
-lines, EOF cursor locations (including EOF after a final newline), canonical
-file paths, color-free `DiagnosticTest` output, smallest-subterm type errors,
+lines, EOF cursor locations both with and without a final newline, exact source
+reading without a synthesized final newline, unterminated block comments in
+BETA and ALPHA2, a missing custom-fixity operand at a real source span rather
+than `(0,0)`, canonical file paths, color-free `DiagnosticTest` output,
+smallest-subterm type errors,
 term-notation call-site rebasing with precise actual-argument locations, actual
 Presburger-literal spans, a conforming locationless runtime error, polynomial
 normalization, subtraction/division failure, linear residual comparison, and an
 explicit unsupported-nonlinear runtime error. Conformance cases must directly
-force the negative-index and negative nested-lambda cases from 2.4. Arithmetic
+force the negative-index, negative literal (including the `s` folding path),
+negative nested-lambda, malformed suspension, and negative runtime-label cases
+from 2.4. Direct Runtime tests must also cover explicit list type arguments and
+their kind validation (including an ill-kinded forged `[]` and `(::)`), plus
+atomic rejection of ill-typed or scope-escaping debugger assignments, callback
+stack replacement, and terminal raw contexts containing false, undefined,
+solvable, or still-unknown arithmetic obligations. Arithmetic
 cases must also cover antecedent-local universal premises, guarded residual
 display/rechecking, and the local-equality-before-arithmetic behavior specified
-in 3.5.
+in 3.5. They must additionally cover strict zero multiplication, a known zero
+denominator beside an unknown numerator, impossible symbolic underflow,
+order-invariant later bindings through equality/comparison/Presburger, delayed
+`is` producing an LHS binding after `/` and `-` become ground, joint consistency
+of multiple evaluations, safe hidden-variable projection, and explicit
+existential display when projection is incomplete. Existential display tests
+must include a generated name colliding with a visible lambda or rigid hint,
+not only a same-named query logic variable. A query-origin nonlinear
+runtime error has a caret; the equivalent clause-origin and direct-Runtime
+cases remain locationless.
+Notation/viewer cases must additionally cover a lower-case binder shadowing a
+same-named notation, a template free global avoiding capture by a use-site
+binder, use before textual declaration, terminating nested identity notation
+and abbreviation folds, round-tripping a quoted reserved named constructor,
+rejecting an upper-case declaration name, and reparsing a displayed Presburger
+residual as both Hol string syntax and Presburger formula syntax.

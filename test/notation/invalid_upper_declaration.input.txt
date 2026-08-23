@@ -1,0 +1,4 @@
+Hol --test
+test/notation/invalid_upper_declaration.hol
+:q
+

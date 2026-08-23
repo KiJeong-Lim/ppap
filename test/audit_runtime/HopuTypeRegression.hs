@@ -3,11 +3,13 @@ module Main where
 import Control.Monad (unless)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict as Map
+import Hol.BETA.Constant (Constant (..))
 import Hol.BETA.Header
 import Hol.BETA.HOPU
-import Hol.BETA.Runtime (primitiveBindingTypeOkay)
+import Hol.BETA.Runtime (primitiveBindingTypeOkay, scopeEscaping)
 import Hol.BETA.TermNode
 import System.Exit (exitFailure)
+import Z.Utils (Unique (..))
 
 assert :: String -> Bool -> IO ()
 assert label okay = unless okay $ do
@@ -24,6 +26,10 @@ main = do
         (primitiveBindingTypeOkay labeling target goodValue)
     assert "primitive binding accepted s applied to a character"
         (not (primitiveBindingTypeOkay labeling target badValue))
+    assert "type recovery ignored a suspension environment"
+        (typeOfTerm suspensionLabeling [mkTyChr] explicitSuspension == Just mkTyNat)
+    assert "scope checking ignored a rigid constant in a suspension environment"
+        (scopeEscaping suspensionLabeling 0 target explicitSuspension == ([highConstant], []))
     putStrLn "HOPU application type regressions passed"
     where
         target = LV_Named "Target"
@@ -37,4 +43,10 @@ main = do
             , _NamedTypes = Map.singleton "Target" mkTyNat
             , _TyVarKeys = IntMap.empty
             , _TypeEnv = Map.singleton DC_Succ (Forall [] (mkTyNat `mkTyArrow` mkTyNat))
+            }
+        highConstant = DC (DC_Unique (Unique 7) noHint)
+        explicitSuspension = mkSusp (mkNIdx 0) 1 0 [mkBinds (mkNCon highConstant) 0]
+        suspensionLabeling = labeling
+            { _ConLabel = IntMap.singleton 7 1
+            , _ConTypes = IntMap.singleton 7 mkTyNat
             }

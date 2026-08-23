@@ -1,0 +1,24 @@
+Hol --test
+test/audit_runtime/hidden_projection.hol
+?- _ > 5.
+?- sigma Y\ Y > 5.
+?- sigma Y\ (Y + 1 is 5).
+?- sigma Y\ (X is Y / 2).
+n
+?- sigma Y\ (1 / Y is 2).
+n
+?- sigma Y\ (X is Y / Z, W is Y / Z).
+n
+?- sigma Y\ (Y > 5, 0 is 1 / Y).
+n
+?- sigma Y\ (presburger "Y > 5", 0 is 1 / Y).
+n
+?- sigma Y\ sigma Z\ (Y > 5, 0 is 1 / Z).
+n
+?- sigma Y\ sigma Z\ (presburger "Y > 5", 0 is 1 / Z).
+n
+?- E_1 = E_1.
+n
+?- sigma Y\ X = (E_1\ Y).
+n
+:q

@@ -195,7 +195,10 @@ typeOfTerm lbl env term
             cod <- go (dom : localEnv) body
             Just (mkTyArrow dom cod)
         NLam _ _ _ _ -> Nothing
-        Susp body _ _ _ -> go localEnv body
+        -- A suspension's environment and level shift are semantic, not
+        -- annotations.  Inspect the value it denotes; looking only at its
+        -- body can assign the type of a replaced de Bruijn variable.
+        suspended@Susp {} -> go localEnv (rewrite NF suspended)
         NPresburgerCheck _ _ _ -> Just mkTyO
 
 commonHeadType :: Labeling -> LogicVar -> Int -> [TermNode] -> Maybe (MonoType Int)

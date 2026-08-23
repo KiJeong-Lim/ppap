@@ -18,6 +18,25 @@ type SmallId = String
 
 type Keyword = String
 
+-- Keep quoted named constructors distinct from lexical primitives at every
+-- surface write boundary.  This set intentionally matches Hol.BETA.Header so
+-- the compatibility implementation accepts and renders the shared spellings
+-- identically, including names for BETA-only declaration forms.
+reservedNamedIdentifiers :: Set.Set SmallId
+reservedNamedIdentifiers = Set.fromList
+    [ "s", "pi", "sigma", "true", "fail", "is", "debug"
+    , "kind", "type", "infixl", "infixr", "infix", "prefix"
+    , "abbrev", "notation", "module", "import"
+    ]
+
+isReservedNamedIdentifier :: SmallId -> Bool
+isReservedNamedIdentifier name = name `Set.member` reservedNamedIdentifiers
+
+renderNamedIdentifier :: SmallId -> SmallId
+renderNamedIdentifier name
+    | isReservedNamedIdentifier name = "`" ++ name ++ "`"
+    | otherwise = name
+
 type MetaTVar = Unique
 
 type IVar = Unique
@@ -163,6 +182,15 @@ instance Show DataConstructor where
         DC_NatL nat -> showsPrec 0 nat
         DC_Succ -> strstr "s"
         DC_eq -> strstr "="
+        DC_le -> strstr "=<"
+        DC_lt -> strstr "<"
+        DC_ge -> strstr ">="
+        DC_gt -> strstr ">"
+        DC_plus -> strstr "+"
+        DC_minus -> strstr "-"
+        DC_mul -> strstr "*"
+        DC_div -> strstr "/"
+        DC_wc -> strstr "_"
 
 instance Show TypeConstructor where
     showsPrec _ type_constructor = case type_constructor of

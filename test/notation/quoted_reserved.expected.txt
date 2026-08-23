@@ -1,0 +1,30 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.quoted_reserved ( test/notation/quoted_reserved.hol, interpreted )
+test.notation.quoted_reserved> Ok, one module loaded.
+test.notation.quoted_reserved> 
+test.notation.quoted_reserved> The answer substitution is:
+test.notation.quoted_reserved> X := `true`.
+test.notation.quoted_reserved> Find more solutions? [Y/n] 
+test.notation.quoted_reserved> yes.
+test.notation.quoted_reserved> 
+test.notation.quoted_reserved> yes.
+test.notation.quoted_reserved> 
+test.notation.quoted_reserved> The answer substitution is:
+test.notation.quoted_reserved> X := `pi`.
+test.notation.quoted_reserved> Find more solutions? [Y/n] 
+test.notation.quoted_reserved> yes.
+test.notation.quoted_reserved> 
+test.notation.quoted_reserved> yes.
+test.notation.quoted_reserved> 
+test.notation.quoted_reserved> The answer substitution is:
+test.notation.quoted_reserved> X := 1 `is` 2.
+test.notation.quoted_reserved> Find more solutions? [Y/n] 
+test.notation.quoted_reserved> yes.
+test.notation.quoted_reserved> 
+test.notation.quoted_reserved> yes.
+test.notation.quoted_reserved> 
+Hol >>= quit

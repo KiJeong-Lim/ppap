@@ -3,46 +3,36 @@ module Z.System.File
     , writeFileNow
     ) where
 
-import Control.Monad.Fix
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Maybe
+import Control.Exception (IOException, catch, evaluate)
 import System.Directory
 import System.IO
 import Z.Utils
 
-when :: Monad m => m Bool -> m a -> m (Maybe a)
-when condm actionm = do
-    cond <- condm
-    if cond then fmap Just actionm else return Nothing
-
 readFileNow :: FilePath -> IO (Maybe String)
-readFileNow file = do
-    tmp <- when (doesFileExist file) $ do
-        file_permission <- getPermissions file
-        if readable file_permission then do
-            my_handle <- openFile file ReadMode
-            my_handle_is_open <- hIsOpen my_handle
-            my_result <- runMaybeT $ do
-                my_handle_is_okay <- if my_handle_is_open then lift (hIsReadable my_handle) else return False
-                if my_handle_is_okay then do
-                    my_content <- fix $ \get_content -> do
-                        let my_append = foldr (fmap . kons) id
-                        my_handle_is_eof <- lift (hIsEOF my_handle)
-                        if my_handle_is_eof then
-                            return ""
-                        else do
-                            content1 <- lift (hGetLine my_handle)
-                            my_handle_is_still_okay <- lift (hIsReadable my_handle)
-                            content2 <- if my_handle_is_still_okay then get_content else fail ""
-                            return (my_append content1 (my_append "\n" content2))
-                    callWithStrictArg return my_content
-                else
-                    fail ""
-            my_result `seq` hClose my_handle
-            return my_result
+readFileNow file = readNow `catch` unreadable where
+    unreadable :: IOException -> IO (Maybe String)
+    unreadable _ = return Nothing
+    readNow = do
+        exists <- doesFileExist file
+        if exists then do
+            file_permission <- getPermissions file
+            if readable file_permission then do
+                withFile file ReadMode $ \handle -> do
+                    hSetNewlineMode handle noNewlineTranslation
+                    okay <- hIsReadable handle
+                    if okay then do
+                        content <- hGetContents handle
+                        -- Force the lazy contents before `withFile' closes the handle.
+                        -- In particular, do not reconstruct the input with `hGetLine':
+                        -- doing so invents a newline after a non-terminated final line.
+                        _ <- evaluate (length content)
+                        return (Just content)
+                    else
+                        return Nothing
+            else
+                return Nothing
         else
             return Nothing
-    callWithStrictArg return (maybe Nothing id tmp)
 
 writeFileNow :: OStreamCargo a => FilePath -> a -> IO Bool
 writeFileNow file_dir my_content = do

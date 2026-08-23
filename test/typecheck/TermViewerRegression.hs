@@ -1,6 +1,6 @@
 module Main where
 
-import Calc.Presburger.Internal (PresburgerFormula (..))
+import Calc.Presburger.Internal (PresburgerFormula (..), PresburgerTermRep (..))
 import Control.Exception (SomeException, evaluate, try)
 import qualified Data.IntMap.Strict as IntMap
 import qualified Data.Map.Strict as Map
@@ -32,6 +32,33 @@ assertUndefined label action = do
     case result of
         Left _ -> return ()
         Right () -> error (label ++ ": expected undefined")
+
+assertBetaQueryParses :: String -> String -> IO ()
+assertBetaQueryParses label source =
+    case BetaLexer.runHolLexer source of
+        Left pos -> error (label ++ ": lexer rejected viewer output at " ++ show pos)
+        Right tokens -> case BetaParser.runHolParser tokens of
+            Right (Left _) -> return ()
+            _ -> error (label ++ ": parser rejected viewer output " ++ show source)
+
+assertAlphaNamedQueryParses :: String -> String -> String -> IO ()
+assertAlphaNamedQueryParses label expected source =
+    case AlphaLexer.runHolLexer ("?- " ++ source ++ ".") of
+        Left pos -> error (label ++ ": lexer rejected viewer output at " ++ show pos)
+        Right tokens -> case AlphaParser.runHolParser tokens of
+            Right (Left (AlphaLexer.RCon _ (AlphaHeader.DC_Named actual)))
+                | actual == expected -> return ()
+            _ -> error (label ++ ": parser did not preserve the named constructor " ++ show source)
+
+assertAlphaNamedTypeParses :: String -> String -> String -> IO ()
+assertAlphaNamedTypeParses label expected source =
+    case AlphaLexer.runHolLexer ("type quoted_reserved " ++ source ++ ".") of
+        Left pos -> error (label ++ ": lexer rejected viewer output at " ++ show pos)
+        Right tokens -> case AlphaParser.runHolParser tokens of
+            Right (Right [AlphaLexer.RTypeDecl _ _
+                    (AlphaLexer.RTyCon _ (AlphaHeader.TC_Named actual))])
+                | actual == expected -> return ()
+            _ -> error (label ++ ": parser did not preserve the named type constructor " ++ show source)
 
 assertAlphaTermEqual :: String -> Alpha.TermNode -> Alpha.TermNode -> IO ()
 assertAlphaTermEqual label expected actual
@@ -79,18 +106,106 @@ main = do
         (show alphaPartial)
     assertEqual "ALPHA2 clause operator is non-associative" "X :- (Y :- Z)"
         (show alphaIf)
+    assertEqual "ALPHA2 standalone open de Bruijn index" "DB_0"
+        (show (Alpha.mkNIdx 0))
+    assertEqual "ALPHA2 open de Bruijn index below a lambda" "W_1\\ DB_0"
+        (show (Alpha.mkNLam (Alpha.mkNIdx 1)))
+    assertEqual "ALPHA2 repeated ambient slot has one stable name"
+        "DB_0 (W_1\\ DB_0)"
+        (show (Alpha.mkNApp (Alpha.mkNIdx 0) (Alpha.mkNLam (Alpha.mkNIdx 1))))
+    assertEqual "ALPHA2 ambient name avoids a free logic variable" "DB_0 DB_0_1"
+        (show (Alpha.mkNApp (alphaNamed "DB_0") (Alpha.mkNIdx 0)))
+    assertEqual "ALPHA2 ambient name avoids a named constructor" "DB_0 DB_0_1"
+        (show (Alpha.mkNApp
+            (Alpha.mkNCon (AlphaHeader.DC_Named "DB_0")) (Alpha.mkNIdx 0)))
+    if AlphaHeader.reservedNamedIdentifiers == BetaHeader.reservedNamedIdentifiers
+        then return ()
+        else error "ALPHA2 and BETA reserved named-identifier sets differ"
+    assertEqual "ALPHA2 reserved named constructor remains quoted" "`true`"
+        (show (Alpha.mkNCon (AlphaHeader.DC_Named "true")))
+    assertEqual "ALPHA2 reserved fixity name remains quoted" "`pi`"
+        (show (Alpha.mkNCon (AlphaHeader.DC_Named "pi")))
+    assertEqual "ALPHA2 reserved named type constructor remains quoted" "`type`"
+        (show (Alpha.mkNCon (AlphaHeader.TC_Named "type")))
+    assertAlphaNamedQueryParses "ALPHA2 quoted named constructor round-trips"
+        "true" (show (Alpha.mkNCon (AlphaHeader.DC_Named "true")))
+    assertAlphaNamedQueryParses "ALPHA2 quoted prefix spelling round-trips as named"
+        "pi" (show (Alpha.mkNCon (AlphaHeader.DC_Named "pi")))
+    assertAlphaNamedTypeParses "ALPHA2 quoted named type constructor round-trips"
+        "type" (show (Alpha.mkNCon (AlphaHeader.TC_Named "type")))
     assertEqual "BETA hinted lambda avoids a same-named free variable" "X1\\ X"
         (show (Beta.mkNLamHint (Just "X") (betaNamed "X")))
+    assertEqual "BETA standalone open de Bruijn index" "DB_0"
+        (show (Beta.mkNIdx 0))
+    assertEqual "BETA open de Bruijn index below a lambda" "W_1\\ DB_0"
+        (show (Beta.mkNLam (Beta.mkNIdx 1)))
+    assertEqual "BETA repeated ambient slot has one stable name"
+        "DB_0 (W_1\\ DB_0)"
+        (show (Beta.mkNApp (Beta.mkNIdx 0) (Beta.mkNLam (Beta.mkNIdx 1))))
+    assertEqual "BETA ambient name avoids a free logic variable" "DB_0 DB_0_1"
+        (show (Beta.mkNApp (betaNamed "DB_0") (Beta.mkNIdx 0)))
+    assertEqual "BETA ambient name avoids a named constructor" "DB_0 DB_0_1"
+        (show (Beta.mkNApp
+            (Beta.mkNCon (BetaHeader.DC_Named "DB_0")) (Beta.mkNIdx 0)))
+    assertEqual "BETA ambient name avoids a hinted binder" "DB_0\\ DB_0_1"
+        (show (Beta.mkNLamHint (Just "DB_0") (Beta.mkNIdx 1)))
     assertEqual "BETA notation fold viewer resolves a bound de Bruijn index" "x\\ x"
         (pprint 0 (BetaNotation.foldTerm BetaNotation.initial
             (Beta.mkNLamHint (Just "x") (Beta.mkNIdx 0))) "")
+    let identityNotationDB = BetaNotation.addNotation "identity" ["X"]
+            (Beta.mkLVar (Beta.LV_Named "X")) BetaNotation.initial
+        identityAbbrevDB = BetaNotation.addAbbrev "identity" ["X"]
+            (BetaHeader.TyVar "X") BetaNotation.initial
+    assertEqual "BETA identity notation folding terminates" "identity atom"
+        (pprint 0 (BetaNotation.foldTerm identityNotationDB
+            (Beta.mkNCon (BetaHeader.DC_Named "atom"))) "")
+    assertEqual "BETA identity type-abbreviation folding terminates" "identity nat"
+        (pprint 0 (BetaNotation.foldType identityAbbrevDB BetaHeader.mkTyNat) "")
+    let nestedIdentityDB = BetaNotation.addNotation "outer_identity" ["X"]
+            (Beta.mkLVar (Beta.LV_Named "X"))
+            (BetaNotation.addNotation "inner_identity" ["X"]
+                (Beta.mkLVar (Beta.LV_Named "X")) BetaNotation.initial)
+    assertEqual "BETA nested catch-all notation folding terminates"
+        "outer_identity (inner_identity atom)"
+        (pprint 0 (BetaNotation.foldTerm nestedIdentityDB
+            (Beta.mkNCon (BetaHeader.DC_Named "atom"))) "")
+    assertEqual "BETA reserved named constructor remains quoted" "`true`"
+        (show (Beta.mkNCon (BetaHeader.DC_Named "true")))
+    assertEqual "BETA reserved fixity name remains a quoted named constructor" "`pi`"
+        (pprint 0 (BetaNotation.foldTerm BetaNotation.initial
+            (Beta.mkNCon (BetaHeader.DC_Named "pi"))) "")
+    assertEqual "BETA reserved named type constructor remains quoted" "`type`"
+        (show (Beta.mkNCon (BetaHeader.TC_Named "type")))
     let foldedPresburger = pprint 0
             (BetaNotation.foldTerm BetaNotation.initial
-                (Beta.NPresburgerCheck (ValF True) Map.empty Nothing)) ""
-    if null foldedPresburger then
-        error "BETA notation fold viewer produced an empty Presburger rendering"
-    else
-        return ()
+                (Beta.NPresburgerCheck
+                    (AllF 1 (ConF
+                        (EqnF (IVar 1) (IVar 1))
+                        (GtnF (IVar 2) Zero)))
+                    (Map.singleton 2 (betaNamed "Y")) Nothing)) ""
+    assertEqual "BETA Presburger viewer emits escaped Hol and upper-case bound identifiers"
+        "presburger \"forall Q_1, (Q_1 = Q_1 /\\\\ Y > 0)\""
+        foldedPresburger
+    assertBetaQueryParses "BETA Presburger viewer output round-trips through the Hol parser"
+        ("?- " ++ foldedPresburger ++ ".")
+    case BetaArith.parsePresburger (BetaHeader.SLoc (1, 1) (1, 1))
+            "forall Q_1, (Q_1 = Q_1 /\\ Y > 0)" Map.empty of
+        Left msg -> error ("BETA Presburger viewer produced invalid inner syntax: " ++ msg)
+        Right _ -> return ()
+    let anonymousPresburger = pprint 0
+            (BetaNotation.foldTerm BetaNotation.initial
+                (Beta.NPresburgerCheck (EqnF (IVar 1) Zero)
+                    (Map.singleton 1
+                        (Beta.mkLVar (Beta.LV_Unique (Unique 4) BetaHeader.noHint)))
+                    Nothing)) ""
+    assertEqual "BETA Presburger viewer hides invalid anonymous identifiers"
+        "presburger \"V_1 = 0\"" anonymousPresburger
+    assertBetaQueryParses "BETA anonymous Presburger rendering remains Hol syntax"
+        ("?- " ++ anonymousPresburger ++ ".")
+    case BetaArith.parsePresburger (BetaHeader.SLoc (1, 1) (1, 1))
+            "V_1 = 0" Map.empty of
+        Left msg -> error ("BETA anonymous Presburger rendering is invalid: " ++ msg)
+        Right _ -> return ()
     assertEqual "BETA operator eta expansion avoids a free W_1" "W_2\\ W_1 + W_2"
         (show betaPartial)
     assertEqual "mixed same-level operator on a left spine is parenthesized" "(A r B) l C"

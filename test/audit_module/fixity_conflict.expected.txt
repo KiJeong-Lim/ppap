@@ -8,7 +8,7 @@ Hol> Compiling test.audit_module.fixity_conflict ( test/audit_module/fixity_conf
    |                    
  2 | import fixity_seed.
    | ^^^^^^^^^^^^^^^^^^^
-Import inconsistency (C5): `+' is declared by both `test.audit_module.fixity_override' and `test.audit_module.fixity_seed' with disagreeing fixity. (`test.audit_module.fixity_override': FK_InfixL 8; `test.audit_module.fixity_seed': FK_InfixL 6.)
+Import inconsistency (C5): `+' is declared by both `test.audit_module.fixity_override' (<PROJECT_ROOT>/test/audit_module/fixity_override.hol) and `test.audit_module.fixity_seed' (<PROJECT_ROOT>/test/audit_module/fixity_seed.hol) with disagreeing fixity. (`test.audit_module.fixity_override' (<PROJECT_ROOT>/test/audit_module/fixity_override.hol): FK_InfixL 8; `test.audit_module.fixity_seed' (<PROJECT_ROOT>/test/audit_module/fixity_seed.hol): FK_InfixL 6.)
 
 Hol =<< 
 Hol >>= quit

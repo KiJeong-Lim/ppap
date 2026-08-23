@@ -8,7 +8,7 @@ Hol> Compiling test.audit_module.invalid_fact ( test/audit_module/invalid_fact.h
    |                    
  1 | presburger "0 = 0".
    | ^^^^^^^^^^^^^^^^^^ 
-Clause validation failed: program heads must be user-declared named predicates; local heads may additionally use an in-scope predicate parameter. Local comparison assumptions must be bare linear-Presburger constraints. Logical controls, primitive I/O, and unsupported constraints are not clauses.
+Clause validation failed: program heads must be user-declared named predicates, and a clause conclusion cannot itself contain `:-'. A predicate-variable call in a program body must occur in its conclusion or beneath an explicit `pi' or `sigma' binder. Local heads may additionally use an in-scope predicate parameter. Local comparison assumptions must be bare linear-Presburger constraints. Logical controls, primitive I/O, and unsupported constraints are not clauses.
 
 Hol =<< 
 Hol >>= quit

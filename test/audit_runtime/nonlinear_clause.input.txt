@@ -1,0 +1,4 @@
+Hol --test
+test/audit_runtime/nonlinear_clause.hol
+?- bad.
+:q

@@ -5,13 +5,17 @@ import Control.Monad (unless)
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as Map
 import Hol.BETA.Diagnostic (DiagnosticMode (DiagnosticTest))
-import Hol.BETA.Header (DataConstructor (..), KindExpr (..), TypeConstructor (..))
+import qualified Hol.BETA.Desugarer as Desugarer
+import Hol.BETA.Header (DataConstructor (..), KindExpr (..), LogicalOperator (..), SLoc (..), TypeConstructor (..))
 import Hol.BETA.ModuleLoader
 import qualified Hol.BETA.Notation as Notation
+import qualified Hol.BETA.PlanHolLexer as Lexer
+import Hol.BETA.TermNode
 import System.Directory
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import System.FilePath ((</>), takeDirectory)
+import Z.System.File (readFileNow)
 import Z.Utils (execUniqueT)
 
 assert :: String -> Bool -> IO ()
@@ -59,6 +63,73 @@ hasType name env = Map.member (DC_Named name) (moduleEnvTypes env)
 
 main :: IO ()
 main = do
+    let declarationLoc = SLoc (1, 1) (1, 1)
+        emptyKind = Desugarer.makeKindEnvInModule DiagnosticTest Nothing Nothing
+            [(declarationLoc, (TC_Named "", Lexer.RStar declarationLoc))] Map.empty
+        emptyType = Desugarer.makeTypeEnvInModule DiagnosticTest Nothing Nothing
+            initialKinds
+            [(declarationLoc, (DC_Named "", Lexer.RTyCon declarationLoc (TC_Named "o")))]
+            Map.empty
+        upperType = Desugarer.makeTypeEnvInModule DiagnosticTest Nothing Nothing
+            initialKinds
+            [(declarationLoc, (DC_Named "P", Lexer.RTyCon declarationLoc (TC_Named "o")))]
+            Map.empty
+    assert "direct kind-environment API accepted an empty constructor name"
+        (case emptyKind of Left _ -> True; Right _ -> False)
+    assert "direct type-environment API accepted an empty constructor name"
+        (case emptyType of Left _ -> True; Right _ -> False)
+    assert "direct type-environment API accepted an upper-case constructor name"
+        (case upperType of Left _ -> True; Right _ -> False)
+
+    let predicate name = mkNCon (DC_Named name)
+        clause conclusion premise = mkNApp
+            (mkNApp (mkNCon LO_if) conclusion) premise
+        conjunction left right = mkNApp
+            (mkNApp (mkNCon LO_and) left) right
+        universally body = mkNApp (mkNCon LO_pi) (mkNLam body)
+        predicateVariable = mkNIdx 0
+        unanchoredBody = universally
+            (clause (predicate "p") predicateVariable)
+        anchoredBody = universally
+            (clause (mkNApp (predicate "call") predicateVariable) predicateVariable)
+        explicitlyBoundBody = universally
+            (clause (predicate "p")
+                (mkNApp (mkNCon LO_pi) (mkNLam predicateVariable)))
+        flexiblyBoundBody = clause (predicate "p")
+            (mkNApp (mkNCon LO_sigma) (mkNLam predicateVariable))
+        nestedClauseHead = clause
+            (clause (predicate "p") (predicate "q"))
+            (predicate "r")
+        nestedConjunctHead = clause
+            (conjunction
+                (clause (predicate "p") (predicate "q"))
+                (predicate "r"))
+            (predicate "s")
+    assert "program validator accepted an unanchored variable-headed clause body" $
+        case validateClauseTerm unanchoredBody of
+            Left _ -> True
+            Right () -> False
+    assert "program validator rejected a predicate variable anchored in its clause head" $
+        case validateClauseTerm anchoredBody of
+            Right () -> True
+            Left _ -> False
+    assert "program validator rejected an explicitly body-bound predicate variable" $
+        case validateClauseTerm explicitlyBoundBody of
+            Right () -> True
+            Left _ -> False
+    assert "program validator treated a fresh sigma variable as a dispatchable predicate" $
+        case validateClauseTerm flexiblyBoundBody of
+            Left _ -> True
+            Right () -> False
+    assert "program validator accepted a clause constructor as a clause head" $
+        case validateClauseTerm nestedClauseHead of
+            Left _ -> True
+            Right () -> False
+    assert "program validator accepted a nested clause inside a multi-head conclusion" $
+        case validateClauseTerm nestedConjunctHead of
+            Left _ -> True
+            Right () -> False
+
     [root, scratch, locator] <- getArgs
     let rootChoice = root </> locator ++ ".hol"
         localChoice = scratch </> locator ++ ".hol"
@@ -112,6 +183,63 @@ main = do
     let missingLocation = missingCanonical ++ ":2:5-2:" ++ show (length missingImportLine)
     expectLoadFailure "missing import diagnostic did not use the import declaration location"
         [missingLocation, "Cannot resolve module"] missingMain
+
+    let unreadableMain = scratch </> "unreadable_main.hol"
+        unreadableDep = scratch </> "unreadable_dep.hol"
+        unreadableImportLine = "   import unreadable_dep."
+    writeModule unreadableMain ("% A resolved file can still fail between resolution and reading.\n" ++ unreadableImportLine ++ "\n")
+    writeModule unreadableDep "kind unreadable_content type.\n"
+    unreadableMainCanonical <- canonicalizePath unreadableMain
+    unreadablePermissions <- getPermissions unreadableDep
+    bracket
+        (setPermissions unreadableDep emptyPermissions)
+        (const (setPermissions unreadableDep unreadablePermissions))
+        (\_ -> do
+            unreadableRead <- readFileNow unreadableDep
+            assert "unreadable source escaped as an IOException instead of `Nothing'" (unreadableRead == Nothing)
+            expectLoadFailure "unreadable imported file diagnostic lost the import span"
+                [ "[HolBETA-FileError]"
+                , unreadableMainCanonical ++ ":2:4-2:" ++ show (length unreadableImportLine)
+                , "Cannot read imported module file"
+                ] unreadableMain)
+
+    let exactFile = scratch </> "exact_final_line.txt"
+        exactSource = "a final line without a newline"
+    writeModule exactFile exactSource
+    exactRead <- readFileNow exactFile
+    assert "source reader invented or discarded final-line content" (exactRead == Just exactSource)
+
+    let eofMain = scratch </> "eof_without_newline.hol"
+        eofSource = "kind unfinished type"
+    writeModule eofMain eofSource
+    eofCanonical <- canonicalizePath eofMain
+    expectLoadFailure "EOF diagnostic treated a non-newline-terminated file as newline-terminated"
+        [eofCanonical ++ ":1:" ++ show (length eofSource + 1) ++ "-1:" ++ show (length eofSource + 1), "Parsing failed at EOF"] eofMain
+
+    let missingOperand = scratch </> "fixity_missing_operand.hol"
+        missingOperandSource = unlines
+            [ "infixl op 6."
+            , "type op (nat -> nat -> nat)."
+            , "type p (nat -> o)."
+            , "p 1 op."
+            ]
+    writeModule missingOperand missingOperandSource
+    missingOperandCanonical <- canonicalizePath missingOperand
+    expectLoadFailure "missing fixity operand diagnostic used a fabricated 0:0 span"
+        [missingOperandCanonical ++ ":4:5-4:6", "Unexpected end of expression"] missingOperand
+
+    let invalidLocator = scratch </> "invalid_locator.hol"
+        invalidSeparatorLocator = scratch </> "invalid_separator_locator.hol"
+        invalidHeader = scratch </> "invalid_header.hol"
+    writeModule invalidLocator "import ++.\n"
+    expectLoadFailure "symbolic module locator was accepted as a filesystem name"
+        ["Invalid module locator `++'", "symbolic identifiers"] invalidLocator
+    writeModule invalidSeparatorLocator "import //.\n"
+    expectLoadFailure "path-separator module locator was accepted as a filesystem name"
+        ["Invalid module locator `//'", "filesystem path separators"] invalidSeparatorLocator
+    writeModule invalidHeader "module ++.\n"
+    expectLoadFailure "symbolic module header was accepted"
+        ["Invalid module name `++'"] invalidHeader
 
     let identical = scratch </> "identical"
         identicalKindMain = identical </> "kind_main.hol"
@@ -180,4 +308,25 @@ main = do
         , pathDerivedName root notationRight
         ] notationMain
 
-    putStrLn "module loader path/reload regressions passed"
+    let collision = scratch </> "display_collision"
+        collisionMain = collision </> "main.hol"
+        collisionFlatTarget = collision </> "a.b.hol"
+        collisionNestedTarget = collision </> "a" </> "b.hol"
+        collisionFlatAlias = collision </> "flat.hol"
+        collisionNestedAlias = collision </> "nested.hol"
+    writeModule collisionMain "import flat.\nimport nested.\n"
+    writeModule collisionFlatTarget "kind collision_kind type.\n"
+    writeModule collisionNestedTarget "kind collision_kind (type -> type).\n"
+    createFileLink collisionFlatTarget collisionFlatAlias
+    createFileLink collisionNestedTarget collisionNestedAlias
+    collisionFlatCanonical <- canonicalizePath collisionFlatTarget
+    collisionNestedCanonical <- canonicalizePath collisionNestedTarget
+    assert "test setup did not create a path-derived display-name collision"
+        (pathDerivedName root collisionFlatCanonical == pathDerivedName root collisionNestedCanonical)
+    expectLoadFailure "colliding display names hid canonical declaration origins"
+        [ "Import inconsistency (C1)"
+        , collisionFlatCanonical
+        , collisionNestedCanonical
+        ] collisionMain
+
+    putStrLn "module loader path/diagnostic/reload regressions passed"

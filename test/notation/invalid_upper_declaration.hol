@@ -1,0 +1,4 @@
+% Ordinary upper-case identifiers denote variables at use sites, so accepting
+% one as a declaration name would create an unreachable declaration.
+kind Bad type.
+

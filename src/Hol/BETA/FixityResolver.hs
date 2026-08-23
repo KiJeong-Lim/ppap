@@ -17,7 +17,7 @@ data FixityError
 
 data Piece
     = PAtom TermRep
-    | POper SLoc SmallId
+    | POper SLoc SmallId DataConstructor
     deriving ()
 
 data FixityOrigin
@@ -86,7 +86,7 @@ toKind FF_Prefix = FK_Prefix
 resolveTermWithFixity :: NotationDB -> TermRep -> Either FixityError TermRep
 resolveTermWithFixity db term = do
     pieces <- flattenTerm db term
-    case parseExpr db 0 Nothing pieces of
+    case parseExpr db 0 Nothing (getSLoc term) pieces of
         Left err -> Left err
         Right (term', []) -> Right term'
         Right (_, piece : _) -> Left (FixityError (pieceLoc piece) "Unexpected operator while resolving fixity.")
@@ -101,12 +101,12 @@ flattenTerm db term
             body' <- resolveTermWithFixity db body
             return [PAtom (RAbs loc name body')]
         RApp _ (RApp _ oper lhs) rhs
-            | Just (opLoc, name) <- operatorTerm oper
-            , Just (kind, _) <- Notation.lookupFixity name db
+            | Just (opLoc, name, con) <- operatorTerm oper
+            , Just (kind, _) <- operatorFixity db con name
             , isInfix kind -> do
                 lhsPieces <- flattenTerm db lhs
                 rhsPieces <- flattenTerm db rhs
-                return (lhsPieces ++ [POper opLoc name] ++ rhsPieces)
+                return (lhsPieces ++ [POper opLoc name con] ++ rhsPieces)
         RApp _ _ _ -> flattenApp db term
         _ -> return [atomOrOper db term]
 
@@ -123,32 +123,42 @@ collectApps term = [term]
 atomOrOper :: NotationDB -> TermRep -> Piece
 atomOrOper db term
     = case operatorTerm term of
-        Just (loc, name)
-            | Just _ <- Notation.lookupFixity name db -> POper loc name
+        Just (loc, name, con)
+            | Just _ <- operatorFixity db con name -> POper loc name con
         _ -> PAtom term
 
-parseExpr :: NotationDB -> Precedence -> Maybe (Precedence, FixityKind) -> [Piece] -> Either FixityError (TermRep, [Piece])
-parseExpr db minPrec used pieces0 = do
-    (left, pieces1) <- parsePrefixOrAtom db pieces0
+-- Seeded fixities belong to primitive constructors.  A quoted reserved name
+-- is represented by @DC_Named@ after parsing, and must not accidentally inherit
+-- the primitive's fixity merely because both use the same text (for example
+-- named `` `pi` `` versus logical @pi@).  Named constructors participate only
+-- through an explicit local/imported fixity declaration.
+operatorFixity :: NotationDB -> DataConstructor -> SmallId -> Maybe (FixityKind, Precedence)
+operatorFixity db con name = case con of
+    DC_Named _ -> lookup name (Notation.declaredFixityList db)
+    _ -> Notation.lookupFixity name db
+
+parseExpr :: NotationDB -> Precedence -> Maybe (Precedence, FixityKind) -> SLoc -> [Piece] -> Either FixityError (TermRep, [Piece])
+parseExpr db minPrec used missingOperandLoc pieces0 = do
+    (left, pieces1) <- parsePrefixOrAtom db missingOperandLoc pieces0
     parseRest db minPrec used left pieces1
 
-parsePrefixOrAtom :: NotationDB -> [Piece] -> Either FixityError (TermRep, [Piece])
-parsePrefixOrAtom _ []
-    = Left (FixityError (SLoc (0, 0) (0, 0)) "Unexpected end of expression while resolving fixity.")
-parsePrefixOrAtom db (piece : pieces)
+parsePrefixOrAtom :: NotationDB -> SLoc -> [Piece] -> Either FixityError (TermRep, [Piece])
+parsePrefixOrAtom _ missingOperandLoc []
+    = Left (FixityError missingOperandLoc "Unexpected end of expression while resolving fixity.")
+parsePrefixOrAtom db _ (piece : pieces)
     = case piece of
-        POper loc name
-            | Just (FK_Prefix, prec) <- Notation.lookupFixity name db -> do
-                (arg, rest) <- parseExpr db prec Nothing pieces
-                return (RApp (loc <> getSLoc arg) (RCon loc (operatorCon name)) arg, rest)
-            | otherwise -> return (RCon loc (operatorCon name), pieces)
+        POper loc name con
+            | Just (FK_Prefix, prec) <- operatorFixity db con name -> do
+                (arg, rest) <- parseExpr db prec Nothing loc pieces
+                return (RApp (loc <> getSLoc arg) (RCon loc con) arg, rest)
+            | otherwise -> return (RCon loc con, pieces)
         PAtom atom -> return (atom, pieces)
 
 parseRest :: NotationDB -> Precedence -> Maybe (Precedence, FixityKind) -> TermRep -> [Piece] -> Either FixityError (TermRep, [Piece])
 parseRest db minPrec used left pieces
     = case pieces of
-        POper loc name : rest
-            | Just (kind, prec) <- Notation.lookupFixity name db, isInfix kind, prec >= minPrec -> do
+        POper loc name con : rest
+            | Just (kind, prec) <- operatorFixity db con name, isInfix kind, prec >= minPrec -> do
                 checkSameLevel loc used prec kind
                 let rhsMin = case kind of
                         FK_InfixR -> prec
@@ -156,12 +166,12 @@ parseRest db minPrec used left pieces
                     rhsUsed = case kind of
                         FK_InfixR -> Just (prec, kind)
                         _ -> Nothing
-                (right, rest') <- parseExpr db rhsMin rhsUsed rest
-                let left' = applyOperator loc name left right
+                (right, rest') <- parseExpr db rhsMin rhsUsed loc rest
+                let left' = applyOperator loc con left right
                 parseRest db minPrec (Just (prec, kind)) left' rest'
         piece : rest
             | canStartAtom db piece, appPrec >= minPrec -> do
-                (arg, rest') <- parsePrefixOrAtom db (piece : rest)
+                (arg, rest') <- parsePrefixOrAtom db (pieceLoc piece) (piece : rest)
                 let left' = RApp (getSLoc left <> getSLoc arg) left arg
                 parseRest db minPrec used left' rest'
         _ -> Right (left, pieces)
@@ -176,8 +186,8 @@ checkSameLevel loc (Just (prec0, kind0)) prec kind
 
 canStartAtom :: NotationDB -> Piece -> Bool
 canStartAtom _ (PAtom _) = True
-canStartAtom db (POper _ name)
-    = case Notation.lookupFixity name db of
+canStartAtom db (POper _ name con)
+    = case operatorFixity db con name of
         Just (FK_InfixL, _) -> False
         Just (FK_InfixR, _) -> False
         Just (FK_InfixN, _) -> False
@@ -189,59 +199,37 @@ isInfix FK_InfixR = True
 isInfix FK_InfixN = True
 isInfix FK_Prefix = False
 
-applyOperator :: SLoc -> SmallId -> TermRep -> TermRep -> TermRep
-applyOperator loc name lhs rhs
-    = RApp (getSLoc lhs <> getSLoc rhs) (RApp (getSLoc lhs <> loc) (RCon loc (operatorCon name)) lhs) rhs
+applyOperator :: SLoc -> DataConstructor -> TermRep -> TermRep -> TermRep
+applyOperator loc con lhs rhs
+    = RApp (getSLoc lhs <> getSLoc rhs) (RApp (getSLoc lhs <> loc) (RCon loc con) lhs) rhs
 
 pieceLoc :: Piece -> SLoc
 pieceLoc (PAtom term) = getSLoc term
-pieceLoc (POper loc _) = loc
+pieceLoc (POper loc _ _) = loc
 
-operatorTerm :: TermRep -> Maybe (SLoc, SmallId)
+operatorTerm :: TermRep -> Maybe (SLoc, SmallId, DataConstructor)
 operatorTerm (RCon loc dataConstructor)
     = case dataConstructor of
-        DC_LO LO_if -> Just (loc, ":-")
-        DC_LO LO_or -> Just (loc, ";")
-        DC_LO LO_imply -> Just (loc, "=>")
-        DC_LO LO_and -> Just (loc, "&")
-        DC_LO LO_pi -> Just (loc, "pi")
-        DC_LO LO_sigma -> Just (loc, "sigma")
-        DC_LO LO_is -> Just (loc, "is")
-        DC_eq -> Just (loc, "=")
-        DC_le -> Just (loc, "=<")
-        DC_lt -> Just (loc, "<")
-        DC_ge -> Just (loc, ">=")
-        DC_gt -> Just (loc, ">")
-        DC_plus -> Just (loc, "+")
-        DC_minus -> Just (loc, "-")
-        DC_mul -> Just (loc, "*")
-        DC_div -> Just (loc, "/")
-        DC_Cons -> Just (loc, "::")
-        DC_Succ -> Just (loc, "s")
-        DC_Named name -> Just (loc, name)
+        DC_LO LO_if -> found ":-"
+        DC_LO LO_or -> found ";"
+        DC_LO LO_imply -> found "=>"
+        DC_LO LO_and -> found "&"
+        DC_LO LO_pi -> found "pi"
+        DC_LO LO_sigma -> found "sigma"
+        DC_LO LO_is -> found "is"
+        DC_eq -> found "="
+        DC_le -> found "=<"
+        DC_lt -> found "<"
+        DC_ge -> found ">="
+        DC_gt -> found ">"
+        DC_plus -> found "+"
+        DC_minus -> found "-"
+        DC_mul -> found "*"
+        DC_div -> found "/"
+        DC_Cons -> found "::"
+        DC_Succ -> found "s"
+        DC_Named name -> found name
         _ -> Nothing
+      where
+        found name = Just (loc, name, dataConstructor)
 operatorTerm _ = Nothing
-
-operatorCon :: SmallId -> DataConstructor
-operatorCon name
-    = case name of
-        ":-" -> DC_LO LO_if
-        ";" -> DC_LO LO_or
-        "=>" -> DC_LO LO_imply
-        "," -> DC_LO LO_and
-        "&" -> DC_LO LO_and
-        "pi" -> DC_LO LO_pi
-        "sigma" -> DC_LO LO_sigma
-        "is" -> DC_LO LO_is
-        "=" -> DC_eq
-        "=<" -> DC_le
-        "<" -> DC_lt
-        ">=" -> DC_ge
-        ">" -> DC_gt
-        "+" -> DC_plus
-        "-" -> DC_minus
-        "*" -> DC_mul
-        "/" -> DC_div
-        "::" -> DC_Cons
-        "s" -> DC_Succ
-        _ -> DC_Named name

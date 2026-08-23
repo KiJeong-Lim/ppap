@@ -8,7 +8,7 @@ import qualified Hol.BETA.Notation as Notation
 import Hol.BETA.PlanHolLexer
 import Hol.BETA.TermNode (TermNode, LogicVar (..), freshenName, mkLVar)
 import Hol.BETA.TypeChecker (inferTypeWithModule)
-import Control.Monad (unless)
+import Control.Monad (unless, when)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
@@ -50,6 +50,7 @@ makeKindEnvInModule mode moduleName sourceLines = go where
     go :: [(SLoc, (TypeConstructor, KindRep))] -> KindEnv -> Either ErrMsg KindEnv
     go [] kind_env = return kind_env
     go ((loc, (tcon, krep)) : triples) kind_env
+        | TC_Named [] <- tcon = Left (desugarErrInModule mode moduleName sourceLines loc "A type-constructor name must not be empty.")
         | TC_Named (tc : _) <- tcon, tc `elem` ['A' .. 'Z'] = Left (desugarErrInModule mode moduleName sourceLines loc "A type-constructor name must start with a lowercase letter.")
         | otherwise = case Map.lookup tcon kind_env of
             Just _ -> Left (desugarErrInModule mode moduleName sourceLines loc ("Type constructor `" ++ showsPrec 0 tcon "' is already declared."))
@@ -121,6 +122,11 @@ makeTypeEnvInModule mode moduleName sourceLines kind_env = go where
     go [] type_env
         = return type_env
     go ((loc, (con, trep)) : triples) type_env
+        | DC_Named [] <- con
+        = Left (desugarErrInModule mode moduleName sourceLines loc "A predicate or constructor name must not be empty.")
+        | DC_Named (first : _) <- con, first `elem` ['A' .. 'Z']
+        = Left (desugarErrInModule mode moduleName sourceLines loc "A predicate or constructor name must start with a lowercase letter.")
+        | otherwise
         = case Map.lookup con type_env of
             Nothing -> do
                 (kin, typ) <- unRep trep
@@ -216,11 +222,36 @@ desugarProgramWithInherited mode moduleName sourceLines kind_env type_env inheri
         expansion_db = Notation.mergeExpansion inheritedExpansion ownExpansion
         notation_db0 = Notation.merge inheritedNotation (collectNotation program)
 
-        validateDeclarationParameters (RAbbrevDecl loc name params _) =
-            validateParameters loc "type abbreviation" name params
-        validateDeclarationParameters (RNotationDecl loc name params _) =
-            validateParameters loc "term notation" name params
-        validateDeclarationParameters _ = return ()
+        validateDeclarationParameters decl = do
+            case declarationName decl of
+                Just (loc, declarationKind, name) ->
+                    validateDeclarationName loc declarationKind name
+                Nothing -> return ()
+            case decl of
+                RAbbrevDecl loc name params _ ->
+                    validateParameters loc "type abbreviation" name params
+                RNotationDecl loc name params _ ->
+                    validateParameters loc "term notation" name params
+                _ -> return ()
+
+        declarationName (RKindDecl loc (TC_Named name) _) =
+            Just (loc, "kind", name)
+        declarationName (RTypeDecl loc (DC_Named name) _) =
+            Just (loc, "type", name)
+        declarationName (RFixityDecl loc _ name _) =
+            Just (loc, "fixity", name)
+        declarationName (RAbbrevDecl loc name _ _) =
+            Just (loc, "type abbreviation", name)
+        declarationName (RNotationDecl loc name _ _) =
+            Just (loc, "term notation", name)
+        declarationName _ = Nothing
+
+        validateDeclarationName loc declarationKind name =
+            when (startsUpper name) $
+                throwE (desugarErrInModule mode moduleName sourceLines loc
+                    ("The " ++ declarationKind ++ " declaration name `" ++ name
+                        ++ "' starts with an upper-case letter and cannot be referenced as a constructor. "
+                        ++ "Use a lower-case, quoted lower-case, or symbolic declaration name."))
 
         validateParameters loc declarationKind name params = do
             unless (null invalid) $
@@ -240,10 +271,11 @@ desugarProgramWithInherited mode moduleName sourceLines kind_env type_env inheri
                     | param : remaining <- List.tails params
                     , param `elem` remaining
                     ]
-                startsUpper (c : _) = c `elem` ['A' .. 'Z']
-                startsUpper [] = False
                 plural [_] = ""
                 plural _ = "s"
+
+        startsUpper (c : _) = c `elem` ['A' .. 'Z']
+        startsUpper [] = False
 
 expansionErr :: DiagnosticMode -> Maybe String -> SourceLines -> Notation.ExpansionError -> ErrMsg
 expansionErr mode moduleName sourceLines err = case err of

@@ -146,6 +146,45 @@ data Context
         }
     deriving ()
 
+assertCell :: Cell -> ()
+assertCell cell
+    | _ScopeLevel cell < 0 = undefined
+    | otherwise =
+        assertNonnegativeTerms (concat (Map.elems (_GivenFacts cell))) `seq`
+        assertNonnegativeTerms [ NCon constant Nothing | constant <- Map.keys (_GivenFacts cell) ] `seq`
+        assertNonnegativeTerms (_GivenHypos cell) `seq`
+        assertArithStore (_GivenArithPremises cell) `seq`
+        assertNonnegativeIndices (_WantedGoal cell)
+
+assertContext :: Context -> ()
+assertContext ctx
+    = assertVarBinding (_TotalVarBinding ctx) `seq`
+      assertLabelingDomain (_CurrentLabeling ctx) `seq`
+      assertConstraints (_LeftConstraints ctx)
+
+assertLabelingDomain :: Labeling -> ()
+assertLabelingDomain labeling
+    = assertScopeMap (_ConLabel labeling) `seq`
+      assertScopeMap (_VarLabel labeling) `seq`
+      assertKeyMap (_ConTypes labeling) `seq`
+      assertKeyMap (_VarTypes labeling) `seq`
+      assertKeyMap (_TyVarKeys labeling)
+  where
+    assertScopeMap values = IntMap.foldrWithKey
+        (\key level rest -> if key < 0 || level < 0 then undefined else rest)
+        () values
+    assertKeyMap values = IntMap.foldrWithKey
+        (\key _ rest -> if key < 0 then undefined else rest)
+        () values
+
+assertStack :: Stack -> ()
+assertStack [] = ()
+assertStack ((ctx, cells) : rest)
+    = assertContext ctx `seq` assertCells cells `seq` assertStack rest
+  where
+    assertCells [] = ()
+    assertCells (cell : more) = assertCell cell `seq` assertCells more
+
 data RuntimeEnv
     = RuntimeEnv
         { _PutStr :: RuntimeEnv -> Context -> String -> IO ()
@@ -154,6 +193,7 @@ data RuntimeEnv
         , _ReadPrimitive :: Context -> TermNode -> IO (Maybe TermNode)
         , _TypeInfo :: Map.Map LogicVar (MonoType Int)
         , _PendingSubst :: IORef LogicVarSubst
+        , _ProgramKindEnv :: KindEnv
         , _ProgramTypeEnv :: TypeEnv
         , _VerboseTyping :: IORef Bool
         , _StackRef :: IORef Stack
@@ -161,6 +201,7 @@ data RuntimeEnv
         , _DebuggingRef :: IORef Debugging
         , _NotationDB :: NotationDB
         , _ModuleName :: String
+        , _QueryCallId :: Maybe CallId
         }
     deriving ()
 
@@ -206,20 +247,22 @@ snapshot = do
         st <- readIORef (_StackRef env)
         ps <- readIORef (_PendingSubst env)
         nc <- readIORef (_NameCacheRef env)
-        return (Snapshot
+        assertStack st `seq` assertVarBinding ps `seq` return Snapshot
             { _SnapOwner = _StackRef env
             , _SnapPendingOwner = _PendingSubst env
             , _SnapNameCacheOwner = _NameCacheRef env
             , _SnapStack = st
             , _SnapPendingSubst = ps
             , _SnapNameCache = nc
-            })
+            }
 
 -- A snapshot is meaningful only for the runtime whose choice stack it
 -- captured.  In particular, a query/reload creates a fresh stack ref, so an
 -- old debugger snapshot cannot time-travel into the new runtime.
 restore :: Snapshot -> Runtime (Either ErrMsg ())
-restore snap = do
+restore snap
+    = assertStack (_SnapStack snap) `seq`
+      assertVarBinding (_SnapPendingSubst snap) `seq` do
     env <- askRuntimeEnv
     if _SnapOwner snap /= _StackRef env
         || _SnapPendingOwner snap /= _PendingSubst env
@@ -281,7 +324,10 @@ scopeEscaping labeling targetScope targetLV term = assertNonnegativeIndices term
         | otherwise = ([], [])
     walk (NApp t1 t2 _) = combine (walk t1) (walk t2)
     walk (NLam _ _ t _) = walk t
-    walk (Susp body _ _ _) = walk body
+    -- A suspension denotes its body after applying the environment and level
+    -- shift.  Walking the raw body can hide a rigid constant or variable that
+    -- is substituted for a de Bruijn index.
+    walk suspended@Susp {} = walk (rewrite NF suspended)
     walk (NPresburgerCheck _ freeOf _) = foldr (combine . walk) ([], []) (Map.elems freeOf)
     walk _ = ([], [])
     combine (a1, b1) (a2, b2) = (a1 ++ a2, b1 ++ b2)
@@ -298,11 +344,14 @@ data PrimitiveTypeEvidence
     deriving (Eq)
 
 primitiveBindingTypeOkay :: Labeling -> LogicVar -> TermNode -> Bool
-primitiveBindingTypeOkay labeling target value
+primitiveBindingTypeOkay = primitiveBindingTypeOkayWithKinds primitiveBuiltinKindEnv
+
+primitiveBindingTypeOkayWithKinds :: KindEnv -> Labeling -> LogicVar -> TermNode -> Bool
+primitiveBindingTypeOkayWithKinds kindEnv labeling target value
     | not (Set.null (getLVars value)) = False
     | otherwise = case lookupLVarType target labeling of
-        Nothing -> primitiveTypeEvidence value /= Just PrimitiveInvalidValue
-        Just expected -> case primitiveTypeEvidence value of
+        Nothing -> primitiveTypeEvidenceWithKinds kindEnv value /= Just PrimitiveInvalidValue
+        Just expected -> case primitiveTypeEvidenceWithKinds kindEnv value of
             Nothing -> maybe False (monoTypesCouldMatch expected) (typeOfTerm labeling [] value)
             Just (PrimitiveExactType actual) -> monoTypesCouldMatch expected actual
             Just PrimitiveEmptyList -> typeCouldBeList expected
@@ -330,49 +379,114 @@ typeCouldBeList (TyApp (TyCon (TCon (TC_Named "list") _)) _) = True
 typeCouldBeList _ = False
 
 primitiveTypeEvidence :: TermNode -> Maybe PrimitiveTypeEvidence
-primitiveTypeEvidence value
+primitiveTypeEvidence = primitiveTypeEvidenceWithKinds primitiveBuiltinKindEnv
+
+primitiveTypeEvidenceWithKinds :: KindEnv -> TermNode -> Maybe PrimitiveTypeEvidence
+primitiveTypeEvidenceWithKinds kindEnv value
     | not (Set.null (getLVars value)) = Just PrimitiveInvalidValue
     | otherwise = case rewrite NF value of
         NCon (DC (DC_NatL _)) _ -> Just (PrimitiveExactType mkTyNat)
         NCon (DC (DC_ChrL _)) _ -> Just (PrimitiveExactType mkTyChr)
-        value' -> case primitiveListElementType value' of
-            Just Nothing -> Just PrimitiveEmptyList
-            Just (Just elementType) -> Just (PrimitiveExactType (mkTyList elementType))
+        value' -> case primitiveListEvidenceWithKinds kindEnv value' of
+            Just evidence -> Just evidence
             Nothing
                 | looksLikePrimitiveList value' -> Just PrimitiveInvalidValue
                 | otherwise -> Nothing
 
--- Nothing means "not a recognizable homogeneous primitive list"; Just
--- Nothing is the empty list; Just (Just ty) is a non-empty list of ty.
-primitiveListElementType :: TermNode -> Maybe (Maybe (MonoType Int))
-primitiveListElementType value
-    = case primitiveListView (rewrite NF value) of
-        Just Nothing -> Just Nothing
-        Just (Just (item, rest)) -> do
-            itemType <- primitiveExactType item
-            restType <- primitiveListElementType rest
-            case restType of
-                Nothing -> Just (Just itemType)
-                Just tailType
-                    | itemType == tailType -> Just (Just itemType)
-                    | otherwise -> Nothing
-        Nothing -> Nothing
+-- Preserve and validate elaborated list type arguments.  Dropping them would
+-- let a forged `(::) nat 'a' ([] nat)' masquerade as `list char' at the
+-- primitive/debugger API boundary.
+primitiveListEvidence :: TermNode -> Maybe PrimitiveTypeEvidence
+primitiveListEvidence = primitiveListEvidenceWithKinds primitiveBuiltinKindEnv
+
+primitiveListEvidenceWithKinds :: KindEnv -> TermNode -> Maybe PrimitiveTypeEvidence
+primitiveListEvidenceWithKinds kindEnv value = case primitiveListView (rewrite NF value) of
+    Just (PrimitiveNilView Nothing) -> Just PrimitiveEmptyList
+    Just (PrimitiveNilView (Just typeArg)) ->
+        Just $ maybe PrimitiveInvalidValue
+            (PrimitiveExactType . mkTyList) (primitiveTypeArgumentWithKinds kindEnv typeArg)
+    Just (PrimitiveConsView maybeTypeArg item rest) -> Just $
+        case (primitiveExactTypeWithKinds kindEnv item, primitiveListEvidenceWithKinds kindEnv rest) of
+            (Just itemType, Just restEvidence)
+                | explicitTypeMatches maybeTypeArg itemType
+                , restMatches itemType restEvidence ->
+                    PrimitiveExactType (mkTyList itemType)
+            _ -> PrimitiveInvalidValue
+    Nothing -> Nothing
+  where
+    explicitTypeMatches Nothing _ = True
+    explicitTypeMatches (Just typeArg) itemType =
+        maybe False (`monoTypesCouldMatch` itemType) (primitiveTypeArgumentWithKinds kindEnv typeArg)
+
+    restMatches _ PrimitiveEmptyList = True
+    restMatches itemType (PrimitiveExactType (TyApp (TyCon (TCon (TC_Named "list") _)) tailType)) =
+        monoTypesCouldMatch itemType tailType
+    restMatches _ _ = False
+
+primitiveTypeArgument :: TermNode -> Maybe (MonoType Int)
+primitiveTypeArgument = primitiveTypeArgumentWithKinds primitiveBuiltinKindEnv
+
+-- Recover a type argument together with its real constructor kinds.  Merely
+-- building a 'TyApp' tree is insufficient: for example, @nat nat@ is not in
+-- the type domain even though both leaves individually denote types.
+primitiveTypeArgumentWithKinds :: KindEnv -> TermNode -> Maybe (MonoType Int)
+primitiveTypeArgumentWithKinds kindEnv term = do
+    (typ, kind) <- go (rewrite NF term)
+    guard (kind == Star)
+    return typ
+  where
+    go :: TermNode -> Maybe (MonoType Int, KindExpr)
+    go (LVar (LV_ty_var mtv)) = Just (TyMTV mtv, Star)
+    go (NCon (TC typeConstructor) _) = do
+        kind <- typeConstructorKind typeConstructor
+        return (TyCon (TCon typeConstructor kind), kind)
+    go (NApp lhs rhs _) = do
+        (lhsType, lhsKind) <- go lhs
+        (rhsType, rhsKind) <- go rhs
+        case lhsKind of
+            KArr argumentKind resultKind
+                | argumentKind == rhsKind ->
+                    Just (TyApp lhsType rhsType, resultKind)
+            _ -> Nothing
+    go _ = Nothing
+
+    typeConstructorKind (TC_Unique _) = Just Star
+    typeConstructorKind typeConstructor =
+        Map.lookup typeConstructor kindEnv
+            `mplus` Map.lookup typeConstructor primitiveBuiltinKindEnv
+
+primitiveBuiltinKindEnv :: KindEnv
+primitiveBuiltinKindEnv = Map.fromList
+    [ (TC_Arrow, KArr Star (KArr Star Star))
+    , (TC_Named "list", KArr Star Star)
+    , (TC_Named "o", Star)
+    , (TC_Named "char", Star)
+    , (TC_Named "nat", Star)
+    , (TC_Named "string", Star)
+    ]
 
 primitiveExactType :: TermNode -> Maybe (MonoType Int)
-primitiveExactType value
-    = case primitiveTypeEvidence value of
+primitiveExactType = primitiveExactTypeWithKinds primitiveBuiltinKindEnv
+
+primitiveExactTypeWithKinds :: KindEnv -> TermNode -> Maybe (MonoType Int)
+primitiveExactTypeWithKinds kindEnv value
+    = case primitiveTypeEvidenceWithKinds kindEnv value of
         Just (PrimitiveExactType ty) -> Just ty
         _ -> Nothing
 
+data PrimitiveListView
+    = PrimitiveNilView (Maybe TermNode)
+    | PrimitiveConsView (Maybe TermNode) TermNode TermNode
+
 -- Runtime values occur both with explicit type arguments (after elaboration)
 -- and without them (the default REPL callback constructs the latter).
-primitiveListView :: TermNode -> Maybe (Maybe (TermNode, TermNode))
+primitiveListView :: TermNode -> Maybe PrimitiveListView
 primitiveListView value
     = assertNonnegativeIndices value `seq` case unfoldPrimitiveApps value of
-        (NCon (DC DC_Nil) _, []) -> Just Nothing
-        (NCon (DC DC_Nil) _, [_typeArg]) -> Just Nothing
-        (NCon (DC DC_Cons) _, [item, rest]) -> Just (Just (item, rest))
-        (NCon (DC DC_Cons) _, [_typeArg, item, rest]) -> Just (Just (item, rest))
+        (NCon (DC DC_Nil) _, []) -> Just (PrimitiveNilView Nothing)
+        (NCon (DC DC_Nil) _, [typeArg]) -> Just (PrimitiveNilView (Just typeArg))
+        (NCon (DC DC_Cons) _, [item, rest]) -> Just (PrimitiveConsView Nothing item rest)
+        (NCon (DC DC_Cons) _, [typeArg, item, rest]) -> Just (PrimitiveConsView (Just typeArg) item rest)
         _ -> Nothing
     where
         unfoldPrimitiveApps = flip go []
@@ -496,6 +610,47 @@ assignmentTargetIsKnown env ctx cells pending target
         constraintVars (PresburgerConstraint premises _ freeOf) = Set.unions (map getLVars (arithStoreTerms premises ++ Map.elems freeOf))
         cellVars cell = Set.unions (getLVars (_WantedGoal cell) : map getLVars (_GivenHypos cell ++ arithStoreTerms (_GivenArithPremises cell)))
 
+labelingWithRuntimeTypes :: RuntimeEnv -> Labeling -> Labeling
+labelingWithRuntimeTypes env labeling0
+    = Map.foldlWithKey' insertType labeling0 (_TypeInfo env)
+  where
+    insertType labeling variable typ = case variable of
+        LV_Named name -> labeling
+            { _NamedTypes = Map.insert name typ (_NamedTypes labeling) }
+        LV_Unique unique _ -> labeling
+            { _VarTypes = IntMap.insert (unUnique unique) typ (_VarTypes labeling) }
+        LV_ty_var unique -> labeling
+            { _VarTypes = IntMap.insert (unUnique unique) typ (_VarTypes labeling) }
+
+assignmentTypeError :: RuntimeEnv -> Labeling -> LogicVar -> TermNode -> Maybe ErrMsg
+assignmentTypeError env originalLabeling target value
+    = case lookupLVarType target labeling of
+        Nothing -> case primitiveTypeEvidenceWithKinds (_ProgramKindEnv env) value of
+            Just PrimitiveInvalidValue -> Just "type mismatch for debugger assignment: the assigned term is not well-typed in the active context."
+            _ -> Nothing
+        Just expected -> case primitiveTypeEvidenceWithKinds (_ProgramKindEnv env) value of
+            Just (PrimitiveExactType actual)
+                | monoTypesCouldMatch expected actual -> Nothing
+                | otherwise -> Just (mismatch expected (Just actual))
+            Just PrimitiveEmptyList
+                | typeCouldBeList expected -> Nothing
+                | otherwise -> Just (mismatch expected Nothing)
+            Just PrimitiveInvalidValue -> Just (mismatch expected Nothing)
+            Nothing -> case typeOfTerm labeling [] value of
+                Just actual
+                    | monoTypesCouldMatch expected actual -> Nothing
+                    | otherwise -> Just (mismatch expected (Just actual))
+                Nothing -> Just (mismatch expected Nothing)
+  where
+    labeling = labelingWithRuntimeTypes env originalLabeling
+    renderType = showsMonoType (_NotationDB env) 0
+    mismatch expected actual =
+        "type mismatch for debugger assignment: expected `"
+            ++ renderType expected "' but "
+            ++ case actual of
+                Just typ -> "the assigned term has type `" ++ renderType typ "'."
+                Nothing -> "the assigned term is not well-typed in the active context."
+
 cmdAssignTarget :: SmallId -> LogicVar -> TermNode -> Runtime (Either ErrMsg ())
 cmdAssignTarget name targetLV term
     = assertNonnegativeIndices term `seq` do
@@ -511,6 +666,7 @@ cmdAssignTarget name targetLV term
                         composed_subst = existingPending <> _TotalVarBinding ctx
                         current_target = bindVars composed_subst (mkLVar targetLV)
                         t_zonked = bindVars composed_subst term
+                        maybeTypeErr = assignmentTypeError env (_CurrentLabeling ctx) targetLV t_zonked
                     if not targetKnown then
                         return (Left ("unknown or inactive variable '?" ++ name ++ "'"))
                     else if current_target /= mkLVar targetLV then
@@ -535,6 +691,8 @@ cmdAssignTarget name targetLV term
                                     LV_Named n -> n
                                 items = map renderCon escapedCons ++ map renderVar escapedVars
                             return (Left ("scope violation for '" ++ name ++ "' — out-of-scope: " ++ List.intercalate ", " items))
+                        else if isJust maybeTypeErr then
+                            return (Left (fromMaybe "debugger assignment type check failed" maybeTypeErr))
                         else do
                             let new_binding = VarBinding (Map.singleton targetLV t_zonked)
                                 composedAfter = new_binding <> existingPending <> _TotalVarBinding ctx
@@ -569,7 +727,7 @@ assignedTermsAgree lhs rhs
       assertNonnegativeIndices rhs `seq`
       (etaReduce (rewrite NF lhs) == etaReduce (rewrite NF rhs)
         || case arithmeticEquality lhs rhs of
-            ArithEqTrue -> True
+            ArithEqTrue -> evaluationConstraintUniversallyValid lhs rhs
             _ -> False)
 
 instance ZonkLVar Context where
@@ -594,10 +752,7 @@ instance ZonkLVar Constraint where
         go (DisagreementConstraint eqn)
             = DisagreementConstraint (bindVars theta eqn)
         go (EvalutionConstraint lhs rhs)
-            | LVar x <- lhs = case Map.lookup x (unVarBinding theta) of
-                Nothing -> EvalutionConstraint lhs (bindVars theta rhs)
-                Just t -> ArithmeticConstraint emptyArithStore (mkNApp (mkNApp (mkNApp (mkNCon (DC DC_eq)) (mkNCon (TC (TC_Named "nat")))) t) (bindVars theta rhs))
-            | otherwise = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
+            = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
         go (ArithmeticConstraint premises arith)
             = ArithmeticConstraint (bindArithStore theta premises) (bindVars theta arith)
         go (PresburgerConstraint premises rep freeOf)
@@ -720,12 +875,15 @@ showStackItem db verbose fvs typeMap space (ctx, cells)
         [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- [ " . showsvdash (space + 8) hyps goal . strstr " ] # call_id = " . shows call_id | Cell facts hyps premises level goal call_id <- cells ] . nl
         , pindent space . strstr "+ context = Context" . nl
         , pindent (space + 4) . strstr "{ " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " := " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
-        , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
+        , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx, debugConstraintVisible constraint ] . nl
         , pindent (space + 4) . strstr ", " . strstr "_typing = " . plist (space + 8) typings . nl
         , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
         , pindent (space + 4) . strstr "}" . nl
         ]
     where
+        debugConstraintVisible (EvalutionConstraint lhs rhs) = not (evaluationConstraintUniversallyValid lhs rhs)
+        debugConstraintVisible _ = True
+
         typings = namedTypings ++ generatedTypings
 
         namedTypings =
@@ -840,22 +998,30 @@ runLogicalOperatorUnchecked LO_is [lhs, rhs] ctx facts hyps premises level call_
     = return stack
     | LVar x <- rewrite NF lhs
     , Right v <- rhsValue
-    = bindIs x (mkNCon (DC (DC_NatL v)))
+    = bindIs ctx x (mkNCon (DC (DC_NatL v)))
     | Right v <- rhsValue
     , Right lhs_v <- lhsValue
     = if lhs_v == v then return ((ctx, cells) : stack) else return stack
     | LVar x <- lhs'
     , Just rhs_s <- simplifyArithmetic rhs'
     , canBindIs x rhs_s
-    = bindIs x rhs_s
+    = case addDefinitionConstraints [rhs'] ctx of
+        Nothing -> return stack
+        Just ctx' -> bindIs ctx' x rhs_s
     | ArithEqTrue <- arithmeticEquality lhs' rhs'
-    = return ((ctx, cells) : stack)
+    = case addDefinitionConstraints [lhs', rhs'] ctx of
+        Nothing -> return stack
+        Just ctx' -> return ((ctx', cells) : stack)
     | ArithEqFalse <- arithmeticEquality lhs' rhs'
     = return stack
     | not arithmeticMode
     = unifyNonArithmetic
     | otherwise
-    = return ((ctx { _LeftConstraints = EvalutionConstraint lhs' rhs' : _LeftConstraints ctx }, cells) : stack)
+    = case settleEvaluationConstraints
+        (ctx { _LeftConstraints = EvalutionConstraint lhs' rhs' : _LeftConstraints ctx })
+        cells of
+        Nothing -> return stack
+        Just (ctx', cells') -> return ((ctx', cells') : stack)
     where
         lhs' = rewrite NF lhs
         rhs' = rewrite NF rhs
@@ -865,7 +1031,7 @@ runLogicalOperatorUnchecked LO_is [lhs, rhs] ctx facts hyps premises level call_
         isNatTerm t = case rewrite NF t of
             NCon (DC (DC_NatL _)) _ -> True
             _ -> typeOfTerm (_CurrentLabeling ctx) [] t == Just mkTyNat
-        bindIs x rhs_s = execIs hyps (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack where
+        bindIs ctx0 x rhs_s = execIs hyps (zonkLVar theta ctx0) (map (zonkLVar theta) cells) stack where
             theta = VarBinding (Map.singleton x rhs_s)
         canBindIs x t = x `Set.notMember` getLVars t && null badCons && null badVars where
                 targetScope = lookupLabel x (_CurrentLabeling ctx)
@@ -895,6 +1061,40 @@ runLogicalOperatorUnchecked LO_is [lhs, rhs] ctx facts hyps premises level call_
                     execIs hyps ctx' (zonkLVar subst cells) stack
 runLogicalOperatorUnchecked logical_operator args ctx facts hyps premises level call_id cells stack
     = throwE (BadGoalGiven (foldlNApp (mkNCon logical_operator) args))
+
+-- Retain one self-evaluation per arithmetic term whose value is not known yet.
+-- These constraints are deliberately not discharged merely because a
+-- Presburger normalization proves the surrounding formula: HOPU may later
+-- replace a typed variable by a partial expression such as @1 / 0@.
+addDefinitionConstraints :: [TermNode] -> Context -> Maybe Context
+addDefinitionConstraints terms ctx
+    = do
+        pending <- recheckEvaluationConstraints evaluationTerms
+        let nonEvaluations =
+                [ constraint
+                | constraint <- constraints0
+                , case constraint of
+                    EvalutionConstraint _ _ -> False
+                    _ -> True
+                ]
+            ctx' = ctx
+                { _LeftConstraints = map (uncurry EvalutionConstraint) pending ++ nonEvaluations
+                }
+        if storeSatisfiable ctx' then Just ctx' else Nothing
+    where
+        normalized = List.nub (map (rewrite NF) terms)
+        newDefinitions =
+            [ EvalutionConstraint term term
+            | term <- normalized
+            , case evaluateA term of
+                Right _ -> False
+                _ -> True
+            ]
+        constraints0 = newDefinitions ++ _LeftConstraints ctx
+        evaluationTerms =
+            [ (lhs, rhs)
+            | EvalutionConstraint lhs rhs <- constraints0
+            ]
 
 expandAssumptions :: Fact -> [Fact]
 expandAssumptions fact
@@ -969,54 +1169,86 @@ execIs :: MonadUnique m => [Fact] -> Context -> [Cell] -> Stack -> m Stack
 execIs hyps ctx cells stack
     = assertNonnegativeTerms hyps `seq`
       assertConstraints (_LeftConstraints ctx) `seq`
-      case recheckEvaluationConstraints new_evaluation_constraints of
+      case settleEvaluationConstraints ctx cells of
         Nothing -> return stack
-        Just pendingEvaluations
-            | not (storeSatisfiable (newCtx pendingEvaluations)) -> return stack
-            | otherwise -> return ((newCtx pendingEvaluations, cells) : stack)
-    where
-        new_disagreements = [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ]
-        new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- _LeftConstraints ctx ]
-        new_arithmetic_constraints = [ (premises, rewrite NF arith) | ArithmeticConstraint premises arith <- _LeftConstraints ctx ]
-        new_presburger_constraints = [ PresburgerConstraint premises rep freeOf | PresburgerConstraint premises rep freeOf <- _LeftConstraints ctx ]
-        newCtx pendingEvaluations = ctx
-            { _LeftConstraints =
-                map DisagreementConstraint new_disagreements
-                    ++ map (uncurry EvalutionConstraint) pendingEvaluations
-                    ++ [ ArithmeticConstraint premises arith | (premises, arith) <- new_arithmetic_constraints, evaluateB arith /= Right True ]
-                    ++ new_presburger_constraints
+        Just (ctx', cells') -> return ((ctx', cells') : stack)
+
+-- Apply bindings produced by delayed @is@ constraints, normalize every other
+-- arithmetic residual under those bindings, and validate the complete joint
+-- store.  This is shared by direct @is@ execution and HOPU clause matching.
+settleEvaluationConstraints :: Context -> [Cell] -> Maybe (Context, [Cell])
+settleEvaluationConstraints ctx cells = do
+    let storedBinding = _TotalVarBinding ctx
+        ctx0 = ctx
+            { _LeftConstraints = zonkLVar storedBinding (_LeftConstraints ctx)
             }
+        cells0 = zonkLVar storedBinding cells
+        evaluationTerms =
+            [ (rewrite NF lhs, rewrite NF rhs)
+            | EvalutionConstraint lhs rhs <- _LeftConstraints ctx0
+            ]
+    (evaluationBinding, pendingEvaluations) <- solveEvaluationConstraints evaluationTerms
+    let ctx1 = zonkLVar evaluationBinding ctx0
+        cells1 = zonkLVar evaluationBinding cells0
+        newDisagreements = [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx1 ]
+        newArithmeticConstraints =
+            [ (premises, rewrite NF arith)
+            | ArithmeticConstraint premises arith <- _LeftConstraints ctx1
+            ]
+        newPresburgerConstraints =
+            [ PresburgerConstraint premises rep freeOf
+            | PresburgerConstraint premises rep freeOf <- _LeftConstraints ctx1
+            ]
+        ctx2 = ctx1
+            { _LeftConstraints =
+                map DisagreementConstraint newDisagreements
+                    ++ map (uncurry EvalutionConstraint) pendingEvaluations
+                    ++ [ ArithmeticConstraint premises arith
+                       | (premises, arith) <- newArithmeticConstraints
+                       , evaluateB arith /= Right True
+                       ]
+                    ++ newPresburgerConstraints
+            }
+    if storeSatisfiable ctx2 then Just (ctx2, cells1) else Nothing
 
 evaluateA :: TermNode -> Either ErrMsg Integer
 evaluateA term = assertNonnegativeIndices term `seq` go term where
     go (NApp (NCon (DC DC_Succ) _) t1 _)
-        = do
-            v1 <- go t1
-            return (succ v1)
+        = succ <$> go t1
     go (NApp (NApp (NCon (DC DC_plus) _) t1 _) t2 _)
-        = do
-            v1 <- go t1
-            v2 <- go t2
-            return (v1 + v2)
+        = strictBinary (+) (go t1) (go t2)
     go (NApp (NApp (NCon (DC DC_minus) _) t1 _) t2 _)
-        = do
-            v1 <- go t1
-            v2 <- go t2
-            if v1 >= v2 then return (v1 - v2) else Left "ill"
+        = case strictPair (go t1) (go t2) of
+            Right (v1, v2)
+                | v1 >= v2 -> Right (v1 - v2)
+                | otherwise -> Left "ill"
+            Left err -> Left err
     go (NApp (NApp (NCon (DC DC_mul) _) t1 _) t2 _)
-        = do
-            v1 <- go t1
-            v2 <- go t2
-            return (v1 * v2)
+        = strictBinary (*) (go t1) (go t2)
     go (NApp (NApp (NCon (DC DC_div) _) t1 _) t2 _)
-        = do
-            v1 <- go t1
-            v2 <- go t2
-            if v2 == 0 then Left "ill" else return (v1 `div` v2)
+        = case (go t1, go t2) of
+            (_, Right 0) -> Left "ill"
+            (Left "ill", _) -> Left "ill"
+            (_, Left "ill") -> Left "ill"
+            (Right v1, Right v2) -> Right (v1 `div` v2)
+            _ -> Left "non"
     go t
         = case reads (shows t "") of
             [(v, "")] -> return v
             _ -> Left "non"
+
+    -- Natural arithmetic is strict in both operands.  In particular, an
+    -- ill-defined operand is not hidden by a still-unknown sibling (or by
+    -- multiplication with zero).
+    strictPair :: Either ErrMsg Integer -> Either ErrMsg Integer -> Either ErrMsg (Integer, Integer)
+    strictPair lhs rhs = case (lhs, rhs) of
+        (Left "ill", _) -> Left "ill"
+        (_, Left "ill") -> Left "ill"
+        (Right x, Right y) -> Right (x, y)
+        _ -> Left "non"
+
+    strictBinary :: (Integer -> Integer -> Integer) -> Either ErrMsg Integer -> Either ErrMsg Integer -> Either ErrMsg Integer
+    strictBinary op lhs rhs = uncurry op <$> strictPair lhs rhs
 
 -- Re-evaluate delayed `is` constraints after each substitution.  A ground
 -- equality that is true is discharged, a ground mismatch or an ill-defined
@@ -1034,40 +1266,151 @@ recheckEvaluationConstraints constraints
                 | otherwise -> Nothing
             (Left "ill", _) -> Nothing
             (_, Left "ill") -> Nothing
-            _ -> ((lhs', rhs') :) <$> checked
+            _
+                | evaluationConstraintPossible lhs' rhs' -> ((lhs', rhs') :) <$> checked
+                | otherwise -> Nothing
         where
             lhs' = rewrite NF lhs
             rhs' = rewrite NF rhs
 
+-- Resolve every delayed @L is R@ whose right-hand side has become a concrete
+-- natural.  Bindings are accumulated and fed back through the whole set until
+-- a fixed point is reached, so the outcome is independent of constraint
+-- order.  The public consistency-only checker above intentionally does not
+-- discard such a binding; runtime transition boundaries use this solver.
+solveEvaluationConstraints :: [(TermNode, TermNode)] -> Maybe (VarBinding, [(TermNode, TermNode)])
+solveEvaluationConstraints constraints
+    = assertEvaluationTerms constraints `seq` loop mempty
+    where
+        loop theta =
+            let current =
+                    [ (rewrite NF (bindVars theta lhs), rewrite NF (bindVars theta rhs))
+                    | (lhs, rhs) <- constraints
+                    ]
+            in case firstGroundBinding current of
+                Just (variable, value) ->
+                    let binding = VarBinding (Map.singleton variable (mkNCon (DC_NatL value)))
+                    in loop (binding <> theta)
+                Nothing -> do
+                    pending <- recheckEvaluationConstraints current
+                    return (theta, pending)
+
+        firstGroundBinding [] = Nothing
+        firstGroundBinding ((lhs, rhs) : rest) = case (rewrite NF lhs, evaluateA rhs) of
+            (LVar variable, Right value) -> Just (variable, value)
+            _ -> firstGroundBinding rest
+
+-- A delayed arithmetic evaluation requires every arithmetic subexpression to
+-- be defined.  Subtraction and division add the only non-structural domain
+-- conditions; addition, multiplication and successor are strict and recurse
+-- into all operands.  Bare typed variables are values for the current solver
+-- valuation, but the enclosing evaluation constraint is retained so a later
+-- HOPU substitution is checked again.
+definednessConditions :: TermNode -> [TermNode]
+definednessConditions = go . rewrite NF where
+    go (NApp (NCon (DC DC_Succ) _) t1 _) = go t1
+    go (NApp (NApp (NCon (DC DC_plus) _) t1 _) t2 _) = go t1 ++ go t2
+    go (NApp (NApp (NCon (DC DC_mul) _) t1 _) t2 _) = go t1 ++ go t2
+    go (NApp (NApp (NCon (DC DC_minus) _) t1 _) t2 _)
+        = go t1 ++ go t2 ++ [mkComparison DC_ge t1 t2]
+    go (NApp (NApp (NCon (DC DC_div) _) t1 _) t2 _)
+        = go t1 ++ go t2 ++ [mkComparison DC_gt t2 (mkNCon (DC_NatL 0))]
+    go _ = []
+
+mkComparison :: DataConstructor -> TermNode -> TermNode -> TermNode
+mkComparison predicate lhs rhs = mkNApp (mkNApp (mkNCon predicate) lhs) rhs
+
+mkNatEquality :: TermNode -> TermNode -> TermNode
+mkNatEquality lhs rhs
+    = mkNApp
+        (mkNApp
+            (mkNApp (mkNCon DC_eq) (mkNCon (TC_Named "nat")))
+            lhs)
+        rhs
+
+-- Keep feasibility pruning conservative: only formulae accepted by the
+-- linear lifting boundary are handed to Presburger.  Unsupported domain
+-- conditions remain represented by the delayed evaluation constraint and are
+-- reconsidered after each substitution.
+supportedDefinitionConditions :: [TermNode] -> [TermNode]
+supportedDefinitionConditions = filter (isJust . liftConstraint)
+
+evaluationObligation :: TermNode -> TermNode -> ArithStore
+evaluationObligation lhs rhs = (conditions ++ equality, []) where
+    conditions = supportedDefinitionConditions (definednessConditions lhs ++ definednessConditions rhs)
+    equalityTerm = mkNatEquality lhs rhs
+    equality
+        | rewrite NF lhs == rewrite NF rhs = []
+        | isJust (liftConstraint equalityTerm) = [equalityTerm]
+        | otherwise = []
+
+completeEvaluationObligation :: TermNode -> TermNode -> Maybe ArithStore
+completeEvaluationObligation lhs rhs
+    | length supportedConditions /= length allConditions = Nothing
+    | lhs' == rhs' = Just (supportedConditions, [])
+    | isJust (liftConstraint equalityTerm) = Just (supportedConditions ++ [equalityTerm], [])
+    | otherwise = Nothing
+    where
+        lhs' = rewrite NF lhs
+        rhs' = rewrite NF rhs
+        allConditions = definednessConditions lhs' ++ definednessConditions rhs'
+        supportedConditions = supportedDefinitionConditions allConditions
+        equalityTerm = mkNatEquality lhs' rhs'
+
+evaluationConstraintPossible :: TermNode -> TermNode -> Bool
+evaluationConstraintPossible lhs rhs
+    = assertNonnegativeIndices lhs `seq`
+      assertNonnegativeIndices rhs `seq`
+      case (evaluateA lhs', evaluateA rhs') of
+        (Right x, Right y) -> x == y
+        (Left "ill", _) -> False
+        (_, Left "ill") -> False
+        _ -> presburgerStoreSat emptyArithStore (evaluationObligation lhs' rhs')
+    where
+        lhs' = rewrite NF lhs
+        rhs' = rewrite NF rhs
+
+-- Universal validity is used only when pruning a residual at answer time or
+-- comparing already-assigned debugger values.  Unlike feasibility, every
+-- generated condition must be linear; otherwise retaining the constraint is
+-- the safe result.
+evaluationConstraintUniversallyValid :: TermNode -> TermNode -> Bool
+evaluationConstraintUniversallyValid lhs rhs
+    = assertNonnegativeIndices lhs `seq`
+      assertNonnegativeIndices rhs `seq`
+      case (evaluateA lhs', evaluateA rhs') of
+        (Right x, Right y) -> x == y
+        (Left "ill", _) -> False
+        (_, Left "ill") -> False
+        _ -> case completeEvaluationObligation lhs' rhs' of
+            Nothing -> False
+            Just obligation -> presburgerGuardedValid [(emptyArithStore, obligation)]
+    where
+        lhs' = rewrite NF lhs
+        rhs' = rewrite NF rhs
+
 evaluateB :: TermNode -> Either ErrMsg Bool
 evaluateB term = assertNonnegativeIndices term `seq` go term where
     go (NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) t1 _) t2 _)
-        = case arithmeticEquality t1 t2 of
-            ArithEqTrue -> Right True
-            ArithEqFalse -> Right False
-            ArithEqUnknown -> Left "non"
+        = compareStrict (==) t1 t2
     go (NApp (NApp (NCon (DC DC_le) _) t1 _) t2 _)
-        = do
-            v1 <- evaluateA t1
-            v2 <- evaluateA t2
-            return (v1 <= v2)
+        = compareStrict (<=) t1 t2
     go (NApp (NApp (NCon (DC DC_lt) _) t1 _) t2 _)
-        = do
-            v1 <- evaluateA t1
-            v2 <- evaluateA t2
-            return (v1 < v2)
+        = compareStrict (<) t1 t2
     go (NApp (NApp (NCon (DC DC_ge) _) t1 _) t2 _)
-        = do
-            v1 <- evaluateA t1
-            v2 <- evaluateA t2
-            return (v1 >= v2)
+        = compareStrict (>=) t1 t2
     go (NApp (NApp (NCon (DC DC_gt) _) t1 _) t2 _)
-        = do
-            v1 <- evaluateA t1
-            v2 <- evaluateA t2
-            return (v1 > v2)
+        = compareStrict (>) t1 t2
     go _
         = Left "non"
+
+    -- Boolean arithmetic is strict for the same reason as value arithmetic:
+    -- a flexible sibling must not hide a definitely partial operand.
+    compareStrict op lhs rhs = case (evaluateA lhs, evaluateA rhs) of
+        (Left "ill", _) -> Left "ill"
+        (_, Left "ill") -> Left "ill"
+        (Right lhsValue, Right rhsValue) -> Right (op lhsValue rhsValue)
+        _ -> Left "non"
 
 data ArithmeticEquality
     = ArithEqTrue
@@ -1083,9 +1426,11 @@ arithmeticEquality t1 t2
         (Right v1, Right v2) -> if v1 == v2 then ArithEqTrue else ArithEqFalse
         (Left "ill", _) -> ArithEqFalse
         (_, Left "ill") -> ArithEqFalse
-        _ -> case (simplifyArithmetic t1', simplifyArithmetic t2') of
-            (Just s1, Just s2) | rewrite NF s1 == rewrite NF s2 -> ArithEqTrue
-            _ -> ArithEqUnknown
+        _
+            | t1' == t2' -> ArithEqTrue
+            | otherwise -> case (simplifyArithmetic t1', simplifyArithmetic t2') of
+                (Just s1, Just s2) | rewrite NF s1 == rewrite NF s2 -> ArithEqTrue
+                _ -> ArithEqUnknown
     where
         t1' = rewrite NF t1
         t2' = rewrite NF t2
@@ -1172,11 +1517,16 @@ runPresburger rep freeOf premises ctx cells stack
       dispatch
     where
         dispatch
-            | not (storeSatisfiable ctx') = stack
-            | presburgerEntails (arithAssumptions premises ctx) (rep, freeOfBound) = (ctx, cells) : stack
-            | otherwise = (ctx', cells) : stack
-        ctx' :: Context
-        ctx' = ctx { _LeftConstraints = PresburgerConstraint premises rep freeOf : _LeftConstraints ctx }
+            = case addDefinitionConstraints (Map.elems freeOfBound) ctx of
+                Nothing -> stack
+                Just definedCtx
+                    | not (storeSatisfiable (retainedCtx definedCtx)) -> stack
+                    | presburgerEntails (arithAssumptions premises definedCtx) (rep, freeOfBound)
+                    -> (definedCtx, cells) : stack
+                    | otherwise -> (retainedCtx definedCtx, cells) : stack
+        retainedCtx definedCtx = definedCtx
+            { _LeftConstraints = PresburgerConstraint premises rep freeOf : _LeftConstraints definedCtx
+            }
         -- For the entailment test, resolve the goal's free terms under the
         -- current binding (the store-sat path zonks internally via the store).
         freeOfBound :: Map.Map MyVar TermNode
@@ -1194,9 +1544,14 @@ storeSatisfiable :: Context -> Bool
 storeSatisfiable ctx
     = assertVarBinding theta `seq`
       assertConstraints (_LeftConstraints ctx) `seq`
-      presburgerGuardedStoreSat guarded
+      isJust (recheckEvaluationConstraints evaluations)
+        && presburgerGuardedStoreSat guarded
   where
     theta = _TotalVarBinding ctx
+    evaluations =
+        [ (bindVars theta lhs, bindVars theta rhs)
+        | EvalutionConstraint lhs rhs <- _LeftConstraints ctx
+        ]
     guarded :: GuardedArithStore
     guarded = mapMaybe (guardedConstraintStore theta) (_LeftConstraints ctx)
 
@@ -1206,6 +1561,8 @@ guardedConstraintStore theta constraint
       assertConstraint constraint `seq`
       go constraint
   where
+    go (EvalutionConstraint lhs rhs) =
+        Just (emptyArithStore, evaluationObligation (bindVars theta lhs) (bindVars theta rhs))
     go (ArithmeticConstraint premises term) =
         Just (bindArithStore theta premises, arithmeticObligation (bindVars theta term))
     go (PresburgerConstraint premises rep freeOf) =
@@ -1250,50 +1607,65 @@ isInconsistent arithTerms
         compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 runTransition :: forall m. UniqueM m => RuntimeEnv -> Set.Set LogicVar -> Stack -> ExceptT KernelErr m Satisfied
-runTransition env free_lvars = go where
+runTransition env free_lvars stack = assertStack stack `seq` go stack where
     failure :: ExceptT KernelErr m Stack
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr m Stack
     success with = return [with]
-    arithOpCheck :: CallId -> ArithStore -> Context -> [Cell] -> Constant -> [TermNode] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr m Stack
-    arithOpCheck call_id premises ctx cells predicate args@[lhs, rhs] op
-        = case liftConstraint candidate of
-            Nothing -> case groundResult of
-                Right okay -> if okay then success (ctx, cells) else failure
-                Left "ill" -> failure
-                _ -> throwE (UnsupportedArithmeticConstraint candidate)
-            Just lifted
-                | presburgerEntails activePremises (_liftedFormula lifted, _freeOfLifted lifted)
-                -> success (ctx, cells)
-                | Right False <- groundResult
-                , nullArithStore premises
-                -> failure
-                | Left "ill" <- groundResult
-                -> failure
-                | not (storeSatisfiable newCtx)
-                -> failure
-                | otherwise
-                -> success (newCtx, cells)
+    arithOpCheck :: CallId -> CallId -> ArithStore -> Context -> [Cell] -> Constant -> [TermNode] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr m Stack
+    arithOpCheck source_call_id call_id premises ctx cells predicate args@[_, _] op
+        = case addDefinitionConstraints boundArgs ctx of
+            Nothing -> failure
+            Just definedCtx -> case liftConstraint candidate of
+                Nothing -> case groundResult of
+                    Right okay -> if okay then success (definedCtx, cells) else failure
+                    Left "ill" -> failure
+                    _ -> throwE (UnsupportedArithmeticConstraint candidate)
+                Just lifted
+                    | presburgerEntails (activePremises definedCtx) (_liftedFormula lifted, _freeOfLifted lifted)
+                    -> success (definedCtx, cells)
+                    | Right False <- groundResult
+                    , nullArithStore premises
+                    -> failure
+                    | Left "ill" <- groundResult
+                    -> failure
+                    | not (storeSatisfiable (newCtx definedCtx))
+                    -> failure
+                    | otherwise
+                    -> success (newCtx definedCtx, cells)
         where
-            candidate = rewrite NF (bindVars (_TotalVarBinding ctx) (foldlNApp (mkNConLoc Nothing predicate) args))
-            groundResult = liftM2 op (evaluateA (bindVars (_TotalVarBinding ctx) lhs)) (evaluateA (bindVars (_TotalVarBinding ctx) rhs))
-            activePremises = arithAssumptions premises ctx
-            newCtx = Context
-                { _TotalVarBinding = _TotalVarBinding ctx
-                , _CurrentLabeling = _CurrentLabeling ctx
-                , _LeftConstraints = ArithmeticConstraint premises candidate : _LeftConstraints ctx
+            boundArgs = map (rewrite NF . bindVars (_TotalVarBinding ctx)) args
+            candidate = arithmeticConstraintCandidate (_QueryCallId env) source_call_id predicate args boundArgs
+            groundResult = case boundArgs of
+                [lhs', rhs'] -> liftM2 op (evaluateA lhs') (evaluateA rhs')
+                _ -> Left "non"
+            activePremises definedCtx = arithAssumptions premises definedCtx
+            newCtx definedCtx = definedCtx
+                { _LeftConstraints = ArithmeticConstraint premises candidate : _LeftConstraints definedCtx
                 , _ContextThreadId = call_id
-                , _debuggindModeOn = _debuggindModeOn ctx
                 }
-    arithOpCheck _ _ _ _ predicate args _
+    arithOpCheck _ _ _ _ _ predicate args _
         = throwE (BadGoalGiven (foldlNApp (mkNCon predicate) args))
     eqOpCheck :: Context -> [Cell] -> [TermNode] -> Maybe (ExceptT KernelErr m Stack)
-    eqOpCheck ctx cells [_typeArg, lhs, rhs]
-        | mentionsArithmetic lhs || mentionsArithmetic rhs = case arithmeticEquality (bindVars (_TotalVarBinding ctx) lhs) (bindVars (_TotalVarBinding ctx) rhs) of
+    eqOpCheck ctx cells [typeArg, lhs, rhs]
+        | isNatTypeArg typeArg || mentionsArithmetic lhs || mentionsArithmetic rhs = case arithmeticEquality (bindVars (_TotalVarBinding ctx) lhs) (bindVars (_TotalVarBinding ctx) rhs) of
             ArithEqTrue -> Just (success (ctx, cells))
             ArithEqFalse -> Just failure
             ArithEqUnknown -> Nothing
     eqOpCheck _ _ _ = Nothing
+    isNatTypeArg typeArg = case rewrite NF typeArg of
+        NCon (TC (TC_Named "nat")) _ -> True
+        _ -> False
+    addEqualityDefinitions :: [TermNode] -> Context -> Maybe Context
+    addEqualityDefinitions [typeArg, lhs, rhs] ctx
+        | isNatTypeArg typeArg || mentionsArithmetic lhs || mentionsArithmetic rhs
+        = addDefinitionConstraints
+            [ bindVars (_TotalVarBinding ctx) lhs
+            , bindVars (_TotalVarBinding ctx) rhs
+            ]
+            ctx
+        | otherwise = Just ctx
+    addEqualityDefinitions _ ctx = Just ctx
     primitivePrint :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
     primitivePrint ctx args cells stack
         | Just arg <- onePrimitiveArg args
@@ -1318,7 +1690,7 @@ runTransition env free_lvars = go where
             bindPrimitive x value = execIs hyps (zonkLVar theta ctx) (map (zonkLVar theta) cells) stack where
                 theta = VarBinding (Map.singleton x value)
 
-            canBindPrimitive x t = x `Set.notMember` getLVars t && null badCons && null badVars && primitiveBindingTypeOkay (_CurrentLabeling ctx) x t where
+            canBindPrimitive x t = x `Set.notMember` getLVars t && null badCons && null badVars && primitiveBindingTypeOkayWithKinds (_ProgramKindEnv env) (_CurrentLabeling ctx) x t where
                 targetScope = lookupLabel x (_CurrentLabeling ctx)
                 (badCons, badVars) = scopeEscaping (_CurrentLabeling ctx) targetScope x t
     primitiveRead _ _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "read")) args))
@@ -1326,11 +1698,11 @@ runTransition env free_lvars = go where
     onePrimitiveArg [arg] = Just arg
     onePrimitiveArg [_typeArg, arg] = Just arg
     onePrimitiveArg _ = Nothing
-    search :: Map.Map Constant [Fact] -> [Fact] -> ArithStore -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr m Stack
-    search facts hyps premises level predicate args ctx cells
+    search :: Map.Map Constant [Fact] -> [Fact] -> ArithStore -> ScopeLevel -> Constant -> [TermNode] -> CallId -> Context -> [Cell] -> ExceptT KernelErr m Stack
+    search facts hyps premises level predicate args source_call_id ctx cells
         = do
             call_id <- getUnique
-            let arithOpCheck' = arithOpCheck call_id premises ctx cells predicate args
+            let arithOpCheck' = arithOpCheck source_call_id call_id premises ctx cells predicate args
             case predicate of
                 DC DC_eq -> do
                     -- A bare equality antecedent keeps its ordinary local
@@ -1338,15 +1710,21 @@ runTransition env free_lvars = go where
                     -- precedence; only an empty block falls through to the
                     -- arithmetic/program built-in.  In particular,
                     -- @((1 = 2) => (1 = 2))@ succeeds by assumption without a
-                    -- duplicate built-in answer.
-                    localAnswers <- searchHyps call_id
-                    if null localAnswers then do
-                        arithmeticAnswer <- sequence (eqOpCheck ctx cells args)
-                        case arithmeticAnswer of
-                            Just answer -> return answer
-                            Nothing -> searchProgram call_id
-                    else
-                        return localAnswers
+                    -- duplicate built-in answer.  Strict natural definedness
+                    -- is independent of that dispatch precedence, so both the
+                    -- local block and the fallback share the same enriched
+                    -- context.
+                    case addEqualityDefinitions args ctx of
+                        Nothing -> failure
+                        Just equalityCtx -> do
+                            localAnswers <- searchHypsWith equalityCtx call_id
+                            if null localAnswers then do
+                                arithmeticAnswer <- sequence (eqOpCheck equalityCtx cells args)
+                                case arithmeticAnswer of
+                                    Just answer -> return answer
+                                    Nothing -> searchProgramWith equalityCtx call_id
+                            else
+                                return localAnswers
                 DC DC_ge -> arithOpCheck' (>=)
                 DC DC_gt -> arithOpCheck' (>)
                 DC DC_le -> arithOpCheck' (<=)
@@ -1358,44 +1736,39 @@ runTransition env free_lvars = go where
                 ans3 <- searchHyps call_id
                 return (ans2 ++ ans3)
 
-            searchProgram call_id = fmap concat (forM (Map.findWithDefault [] predicate facts) (matchFact call_id))
-            searchHyps call_id = fmap concat (forM hyps (matchFact call_id))
+            searchProgram call_id = searchProgramWith ctx call_id
+            searchProgramWith activeCtx call_id = fmap concat (forM (Map.findWithDefault [] predicate facts) (matchFact activeCtx call_id))
+            searchHyps call_id = searchHypsWith ctx call_id
+            searchHypsWith activeCtx call_id = fmap concat (forM hyps (matchFact activeCtx call_id))
 
-            matchFact call_id fact = do
-                ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
+            matchFact activeCtx call_id fact = do
+                ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling activeCtx)
                 case unfoldlNApp (rewrite HNF goal') of
                     (NCon predicate' _, args')
                         | predicate == predicate' -> do
-                            hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ])) else throwE (BadFactGiven goal')
+                            hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ [ eqn | DisagreementConstraint eqn <- _LeftConstraints activeCtx ])) else throwE (BadFactGiven goal')
                             let new_level = level
                                 new_hyps = hyps
                             case hopu_output of
                                 Nothing -> failure
                                 Just (new_disagreements, HopuSol new_labeling subst) -> do
-                                    let zonked_constraints = zonkLVar subst (_LeftConstraints ctx)
-                                        new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- zonked_constraints ]
-                                        new_arithmetic_constraints = [ (premises0, rewrite NF arith) | ArithmeticConstraint premises0 arith <- zonked_constraints ]
-                                        new_presburger_constraints = [ PresburgerConstraint premises0 rep freeOf | PresburgerConstraint premises0 rep freeOf <- zonked_constraints ]
-                                    case recheckEvaluationConstraints new_evaluation_constraints of
+                                    let zonkedConstraints = zonkLVar subst (_LeftConstraints activeCtx)
+                                        otherConstraints =
+                                            [ constraint
+                                            | constraint <- zonkedConstraints
+                                            , case constraint of
+                                                DisagreementConstraint _ -> False
+                                                _ -> True
+                                            ]
+                                        baseCtx = (zonkLVar subst activeCtx)
+                                            { _CurrentLabeling = new_labeling
+                                            , _LeftConstraints = map DisagreementConstraint new_disagreements ++ otherConstraints
+                                            , _ContextThreadId = call_id
+                                            }
+                                        baseCells = zonkLVar subst (mkCell facts new_hyps premises new_level new_goal call_id : cells)
+                                    case settleEvaluationConstraints baseCtx baseCells of
                                         Nothing -> failure
-                                        Just pendingEvaluations -> do
-                                            let newCtx = Context
-                                                    { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
-                                                    , _CurrentLabeling = new_labeling
-                                                    , _LeftConstraints =
-                                                        map DisagreementConstraint new_disagreements
-                                                            ++ [ EvalutionConstraint lhs rhs | (lhs, rhs) <- pendingEvaluations ]
-                                                            ++ [ ArithmeticConstraint premises0 arith | (premises0, arith) <- new_arithmetic_constraints, evaluateB (rewrite NF arith) /= Right True ]
-                                                            ++ new_presburger_constraints
-                                                    , _ContextThreadId = call_id
-                                                    , _debuggindModeOn = _debuggindModeOn ctx
-                                                    }
-                                                inconsistentStore =
-                                                    not (storeSatisfiable newCtx)
-                                            if inconsistentStore then
-                                                failure
-                                            else
-                                                success (newCtx, zonkLVar subst (mkCell facts new_hyps premises new_level new_goal call_id : cells))
+                                        Just settled -> success settled
                     _ -> failure
     dispatch :: Context -> Map.Map Constant [Fact] -> [Fact] -> ArithStore -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Satisfied
     dispatch ctx facts hyps premises level (NCon predicate _, args) call_id cells stack
@@ -1413,7 +1786,7 @@ runTransition env free_lvars = go where
             go stack'
         | otherwise
         = do
-            stack' <- search facts hyps premises level predicate args ctx cells
+            stack' <- search facts hyps premises level predicate args call_id ctx cells
             go (stack' ++ stack)
     dispatch ctx _facts _hyps premises _level (NPresburgerCheck rep freeOf _, []) _call_id cells stack
         = go (runPresburger rep freeOf premises ctx cells stack)
@@ -1442,15 +1815,39 @@ runTransition env free_lvars = go where
                     when dbg $ do
                         modifyIORef' (_NameCacheRef env) (recordVisibleLVarHints ((ctx, cells) : stack))
                         _PutStr env env ctx (showsCurrentState (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
-                stackAfterCb <- liftIO (readIORef (_StackRef env))
+                stackAfterCb <- liftIO $ do
+                    updatedStack <- readIORef (_StackRef env)
+                    -- The debugger callback may replace the public stack ref.
+                    -- Re-establish the same domain invariant enforced at the
+                    -- runTransition entry point before inspecting any frame.
+                    assertStack updatedStack `seq` return updatedStack
                 stack1 <- applyPending stackAfterCb
                 case stack1 of
                     [] -> return False
                     (ctx', cells') : stack' -> case cells' of
-                        [] -> do
-                            want_more <- liftIO (_Answer env ctx')
-                            if want_more then go stack' else return True
+                        [] -> case settleEvaluationConstraints ctx' [] of
+                            Nothing -> go stack'
+                            Just (answerCtx, [])
+                                | storeSatisfiable answerCtx -> do
+                                    want_more <- liftIO (_Answer env answerCtx)
+                                    if want_more then go stack' else return True
+                                | otherwise -> go stack'
+                            Just (_, _ : _) -> go stack'
                         Cell facts hyps premises level goal call_id : rest_cells -> dispatch ctx' facts hyps premises level (unfoldlNApp (rewrite HNF goal)) call_id rest_cells stack'
+
+-- Runtime facts and imported clause bodies carry source coordinates from a
+-- different file than the active query.  Only the root query call-id is
+-- therefore allowed to contribute a location to a query diagnostic; direct
+-- embedders (Nothing) and clause calls remain truly locationless.
+arithmeticConstraintCandidate :: Maybe CallId -> CallId -> Constant -> [TermNode] -> [TermNode] -> TermNode
+arithmeticConstraintCandidate queryCallId callId predicate sourceArgs boundArgs
+    = List.foldl' (mkNAppLoc candidateLoc) (mkNConLoc candidateLoc predicate) boundArgs
+    where
+        candidateLoc
+            | queryCallId == Just callId = case mapMaybe getNodeSLoc sourceArgs of
+                [] -> Nothing
+                firstLoc : restLocs -> Just (List.foldl' (<>) firstLoc restLocs)
+            | otherwise = Nothing
 
 eraseTrivialBinding :: LogicVarSubst -> LogicVarSubst
 eraseTrivialBinding = VarBinding . loop . unVarBinding where

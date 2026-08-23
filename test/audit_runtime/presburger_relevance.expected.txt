@@ -7,57 +7,65 @@ Hol> Compiling test.audit_runtime.presburger_relevance ( test/audit_runtime/pres
 test.audit_runtime.presburger_relevance> Ok, one module loaded.
 test.audit_runtime.presburger_relevance> 
 test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> presburger "?V_36 = 5"
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> presburger "E_1 = 5"
 test.audit_runtime.presburger_relevance> The binding is:
-test.audit_runtime.presburger_relevance> X := ?V_36.
+test.audit_runtime.presburger_relevance> X := E_1.
 test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
 test.audit_runtime.presburger_relevance> yes.
 test.audit_runtime.presburger_relevance> 
 test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> (?V_76 > 3) => presburger "?V_76 > 5"
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> (E_1 > 3) => presburger "E_1 > 5"
 test.audit_runtime.presburger_relevance> The binding is:
-test.audit_runtime.presburger_relevance> X := ?V_76.
+test.audit_runtime.presburger_relevance> X := E_1.
 test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
 test.audit_runtime.presburger_relevance> yes.
 test.audit_runtime.presburger_relevance> 
 test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> ?V_97 > 5
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> E_1 > 5
 test.audit_runtime.presburger_relevance> The binding is:
-test.audit_runtime.presburger_relevance> X := ?V_97.
+test.audit_runtime.presburger_relevance> X := E_1.
 test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
 test.audit_runtime.presburger_relevance> yes.
 test.audit_runtime.presburger_relevance> 
 test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> X > Y
-test.audit_runtime.presburger_relevance> presburger "Y = 5"
-test.audit_runtime.presburger_relevance> The binding is:
-test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
-test.audit_runtime.presburger_relevance> yes.
-test.audit_runtime.presburger_relevance> 
-test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> X + 1 is Y + 1
-test.audit_runtime.presburger_relevance> presburger "Y = 5"
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> X > E_1
+test.audit_runtime.presburger_relevance> presburger "E_1 = 5"
 test.audit_runtime.presburger_relevance> The binding is:
 test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
 test.audit_runtime.presburger_relevance> yes.
 test.audit_runtime.presburger_relevance> 
 test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> presburger "?V_216 = 5"
-test.audit_runtime.presburger_relevance> The binding is:
-test.audit_runtime.presburger_relevance> X := ?V_216.
-test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
-test.audit_runtime.presburger_relevance> yes.
-test.audit_runtime.presburger_relevance> 
-test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> presburger "X = Y"
-test.audit_runtime.presburger_relevance> presburger "Y = 5"
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> X + 1 is E_1 + 1
+test.audit_runtime.presburger_relevance> presburger "E_1 = 5"
 test.audit_runtime.presburger_relevance> The binding is:
 test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
 test.audit_runtime.presburger_relevance> yes.
 test.audit_runtime.presburger_relevance> 
 test.audit_runtime.presburger_relevance> The remaining constraints are:
-test.audit_runtime.presburger_relevance> presburger "X = Y"
-test.audit_runtime.presburger_relevance> presburger "Y = 5"
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> presburger "E_1 = 5"
+test.audit_runtime.presburger_relevance> The binding is:
+test.audit_runtime.presburger_relevance> X := E_1.
+test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
+test.audit_runtime.presburger_relevance> yes.
+test.audit_runtime.presburger_relevance> 
+test.audit_runtime.presburger_relevance> The remaining constraints are:
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> presburger "X = E_1"
+test.audit_runtime.presburger_relevance> presburger "E_1 = 5"
+test.audit_runtime.presburger_relevance> The binding is:
+test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
+test.audit_runtime.presburger_relevance> yes.
+test.audit_runtime.presburger_relevance> 
+test.audit_runtime.presburger_relevance> The remaining constraints are:
+test.audit_runtime.presburger_relevance> exists E_1.
+test.audit_runtime.presburger_relevance> presburger "X = E_1"
+test.audit_runtime.presburger_relevance> presburger "E_1 = 5"
 test.audit_runtime.presburger_relevance> The binding is:
 test.audit_runtime.presburger_relevance> Find more solutions? [Y/n] 
 test.audit_runtime.presburger_relevance> yes.

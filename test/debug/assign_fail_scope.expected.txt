@@ -74,7 +74,8 @@ test.debug.assign_fail_scope> Press the enter key to go to next state:
 
 test.debug.assign_fail_scope> Press the enter key to go to next state: 
 test.debug.assign_fail_scope> The answer substitution is:
-test.debug.assign_fail_scope> X := ?V_12.
+test.debug.assign_fail_scope> exists E_1.
+test.debug.assign_fail_scope> X := E_1.
 test.debug.assign_fail_scope> Find more solutions? [Y/n] 
 test.debug.assign_fail_scope> yes.
 test.debug.assign_fail_scope> 

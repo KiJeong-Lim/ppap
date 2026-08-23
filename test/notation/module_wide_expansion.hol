@@ -1,0 +1,9 @@
+% Abbreviation/notation declarations are module-wide, like fixity declarations:
+% this fact may use `later` before its textual declaration.
+kind myt type.
+type pair (nat -> nat -> myt).
+type p (myt -> o).
+p (later 3).
+
+notation later X := pair X X.
+

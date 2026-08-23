@@ -104,13 +104,11 @@ getFMTVs :: HasMTVar a => a -> Set.Set MetaTVar
 getFMTVs = flip getFreeMTVs Set.empty
 
 getKind :: MonoType Int -> KindExpr
-getKind = either (const Star) id . getKindEither
+getKind = either (const undefined) id . getKindEither
 
 -- 'getKind' keeps its historic pure signature for source compatibility.  Its
--- 'Star' fallback is only a total default for legacy callers that already
--- assume a well-formed type; it must not be used to validate a type.  New
--- validation code, including this checker, uses 'getKindEither', which reports
--- malformed applications explicitly.
+-- input domain contains only well-kinded types; use 'getKindEither' at any
+-- validation boundary that must report malformed applications structurally.
 getKindEither :: MonoType Int -> Either TypeError KindExpr
 getKindEither typ = case typ of
     TyVar _ -> return Star
@@ -126,9 +124,11 @@ getKindEither typ = case typ of
 
 getMGU :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
 getMGU lhs rhs
-    = case go Set.empty lhs rhs of
-        (Nothing, theta) -> return theta
-        (Just typ_error, theta) -> throwE ((substMTVars theta lhs, substMTVars theta rhs), typ_error)
+    = case validateKinds lhs rhs of
+        Left typ_error -> throwE ((lhs, rhs), typ_error)
+        Right () -> case go Set.empty lhs rhs of
+            (Nothing, theta) -> return theta
+            (Just typ_error, theta) -> throwE ((substMTVars theta lhs, substMTVars theta rhs), typ_error)
     where
         go :: Set.Set MetaTVar -> MonoType Int -> MonoType Int -> (Maybe TypeError, TypeSubst)
         go _ (TyVar tvar1) (TyVar tvar2)
@@ -137,8 +137,9 @@ getMGU lhs rhs
             = (Just (TypesAreMismatched typ1 typ2), mempty)
         go _ typ1 typ2@(TyVar _)
             = (Just (TypesAreMismatched typ1 typ2), mempty)
-        go lockeds (TyCon tcon1) (TyCon tcon2)
-            | tcon1 == tcon2 = (Nothing, mempty)
+        go _ typ1@(TyCon tcon1) typ2@(TyCon tcon2)
+            | typesAgreeIncludingKinds typ1 typ2 = (Nothing, mempty)
+            | tcon1 == tcon2 = (Just (KindsAreMismatched (typ1, getTConKind tcon1) (typ2, getTConKind tcon2)), mempty)
         go lockeds (TyMTV mtv) typ 
             | mtv `Set.member` lockeds
             = (Nothing, mempty)
@@ -190,14 +191,16 @@ unifyWithProvenance ((origin, lhs, rhs) : constraints) = do
 
 (->>) :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
 lhs ->> rhs
-    = case go lhs rhs of
-        Right theta -> return theta
+    = case validateKinds lhs rhs of
         Left typ_error -> throwE ((lhs, rhs), typ_error)
+        Right () -> case go lhs rhs of
+            Right theta -> return theta
+            Left typ_error -> throwE ((lhs, rhs), typ_error)
     where
         merge :: TypeSubst -> TypeSubst -> Either (MonoType Int, MonoType Int) TypeSubst
         merge (TypeSubst mapsto1) (TypeSubst mapsto2)
             = case disgrees of
-                [] -> Right (TypeSubst (mapsto1 `Map.union` mapsto2))
+                [] -> Right (TypeSubst mapsto2 <> TypeSubst mapsto1)
                 (typ1, typ2) : _ -> Left (typ1, typ2)
             where
                 disgrees :: [(MonoType Int, MonoType Int)]
@@ -205,22 +208,17 @@ lhs ->> rhs
                     mtv <- Set.toList (Map.keysSet mapsto1 `Set.intersection` Map.keysSet mapsto2)
                     let typ1 = mapsto1 Map.! mtv
                         typ2 = mapsto2 Map.! mtv
-                    if typ1 == typ2 then [] else return (typ1, typ2)
+                    if typesAgreeIncludingKinds typ1 typ2 then [] else return (typ1, typ2)
         go :: MonoType Int -> MonoType Int -> Either TypeError TypeSubst
         go (TyVar tvar1) (TyVar tvar2)
             | tvar1 == tvar2 = return mempty
         go typ1@(TyVar _) typ2 = Left (TypesAreMismatched typ1 typ2)
         go typ1 typ2@(TyVar _) = Left (TypesAreMismatched typ1 typ2)
-        go (TyCon tcon1) (TyCon tcon2)
-            | tcon1 == tcon2 = return mempty
+        go typ1@(TyCon tcon1) typ2@(TyCon tcon2)
+            | typesAgreeIncludingKinds typ1 typ2 = return mempty
+            | tcon1 == tcon2 = Left (KindsAreMismatched (typ1, getTConKind tcon1) (typ2, getTConKind tcon2))
         go (TyMTV mtv) typ
-            | TyMTV mtv == typ = return mempty
-            | otherwise = case (getKindEither (TyMTV mtv), getKindEither typ) of
-                (Right mtvKind, Right typKind)
-                    | mtvKind == typKind -> return (TypeSubst (Map.singleton mtv typ))
-                    | otherwise -> Left (KindsAreMismatched (TyMTV mtv, mtvKind) (typ, typKind))
-                (Left typError, _) -> Left typError
-                (_, Left typError) -> Left typError
+            = mtv +-> typ
         go (TyApp typ1 typ2) (TyApp typ1' typ2') = do
             theta1 <- go typ1 typ1'
             theta2 <- go typ2 typ2'
@@ -229,15 +227,35 @@ lhs ->> rhs
                 Right theta -> return theta
         go typ1 typ2 = Left (TypesAreMismatched typ1 typ2)
 
+validateKinds :: MonoType Int -> MonoType Int -> Either TypeError ()
+validateKinds lhs rhs = case (getKindEither lhs, getKindEither rhs) of
+    (Left typError, _) -> Left typError
+    (_, Left typError) -> Left typError
+    (Right lhsKind, Right rhsKind)
+        | lhsKind == rhsKind -> Right ()
+        | otherwise -> Left (KindsAreMismatched (lhs, lhsKind) (rhs, rhsKind))
+
+getTConKind :: TCon -> KindExpr
+getTConKind (TCon _ kindExpr) = kindExpr
+
+typesAgreeIncludingKinds :: MonoType Int -> MonoType Int -> Bool
+typesAgreeIncludingKinds lhs rhs = case (lhs, rhs) of
+    (TyVar v1, TyVar v2) -> v1 == v2
+    (TyMTV v1, TyMTV v2) -> v1 == v2
+    (TyCon (TCon c1 k1), TyCon (TCon c2 k2)) -> c1 == c2 && k1 == k2
+    (TyApp f1 x1, TyApp f2 x2) ->
+        typesAgreeIncludingKinds f1 f2 && typesAgreeIncludingKinds x1 x2
+    _ -> False
+
 showMonoType :: NotationDB -> Map.Map MetaTVar LargeId -> MonoType Int -> String -> String
 showMonoType db name_env = go 0 where
     go :: Precedence -> MonoType Int -> String -> String
     go prec t = case Notation.tryFoldType db t of
-        Just (name, []) -> strstr name
+        Just (name, []) -> strstr (renderNamedIdentifier name)
         Just (name, args) -> if prec > 1 then strstr "(" . inner name args . strstr ")" else inner name args
         Nothing -> raw prec t
     inner :: LargeId -> [MonoType Int] -> String -> String
-    inner name args = strstr name . List.foldr (.) id [ strstr " " . go 2 a | a <- args ]
+    inner name args = strstr (renderNamedIdentifier name) . List.foldr (.) id [ strstr " " . go 2 a | a <- args ]
     raw :: Precedence -> MonoType Int -> String -> String
     raw prec (TyApp (TyApp (TyCon (TCon TC_Arrow _)) typ1) typ2)
         | prec <= 0 = go 1 typ1 . strstr " -> " . go 0 typ2
@@ -245,8 +263,9 @@ showMonoType db name_env = go 0 where
     raw prec (TyApp typ1 typ2)
         | prec <= 1 = go 1 typ1 . strstr " " . go 2 typ2
         | otherwise = strstr "(" . go 1 typ1 . strstr " " . go 2 typ2 . strstr ")"
-    raw prec (TyCon con)
-        = pprint 0 con
+    raw _ (TyCon (TCon typeConstructor _)) = case typeConstructor of
+        TC_Named name -> strstr (renderNamedIdentifier name)
+        _ -> showsPrec 0 typeConstructor
     raw prec (TyVar var)
         = strstr "#" . showsPrec 0 var
     raw prec (TyMTV mtv)
@@ -515,10 +534,15 @@ inferTypeWithModule mode moduleName source_lines db type_env term = do
     mkUnknownConErr :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> DataConstructor -> ErrMsg
     mkUnknownConErr mode' moduleName' source loc con =
         diagnosticWithModule mode' "HolBETA-NotInScope" moduleName' source loc
-            [ Z.Doc.text ("Unknown predicate or constructor `" ++ showsPrec 0 con "'.")
+            [ Z.Doc.text ("Unknown predicate or constructor " ++ renderDataConstructor con ++ ".")
             , Z.Doc.text "No type declaration for this name is visible here."
             , Z.Doc.text "Declare it with `type', import its module, or check the spelling."
             ]
+      where
+        renderDataConstructor (DC_Named name)
+            | isReservedNamedIdentifier name = renderNamedIdentifier name
+        renderDataConstructor dataConstructor =
+            "`" ++ showsPrec 0 dataConstructor "'"
 
 checkType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
 checkType = checkTypeWithDiagnostic DiagnosticPretty Nothing

@@ -21,11 +21,14 @@ instance ToConstant LogicalOperator where
 instance ToConstant DataConstructor where
     makeConstant (DC_NatL n)
         | n >= 0 = DC (DC_NatL n)
-        | otherwise = error "`makeConstant\': negative integer"
+        | otherwise = undefined
     makeConstant data_constructor = data_constructor `seq` DC data_constructor
 
 instance ToConstant TypeConstructor where
     makeConstant type_constructor = type_constructor `seq` TC type_constructor
 
 instance ToConstant Constant where
-    makeConstant = id
+    makeConstant constant = case constant of
+        DC (DC_NatL n)
+            | n < 0 -> undefined
+        _ -> constant

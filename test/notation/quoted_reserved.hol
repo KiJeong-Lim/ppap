@@ -1,0 +1,13 @@
+% Backtick quoting makes a reserved word a named constructor.  The viewer must
+% retain the quotes, or its answer would reparse as the logical primitive.
+kind myt type.
+type `true` myt.
+type `pi` myt.
+type `is` (nat -> nat -> myt).
+infixl `is` 6.
+type p (myt -> o).
+type q (myt -> o).
+type r (myt -> o).
+p `true`.
+q `pi`.
+r (1 `is` 2).

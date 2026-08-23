@@ -1,0 +1,27 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.io.read_expected_types ( test/io/read_expected_types.hol, interpreted )
+test.io.read_expected_types> Ok, one module loaded.
+test.io.read_expected_types> 
+test.io.read_expected_types> read> 
+test.io.read_expected_types> The answer substitution is:
+test.io.read_expected_types> X := 42.
+test.io.read_expected_types> Find more solutions? [Y/n] 
+test.io.read_expected_types> yes.
+test.io.read_expected_types> 
+test.io.read_expected_types> read> 
+test.io.read_expected_types> The answer substitution is:
+test.io.read_expected_types> X := 'A'.
+test.io.read_expected_types> Find more solutions? [Y/n] 
+test.io.read_expected_types> yes.
+test.io.read_expected_types> 
+test.io.read_expected_types> read> 
+test.io.read_expected_types> The answer substitution is:
+test.io.read_expected_types> X := "abc".
+test.io.read_expected_types> Find more solutions? [Y/n] 
+test.io.read_expected_types> yes.
+test.io.read_expected_types> 
+Hol >>= quit

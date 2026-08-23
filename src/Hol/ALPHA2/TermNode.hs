@@ -44,13 +44,16 @@ data SuspItem
 assertNonnegativeIndices :: TermNode -> ()
 assertNonnegativeIndices term = case term of
     LVar _ -> ()
+    NCon (DC (DC_NatL n))
+        | n < 0 -> undefined
+        | otherwise -> ()
     NCon _ -> ()
     NIdx i
         | i >= 0 -> ()
         | otherwise -> undefined
     NApp t1 t2 -> assertNonnegativeIndices t1 `seq` assertNonnegativeIndices t2
     NLam body -> assertNonnegativeIndices body
-    Susp body _ _ env -> assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv env
+    Susp body ol nl env -> assertSuspension body ol nl env
 
 assertNonnegativeTerms :: [TermNode] -> ()
 assertNonnegativeTerms [] = ()
@@ -58,12 +61,43 @@ assertNonnegativeTerms (term : rest) = assertNonnegativeIndices term `seq` asser
 
 assertNonnegativeSuspEnv :: SuspEnv -> ()
 assertNonnegativeSuspEnv [] = ()
-assertNonnegativeSuspEnv (Dummy _ : rest) = assertNonnegativeSuspEnv rest
-assertNonnegativeSuspEnv (Binds body _ : rest) = assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv rest
+assertNonnegativeSuspEnv (Dummy level : rest)
+    | level >= 0 = assertNonnegativeSuspEnv rest
+    | otherwise = undefined
+assertNonnegativeSuspEnv (Binds body level : rest)
+    | level >= 0 = assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv rest
+    | otherwise = undefined
 
 assertNonnegativeSuspItem :: SuspItem -> ()
-assertNonnegativeSuspItem (Dummy _) = ()
-assertNonnegativeSuspItem (Binds body _) = assertNonnegativeIndices body
+assertNonnegativeSuspItem (Dummy level)
+    | level >= 0 = ()
+    | otherwise = undefined
+assertNonnegativeSuspItem (Binds body level)
+    | level >= 0 = assertNonnegativeIndices body
+    | otherwise = undefined
+
+assertSuspension :: TermNode -> Int -> Int -> SuspEnv -> ()
+assertSuspension body ol nl env
+    | ol < 0 || nl < 0 = undefined
+    | length env /= ol = undefined
+    | otherwise = assertNonnegativeIndices body `seq` checkItems env
+  where
+    checkItems [] = ()
+    checkItems (item : rest) = case item of
+        Dummy level
+            | level >= 0 && level <= nl -> checkItems rest
+            | otherwise -> undefined
+        Binds itemBody level
+            | level >= 0 && level <= nl ->
+                assertNonnegativeIndices itemBody `seq` checkItems rest
+            | otherwise -> undefined
+
+validSuspensionMetadata :: Int -> Int -> SuspEnv -> Bool
+validSuspensionMetadata ol nl env
+    = ol >= 0 && nl >= 0 && length env == ol && all validItem env
+  where
+    validItem (Dummy level) = level >= 0 && level <= nl
+    validItem (Binds _ level) = level >= 0 && level <= nl
 
 instance Eq SuspItem where
     lhs == rhs
@@ -218,33 +252,44 @@ mkNIdx i
 {-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
 mkNApp (NCon (DC (DC_Succ))) (NCon (DC (DC_NatL n)))
-    = n' `seq` mkNCon (DC_NatL n')
+    | n < 0 = undefined
+    | otherwise = n' `seq` mkNCon (DC_NatL n')
     where
         n' = n + 1
 mkNApp t1 t2
-    = NApp t1 t2
+    = assertNonnegativeIndices t1 `seq`
+      assertNonnegativeIndices t2 `seq`
+      NApp t1 t2
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
-mkNLam t = NLam t
+mkNLam t = assertNonnegativeIndices t `seq` NLam t
 
 {-# INLINE mkSusp #-}
 mkSusp :: TermNode -> Int -> Int -> SuspEnv -> TermNode
-mkSusp t 0 0 [] = t
-mkSusp t ol nl env = Susp { getSuspBody = t, getSuspOL = ol, getSuspNL = nl, getSuspEnv = env }
+mkSusp t 0 0 [] = assertNonnegativeIndices t `seq` t
+mkSusp t ol nl env
+    | validSuspensionMetadata ol nl env =
+        assertNonnegativeIndices t `seq`
+        assertNonnegativeSuspEnv env `seq`
+        Susp { getSuspBody = t, getSuspOL = ol, getSuspNL = nl, getSuspEnv = env }
+    | otherwise = undefined
 
 {-# INLINE mkDummy #-}
 mkDummy :: Int -> SuspItem
-mkDummy l = Dummy l
+mkDummy l
+    | l >= 0 = Dummy l
+    | otherwise = undefined
 
 {-# INLINE mkBinds #-}
 mkBinds :: TermNode -> Int -> SuspItem
-mkBinds t l = Binds t l
+mkBinds t l
+    | l >= 0 = assertNonnegativeIndices t `seq` Binds t l
+    | otherwise = undefined
 
 rewriteWithSusp :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
 rewriteWithSusp t ol nl env option
-    = assertNonnegativeIndices t `seq`
-        assertNonnegativeSuspEnv env `seq`
+    = assertSuspension t ol nl env `seq`
         rewriteWithSuspUnchecked t ol nl env option
 
 rewriteWithSuspUnchecked :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
@@ -298,24 +343,24 @@ unfoldlNApp term = assertNonnegativeIndices term `seq` go term [] where
     go t@(NCon (DC (DC_NatL n))) ts
         | n == 0 = (mkNCon (DC_NatL 0), ts)
         | n > 0 = n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
-        | otherwise = (t, ts)
+        | otherwise = undefined
         where
             n' = n - 1
     go (NApp t1 t2) ts = go t1 (t2 : ts)
     go t ts = (t, ts)
 
 lensForSuspEnv :: (TermNode -> TermNode) -> SuspEnv -> SuspEnv
-lensForSuspEnv delta = map go where
+lensForSuspEnv delta env = assertNonnegativeSuspEnv env `seq` map go env where
     go :: SuspItem -> SuspItem
     go (Dummy l) = mkDummy l
     go (Binds t l) = mkBinds (delta t) l
 
 foldlNApp :: TermNode -> [TermNode] -> TermNode
-foldlNApp = List.foldl' mkNApp
+foldlNApp t ts = assertNonnegativeIndices t `seq` List.foldl' mkNApp t ts
 
 makeNestedNLam :: Int -> TermNode -> TermNode
 makeNestedNLam n
-    | n == 0 = id
+    | n == 0 = \t -> assertNonnegativeIndices t `seq` t
     | n > 0 = makeNestedNLam (n - 1) . mkNLam
     | otherwise = undefined
 
@@ -324,6 +369,11 @@ viewNestedNLam term = assertNonnegativeIndices term `seq` go 0 term where
     go :: Int -> TermNode -> (Int, TermNode)
     go n (NLam t) = go (n + 1) t
     go n t = (n, t)
+
+renderNamedConstructor :: SmallId -> SmallId
+renderNamedConstructor name
+    | isReservedNamedIdentifier name = renderNamedIdentifier name
+    | otherwise = "__" ++ name
 
 constructViewer :: TermNode -> ViewNode
 constructViewer term = fst . runIdentity $ runStateT (formatView rendered_names (eraseType raw_view)) next_fresh where
@@ -334,8 +384,61 @@ constructViewer term = fst . runIdentity $ runStateT (formatView rendered_names 
     (raw_view, next_fresh) = runIdentity (runStateT (makeView [] normalized) 1)
     free_names :: Set.Set SmallId
     free_names = collectFreeNames normalized
+    ambient_names :: Map.Map DeBruijn LargeId
+    ambient_names = Map.fromList allocated_ambient_names
+    (_, allocated_ambient_names) = List.mapAccumL allocateAmbientName occupied_names
+        (Set.toAscList (collectAmbientSlots 0 normalized))
+    occupied_names :: Set.Set SmallId
+    occupied_names = collectOccupiedNames normalized
     rendered_names :: Set.Set SmallId
     rendered_names = collectViewNames raw_view
+    allocateAmbientName :: Set.Set SmallId -> DeBruijn -> (Set.Set SmallId, (DeBruijn, LargeId))
+    allocateAmbientName used slot =
+        let name = freshAmbientName used slot
+        in (Set.insert name used, (slot, name))
+    freshAmbientName :: Set.Set SmallId -> DeBruijn -> LargeId
+    freshAmbientName used slot
+        | Set.notMember base used = base
+        | otherwise = pick (1 :: Int)
+      where
+        base = "DB_" ++ show slot
+        pick suffix
+            | Set.notMember candidate used = candidate
+            | otherwise = pick (suffix + 1)
+          where
+            candidate = base ++ "_" ++ show suffix
+    collectAmbientSlots :: Int -> TermNode -> Set.Set DeBruijn
+    collectAmbientSlots depth node = case node of
+        LVar _ -> Set.empty
+        NCon _ -> Set.empty
+        NIdx idx
+            | idx < 0 -> undefined
+            | idx < depth -> Set.empty
+            | otherwise -> Set.singleton (idx - depth)
+        NApp t1 t2 -> Set.union (collectAmbientSlots depth t1) (collectAmbientSlots depth t2)
+        NLam body -> collectAmbientSlots (depth + 1) body
+        Susp body _ _ _ -> collectAmbientSlots depth body
+    collectOccupiedNames :: TermNode -> Set.Set SmallId
+    collectOccupiedNames node = case node of
+        LVar var -> Set.singleton (case var of
+            LV_ty_var v -> "?TV_" ++ show v
+            LV_Unique v -> "?V_" ++ show v
+            LV_Named name -> name)
+        NCon con -> case con of
+            DC (DC_Named name) -> Set.singleton name
+            DC (DC_Unique uni) -> Set.singleton ("c_" ++ show uni)
+            TC (TC_Named name) -> Set.singleton name
+            TC (TC_Unique uni) -> Set.singleton ("tc_" ++ show uni)
+            _ -> Set.empty
+        NIdx idx
+            | idx >= 0 -> Set.empty
+            | otherwise -> undefined
+        NApp t1 t2 -> Set.union (collectOccupiedNames t1) (collectOccupiedNames t2)
+        NLam body -> collectOccupiedNames body
+        Susp body _ _ env -> Set.unions (collectOccupiedNames body : map collectItemNames env)
+          where
+            collectItemNames (Dummy _) = Set.empty
+            collectItemNames (Binds itemBody _) = collectOccupiedNames itemBody
     collectFreeNames :: TermNode -> Set.Set SmallId
     collectFreeNames (LVar var) = case var of
         LV_Named name -> Set.singleton name
@@ -393,7 +496,7 @@ constructViewer term = fst . runIdentity $ runStateT (formatView rendered_names 
     makeView vars (NCon con) = case con of
         DC data_constructor -> case data_constructor of
             DC_LO logical_operator -> return (ViewDCon (show logical_operator))
-            DC_Named name -> return (ViewDCon ("__" ++ name))
+            DC_Named name -> return (ViewDCon (renderNamedConstructor name))
             DC_Unique uni -> return (ViewDCon ("c_" ++ show uni))
             DC_Nil -> return (ViewDCon "[]")
             DC_Cons -> return (ViewDCon "::")
@@ -413,10 +516,11 @@ constructViewer term = fst . runIdentity $ runStateT (formatView rendered_names 
         TC type_constructor -> case type_constructor of
             TC_Arrow -> return (ViewTCon "->")
             TC_Unique uni -> return (ViewTCon ("tc_" ++ show uni))
-            TC_Named name -> return (ViewTCon ("__" ++ name))
+            TC_Named name -> return (ViewTCon (renderNamedConstructor name))
     makeView vars (NIdx idx)
         | idx < 0 = undefined
         | var : _ <- drop idx vars = return (ViewIVar var)
+        | Just name <- Map.lookup (idx - length vars) ambient_names = return (ViewLVar name)
         | otherwise = undefined
     makeView vars (NApp t1 t2) = do
         t1_rep <- makeView vars t1

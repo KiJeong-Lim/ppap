@@ -1,0 +1,13 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.binder_shadow ( test/notation/binder_shadow.hol, interpreted )
+test.notation.binder_shadow> Ok, one module loaded.
+test.notation.binder_shadow> 
+test.notation.binder_shadow> yes.
+test.notation.binder_shadow> 
+test.notation.binder_shadow> yes.
+test.notation.binder_shadow> 
+Hol >>= quit

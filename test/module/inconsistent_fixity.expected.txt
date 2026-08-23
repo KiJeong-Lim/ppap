@@ -8,7 +8,7 @@ Hol> Compiling test.module.inconsistent_fixity ( test/module/inconsistent_fixity
    |                                 
  5 | import test.module.inc_fixity_b.
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-Import inconsistency (C5): `my_op' is declared by both `test.module.inc_fixity_a' and `test.module.inc_fixity_b' with disagreeing fixity. (`test.module.inc_fixity_a': FK_InfixL 5; `test.module.inc_fixity_b': FK_InfixR 6.)
+Import inconsistency (C5): `my_op' is declared by both `test.module.inc_fixity_a' (<PROJECT_ROOT>/test/module/inc_fixity_a.hol) and `test.module.inc_fixity_b' (<PROJECT_ROOT>/test/module/inc_fixity_b.hol) with disagreeing fixity. (`test.module.inc_fixity_a' (<PROJECT_ROOT>/test/module/inc_fixity_a.hol): FK_InfixL 5; `test.module.inc_fixity_b' (<PROJECT_ROOT>/test/module/inc_fixity_b.hol): FK_InfixR 6.)
 
 Hol =<< 
 Hol >>= quit

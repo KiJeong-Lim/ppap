@@ -1,6 +1,6 @@
 module Hol.BETA.Main where
 
-import Hol.BETA.Arith (arithEntails, installPresburgerWithEnvDiagnostic, presburgerGuardedStoreSat, presburgerGuardedValid)
+import Hol.BETA.Arith (arithEntails, installPresburgerWithEnvDiagnostic, liftConstraint, presburgerGuardedStoreSat, presburgerGuardedValid)
 import Hol.BETA.Compiler
 import Hol.BETA.Constant
 import Hol.BETA.Debugger
@@ -39,7 +39,15 @@ type AnalyzerOuput = Either TermRep [DeclRep]
 
 data ReplResult
     = ReplQuit
-    | ReplReload
+    | ReplReload ReplControl
+    deriving ()
+
+data ReplControl
+    = ReplControl
+        { replDebugging :: IORef Debugging
+        , replVerboseTyping :: IORef Bool
+        , replNameCache :: IORef NameCache
+        }
     deriving ()
 
 runAnalyzerWith :: DiagnosticMode -> NotationDB -> String -> Either ErrMsg AnalyzerOuput
@@ -79,15 +87,16 @@ execRuntime env isDebugging facts query = do
     let namedTypes = Map.fromList [ (nm, ty) | (LV_Named nm, ty) <- Map.toList (_TypeInfo env) ]
         initialLabeling = Labeling { _ConLabel = IntMap.empty, _VarLabel = IntMap.empty, _ConTypes = IntMap.empty, _VarTypes = IntMap.empty, _NamedTypes = namedTypes, _TyVarKeys = IntMap.empty, _TypeEnv = _ProgramTypeEnv env}
         initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = initialLabeling, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
-    runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = factIndex, _GivenHypos = [], _GivenArithPremises = ([], []), _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
+    runTransition (env { _QueryCallId = Just call_id }) (getLVars query) [(initialContext, [Cell { _GivenFacts = factIndex, _GivenHypos = [], _GivenArithPremises = ([], []), _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
 runREPL :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> UniqueT ShellyT ReplResult
-runREPL mode program notationDB expansionDB
-    = do
-        isDebugging <- liftIO (newIORef False)
-        verboseTyping <- liftIO (newIORef False)
-        nameCache <- liftIO (newIORef initialCache)
-        go isDebugging verboseTyping nameCache
+runREPL mode program notationDB expansionDB = do
+    control <- liftIO $ ReplControl <$> newIORef False <*> newIORef False <*> newIORef initialCache
+    runREPLWithControl mode program notationDB expansionDB control
+
+runREPLWithControl :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> ReplControl -> UniqueT ShellyT ReplResult
+runREPLWithControl mode program notationDB expansionDB control
+    = go (replDebugging control) (replVerboseTyping control) (replNameCache control)
     where
         go :: IORef Debugging -> IORef Bool -> IORef NameCache -> UniqueT ShellyT ReplResult
         go isDebugging verboseTyping nameCache = do
@@ -101,7 +110,7 @@ runREPL mode program notationDB expansionDB
                     return ReplQuit
                 ":reload" -> do
                     lift $ shellyM "Hol >>= reload"
-                    return ReplReload
+                    return (ReplReload control)
                 ":d" -> do
                     lift $ do
                         liftIO $ modifyIORef isDebugging not
@@ -185,7 +194,7 @@ runREPL mode program notationDB expansionDB
         mkRuntimeEnv isDebugging verboseTyping nameCache pendingSubst typeMap query
             = do
                 stackRef <- newIORef []
-                return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _PrintPrimitive = primitivePrint, _ReadPrimitive = primitiveRead, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging, _NotationDB = notationDB, _ModuleName = moduleName program })
+                return (RuntimeEnv { _PutStr = runInteraction, _Answer = printAnswer, _PrintPrimitive = primitivePrint, _ReadPrimitive = primitiveRead, _TypeInfo = typeMap, _PendingSubst = pendingSubst, _ProgramKindEnv = _KindDecls program, _ProgramTypeEnv = _TypeDecls program, _VerboseTyping = verboseTyping, _StackRef = stackRef, _NameCacheRef = nameCache, _DebuggingRef = isDebugging, _NotationDB = notationDB, _ModuleName = moduleName program, _QueryCallId = Nothing })
             where
                 primitivePrint :: Context -> TermNode -> IO ()
                 primitivePrint ctx term = do
@@ -445,15 +454,19 @@ runREPL mode program notationDB expansionDB
                                     _ -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "LHS did not resolve to a logic variable."])
                                 _ -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "Did not compile to an equality."])
                 printAnswer :: Context -> IO RunMore
-                printAnswer ctx
+                printAnswer ctx = do
+                    cache <- readIORef nameCache
+                    printAnswerWithCache cache ctx
+                printAnswerWithCache :: NameCache -> Context -> IO RunMore
+                printAnswerWithCache cache ctx
                     | isShort && isClear = return False
                     | isClear && List.null theAnswerSubst = return False
                     | isClear = do
-                        cache <- readIORef nameCache
                         let pp = prettyTerm notationDB cache
                         promptify "The answer substitution is:"
+                        printExistentialScope
                         sequence_
-                            [ promptify (myTabs ++ v ++ " := " ++ pp t ".")
+                            [ promptify (myTabs ++ v ++ " := " ++ pp (bindVars displayRenaming t) ".")
                             | (v, t) <- theAnswerSubst
                             ]
                         askToRunMore
@@ -527,43 +540,85 @@ runREPL mode program notationDB expansionDB
                                 ArithmeticConstraint _ _
                                     | guardedUniversallyValid it -> []
                                     | otherwise -> pure it
-                                EvalutionConstraint lhs rhs -> case (evaluateA lhs, evaluateA rhs) of
-                                    (Right x, Right y) -> if x == y then [] else pure it
-                                    _ -> pure it
+                                EvalutionConstraint lhs rhs
+                                    | evaluationConstraintUniversallyValid lhs rhs -> []
+                                    | otherwise -> pure it
                                 PresburgerConstraint _ _ _
                                     | guardedUniversallyValid it -> []
                                     | otherwise -> pure it
                                 it -> pure it
-                        groundDropped :: [Constraint]
-                        groundDropped = do
-                            it <- universallyDropped
-                            case it of
-                                PresburgerConstraint _ _ _
-                                    | guardedPresburgerRedundant it -> []
-                                    | otherwise -> pure it
-                                _ -> pure it
+                        existentiallyProjected :: [Constraint]
+                        existentiallyProjected =
+                            [ constraint
+                            | (index, constraint) <- indexedResiduals
+                            , index `Set.notMember` projectedIndices
+                            ]
+                        -- Generated wildcard/sigma variables are existential.
+                        -- Projection is all-or-nothing for each variable-sharing
+                        -- component.  Otherwise deleting a complete neighbour
+                        -- such as @Y > 5@ can weaken an unsupported residual
+                        -- such as @0 is 1 / Y@ that depends on the same witness.
+                        indexedResiduals :: [(Int, Constraint)]
+                        indexedResiduals = zip [0 ..] universallyDropped
+                        projectedIndices :: Set.Set Int
+                        projectedIndices = Set.fromList
+                            [ index
+                            | component <- residualComponents indexedResiduals
+                            , componentProjectable component
+                            , (index, _) <- component
+                            ]
+                        residualComponents :: [(Int, Constraint)] -> [[(Int, Constraint)]]
+                        residualComponents [] = []
+                        residualComponents (seed : rest) = component : residualComponents remaining
+                          where
+                            (component, remaining) = grow [seed] (constraintVars (snd seed)) rest
+                            grow members variables pending
+                                | null touching = (members, separate)
+                                | otherwise = grow
+                                    (members ++ touching)
+                                    (variables `Set.union` Set.unions (map (constraintVars . snd) touching))
+                                    separate
+                              where
+                                (touching, separate) = List.partition
+                                    (not . Set.disjoint variables . constraintVars . snd)
+                                    pending
+                        componentProjectable :: [(Int, Constraint)] -> Bool
+                        componentProjectable component
+                            = Set.disjoint componentVariables answerRelevantVars
+                                && all (constraintArithmeticComplete . snd) component
+                                && componentSatisfiable component
+                          where
+                            componentVariables = Set.unions (map (constraintVars . snd) component)
+                        componentSatisfiable :: [(Int, Constraint)] -> Bool
+                        componentSatisfiable component = case traverse
+                            (guardedConstraintStore (_TotalVarBinding ctx) . snd)
+                            component of
+                                Nothing -> False
+                                Just guarded -> presburgerGuardedStoreSat guarded
+                        constraintArithmeticComplete (EvalutionConstraint lhs rhs)
+                            = isJust (completeEvaluationObligation lhs rhs)
+                        constraintArithmeticComplete (ArithmeticConstraint premises term)
+                            = arithStoreComplete premises && comparisonComplete term
+                        constraintArithmeticComplete (PresburgerConstraint premises _ freeOf)
+                            = arithStoreComplete premises && all linearNatTerm (Map.elems freeOf)
+                        constraintArithmeticComplete _ = False
+                        arithStoreComplete (comparisons, formulas)
+                            = all comparisonComplete comparisons
+                                && all (all linearNatTerm . Map.elems . snd) formulas
+                        comparisonComplete term = case evaluateB term of
+                            Right _ -> True
+                            Left "ill" -> True
+                            _ -> isJust (liftConstraint term)
+                        linearNatTerm term = case evaluateA term of
+                            Right _ -> True
+                            Left "ill" -> True
+                            _ -> isJust (liftConstraint (mkNatEquality term (mkNCon (DC_NatL 0))))
                         guardedUniversallyValid :: Constraint -> Bool
                         guardedUniversallyValid constraint = case guardedConstraintStore (_TotalVarBinding ctx) constraint of
                             Nothing -> False
                             Just guarded -> presburgerGuardedValid [guarded]
-                        guardedPresburgerRedundant :: Constraint -> Bool
-                        guardedPresburgerRedundant constraint = case guardedConstraintStore (_TotalVarBinding ctx) constraint of
-                            Nothing -> False
-                            Just guarded@(premises, obligations) -> guardedUniversallyValid constraint
-                                || (not (any hasAnswerRelevantFreeVar (arithStoreTerms premises ++ arithStoreTerms obligations))
-                                    && presburgerGuardedStoreSat [guarded])
-                        -- A generated variable can still be part of the visible
-                        -- answer when a named query variable reaches it through
-                        -- substitutions or another residual.  In that case
-                        -- existential satisfiability is not enough to discard a
-                        -- Presburger residual: doing so would turn, for example,
-                        -- @X > Y, Y = 5@ into the weaker @X > Y@.
-                        hasAnswerRelevantFreeVar :: TermNode -> Bool
-                        hasAnswerRelevantFreeVar t = any isAnswerRelevant (Set.toList (getLVars t))
-                        isAnswerRelevant :: LogicVar -> Bool
-                        isAnswerRelevant lv = lv `Set.member` answerRelevantVars
                         entailmentDropped :: [Constraint]
-                        entailmentDropped = go [] groundDropped where
+                        entailmentDropped = go [] existentiallyProjected where
                             go kept [] = reverse kept
                             go kept (c : rest) = case c of
                                 ArithmeticConstraint premises t
@@ -581,17 +636,81 @@ runREPL mode program notationDB expansionDB
                         isShort = Set.null (getLVars query)
                         isClear :: Bool
                         isClear = List.null (_LeftConstraints final_ctx)
+                        displayExistentialVars :: [LogicVar]
+                        displayExistentialVars = Set.toAscList (Set.filter (not . isNamedLVar) observableVars)
+                        observableVars :: Set.Set LogicVar
+                        observableVars = Set.unions
+                            (Map.keysSet (unVarBinding (_TotalVarBinding final_ctx))
+                                : map constraintVars (_LeftConstraints final_ctx)
+                                ++ map (getLVars . snd) theAnswerSubst)
+                        displayNames :: [String]
+                        displayNames = take (length displayExistentialVars)
+                            [ candidate
+                            | i <- [1 :: Int ..]
+                            , let candidate = "E_" ++ show i
+                            , candidate `Set.notMember` usedDisplayNames
+                            ]
+                        -- Generated answer names must be valid large identifiers
+                        -- when pasted back into Hol.  Skip names already present
+                        -- anywhere in the rendered query or observable answer to
+                        -- avoid capture.  In particular, a rigid @pi@ constant or
+                        -- lambda hint named @E_1@ is not a logic variable, but it
+                        -- is still visible next to a generated existential.
+                        usedDisplayNames :: Set.Set String
+                        usedDisplayNames = Set.unions (map termPresentationNames presentationTerms)
+                        presentationTerms :: [TermNode]
+                        presentationTerms =
+                            query
+                                : map mkLVar (Map.keys finalBinding)
+                                ++ Map.elems finalBinding
+                                ++ concatMap constraintTerms (_LeftConstraints final_ctx)
+                          where
+                            finalBinding = unVarBinding (_TotalVarBinding final_ctx)
+                        constraintTerms :: Constraint -> [TermNode]
+                        constraintTerms (DisagreementConstraint (lhs :=?=: rhs)) = [lhs, rhs]
+                        constraintTerms (EvalutionConstraint lhs rhs) = [lhs, rhs]
+                        constraintTerms (ArithmeticConstraint premises term) = term : arithStoreTerms premises
+                        constraintTerms (PresburgerConstraint premises _ freeOf) = arithStoreTerms premises ++ Map.elems freeOf
+                        termPresentationNames :: TermNode -> Set.Set String
+                        termPresentationNames term = assertNonnegativeIndices term `seq` go term where
+                            go (LVar lv) = logicVarPresentationNames lv
+                            go (NCon constant _) = constantPresentationNames constant
+                            go (NIdx i)
+                                | i >= 0 = Set.empty
+                                | otherwise = undefined
+                            go (NApp lhs rhs _) = go lhs `Set.union` go rhs
+                            go (NLam mhint _ body _) = maybe Set.empty Set.singleton mhint `Set.union` go body
+                            go (Susp body _ _ env) = Set.unions (go body : map suspItemNames env)
+                            go (NPresburgerCheck _ freeOf _) = Set.unions (map go (Map.elems freeOf))
+                            suspItemNames (Dummy _) = Set.empty
+                            suspItemNames (Binds body _) = go body
+                        logicVarPresentationNames :: LogicVar -> Set.Set String
+                        logicVarPresentationNames lv = Set.fromList (catMaybes [sourceHint, viewerLookup cache lv]) where
+                            sourceHint = case lv of
+                                LV_Named name -> Just name
+                                LV_Unique _ (DispHint mhint) -> mhint
+                                LV_ty_var _ -> Nothing
+                        constantPresentationNames :: Constant -> Set.Set String
+                        constantPresentationNames constant = case constant of
+                            DC (DC_Named name) -> Set.singleton name
+                            DC (DC_Unique _ (DispHint mhint)) -> maybe Set.empty Set.singleton mhint
+                            TC (TC_Named name) -> Set.singleton name
+                            _ -> Set.empty
+                        displayRenaming :: VarBinding
+                        displayRenaming = VarBinding (Map.fromList
+                            [ (variable, mkLVar (LV_Named name))
+                            | (variable, name) <- zip displayExistentialVars displayNames
+                            ])
+                        printExistentialScope :: IO ()
+                        printExistentialScope = unless (null displayNames) $
+                            void (promptify (myTabs ++ "exists " ++ List.intercalate ", " displayNames ++ "."))
                         hasGroundContradiction :: Bool
                         hasGroundContradiction = any contradicts (_LeftConstraints final_ctx)
                         contradicts :: Constraint -> Bool
                         contradicts constraint@(ArithmeticConstraint _ _)
                             = maybe False (not . presburgerGuardedStoreSat . pure) (guardedConstraintStore (_TotalVarBinding ctx) constraint)
                         contradicts (EvalutionConstraint lhs rhs)
-                            = case (evaluateA lhs, evaluateA rhs) of
-                                (Right x, Right y) -> x /= y
-                                (Left "ill", _) -> True
-                                (_, Left "ill") -> True
-                                _ -> False
+                            = not (evaluationConstraintPossible lhs rhs)
                         contradicts constraint@(PresburgerConstraint _ _ _)
                             = maybe False (not . presburgerGuardedStoreSat . pure) (guardedConstraintStore (_TotalVarBinding ctx) constraint)
                         contradicts _ = False
@@ -607,16 +726,16 @@ runREPL mode program notationDB expansionDB
                                 return (isYES str)
                         printDisagreements :: IO ()
                         printDisagreements = do
-                            cache <- readIORef nameCache
                             let pp = prettyTerm notationDB cache
                             promptify "The remaining constraints are:"
+                            printExistentialScope
                             sequence_
-                                [ promptify (myTabs ++ shows constraint "")
+                                [ promptify (myTabs ++ shows (zonkLVar displayRenaming constraint) "")
                                 | constraint <- _LeftConstraints final_ctx
                                 ]
                             promptify "The binding is:"
                             sequence_
-                                [ promptify (myTabs ++ pp (mkLVar v) (" := " ++ pp t "."))
+                                [ promptify (myTabs ++ pp (bindVars displayRenaming (mkLVar v)) (" := " ++ pp (bindVars displayRenaming t) "."))
                                 | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
                                 ]
 theInitialKindDecls :: KindEnv
@@ -692,7 +811,7 @@ runHol mode = do
                 replResult <- runREPL mode (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName }) Notation.initial Notation.initialExpansionDB
                 case replResult of
                     ReplQuit -> return ()
-                    ReplReload -> runHol mode
+                    ReplReload _ -> runHol mode
             Just file_name -> runHolFile mode file_name
         inconsistent_proof -> do
             if inconsistent_proof == ":q"
@@ -705,36 +824,51 @@ runHol mode = do
                     return ()
 
 runHolFile :: DiagnosticMode -> String -> UniqueT ShellyT ()
-runHolFile mode file_name = do
-    let my_file_dir = file_name ++ ".hol"
-        myModuleName = modifySep '/' (const ".") id file_name
-    msrc <- liftIO $ readFileNow my_file_dir
-    case msrc of
-        Nothing -> do
-            liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA-FileError" [Z.Doc.text ("Cannot read file `" ++ my_file_dir ++ "'.")])
-            runHol mode
-        Just _ -> do
-            file_abs_dir <- fmap (fromMaybe my_file_dir) (liftIO $ makePathAbsolutely my_file_dir)
-            lift $ shellyM (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
-            result <- loadMainWithDiagnostic mode theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
-            case result of
-                Left err_msg -> do
-                    liftIO $ putStrLn err_msg
-                    runHol mode
-                Right loaded -> do
-                    liftIO $ mapM_ putStrLn (loadedWarnings loaded)
-                    let mainEnv = loadedMain loaded
-                        program2 = Program
-                            { _KindDecls  = moduleEnvKinds mainEnv
-                            , _TypeDecls  = moduleEnvTypes mainEnv
-                            , _FactDecls  = moduleEnvFacts mainEnv
-                            , moduleName  = moduleEnvName mainEnv
-                            }
-                    lift $ shellyM (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
-                    replResult <- runREPL mode program2 (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
-                    case replResult of
-                        ReplQuit -> return ()
-                        ReplReload -> runHolFile mode file_name
+runHolFile mode file_name = attemptLoad Nothing where
+    my_file_dir = file_name ++ ".hol"
+    myModuleName = modifySep '/' (const ".") id file_name
+
+    attemptLoad fallback = do
+        msrc <- liftIO $ readFileNow my_file_dir
+        case msrc of
+            Nothing -> loadFailed fallback
+                (diagnosticNoLocWith mode "HolBETA-FileError" [Z.Doc.text ("Cannot read file `" ++ my_file_dir ++ "'.")])
+            Just _ -> do
+                file_abs_dir <- fmap (fromMaybe my_file_dir) (liftIO $ makePathAbsolutely my_file_dir)
+                lift $ shellyM (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
+                result <- loadMainWithDiagnostic mode theInitialKindDecls theInitialTypeDecls theInitialFactDecls my_file_dir
+                case result of
+                    Left err_msg -> loadFailed fallback err_msg
+                    Right loaded -> do
+                        liftIO $ mapM_ putStrLn (loadedWarnings loaded)
+                        let mainEnv = loadedMain loaded
+                            program = Program
+                                { _KindDecls  = moduleEnvKinds mainEnv
+                                , _TypeDecls  = moduleEnvTypes mainEnv
+                                , _FactDecls  = moduleEnvFacts mainEnv
+                                , moduleName  = moduleEnvName mainEnv
+                                }
+                            active = (program, moduleEnvNotation mainEnv, moduleEnvExpansion mainEnv)
+                        lift $ shellyM (moduleEnvName mainEnv ++ "> Ok, one module loaded.")
+                        replResult <- runREPL mode program (moduleEnvNotation mainEnv) (moduleEnvExpansion mainEnv)
+                        handleRepl active replResult
+
+    loadFailed Nothing err_msg = do
+        liftIO $ putStrLn err_msg
+        runHol mode
+    loadFailed (Just (active, control)) err_msg = do
+        -- A failed reload is atomic: keep both the old export environment and
+        -- its top-level presentation/debug controls.  A successful reload
+        -- above starts a fresh `runREPL' and therefore a fresh generation.
+        liftIO $ putStrLn err_msg
+        resume active control
+
+    handleRepl _ ReplQuit = return ()
+    handleRepl active (ReplReload control) = attemptLoad (Just (active, control))
+
+    resume active@(program, notationDB, expansionDB) control = do
+        replResult <- runREPLWithControl mode program notationDB expansionDB control
+        handleRepl active replResult
 
 mainWithModeM :: DiagnosticMode -> ShellyT ()
 mainWithModeM = execUniqueT . runHol

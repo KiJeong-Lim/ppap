@@ -1,0 +1,15 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.nonlinear_clause ( test/audit_runtime/nonlinear_clause.hol, interpreted )
+test.audit_runtime.nonlinear_clause> Ok, one module loaded.
+test.audit_runtime.nonlinear_clause> 
+error: [HolBETA-RuntimeError]
+Unsupported arithmetic constraint.
+Only ground constraints and linear Presburger constraints can be used with comparison predicates.
+Constraint: X * Y > 10
+
+test.audit_runtime.nonlinear_clause> 
+Hol >>= quit

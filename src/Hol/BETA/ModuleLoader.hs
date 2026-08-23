@@ -21,7 +21,7 @@ import Hol.BETA.Notation (NotationDB, ExpansionDB)
 import qualified Hol.BETA.Notation as Notation
 import Hol.BETA.PlanHolLexer
 import Hol.BETA.PlanHolParser (runHolParser)
-import Hol.BETA.TermNode (TermNode (..), getNodeSLoc, unfoldlNApp)
+import Hol.BETA.TermNode (LogicVar, TermNode (..), ReduceOption (NF), getNodeSLoc, rewrite, unfoldlNApp)
 import Hol.BETA.TypeChecker (checkTypeWithModule)
 
 import Control.Monad (foldM)
@@ -32,6 +32,7 @@ import qualified Control.Monad.Trans.State.Strict as State
 import qualified Data.Map.Strict as Map
 import Data.Map.Strict (Map)
 import qualified Data.List as List
+import qualified Data.Set as Set
 import qualified Z.Doc
 import System.Directory (canonicalizePath, doesFileExist, getCurrentDirectory)
 import System.FilePath ((</>), isPathSeparator, isRelative, makeRelative, splitDirectories, takeDirectory)
@@ -130,17 +131,26 @@ loadFile canonicalPath importContext = do
         Nothing -> do
             let mname = pathDerivedName (lsRoot st) canonicalPath
             case List.find ((== canonicalPath) . snd) (lsLoading st) of
-                Just (cycleName, _) -> do
+                Just cycleStart -> do
                     let newer = takeWhile ((/= canonicalPath) . snd) (lsLoading st)
-                        cycle = cycleName : reverse (map fst newer) ++ [cycleName]
-                        chain = List.intercalate " -> " cycle
+                        cycle = cycleStart : reverse newer ++ [cycleStart]
+                        ambiguous (name, path) = any (\(name', path') -> name == name' && path /= path') cycle
+                        renderCycleEntry entry@(name, path)
+                            | ambiguous entry = name ++ " (" ++ path ++ ")"
+                            | otherwise = name
+                        chain = List.intercalate " -> " (map renderCycleEntry cycle)
                     throwE $ case importContext of
                         Just (importerPath, loc, sourceLines) -> moduleErr mode (Just importerPath) sourceLines loc ("Import cycle detected: " ++ chain ++ ".")
                         Nothing -> diagnosticNoLocWith mode "HolBETA-ModuleError" [Z.Doc.text ("Import cycle detected: " ++ chain ++ ".")]
                 Nothing -> do
                     msrc <- liftIO (readFileNow canonicalPath)
                     case msrc of
-                        Nothing -> throwE (diagnosticNoLocWith mode "HolBETA-FileError" [Z.Doc.text ("Cannot read file `" ++ canonicalPath ++ "'.")])
+                        Nothing -> throwE $ case importContext of
+                            Just (importerPath, loc, sourceLines) ->
+                                diagnosticWithModule mode "HolBETA-FileError" (Just importerPath) sourceLines loc
+                                    [Z.Doc.text ("Cannot read imported module file `" ++ canonicalPath ++ "'.")]
+                            Nothing -> diagnosticNoLocWith mode "HolBETA-FileError"
+                                [Z.Doc.text ("Cannot read file `" ++ canonicalPath ++ "'.")]
                         Just src -> do
                             let sourceLines = Just (lines src)
                             case runHolLexer src of
@@ -302,7 +312,7 @@ validateInstalledFact mode modulePath sourceLines fallback fact =
     case validateClauseTerm fact of
         Right () -> Right ()
         Left bad -> Left (moduleErr mode (Just modulePath) sourceLines (nodeLoc bad)
-            "Clause validation failed: program heads must be user-declared named predicates; local heads may additionally use an in-scope predicate parameter. Local comparison assumptions must be bare linear-Presburger constraints. Logical controls, primitive I/O, and unsupported constraints are not clauses.")
+            "Clause validation failed: program heads must be user-declared named predicates, and a clause conclusion cannot itself contain `:-'. A predicate-variable call in a program body must occur in its conclusion or beneath an explicit `pi' or `sigma' binder. Local heads may additionally use an in-scope predicate parameter. Local comparison assumptions must be bare linear-Presburger constraints. Logical controls, primitive I/O, and unsupported constraints are not clauses.")
     where
         nodeLoc bad = case getNodeSLoc bad of
             Just loc -> loc
@@ -314,10 +324,28 @@ validateClauseTerm fact = case unfoldlNApp fact of
     (NCon (DC (DC_LO LO_ty_pi)) _, [NLam _ _ body _]) -> validateClauseTerm body
     (NCon (DC (DC_LO LO_pi)) _, [NLam _ _ body _]) -> validateClauseTerm body
     (NCon (DC (DC_LO LO_if)) _, [conclusion, premise]) ->
-        validateClauseTerm conclusion >> validateGoalTerm premise
+        validateGlobalClauseConclusion conclusion
+            >> validateAnchoredGoal (termGoalAnchors conclusion) premise
     (NCon (DC (DC_Named name)) _, _)
         | notElem name primitivePredicateNames -> Right ()
     _ -> Left fact
+
+-- A clause conclusion may contain the same conjunction and universal-prefix
+-- structure as a collection of unit heads, but it may not itself contain
+-- another clause constructor.  Recursing through 'validateClauseTerm' here
+-- would accept `(p :- q) :- r`, index it under `p`, and then install an
+-- unusable LO_if-headed clause.
+validateGlobalClauseConclusion :: TermNode -> Either TermNode ()
+validateGlobalClauseConclusion conclusion = case unfoldlNApp conclusion of
+    (NCon (DC (DC_LO LO_and)) _, [left, right]) ->
+        validateGlobalClauseConclusion left >> validateGlobalClauseConclusion right
+    (NCon (DC (DC_LO LO_ty_pi)) _, [NLam _ _ body _]) ->
+        validateGlobalClauseConclusion body
+    (NCon (DC (DC_LO LO_pi)) _, [NLam _ _ body _]) ->
+        validateGlobalClauseConclusion body
+    (NCon (DC (DC_Named name)) _, _)
+        | notElem name primitivePredicateNames -> Right ()
+    _ -> Left conclusion
 
 validateLocalClauseTerm :: TermNode -> Either TermNode ()
 validateLocalClauseTerm fact = case unfoldlNApp fact of
@@ -372,6 +400,75 @@ validateGoalTerm goal = case unfoldlNApp goal of
     (NCon (DC (DC_LO LO_is)) _, [_, _]) -> Right ()
     (NCon (DC (DC_LO _)) _, _) -> Left goal
     _ -> Right ()
+
+type GoalAnchors = (Set.Set Int, Set.Set LogicVar)
+
+emptyGoalAnchors :: GoalAnchors
+emptyGoalAnchors = (Set.empty, Set.empty)
+
+unionGoalAnchors :: GoalAnchors -> GoalAnchors -> GoalAnchors
+unionGoalAnchors (indices1, variables1) (indices2, variables2) =
+    (indices1 `Set.union` indices2, variables1 `Set.union` variables2)
+
+underGoalBinder :: Bool -> GoalAnchors -> GoalAnchors
+underGoalBinder anchorsBinder (indices, variables) =
+    ( if anchorsBinder
+        then Set.insert 0 shifted
+        else shifted
+    , variables
+    )
+  where
+    shifted = Set.mapMonotonic (+ 1) indices
+
+termGoalAnchors :: TermNode -> GoalAnchors
+termGoalAnchors = go . rewrite NF where
+    go term = case term of
+        LVar variable -> (Set.empty, Set.singleton variable)
+        NCon _ _ -> emptyGoalAnchors
+        NIdx index
+            | index >= 0 -> (Set.singleton index, Set.empty)
+            | otherwise -> undefined
+        NApp lhs rhs _ -> go lhs `unionGoalAnchors` go rhs
+        NLam _ _ body _ -> lowerBinder (go body)
+        suspended@Susp {} -> go (rewrite NF suspended)
+        NPresburgerCheck _ freeOf _ ->
+            foldr (unionGoalAnchors . go) emptyGoalAnchors (Map.elems freeOf)
+
+    lowerBinder (indices, variables) =
+        (Set.mapMonotonic (subtract 1) (Set.filter (> 0) indices), variables)
+
+validateAnchoredGoal :: GoalAnchors -> TermNode -> Either TermNode ()
+validateAnchoredGoal anchors goal = case unfoldlNApp goal of
+    (NCon (DC (DC_LO LO_and)) _, [left, right]) ->
+        validateAnchoredGoal anchors left >> validateAnchoredGoal anchors right
+    (NCon (DC (DC_LO LO_or)) _, [left, right]) ->
+        validateAnchoredGoal anchors left >> validateAnchoredGoal anchors right
+    (NCon (DC (DC_LO LO_imply)) _, [antecedent, consequent]) ->
+        validateLocalClauseTerm antecedent >> validateAnchoredGoal anchors consequent
+    (NCon (DC (DC_LO LO_pi)) _, [NLam _ _ body _]) ->
+        validateAnchoredGoal (underGoalBinder True anchors) body
+    (NCon (DC (DC_LO LO_sigma)) _, [NLam _ _ body _]) ->
+        -- A rigid `pi' parameter is directly dispatchable.  A fresh flexible
+        -- `sigma' variable is not: calling it before some goal binds it would
+        -- reach Runtime.dispatch as an LVar-headed goal.  Conservatively do
+        -- not treat the sigma binder itself as a predicate-call anchor.
+        validateAnchoredGoal (underGoalBinder False anchors) body
+    (NCon (DC (DC_LO LO_true)) _, []) -> Right ()
+    (NCon (DC (DC_LO LO_fail)) _, []) -> Right ()
+    (NCon (DC (DC_LO LO_cut)) _, []) -> Right ()
+    (NCon (DC (DC_LO LO_debug)) _, [_]) -> Right ()
+    (NCon (DC (DC_LO LO_is)) _, [_, _]) -> Right ()
+    (NCon (DC (DC_LO _)) _, _) -> Left goal
+    (NIdx index, _)
+        | index >= 0 && index `Set.member` fst anchors -> Right ()
+        | index < 0 -> undefined
+        | otherwise -> Left goal
+    (LVar variable, _)
+        | variable `Set.member` snd anchors -> Right ()
+        | otherwise -> Left goal
+    (NCon _ _, _) -> Right ()
+    (NPresburgerCheck _ _ _, []) -> Right ()
+    _ -> Left goal
 
 primitivePredicateNames :: [SmallId]
 primitivePredicateNames = ["print", "read"]
@@ -441,7 +538,7 @@ mergeKindsStrict mode moduleName sourceLines iloc current origin0 old new = fold
             Nothing -> Right (Map.insert tc k m, Map.insert tc current origin)
             Just k'
                 | k == k' -> Right (m, origin)
-                | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C1" (originModuleName <$> prior) (originModuleName current) (showTC tc) "kind" (pprint 0 k' "") (pprint 0 k ""))
+                | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C1" prior current (showTC tc) "kind" (pprint 0 k' "") (pprint 0 k ""))
 
 mergeTypesStrict :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> DeclOrigin -> Map.Map DataConstructor DeclOrigin -> TypeEnv -> TypeEnv -> Either ErrMsg (TypeEnv, Map.Map DataConstructor DeclOrigin)
 mergeTypesStrict mode moduleName sourceLines iloc current origin0 old new = foldr step (Right (old, origin0)) (Map.toList new) where
@@ -452,7 +549,7 @@ mergeTypesStrict mode moduleName sourceLines iloc current origin0 old new = fold
             Nothing -> Right (Map.insert dc p m, Map.insert dc current origin)
             Just p'
                 | polyTypeEq p p' -> Right (m, origin)
-                | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C2" (originModuleName <$> prior) (originModuleName current) (showDC dc) "type" "<scheme>" "<scheme>")
+                | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C2" prior current (showDC dc) "type" "<scheme>" "<scheme>")
 
 polyTypeEq :: PolyType -> PolyType -> Bool
 polyTypeEq (Forall xs t) (Forall ys u)
@@ -502,7 +599,7 @@ mergeFixityStrict mode moduleName sourceLines iloc current origin0 old new
                 Just fp'
                     | fp == fp' -> Right (Map.insertWith (\_ first -> first) name current origin)
                     | Nothing <- prior -> Right (Map.insert name current origin)
-                    | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C5" (originModuleName <$> prior) (originModuleName current) name "fixity" (showFixity fp') (showFixity fp))
+                    | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C5" prior current name "fixity" (showFixity fp') (showFixity fp))
         lookupFixity name db = lookup name (Notation.fixityList db)
         showFixity (kind, prec) = shows kind (" " ++ shows prec "")
 
@@ -523,7 +620,7 @@ mergeExpStrict mode moduleName sourceLines iloc current dependencyPaths oA0 oN0 
                     , shouldShadow prior -> Right (Map.insert nm current oA, nm : shadows)
                     | typeRepAlphaEq ps rhs ps' rhs' -> Right (oA, shadows)
                     | shouldShadow prior -> Right (Map.insert nm current oA, nm : shadows)
-                    | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C3" (originModuleName <$> prior) (originModuleName current) nm "abbreviation" "<prior body>" "<current body>")
+                    | otherwise -> Left (inconsErr2 mode moduleName sourceLines iloc "C3" prior current nm "abbreviation" "<prior body>" "<current body>")
         stepN (nm, ps, rhs) acc = do
             (oN, shadows) <- acc
             let prior = Map.lookup nm oN
@@ -535,7 +632,7 @@ mergeExpStrict mode moduleName sourceLines iloc current dependencyPaths oA0 oN0 
                     | termRepAlphaEq ps rhs ps' rhs' -> Right (oN, shadows)
                     | shouldShadow prior -> Right (Map.insert nm current oN, nm : shadows)
                     | otherwise -> Left
-                        (inconsErr2 mode moduleName sourceLines iloc "C4" (originModuleName <$> prior) (originModuleName current) nm "notation"
+                        (inconsErr2 mode moduleName sourceLines iloc "C4" prior current nm "notation"
                             "<prior body>" "<current body>")
         shouldShadow Nothing = True
         shouldShadow (Just prior) = originModulePath prior `elem` dependencyPaths
@@ -552,20 +649,27 @@ importExpansionCycleErr mode moduleName sourceLines importLoc expansionError =
                 "Import composition creates a cyclic term notation: "
                     ++ List.intercalate " -> " names ++ "."
 
-inconsErr2 :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Maybe String -> String -> String -> String -> String -> String -> ErrMsg
-inconsErr2 mode moduleName sourceLines iloc tag mPrior iname dname kindLabel rhsA rhsB = moduleErr mode moduleName sourceLines iloc msg where
+inconsErr2 :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> String -> Maybe DeclOrigin -> DeclOrigin -> String -> String -> String -> String -> ErrMsg
+inconsErr2 mode moduleName sourceLines iloc tag mPrior current dname kindLabel rhsA rhsB = moduleErr mode moduleName sourceLines iloc msg where
+    currentLabel = renderOrigin current
     msg = case mPrior of
         Just prior -> concat
             [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
-            , "' is declared by both `" ++ prior ++ "' and `" ++ iname
-            , "' with disagreeing " ++ kindLabel ++ ". "
-            , "(`" ++ prior ++ "': " ++ rhsA ++ "; `" ++ iname ++ "': " ++ rhsB ++ ".)"
+            , "' is declared by both " ++ renderOrigin prior ++ " and " ++ currentLabel
+            , " with disagreeing " ++ kindLabel ++ ". "
+            , "(" ++ renderOrigin prior ++ ": " ++ rhsA ++ "; " ++ currentLabel ++ ": " ++ rhsB ++ ".)"
             ]
         Nothing -> concat
             [ "Import inconsistency (" ++ tag ++ "): `" ++ dname
-            , "' is declared by `" ++ iname ++ "' with a different "
+            , "' is declared by " ++ currentLabel ++ " with a different "
             , kindLabel ++ " than the built-in seed."
             ]
+
+-- A path-derived display name is not injective: for example, `a/b.hol' and
+-- `a.b.hol' both display as `a.b'.  Diagnostics therefore include canonical
+-- identity as well as the convenient display name.
+renderOrigin :: DeclOrigin -> String
+renderOrigin origin = "`" ++ originModuleName origin ++ "' (" ++ originModulePath origin ++ ")"
 
 typeRepAlphaEq :: [LargeId] -> TypeRep -> [LargeId] -> TypeRep -> Bool
 typeRepAlphaEq leftParams left rightParams right
@@ -618,6 +722,7 @@ extractHeaderAndImports :: DiagnosticMode -> Maybe String -> SourceLines -> [Dec
 extractHeaderAndImports mode moduleName sourceLines decls0
     = case decls0 of
         RModuleHeaderDecl loc n : rest -> do
+            validateModuleName "module name" loc n
             (imps, body) <- partitionImports rest
             return (Just (loc, n), imps, body)
         rest -> do
@@ -625,6 +730,7 @@ extractHeaderAndImports mode moduleName sourceLines decls0
             return (Nothing, imps, body)
     where
         partitionImports (RImportDecl loc n : rest) = do
+            validateModuleName "module locator" loc n
             (imps, body) <- partitionImports rest
             return ((loc, n) : imps, body)
         partitionImports rest =
@@ -633,6 +739,18 @@ extractHeaderAndImports mode moduleName sourceLines decls0
                 [] -> case [ loc | RModuleHeaderDecl loc _ <- rest ] of
                     (loc : _) -> Left (moduleErr mode moduleName sourceLines loc "`module' header must be the first declaration of the file.")
                     [] -> return ([], rest)
+        validateModuleName label loc name
+            | validModuleName name = Right ()
+            | otherwise = Left (moduleErr mode moduleName sourceLines loc
+                ("Invalid " ++ label ++ " `" ++ name ++ "'. Use one or more dot-separated ASCII identifier segments; filesystem path separators and symbolic identifiers are not module locators."))
+
+validModuleName :: String -> Bool
+validModuleName name = not (null segments) && all validSegment segments where
+    segments = splitOn '.' name
+    validSegment [] = False
+    validSegment (first : rest) = isAsciiLetter first && all isAsciiAlphaNumUnderscore rest
+    isAsciiLetter ch = ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z')
+    isAsciiAlphaNumUnderscore ch = isAsciiLetter ch || ('0' <= ch && ch <= '9') || ch == '_'
 
 liftEither :: Monad m => Either ErrMsg a -> Loader m a
 liftEither = either throwE return

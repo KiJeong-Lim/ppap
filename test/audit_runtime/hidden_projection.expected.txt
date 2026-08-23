@@ -1,0 +1,79 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.hidden_projection ( test/audit_runtime/hidden_projection.hol, interpreted )
+test.audit_runtime.hidden_projection> Ok, one module loaded.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The remaining constraints are:
+test.audit_runtime.hidden_projection> exists E_1.
+test.audit_runtime.hidden_projection> X is E_1 / 2
+test.audit_runtime.hidden_projection> The binding is:
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The remaining constraints are:
+test.audit_runtime.hidden_projection> exists E_1.
+test.audit_runtime.hidden_projection> 1 / E_1 is 2
+test.audit_runtime.hidden_projection> The binding is:
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The remaining constraints are:
+test.audit_runtime.hidden_projection> exists E_1.
+test.audit_runtime.hidden_projection> W is E_1 / Z
+test.audit_runtime.hidden_projection> X is E_1 / Z
+test.audit_runtime.hidden_projection> The binding is:
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The remaining constraints are:
+test.audit_runtime.hidden_projection> exists E_1.
+test.audit_runtime.hidden_projection> 0 is 1 / E_1
+test.audit_runtime.hidden_projection> E_1 > 5
+test.audit_runtime.hidden_projection> The binding is:
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The remaining constraints are:
+test.audit_runtime.hidden_projection> exists E_1.
+test.audit_runtime.hidden_projection> 0 is 1 / E_1
+test.audit_runtime.hidden_projection> presburger "E_1 > 5"
+test.audit_runtime.hidden_projection> The binding is:
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The remaining constraints are:
+test.audit_runtime.hidden_projection> exists E_1.
+test.audit_runtime.hidden_projection> 0 is 1 / E_1
+test.audit_runtime.hidden_projection> The binding is:
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The remaining constraints are:
+test.audit_runtime.hidden_projection> exists E_1.
+test.audit_runtime.hidden_projection> 0 is 1 / E_1
+test.audit_runtime.hidden_projection> The binding is:
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The answer substitution is:
+test.audit_runtime.hidden_projection> exists E_2.
+test.audit_runtime.hidden_projection> E_1 := E_2.
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+test.audit_runtime.hidden_projection> The answer substitution is:
+test.audit_runtime.hidden_projection> exists E_2.
+test.audit_runtime.hidden_projection> X := E_1\ E_2.
+test.audit_runtime.hidden_projection> Find more solutions? [Y/n] 
+test.audit_runtime.hidden_projection> yes.
+test.audit_runtime.hidden_projection> 
+Hol >>= quit

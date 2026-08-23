@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.module_wide_expansion ( test/notation/module_wide_expansion.hol, interpreted )
+test.notation.module_wide_expansion> Ok, one module loaded.
+test.notation.module_wide_expansion> 
+test.notation.module_wide_expansion> The answer substitution is:
+test.notation.module_wide_expansion> Y := later 3.
+test.notation.module_wide_expansion> Find more solutions? [Y/n] 
+test.notation.module_wide_expansion> yes.
+test.notation.module_wide_expansion> 
+Hol >>= quit

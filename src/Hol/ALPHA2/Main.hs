@@ -41,21 +41,26 @@ runAnalyzer src0
 isYES :: String -> Bool
 isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
 
-addIndex :: [Fact] -> Map.Map Constant [Fact]
-addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, let f' = rewrite NF f ] where
-    hd :: Fact -> Constant
+addIndex :: [Fact] -> Either KernelErr (Map.Map Constant [Fact])
+addIndex facts = foldM addFact Map.empty [rewrite NF fact | fact <- facts] where
+    addFact index fact = case hd fact of
+        Just predicate -> Right (Map.insertWith (\new old -> old ++ new) predicate [fact] index)
+        Nothing -> Left (BadFactGiven fact)
+    hd :: Fact -> Maybe Constant
     hd t = case unfoldlNApp t of
         (NLam t, _) -> hd t
         (NCon (DC (DC_LO LO_ty_pi)), [t]) -> hd t
         (NCon (DC (DC_LO LO_pi)), [t]) -> hd t
         (NCon (DC (DC_LO LO_if)), [t, _]) -> hd t
-        (NCon c, _) -> c
+        (NCon c, _) -> Just c
+        _ -> Nothing
 
 execRuntime :: RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr (UniqueT IO) Satisfied
 execRuntime env isDebugging facts query = do
     call_id <- getUnique
     let initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = Labeling { _ConLabel = IntMap.empty, _VarLabel = IntMap.empty }, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
-    runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
+    factIndex <- either throwE return (addIndex facts)
+    runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = factIndex, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
 runREPL :: Program TermNode -> UniqueT IO ()
 runREPL program = lift (newIORef False) >>= go where
@@ -164,8 +169,13 @@ runREPL program = lift (newIORef False) >>= go where
                         _ -> False
                     | ArithmeticConstraint b <- _LeftConstraints final_ctx
                     ]
+                definedokay :: Bool
+                definedokay = not (any isPendingDefinition (_LeftConstraints final_ctx))
+                  where
+                    isPendingDefinition (DefinedConstraint _) = True
+                    isPendingDefinition _ = False
                 consistent :: Bool
-                consistent = evalokay && arithokay 
+                consistent = evalokay && arithokay && definedokay
     go :: IORef Debugging -> UniqueT IO ()
     go isDebugging = do
         query <- lift $ promptify ""
@@ -291,6 +301,7 @@ runHol = do
                             result <- runExceptT $ do
                                 module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
                                 facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
+                                mapM_ (either throwE return . validateProgramFact . fst) facts2
                                 facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
                                 return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = myModuleName })
                             case result of

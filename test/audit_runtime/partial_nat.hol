@@ -1,0 +1,2 @@
+% Strict partial-natural semantics and substitution/order invariance.
+type p (nat -> o).

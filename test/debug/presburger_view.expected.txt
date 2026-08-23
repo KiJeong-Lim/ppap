@@ -11,7 +11,7 @@ test.debug.presburger_view>
 --------------------------------
 * The top of the current stack is:
     + progressings = 
-        [ ?- [ |- sigma (X\ presburger "exists v1, X + v1 = 6") ] # call_id = 64
+        [ ?- [ |- sigma (X\ presburger "exists Q_1, X + Q_1 = 6") ] # call_id = 64
         ]
     + context = Context
         { _substitution = []
@@ -27,7 +27,7 @@ test.debug.presburger_view> Press the enter key to go to next state:
 --------------------------------
 * The top of the current stack is:
     + progressings = 
-        [ ?- [ |- presburger "exists v1, X + v1 = 6" ] # call_id = 64
+        [ ?- [ |- presburger "exists Q_1, X + Q_1 = 6" ] # call_id = 64
         ]
     + context = Context
         { _substitution = []
@@ -48,7 +48,7 @@ test.debug.presburger_view> Press the enter key to go to next state:
     + context = Context
         { _substitution = []
         , _constraints = 
-            [ presburger "exists v1, X + v1 = 6"
+            [ presburger "exists Q_1, X + Q_1 = 6"
             ]
         , _typing = 
             [ ?V_65 : ?TV_63

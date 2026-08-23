@@ -55,6 +55,15 @@ No type declaration for this name is visible here.
 Declare it with `type', import its module, or check the spelling.
 
 test.typecheck.application_errors> 
+1:4-1:9: error: [HolBETA-NotInScope]
+   |           
+ 1 | ?- `true`.
+   |    ^^^^^^ 
+Unknown predicate or constructor `true`.
+No type declaration for this name is visible here.
+Declare it with `type', import its module, or check the spelling.
+
+test.typecheck.application_errors> 
 1:13-1:13: error: [HolBETA-TypeError]
    |                
  1 | ?- (k X) (g X).
