@@ -388,14 +388,11 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         visit :: ParserS -> Set.Set LR0Item -> (Cannonical0, Map.Map (Set.Set LR0Item) ParserS) -> Sym -> Identity (Cannonical0, Map.Map (Set.Set LR0Item) ParserS)
         visit q items (Cannonical0 vertices root edges, lut) sym = do
             items' <- calcGOTO (items, sym)
-            if Set.null items' then
-                return (Cannonical0 vertices root edges, lut)
-            else
-                case Map.lookup items' lut of
-                    Just p -> return (Cannonical0 vertices root (Map.insert (q, sym) p edges), lut)
-                    Nothing -> do
-                        let p = Map.size vertices
-                        return (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges), Map.insert items' p lut)
+            case Map.lookup items' lut of
+                Just p -> return (Cannonical0 vertices root (Map.insert (q, sym) p edges), lut)
+                Nothing -> do
+                    let p = Map.size vertices
+                    return (Cannonical0 (Map.insert p items' vertices) root (Map.insert (q, sym) p edges), Map.insert items' p lut)
         loop :: ParserS -> (Cannonical0, Map.Map (Set.Set LR0Item) ParserS) -> Identity Cannonical0
         loop q state@(Cannonical0 vertices _ _, _)
             | q >= Map.size vertices = return (fst state)
