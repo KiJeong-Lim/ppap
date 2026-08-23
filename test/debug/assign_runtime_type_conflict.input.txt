@@ -1,0 +1,9 @@
+Hol --test
+test/debug/assign_runtime_type_conflict.hol
+:d
+?- pair X Y.
+:assign ?X := ?Y.
+
+
+n
+:q

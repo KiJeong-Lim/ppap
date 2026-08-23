@@ -1,0 +1,4 @@
+Hol --test
+test/cut/imported_main.hol
+?- imported_cut X.
+:q

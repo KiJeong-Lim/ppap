@@ -1,0 +1,9 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.fixity_override ( test/audit_module/fixity_override.hol, interpreted )
+test.audit_module.fixity_override> Ok, one module loaded.
+test.audit_module.fixity_override> 
+Hol >>= quit

@@ -8,4 +8,8 @@ test.notation.capture> Ok, one module loaded.
 test.notation.capture> 
 test.notation.capture> yes.
 test.notation.capture> 
+test.notation.capture> yes.
+test.notation.capture> 
+test.notation.capture> yes.
+test.notation.capture> 
 Hol >>= quit

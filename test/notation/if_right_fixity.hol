@@ -1,3 +1,3 @@
-% The parser must be permissive enough for the fixity resolver's right
-% associativity for `:-`.
+% The parser must accept the fixity resolver's right-associative `:-` shape.
+% The semantic clause validator then rejects the resulting nested clause body.
 true :- true :- true.

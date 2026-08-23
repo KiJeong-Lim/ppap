@@ -1,5 +1,5 @@
-% Section 1.2: when the declared name does not match the path-derived
-% name, the compiler raises `desugaring-error[<header-loc>]`.
+% Section 5.1: when the declared name does not match the path-derived
+% name, the compiler raises `HolBETA-ModuleError` at the header span.
 module wrong.name.
 
 type x (nat -> o).

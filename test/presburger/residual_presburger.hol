@@ -1,4 +1,4 @@
-% Retained presburger constraints (BETA spec section 2.5).
+% Retained Presburger constraints (BETA spec section 4.3).
 % A `presburger phi` goal defers phi as a residual constraint and is
 % carried along, so several presburger checks (and later comparisons)
 % are decided jointly, not one-shot in isolation. Without retention the

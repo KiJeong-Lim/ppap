@@ -47,9 +47,20 @@ viewerLookup nc lv = toDisplay lv nc
 
 mergeKeepingNewEntries :: NameCache -> NameCache -> NameCache
 mergeKeepingNewEntries old new = NameCache
-    { _toDisplay = Map.union (_toDisplay new) (_toDisplay old)
-    , _fromDisplay = Map.union (_fromDisplay new) (_fromDisplay old)
+    { _toDisplay = Map.union newTo retainedOldTo
+    , _fromDisplay = Map.union newFrom retainedOldFrom
     }
+    where
+        newTo = _toDisplay new
+        newFrom = _fromDisplay new
+        retainedOld =
+            [ (lv, display)
+            | (lv, display) <- Map.toList (_toDisplay old)
+            , Map.notMember lv newTo
+            , Map.notMember display newFrom
+            ]
+        retainedOldTo = Map.fromList retainedOld
+        retainedOldFrom = Map.fromList [ (display, lv) | (lv, display) <- retainedOld ]
 
 parseAnonymousLV :: String -> Maybe LogicVar
 parseAnonymousLV nm

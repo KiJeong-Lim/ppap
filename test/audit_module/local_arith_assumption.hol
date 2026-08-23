@@ -1,0 +1,9 @@
+type audit_local_cmp o.
+type audit_local_pres o.
+
+audit_local_cmp :- pi C\ (C > 3 => presburger "C > 1").
+audit_local_pres :- pi C\ (presburger "C > 3" => presburger "C > 1").
+
+% Query-only regressions in the matching .input cover quantified antecedents,
+% lexical guard order, guarded residual provenance, and concrete enumeration of
+% the local-first/solver-fallback roles of equality.

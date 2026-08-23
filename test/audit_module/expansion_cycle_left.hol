@@ -1,0 +1,2 @@
+import expansion_cycle_base.
+notation audit_cycle_n := audit_cycle_m.

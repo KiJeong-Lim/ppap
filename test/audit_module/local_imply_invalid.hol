@@ -1,0 +1,2 @@
+type audit_bad o.
+audit_bad :- (true => true).

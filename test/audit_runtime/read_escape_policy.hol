@@ -1,0 +1,5 @@
+type read_char (char -> o).
+type read_string (list char -> o).
+
+read_char X :- read X.
+read_string X :- read X.

@@ -1,0 +1,9 @@
+Hol --test
+test/debug/assign_unknown.hol
+:d
+?- p X.
+:assign ?NotInState := 7.
+
+
+n
+:q

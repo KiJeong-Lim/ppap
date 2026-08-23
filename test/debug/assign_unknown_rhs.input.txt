@@ -1,0 +1,9 @@
+Hol --test
+test/debug/assign_unknown_rhs.hol
+:d
+?- p X.
+:assign ?X := NotInState.
+
+
+n
+:q

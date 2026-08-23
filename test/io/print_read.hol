@@ -1,1 +1,2 @@
-% Built-in print/read primitive predicates are tested by the input sidecar.
+% Built-in print/read primitive predicates and the unconstrained read fallback
+% order (nat, then char, then string) are tested by the input sidecar.

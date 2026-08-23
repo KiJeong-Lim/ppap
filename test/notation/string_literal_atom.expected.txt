@@ -1,0 +1,21 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.string_literal_atom ( test/notation/string_literal_atom.hol, interpreted )
+test.notation.string_literal_atom> Ok, one module loaded.
+test.notation.string_literal_atom> 
+test.notation.string_literal_atom> The answer substitution is:
+test.notation.string_literal_atom> S := "a".
+test.notation.string_literal_atom> Find more solutions? [Y/n] 
+test.notation.string_literal_atom> yes.
+test.notation.string_literal_atom> 
+test.notation.string_literal_atom> yes.
+test.notation.string_literal_atom> 
+test.notation.string_literal_atom> The answer substitution is:
+test.notation.string_literal_atom> S := ["a"].
+test.notation.string_literal_atom> Find more solutions? [Y/n] 
+test.notation.string_literal_atom> yes.
+test.notation.string_literal_atom> 
+Hol >>= quit

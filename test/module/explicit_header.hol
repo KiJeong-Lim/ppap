@@ -1,4 +1,4 @@
-% Section 1.2: an explicit `module N.` header that *matches* the file's
+% Section 5.1: an explicit `module N.` header that *matches* the file's
 % path-derived name is documentation, not a redeclaration.  Loading
 % must succeed and behave identically to the no-header case.
 module test.module.explicit_header.

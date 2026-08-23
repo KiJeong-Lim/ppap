@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.cycle_notation ( test/audit_module/cycle_notation.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/cycle_notation.hol:1:27-1:39: error: [HolBETA-DesugarError]
+   |                                         
+ 1 | notation audit_cycle X := audit_cycle X.
+   |                           ^^^^^^^^^^^^^ 
+Cyclic term notation: audit_cycle -> audit_cycle.
+
+Hol =<< 
+Hol >>= quit

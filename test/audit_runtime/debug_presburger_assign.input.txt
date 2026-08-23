@@ -1,0 +1,9 @@
+Hol --test
+test/audit_runtime/debug_presburger_assign.hol
+:d
+?- presburger "X = 5", X is 6.
+
+
+:assign ?X := 6.
+:q
+

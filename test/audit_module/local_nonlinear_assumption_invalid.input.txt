@@ -1,0 +1,3 @@
+Hol --test
+test/audit_module/local_nonlinear_assumption_invalid.hol
+:q

@@ -1,0 +1,9 @@
+module test.audit_runtime.presburger_relevance.
+
+% Residual Presburger constraints on a generated variable remain observable
+% when a named query variable reaches that generated variable through the final
+% substitution or through another retained residual.  The suite also checks a
+% transitive substitution chain, an evaluation-residual connection, two
+% Presburger residuals in both source orders, the equivalent non-Presburger
+% control, and a truly hidden sigma variable whose satisfiable Presburger
+% witness may still be omitted.

@@ -1,0 +1,3 @@
+Hol --test
+test/audit_module/fixity_negative.hol
+:q

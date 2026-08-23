@@ -4,12 +4,15 @@ module Hol.BETA.Notation
     , Precedence
     , initial
     , merge
+    , mergeWithShadows
+    , declarationDelta
     , addFixity
     , fixityAliases
     , addAbbrev
     , addNotation
     , lookupFixity
     , fixityList
+    , declaredFixityList
     , viewerFixity
     , notationCheckOper
     , constructViewerWithDB
@@ -20,12 +23,19 @@ module Hol.BETA.Notation
     , emptyExpansionDB
     , initialExpansionDB
     , mergeExpansion
+    , mergeExpansionWithShadows
     , addTypeAbbrevDecl
     , addTermNotationDecl
     , lookupTypeAbbrev
     , lookupTermNotation
     , typeAbbrevList
     , termNotationList
+    , declaredTypeAbbrevList
+    , declaredTermNotationList
+    , ExpansionError (..)
+    , validateExpansionDB
+    , expandTermRepChecked
+    , expandTypeRepChecked
     , expandTermRep
     , expandTypeRep
     , foldTermAsNode
@@ -52,7 +62,7 @@ data FixityKind
 data EntryKind
     = EK_Type
     | EK_Term
-    deriving (Eq, Show)
+    deriving (Eq, Ord, Show)
 
 data FoldEntry
     = FoldEntry
@@ -67,7 +77,9 @@ data FoldEntry
 data NotationDB
     = NotationDB
         { _fixity :: !(Map.Map SmallId (FixityKind, Precedence))
+        , _declaredFixity :: !(Map.Map SmallId (FixityKind, Precedence))
         , _entries :: ![FoldEntry]
+        , _declaredEntries :: !(Set.Set (EntryKind, SmallId))
         , _nextSeq :: !Int
         }
     deriving ()
@@ -79,14 +91,17 @@ compileTypeTemplate (TyApp t1 t2) = mkNApp (compileTypeTemplate t1) (compileType
 compileTypeTemplate (TyMTV m) = mkLVar (LV_ty_var m)
 
 initial :: NotationDB
-initial = addAbbrev "string" [] stringRhs seededFixity where
+initial = seededString { _declaredEntries = Set.empty } where
+    seededString = addAbbrev "string" [] stringRhs seededFixity
     stringRhs :: MonoType LargeId
     stringRhs = TyApp (TyCon (TCon (TC_Named "list") (KArr Star Star))) (TyCon (TCon (TC_Named "char") Star))
 
     seededFixity :: NotationDB
     seededFixity = NotationDB
         { _fixity = seedFixities
+        , _declaredFixity = Map.empty
         , _entries = []
+        , _declaredEntries = Set.empty
         , _nextSeq = 0
         }
 
@@ -115,7 +130,12 @@ seedFixities = Map.fromList
     ]
 
 addFixity :: SmallId -> FixityKind -> Precedence -> NotationDB -> NotationDB
-addFixity name k p db = db { _fixity = foldr (`Map.insert` (k, p)) (_fixity db) (fixityAliases name) }
+addFixity name k p db = db
+    { _fixity = addAliases (_fixity db)
+    , _declaredFixity = addAliases (_declaredFixity db)
+    }
+    where
+        addAliases m = foldr (`Map.insert` (k, p)) m (fixityAliases name)
 
 fixityAliases :: SmallId -> [SmallId]
 fixityAliases "," = [",", "&"]
@@ -126,11 +146,19 @@ addAbbrev :: SmallId -> [LargeId] -> MonoType LargeId -> NotationDB -> NotationD
 addAbbrev name ps rhs = addEntry EK_Type name ps (compileTypeTemplate rhs)
 
 addNotation :: SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
-addNotation name ps rhs = addEntry EK_Term name ps rhs
+addNotation name ps rhs db
+    = assertNonnegativeIndices rhs `seq`
+      addEntry EK_Term name ps rhs db
 
 addEntry :: EntryKind -> SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
-addEntry kind name ps rhs db = db { _entries = entry : _entries db, _nextSeq = n + 1} where
+addEntry kind name ps rhs db = db
+    { _entries = entry : filter ((/= key) . entryKey) (_entries db)
+    , _declaredEntries = Set.insert key (_declaredEntries db)
+    , _nextSeq = n + 1
+    }
+  where
     n = _nextSeq db
+    key = (kind, name)
     entry = FoldEntry
         { _feName = name
         , _feParams = ps
@@ -139,20 +167,50 @@ addEntry kind name ps rhs db = db { _entries = entry : _entries db, _nextSeq = n
         , _feKind = kind
         }
 
+entryKey :: FoldEntry -> (EntryKind, SmallId)
+entryKey entry = (_feKind entry, _feName entry)
+
 merge :: NotationDB -> NotationDB -> NotationDB
-merge older newer = NotationDB
-        { _fixity  = Map.union (Map.filterWithKey nonSeed (_fixity newer)) (_fixity older)
-        , _entries = _entries newer ++ _entries older
+merge = mergeWithShadows [] []
+
+mergeWithShadows :: [SmallId] -> [SmallId] -> NotationDB -> NotationDB -> NotationDB
+mergeWithShadows shadowTypes shadowTerms older newer = NotationDB
+        { _fixity  = Map.union (_declaredFixity newer) (_fixity older)
+        , _declaredFixity = Map.union (_declaredFixity newer) (_declaredFixity older)
+        , _entries = newEntries ++ retainedEntries
+        , _declaredEntries = Set.union (_declaredEntries newer) (_declaredEntries older)
         , _nextSeq = max (_nextSeq older) (_nextSeq newer)
         }
     where
-        nonSeed name fp = Map.lookup name seedFixities /= Just fp
+        forced = Set.fromList
+            (map ((,) EK_Type) shadowTypes ++ map ((,) EK_Term) shadowTerms)
+        genuinelyNew = Set.difference (_declaredEntries newer) (_declaredEntries older)
+        accepted = Set.union forced genuinelyNew
+        newEntries = filter ((`Set.member` accepted) . entryKey) (_entries newer)
+        retainedEntries = filter ((`Set.notMember` accepted) . entryKey) (_entries older)
+
+declarationDelta :: NotationDB -> ExpansionDB -> NotationDB -> NotationDB
+declarationDelta fixityDecls expansionDecls effective = NotationDB
+    { _fixity = _fixity fixityDecls
+    , _declaredFixity = _declaredFixity fixityDecls
+    , _entries = filter ((`Set.member` ownEntryKeys) . entryKey) (_entries effective)
+    , _declaredEntries = ownEntryKeys
+    , _nextSeq = _nextSeq effective
+    }
+    where
+        ownEntryKeys = Set.fromList
+            ( [ (EK_Type, name) | (name, _, _) <- declaredTypeAbbrevList expansionDecls ]
+           ++ [ (EK_Term, name) | (name, _, _) <- declaredTermNotationList expansionDecls ]
+            )
 
 lookupFixity :: SmallId -> NotationDB -> Maybe (FixityKind, Precedence)
 lookupFixity name db = Map.lookup name (_fixity db)
 
 fixityList :: NotationDB -> [(SmallId, (FixityKind, Precedence))]
 fixityList = Map.toList . _fixity
+
+declaredFixityList :: NotationDB -> [(SmallId, (FixityKind, Precedence))]
+declaredFixityList = Map.toList . _declaredFixity
 
 viewerFixity :: SmallId -> (FixityKind, Precedence) -> (Fixity (), Precedence)
 viewerFixity op (FK_Prefix, p) = (Prefix (op ++ " ") (), p)
@@ -174,38 +232,19 @@ foldType :: NotationDB -> MonoType LargeId -> ViewNode
 foldType db = foldTerm db . compileTypeTemplate
 
 foldTerm :: NotationDB -> TermNode -> ViewNode
-foldTerm db t = case tryMatch (_entries db) t of
-    Just (kind, name, args) -> List.foldl' app head_ (map (foldTerm db) args) where
-        head_ = case kind of
-            EK_Type -> ViewTCon name
-            EK_Term -> ViewDCon name
-        app = case kind of
-            EK_Type -> ViewTApp
-            EK_Term -> ViewIApp
-    Nothing -> renderTerm db t
-
-renderTerm :: NotationDB -> TermNode -> ViewNode
-renderTerm _ (LVar (LV_ty_var u)) = ViewTVar ("?TV_" ++ show u)
-renderTerm _ (LVar (LV_Unique u (DispHint mhint))) = ViewLVar (case mhint of Just s -> s; Nothing -> "?V_" ++ show u)
-renderTerm _ (LVar (LV_Named v)) = ViewLVar v
-renderTerm _ (NCon (DC d) _) = ViewDCon (show d)
-renderTerm _ (NCon (TC t) _) = ViewTCon (show t)
-renderTerm _ (NIdx i) = ViewIVar ("W_" ++ show i)
-renderTerm db (NApp t1 t2 _) = ViewIApp (foldTerm db t1) (foldTerm db t2)
-renderTerm db (NLam mhint _ t _) = ViewIAbs name (foldTerm db t) where
-    name = case mhint of
-        Just s -> s
-        Nothing -> "x"
-renderTerm db (Susp body _ _ _) = foldTerm db body
+foldTerm db = constructViewerCustom (const Nothing) (const Nothing) . foldTermAsNode db
 
 tryMatch :: [FoldEntry] -> TermNode -> Maybe (EntryKind, SmallId, [TermNode])
-tryMatch entries t = firstJust
-    [ do
-        env <- matchTerm (_feParams e) (_feRhs e) t
-        args <- traverse (`Map.lookup` env) (_feParams e)
-        return (_feKind e, _feName e, args)
-    | e <- entries
-    ]
+tryMatch entries t
+    = assertNonnegativeTerms (map _feRhs entries) `seq`
+      assertNonnegativeIndices t `seq`
+      firstJust
+        [ do
+            env <- matchTerm (_feParams e) (_feRhs e) t
+            args <- traverse (`Map.lookup` env) (_feParams e)
+            return (_feKind e, _feName e, args)
+        | e <- entries
+        ]
 
 tryFoldType :: NotationDB -> MonoType Int -> Maybe (SmallId, [MonoType Int])
 tryFoldType db t
@@ -230,7 +269,13 @@ nodeToMonoTypeInt (NApp t1 t2 _) = TyApp <$> nodeToMonoTypeInt t1 <*> nodeToMono
 nodeToMonoTypeInt _ = Nothing
 
 foldTermAsNode :: NotationDB -> TermNode -> TermNode
-foldTermAsNode db = go where
+foldTermAsNode db term
+    = assertNonnegativeTerms (map _feRhs (_entries db)) `seq`
+      assertNonnegativeIndices term `seq`
+      go term
+  where
+    go (NIdx i)
+        | i < 0 = undefined
     go t = tryHere $ case t of
         NApp t1 t2 sl -> NApp (go t1) (go t2) sl
         NLam mhint ty body sl -> NLam mhint ty (go body) sl
@@ -244,7 +289,11 @@ foldTermAsNode db = go where
         Nothing -> t
 
 matchTerm :: [LargeId] -> TermNode -> TermNode -> Maybe (Map.Map LargeId TermNode)
-matchTerm params tmpl cand = go tmpl cand Map.empty where
+matchTerm params tmpl cand
+    = assertNonnegativeIndices tmpl `seq`
+        assertNonnegativeIndices cand `seq`
+        go tmpl cand Map.empty
+  where
     isParam (LV_Named n) = n `elem` params
     isParam _ = False
     go (LVar lv) c env
@@ -261,6 +310,7 @@ matchTerm params tmpl cand = go tmpl cand Map.empty where
         | c1 == c2 = Just env
         | otherwise = Nothing
     go (NIdx i) (NIdx j) env
+        | i < 0 || j < 0 = undefined
         | i == j = Just env
         | otherwise = Nothing
     go (NApp a1 a2 _) (NApp b1 b2 _) env    
@@ -279,30 +329,72 @@ data ExpansionDB
     = ExpansionDB
         { _typeAbbrevs :: !(Map.Map SmallId ([LargeId], TypeRep))
         , _termNotations :: !(Map.Map SmallId ([LargeId], TermRep))
+        , _declaredTypeAbbrevs :: !(Set.Set SmallId)
+        , _declaredTermNotations :: !(Set.Set SmallId)
+        , _typeAbbrevOrder :: ![SmallId]
+        , _termNotationOrder :: ![SmallId]
         }
     deriving ()
 
 emptyExpansionDB :: ExpansionDB
-emptyExpansionDB = ExpansionDB { _typeAbbrevs = Map.empty, _termNotations = Map.empty }
-
-mergeExpansion :: ExpansionDB -> ExpansionDB -> ExpansionDB
-mergeExpansion older newer = ExpansionDB
-    { _typeAbbrevs   = Map.union (_typeAbbrevs   newer) (_typeAbbrevs   older)
-    , _termNotations = Map.union (_termNotations newer) (_termNotations older)
+emptyExpansionDB = ExpansionDB
+    { _typeAbbrevs = Map.empty
+    , _termNotations = Map.empty
+    , _declaredTypeAbbrevs = Set.empty
+    , _declaredTermNotations = Set.empty
+    , _typeAbbrevOrder = []
+    , _termNotationOrder = []
     }
 
+mergeExpansion :: ExpansionDB -> ExpansionDB -> ExpansionDB
+mergeExpansion older newer = mergeExpansionWithShadows
+    (_typeAbbrevOrder newer) (_termNotationOrder newer) older newer
+
+mergeExpansionWithShadows :: [SmallId] -> [SmallId] -> ExpansionDB -> ExpansionDB -> ExpansionDB
+mergeExpansionWithShadows shadowTypes shadowTerms older newer = ExpansionDB
+    { _typeAbbrevs = Map.union acceptedTypes (_typeAbbrevs older)
+    , _termNotations = Map.union acceptedTerms (_termNotations older)
+    , _declaredTypeAbbrevs = Set.union (_declaredTypeAbbrevs newer) (_declaredTypeAbbrevs older)
+    , _declaredTermNotations = Set.union (_declaredTermNotations newer) (_declaredTermNotations older)
+    , _typeAbbrevOrder = mergeOrder acceptedTypeNames (_typeAbbrevOrder older) (_typeAbbrevOrder newer)
+    , _termNotationOrder = mergeOrder acceptedTermNames (_termNotationOrder older) (_termNotationOrder newer)
+    }
+    where
+        acceptedTypeNames = Set.union (Set.fromList shadowTypes)
+            (Set.difference (_declaredTypeAbbrevs newer) (_declaredTypeAbbrevs older))
+        acceptedTermNames = Set.union (Set.fromList shadowTerms)
+            (Set.difference (_declaredTermNotations newer) (_declaredTermNotations older))
+        acceptedTypes = Map.restrictKeys (_typeAbbrevs newer) acceptedTypeNames
+        acceptedTerms = Map.restrictKeys (_termNotations newer) acceptedTermNames
+        mergeOrder accepted oldOrder newOrder =
+            filter (`Set.notMember` accepted) oldOrder
+                ++ filter (`Set.member` accepted) newOrder
+
 initialExpansionDB :: ExpansionDB
-initialExpansionDB = addTypeAbbrevDecl "string" [] stringRhs emptyExpansionDB where
+initialExpansionDB = emptyExpansionDB
+    { _typeAbbrevs = Map.singleton "string" ([], stringRhs) }
+  where
     nullLoc :: SLoc
     nullLoc = SLoc (0, 0) (0, 0)
     stringRhs :: TypeRep
     stringRhs = RTyApp nullLoc (RTyCon nullLoc (TC_Named "list")) (RTyCon nullLoc (TC_Named "char"))
 
 addTypeAbbrevDecl :: SmallId -> [LargeId] -> TypeRep -> ExpansionDB -> ExpansionDB
-addTypeAbbrevDecl name params body db = db { _typeAbbrevs = Map.insert name (params, body) (_typeAbbrevs db) }
+addTypeAbbrevDecl name params body db = db
+    { _typeAbbrevs = Map.insert name (params, body) (_typeAbbrevs db)
+    , _declaredTypeAbbrevs = Set.insert name (_declaredTypeAbbrevs db)
+    , _typeAbbrevOrder = moveToEnd name (_typeAbbrevOrder db)
+    }
 
 addTermNotationDecl :: SmallId -> [LargeId] -> TermRep -> ExpansionDB -> ExpansionDB
-addTermNotationDecl name params body db = db { _termNotations = Map.insert name (params, body) (_termNotations db) }
+addTermNotationDecl name params body db = db
+    { _termNotations = Map.insert name (params, body) (_termNotations db)
+    , _declaredTermNotations = Set.insert name (_declaredTermNotations db)
+    , _termNotationOrder = moveToEnd name (_termNotationOrder db)
+    }
+
+moveToEnd :: Eq a => a -> [a] -> [a]
+moveToEnd item items = filter (/= item) items ++ [item]
 
 lookupTypeAbbrev :: SmallId -> ExpansionDB -> Maybe ([LargeId], TypeRep)
 lookupTypeAbbrev name db = Map.lookup name (_typeAbbrevs db)
@@ -311,10 +403,38 @@ lookupTermNotation :: SmallId -> ExpansionDB -> Maybe ([LargeId], TermRep)
 lookupTermNotation name db = Map.lookup name (_termNotations db)
 
 typeAbbrevList :: ExpansionDB -> [(SmallId, [LargeId], TypeRep)]
-typeAbbrevList db = [ (name, ps, rhs) | (name, (ps, rhs)) <- Map.toList (_typeAbbrevs db) ]
+typeAbbrevList db =
+    [ (name, ps, rhs)
+    | name <- undeclaredNames ++ _typeAbbrevOrder db
+    , Just (ps, rhs) <- [Map.lookup name (_typeAbbrevs db)]
+    ]
+    where
+        undeclaredNames = Map.keys
+            (Map.withoutKeys (_typeAbbrevs db) (_declaredTypeAbbrevs db))
 
 termNotationList :: ExpansionDB -> [(SmallId, [LargeId], TermRep)]
-termNotationList db = [ (name, ps, rhs) | (name, (ps, rhs)) <- Map.toList (_termNotations db) ]
+termNotationList db =
+    [ (name, ps, rhs)
+    | name <- undeclaredNames ++ _termNotationOrder db
+    , Just (ps, rhs) <- [Map.lookup name (_termNotations db)]
+    ]
+    where
+        undeclaredNames = Map.keys
+            (Map.withoutKeys (_termNotations db) (_declaredTermNotations db))
+
+declaredTypeAbbrevList :: ExpansionDB -> [(SmallId, [LargeId], TypeRep)]
+declaredTypeAbbrevList db =
+    [ (name, ps, rhs)
+    | name <- _typeAbbrevOrder db
+    , Just (ps, rhs) <- [Map.lookup name (_typeAbbrevs db)]
+    ]
+
+declaredTermNotationList :: ExpansionDB -> [(SmallId, [LargeId], TermRep)]
+declaredTermNotationList db =
+    [ (name, ps, rhs)
+    | name <- _termNotationOrder db
+    , Just (ps, rhs) <- [Map.lookup name (_termNotations db)]
+    ]
 
 unfoldlTermApp :: TermRep -> (TermRep, [TermRep])
 unfoldlTermApp = go [] where
@@ -332,14 +452,25 @@ reapplyTerm loc = List.foldl' (\acc arg -> RApp loc acc arg)
 reapplyType :: SLoc -> TypeRep -> [TypeRep] -> TypeRep
 reapplyType loc = List.foldl' (\acc arg -> RTyApp loc acc arg)
 
-freeVarsOfTermRep :: TermRep -> Set.Set LargeId
-freeVarsOfTermRep t = case t of
+freeNamesOfTermRep :: TermRep -> Set.Set LargeId
+freeNamesOfTermRep t = case t of
     R_wc _ -> Set.empty
     RVar _ x -> Set.singleton x
+    RCon _ (DC_Named x) -> Set.singleton x
     RCon _ _ -> Set.empty
-    RApp _ t1 t2 -> Set.union (freeVarsOfTermRep t1) (freeVarsOfTermRep t2)
-    RAbs _ x body -> Set.delete x (freeVarsOfTermRep body)
-    RPrn _ t' -> freeVarsOfTermRep t'
+    RApp _ t1 t2 -> Set.union (freeNamesOfTermRep t1) (freeNamesOfTermRep t2)
+    RAbs _ x body -> Set.delete x (freeNamesOfTermRep body)
+    RPrn _ t' -> freeNamesOfTermRep t'
+
+allNamesOfTermRep :: TermRep -> Set.Set LargeId
+allNamesOfTermRep t = case t of
+    R_wc _ -> Set.empty
+    RVar _ x -> Set.singleton x
+    RCon _ (DC_Named x) -> Set.singleton x
+    RCon _ _ -> Set.empty
+    RApp _ t1 t2 -> Set.union (allNamesOfTermRep t1) (allNamesOfTermRep t2)
+    RAbs _ x body -> Set.insert x (allNamesOfTermRep body)
+    RPrn _ t' -> allNamesOfTermRep t'
 
 freshNameAvoiding :: Set.Set LargeId -> LargeId -> LargeId
 freshNameAvoiding avoid base
@@ -358,16 +489,32 @@ substTermRep env t = case t of
     RCon loc c -> RCon loc c
     RApp loc t1 t2 -> RApp loc (substTermRep env t1) (substTermRep env t2)
     RAbs loc x body
-        | Map.member x env -> RAbs loc x (substTermRep (Map.delete x env) body)
-        | Set.member x rhsFV -> RAbs loc x' (substTermRep env renamed)
-        | otherwise -> RAbs loc x (substTermRep env body)
+        | Set.member x rhsFV -> RAbs loc x' (substTermRep env' renamed)
+        | otherwise -> RAbs loc x (substTermRep env' body)
         where
-            rhsFV = Set.unions (map freeVarsOfTermRep (Map.elems env))
-            bodyFV = freeVarsOfTermRep body
-            avoid = Set.unions [rhsFV, bodyFV, Map.keysSet env]
+            env' = Map.delete x env
+            rhsFV = Set.unions (map freeNamesOfTermRep (Map.elems env'))
+            avoid = Set.unions [rhsFV, allNamesOfTermRep body, Map.keysSet env']
             x' = freshNameAvoiding avoid x
-            renamed = substTermRep (Map.singleton x (RVar loc x')) body
+            renamed = renameBoundTermRep x x' body
     RPrn loc t' -> RPrn loc (substTermRep env t')
+
+renameBoundTermRep :: LargeId -> LargeId -> TermRep -> TermRep
+renameBoundTermRep old new = go where
+    go term = case term of
+        R_wc loc -> R_wc loc
+        RVar loc x
+            | x == old -> RVar loc new
+            | otherwise -> RVar loc x
+        RCon loc (DC_Named x)
+            | x == old -> RCon loc (DC_Named new)
+            | otherwise -> RCon loc (DC_Named x)
+        RCon loc con -> RCon loc con
+        RApp loc left right -> RApp loc (go left) (go right)
+        RAbs loc x body
+            | x == old -> RAbs loc x body
+            | otherwise -> RAbs loc x (go body)
+        RPrn loc body -> RPrn loc (go body)
 
 substTypeRep :: Map.Map LargeId TypeRep -> TypeRep -> TypeRep
 substTypeRep env t = case t of
@@ -378,63 +525,134 @@ substTypeRep env t = case t of
     RTyApp loc t1 t2 -> RTyApp loc (substTypeRep env t1) (substTypeRep env t2)
     RTyPrn loc t' -> RTyPrn loc (substTypeRep env t')
 
-expandTermRep :: ExpansionDB -> TermRep -> TermRep
-expandTermRep db = go where
-    go t = case t of
-        RApp loc _ _ ->
+data ExpansionError
+    = TypeExpansionCycle SLoc [SmallId]
+    | TermExpansionCycle SLoc [SmallId]
+    deriving (Eq, Show)
+
+validateExpansionDB :: ExpansionDB -> Either ExpansionError ()
+validateExpansionDB db = do
+    mapM_ validateType (declaredTypeAbbrevList db)
+    mapM_ validateTerm (declaredTermNotationList db)
+    where
+        validateType (name, params, rhs) = do
+            let loc = typeRepLoc rhs
+                head_ = RTyCon loc (TC_Named name)
+                args = map (RTyVar loc) params
+                applied = reapplyType loc head_ args
+            _ <- expandTypeRepChecked db applied
+            return ()
+        validateTerm (name, params, rhs) = do
+            let loc = termRepLoc rhs
+                head_ = RCon loc (DC_Named name)
+                args = map (RVar loc) params
+                applied = reapplyTerm loc head_ args
+            _ <- expandTermRepChecked db applied
+            return ()
+
+typeRepLoc :: TypeRep -> SLoc
+typeRepLoc (RTyVar loc _) = loc
+typeRepLoc (RTyCon loc _) = loc
+typeRepLoc (RTyApp loc _ _) = loc
+typeRepLoc (RTyPrn loc _) = loc
+
+termRepLoc :: TermRep -> SLoc
+termRepLoc (R_wc loc) = loc
+termRepLoc (RVar loc _) = loc
+termRepLoc (RCon loc _) = loc
+termRepLoc (RApp loc _ _) = loc
+termRepLoc (RAbs loc _ _) = loc
+termRepLoc (RPrn loc _) = loc
+
+rebaseTermRep :: SLoc -> TermRep -> TermRep
+rebaseTermRep callLoc term = case term of
+    R_wc _ -> R_wc callLoc
+    RVar _ name -> RVar callLoc name
+    RCon _ con -> RCon callLoc con
+    RApp _ left right -> RApp callLoc (rebaseTermRep callLoc left) (rebaseTermRep callLoc right)
+    RAbs _ name body -> RAbs callLoc name (rebaseTermRep callLoc body)
+    RPrn _ body -> RPrn callLoc (rebaseTermRep callLoc body)
+
+expansionCycle :: SmallId -> [SmallId] -> [SmallId]
+expansionCycle name active = name : reverse (takeWhile (/= name) active) ++ [name]
+
+expandTermRepChecked :: ExpansionDB -> TermRep -> Either ExpansionError TermRep
+expandTermRepChecked db = go [] where
+    go active t = case t of
+        RApp loc _ _ -> do
+            args' <- traverse (go active) args
             case head_ of
                 RCon hloc (DC_Named name) -> case lookupTermNotation name db of
                     Just (params, body)
-                        | length args' >= length params -> expandFull loc params body args'
-                        | otherwise -> expandPartial loc params body args'
-                    Nothing -> reapplyTerm loc head_ args'
-                _ -> reapplyTerm loc (go head_) args'
+                        | name `elem` active -> Left (TermExpansionCycle hloc (expansionCycle name active))
+                        | length args' >= length params -> expandFull name hloc loc params body args'
+                        | otherwise -> expandPartial name hloc params body args'
+                    Nothing -> Right (reapplyTerm loc head_ args')
+                _ -> do
+                    head' <- go active head_
+                    return (reapplyTerm loc head' args')
             where
                 (head_, args) = unfoldlTermApp t
-                args' = map go args
-                expandFull loc params body args' = reapplyTerm loc expanded remaining where
-                    (consumed, remaining) = splitAt (length params) args'
-                    env = Map.fromList (zip params consumed)
-                    expanded = go (substTermRep env body)
-                expandPartial loc params body args' = List.foldr (\p acc -> RAbs loc p acc) inner remaining where
-                    n = length args'
-                    consumed = args'
-                    taken = take n params
-                    remaining = drop n params
-                    env = Map.fromList (zip taken consumed)
-                    substituted = substTermRep env body
-                    inner = go substituted
+                expandFull name headLoc loc params body expandedArgs = do
+                    let (consumed, remaining) = splitAt (length params) expandedArgs
+                        callLoc = List.foldl' (<>) headLoc (map termRepLoc consumed)
+                        env = Map.fromList (zip params consumed)
+                    expanded <- go (name : active) (substTermRep env (rebaseTermRep callLoc body))
+                    return (reapplyTerm loc expanded remaining)
+                expandPartial name headLoc params body expandedArgs = do
+                    let n = length expandedArgs
+                        consumed = expandedArgs
+                        taken = take n params
+                        remaining = drop n params
+                        callLoc = List.foldl' (<>) headLoc (map termRepLoc consumed)
+                        env = Map.fromList (zip taken consumed)
+                        etaExpanded = List.foldr (\p acc -> RAbs callLoc p acc) (rebaseTermRep callLoc body) remaining
+                    go (name : active) (substTermRep env etaExpanded)
         RCon loc (DC_Named name) -> case lookupTermNotation name db of
             Just (params, body)
-                | List.null params -> go body
-                | otherwise -> List.foldr (\p acc -> RAbs loc p acc) (go body) params
-            Nothing -> RCon loc (DC_Named name)
-        RAbs loc x body -> RAbs loc x (go body)
-        RPrn loc t' -> RPrn loc (go t')
-        _ -> t
+                | name `elem` active -> Left (TermExpansionCycle loc (expansionCycle name active))
+                | List.null params -> go (name : active) (rebaseTermRep loc body)
+                | otherwise -> do
+                    inner <- go (name : active) (rebaseTermRep loc body)
+                    return (List.foldr (\p acc -> RAbs loc p acc) inner params)
+            Nothing -> Right (RCon loc (DC_Named name))
+        RAbs loc x body -> RAbs loc x <$> go active body
+        RPrn loc t' -> RPrn loc <$> go active t'
+        _ -> Right t
 
-expandTypeRep :: ExpansionDB -> TypeRep -> TypeRep
-expandTypeRep db = go where
-    go t = case t of
-        RTyApp loc _ _ ->
+expandTypeRepChecked :: ExpansionDB -> TypeRep -> Either ExpansionError TypeRep
+expandTypeRepChecked db = go [] where
+    go active t = case t of
+        RTyApp loc _ _ -> do
+            args' <- traverse (go active) args
             case head_ of
                 RTyCon hloc (TC_Named name) -> case lookupTypeAbbrev name db of
                     Just (params, body)
-                        | length args' >= length params -> expandFull loc params body args'
-                        | otherwise -> reapplyType loc head_ args'
-                    Nothing -> reapplyType loc head_ args'
-                _ -> reapplyType loc (go head_) args'
+                        | name `elem` active -> Left (TypeExpansionCycle hloc (expansionCycle name active))
+                        | length args' >= length params -> expandFull name loc params body args'
+                        | otherwise -> Right (reapplyType loc head_ args')
+                    Nothing -> Right (reapplyType loc head_ args')
+                _ -> do
+                    head' <- go active head_
+                    return (reapplyType loc head' args')
             where
                 (head_, args) = unfoldlTypeApp t
-                args' = map go args
-                expandFull loc params body args' = reapplyType loc expanded remaining where
-                    (consumed, remaining) = splitAt (length params) args'
-                    env = Map.fromList (zip params consumed)
-                    expanded = go (substTypeRep env body)
+                expandFull name loc params body expandedArgs = do
+                    let (consumed, remaining) = splitAt (length params) expandedArgs
+                        env = Map.fromList (zip params consumed)
+                    expanded <- go (name : active) (substTypeRep env body)
+                    return (reapplyType loc expanded remaining)
         RTyCon loc (TC_Named name) -> case lookupTypeAbbrev name db of
             Just (params, body)
-                | List.null params -> go body
-                | otherwise -> RTyCon loc (TC_Named name)
-            Nothing -> RTyCon loc (TC_Named name)
-        RTyPrn loc t' -> RTyPrn loc (go t')
-        _ -> t
+                | name `elem` active -> Left (TypeExpansionCycle loc (expansionCycle name active))
+                | List.null params -> go (name : active) body
+                | otherwise -> Right (RTyCon loc (TC_Named name))
+            Nothing -> Right (RTyCon loc (TC_Named name))
+        RTyPrn loc t' -> RTyPrn loc <$> go active t'
+        _ -> Right t
+
+expandTermRep :: ExpansionDB -> TermRep -> TermRep
+expandTermRep db term = either (const term) id (expandTermRepChecked db term)
+
+expandTypeRep :: ExpansionDB -> TypeRep -> TypeRep
+expandTypeRep db typ = either (const typ) id (expandTypeRepChecked db typ)

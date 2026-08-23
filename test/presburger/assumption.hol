@@ -1,4 +1,4 @@
-% Arithmetic assumptions on the left of `=>` (BETA spec section 2.3).
+% Arithmetic assumptions on the left of `=>` (BETA spec sections 3.3 and 4.3).
 % A comparison/presburger fact assumed by a local implication is an
 % antecedent for any `presburger` goal in its scope: the goal succeeds
 % iff (assumptions => goal) holds. A goal entailed by the assumptions is

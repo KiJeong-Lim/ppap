@@ -1,4 +1,4 @@
-% Spec 2.7.1 (T): the type checker pipes every MonoType through the
+% Sections 1.6 and 6.2: the type checker pipes every MonoType through the
 % same write-boundary fold before emitting an error message. With
 % `abbrev pp := list nat.` declared, a fact whose body fails type
 % checking (`p 7.` where p expects `pp` but 7 is `nat`) prints the

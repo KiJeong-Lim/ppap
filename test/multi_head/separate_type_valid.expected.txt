@@ -1,0 +1,11 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.multi_head.separate_type_valid ( test/multi_head/separate_type_valid.hol, interpreted )
+test.multi_head.separate_type_valid> Ok, one module loaded.
+test.multi_head.separate_type_valid> 
+test.multi_head.separate_type_valid> yes.
+test.multi_head.separate_type_valid> 
+Hol >>= quit

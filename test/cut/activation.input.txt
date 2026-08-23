@@ -1,0 +1,14 @@
+Hol --test
+test/cut/activation.hol
+?- cut_fail X.
+?- left_choice X.
+Y
+?- right_choice X.
+Y
+Y
+?- outer X.
+Y
+?- (!, fail); true.
+?- (inner_ok, fail); true.
+?- ((local 1 :- !, fail) & local 2) => local X.
+:q

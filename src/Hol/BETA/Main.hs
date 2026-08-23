@@ -1,6 +1,6 @@
 module Hol.BETA.Main where
 
-import Hol.BETA.Arith (arithEntails, installPresburgerWithEnv, presburgerStoreSat, presburgerValid)
+import Hol.BETA.Arith (arithEntails, installPresburgerWithEnvDiagnostic, presburgerGuardedStoreSat, presburgerGuardedValid)
 import Hol.BETA.Compiler
 import Hol.BETA.Constant
 import Hol.BETA.Debugger
@@ -9,7 +9,7 @@ import Hol.BETA.Desugarer
 import Hol.BETA.FixityResolver (FixityError (..), resolveTermWithFixity)
 import Hol.BETA.Header
 import Hol.BETA.HOPU
-import Hol.BETA.ModuleLoader (LoadedModule (..), ModuleEnv (..), loadMainWithDiagnostic)
+import Hol.BETA.ModuleLoader (LoadedModule (..), ModuleEnv (..), loadMainWithDiagnostic, validateGoalTerm)
 import Hol.BETA.Notation (NotationDB, ExpansionDB)
 import qualified Hol.BETA.Notation as Notation
 import Hol.BETA.PlanHolLexer
@@ -23,6 +23,7 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import Data.IORef
+import Data.Functor.Identity (runIdentity)
 import Data.Maybe
 import qualified Data.List as List
 import qualified Data.IntMap.Strict as IntMap
@@ -46,34 +47,39 @@ runAnalyzerWith mode notationDB src0
     = case runHolLexer src0 of
         Left (row, col) -> Left (diagnosticWith mode "HolBETA-LexError" (Just (lines src0)) (SLoc (row, col) (row, col)) [Z.Doc.text "Lexing failed."])
         Right src1 -> case runHolParser src1 of
-            Left Nothing -> Left (diagnosticNoLocWith mode "HolBETA-ParseError" [Z.Doc.text "Parsing failed at EOF."])
+            Left Nothing -> Left (diagnosticWith mode "HolBETA-ParseError" (Just (lines src0)) (eofSLoc src0) [Z.Doc.text "Parsing failed at EOF."])
             Left (Just token) -> case getSLoc token of
                 loc -> Left (diagnosticWith mode "HolBETA-ParseError" (Just (lines src0)) loc [Z.Doc.text "Parsing failed."])
             Right (Left termRep) -> case resolveTermWithFixity notationDB termRep of
                 Left (FixityError loc msg) -> Left (diagnosticWith mode "HolBETA-ParseError" (Just (lines src0)) loc [Z.Doc.text "Parsing failed.", Z.Doc.text msg])
                 Right output -> Right (Left output)
-            Right (Right _) -> Left (diagnosticNoLocWith mode "HolBETA-ParseError" [Z.Doc.text "Parsing failed at EOF."])
+            Right (Right _) -> Left (diagnosticNoLocWith mode "HolBETA-ParseError" [Z.Doc.text "Expected a query, not a declaration."])
 
 isYES :: String -> Bool
 isYES str = str `elem` [ str1 ++ str2 ++ str3 | str1 <- ["Y", "y"], str2 <- ["", "es"], str3 <- if null str2 then [""] else ["", "."] ]
 
-addIndex :: [Fact] -> Map.Map Constant [Fact]
-addIndex facts = Map.fromListWith (\new old -> old ++ new) [ (hd f', [f']) | f <- facts, f0 <- expandAssumptions f, let f' = rewrite NF f0 ] where
-    hd :: Fact -> Constant
+addIndex :: [Fact] -> Either KernelErr (Map.Map Constant [Fact])
+addIndex facts = foldM addFact Map.empty [ rewrite NF f0 | f <- facts, f0 <- expandAssumptions f ] where
+    addFact index fact = case hd fact of
+        Just predicate -> Right (Map.insertWith (\new old -> old ++ new) predicate [fact] index)
+        Nothing -> Left (BadFactGiven fact)
+    hd :: Fact -> Maybe Constant
     hd t = case unfoldlNApp t of
         (NLam _ _ t _, _) -> hd t
         (NCon (DC (DC_LO LO_ty_pi)) _, [t]) -> hd t
         (NCon (DC (DC_LO LO_pi)) _, [t]) -> hd t
         (NCon (DC (DC_LO LO_if)) _, [t, _]) -> hd t
-        (NCon c _, _) -> c
+        (NCon c _, _) -> Just c
+        _ -> Nothing
 
 execRuntime :: UniqueM m => RuntimeEnv -> IORef Bool -> [Fact] -> Goal -> ExceptT KernelErr m Satisfied
 execRuntime env isDebugging facts query = do
     call_id <- getUnique
+    factIndex <- either throwE return (addIndex facts)
     let namedTypes = Map.fromList [ (nm, ty) | (LV_Named nm, ty) <- Map.toList (_TypeInfo env) ]
         initialLabeling = Labeling { _ConLabel = IntMap.empty, _VarLabel = IntMap.empty, _ConTypes = IntMap.empty, _VarTypes = IntMap.empty, _NamedTypes = namedTypes, _TyVarKeys = IntMap.empty, _TypeEnv = _ProgramTypeEnv env}
         initialContext = Context { _TotalVarBinding = mempty, _CurrentLabeling = initialLabeling, _LeftConstraints = [], _ContextThreadId = call_id, _debuggindModeOn = isDebugging }
-    runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = addIndex facts, _GivenHypos = [], _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
+    runTransition env (getLVars query) [(initialContext, [Cell { _GivenFacts = factIndex, _GivenHypos = [], _GivenArithPremises = ([], []), _ScopeLevel = 0, _WantedGoal = query, _CellCallId = call_id }])]
 
 runREPL :: DiagnosticMode -> Program TermNode -> NotationDB -> ExpansionDB -> UniqueT ShellyT ReplResult
 runREPL mode program notationDB expansionDB
@@ -124,7 +130,8 @@ runREPL mode program notationDB expansionDB
                                 let freeVarEnv = Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]
                                     presburgerEnv = Map.fromList [ (name, term) | (name, ivar) <- Map.toList free_vars, Just term <- [Map.lookup ivar freeVarEnv] ]
                                 query4 <- convertQuery used_mtvs assumptions freeVarEnv query3
-                                query5 <- either throwE return (installPresburgerWithEnv presburgerEnv query4)
+                                query5 <- either throwE return (installPresburgerWithEnvDiagnostic mode (Just (moduleName program)) (Just (lines query0)) presburgerEnv query4)
+                                either (throwE . invalidGoalDiagnostic "HolBETA-GoalError" query0 query5) return (validateGoalTerm query5)
                                 let typeMap = Map.fromList
                                         [ (LV_Named name, typ)
                                         | (name, ivar) <- Map.toList free_vars
@@ -141,9 +148,9 @@ runREPL mode program notationDB expansionDB
                                     answer <- runExceptT (execRuntime runtime_env isDebugging (_FactDecls program) query4)
                                     case answer of
                                         Left runtime_err -> case runtime_err of
-                                            BadGoalGiven _ -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA-RuntimeError" [Z.Doc.text "Bad goal given."])
-                                            BadFactGiven _ -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA-RuntimeError" [Z.Doc.text "Bad fact given."])
-                                            UnsupportedArithmeticConstraint t -> liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA-RuntimeError" [Z.Doc.text "Unsupported arithmetic constraint.", Z.Doc.text "Only ground constraints and linear Presburger constraints can be used with comparison predicates.", Z.Doc.text ("Constraint: " ++ shows t "")])
+                                            BadGoalGiven t -> liftIO $ putStrLn (runtimeDiagnostic (Just (lines query0)) t [Z.Doc.text "Bad goal given."])
+                                            BadFactGiven t -> liftIO $ putStrLn (runtimeDiagnostic Nothing t [Z.Doc.text "Bad fact given."])
+                                            UnsupportedArithmeticConstraint t -> liftIO $ putStrLn (runtimeDiagnostic (Just (lines query0)) t [Z.Doc.text "Unsupported arithmetic constraint.", Z.Doc.text "Only ground constraints and linear Presburger constraints can be used with comparison predicates.", Z.Doc.text ("Constraint: " ++ shows t "")])
                                         Right sat -> do
                                             liftIO $ promptify (if sat then "yes." else "no.")
                                             return ()
@@ -151,6 +158,22 @@ runREPL mode program notationDB expansionDB
                         Right src1 -> do
                             liftIO $ putStrLn (diagnosticNoLocWith mode "HolBETA-ParseError" [Z.Doc.text "It is not a query."])
                             go isDebugging verboseTyping nameCache
+
+        runtimeDiagnostic :: SourceLines -> TermNode -> [Z.Doc.Doc] -> String
+        runtimeDiagnostic sourceLines term body = case getNodeSLoc term of
+            Just loc -> diagnosticWithModule mode "HolBETA-RuntimeError" (Just (moduleName program)) sourceLines loc body
+            Nothing -> diagnosticNoLocWith mode "HolBETA-RuntimeError" body
+
+        invalidGoalDiagnostic :: String -> String -> TermNode -> TermNode -> ErrMsg
+        invalidGoalDiagnostic tag source fallback bad =
+            let body =
+                    [ Z.Doc.text "Malformed goal or local implication."
+                    , Z.Doc.text "A local antecedent must be a named-predicate clause or a supported arithmetic assumption (or a conjunction of them), and a clause body must contain executable goals."
+                    ]
+                sourceLines = Just (lines source)
+            in case getNodeSLoc bad `mplus` getNodeSLoc fallback of
+                Just loc -> diagnosticWithModule mode tag (Just (moduleName program)) sourceLines loc body
+                Nothing -> diagnosticNoLocWith mode tag body
 
         myTabs :: String
         myTabs = ""
@@ -177,7 +200,7 @@ runREPL mode program notationDB expansionDB
                 expectedType :: Context -> TermNode -> Maybe (MonoType Int)
                 expectedType ctx term
                     = case bindVars (_TotalVarBinding ctx) (rewrite NF term) of
-                        LVar lv -> Map.lookup lv typeMap
+                        LVar lv -> lookupLVarType lv (_CurrentLabeling ctx) `mplus` Map.lookup lv typeMap
                         _ -> Nothing
                 parsePrimitiveInput :: Maybe (MonoType Int) -> String -> Maybe TermNode
                 parsePrimitiveInput (Just ty)
@@ -186,20 +209,21 @@ runREPL mode program notationDB expansionDB
                     | ty == mkTyList mkTyChr = parseStr
                 parsePrimitiveInput _ = \src -> parseNat src `mplus` parseChr src `mplus` parseStr src
                 parseNat :: String -> Maybe TermNode
-                parseNat src = case reads src of
-                    [(n, "")] | n >= (0 :: Integer) -> Just (mkNCon (DC_NatL n))
-                    _ -> Nothing
+                parseNat src
+                    | not (null src) && all isDecimalDigit src = case reads src of
+                        [(n, "")] -> Just (mkNCon (DC_NatL (n :: Integer)))
+                        _ -> Nothing
+                    | otherwise = Nothing
+                    where
+                        isDecimalDigit ch = '0' <= ch && ch <= '9'
                 parseChr :: String -> Maybe TermNode
-                parseChr src = case reads src of
-                    [(ch, "")] -> Just (mkNCon (DC_ChrL ch))
-                    _ -> Nothing
+                parseChr src = mkNCon . DC_ChrL <$> readHolCharLiteral src
                 parseStr :: String -> Maybe TermNode
-                parseStr src = case reads src of
-                    [(str, "")] -> Just (stringTerm str)
-                    _ -> Nothing
+                parseStr src = stringTerm <$> readHolStringLiteral src
                 stringTerm :: String -> TermNode
-                stringTerm = foldr cons (mkNCon DC_Nil) where
-                    cons ch acc = mkNApp (mkNApp (mkNCon DC_Cons) (mkNCon (DC_ChrL ch))) acc
+                stringTerm = foldr cons (mkNApp (mkNCon DC_Nil) charType) where
+                    charType = mkNCon (TC_Named "char")
+                    cons ch acc = mkNApp (mkNApp (mkNApp (mkNCon DC_Cons) charType) (mkNCon (DC_ChrL ch))) acc
                 runInteraction :: RuntimeEnv -> Context -> String -> IO ()
                 runInteraction env ctx str = do
                     isDebugging <- readIORef (_debuggindModeOn ctx)
@@ -254,11 +278,7 @@ runREPL mode program notationDB expansionDB
                         _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "Expected ':assign ?X := t.'."])
                         return ()
                     Just (varName, tBody) -> do
-                        let stripQuests :: String -> String
-                            stripQuests [] = []
-                            stripQuests ('?' : cs) = stripQuests cs
-                            stripQuests (c : cs) = c : stripQuests cs
-                            queryStr = "?- " ++ varName ++ " = " ++ mapConToLVar (stripQuests tBody)
+                        let queryStr = "?- " ++ varName ++ " = " ++ rewriteAssignSource tBody
                         cache <- readIORef nameCache
                         result <- execUniqueT $ runExceptT (compileAssign varName queryStr)
                         case result of
@@ -266,13 +286,17 @@ runREPL mode program notationDB expansionDB
                                 _ <- promptify err
                                 return ()
                             Right (compiledLV, t_compiled, inferredTy, nameToType) -> do
-                                let resolveDisplayName nm = case fromDisplay nm cache of
-                                        Just r -> Just r
-                                        Nothing -> parseAnonymousLV nm
-                                    targetLV = case resolveDisplayName varName of
-                                        Just resolved -> resolved
-                                        Nothing -> compiledLV
-                                    labelingForCheck = _CurrentLabeling ctx
+                                let labelingForCheck = _CurrentLabeling ctx
+                                    isKnownTarget lv = case lv of
+                                        LV_Named _ -> isJust (lookupLVarType lv labelingForCheck) || Map.member lv typeMap
+                                        LV_Unique uni _ -> IntMap.member (unUnique uni) (_VarLabel labelingForCheck)
+                                        LV_ty_var uni -> IntMap.member (unUnique uni) (_VarLabel labelingForCheck)
+                                    resolveDisplayName nm = do
+                                        lv <- fromDisplay nm cache `mplus` parseAnonymousLV nm `mplus` Just (LV_Named nm)
+                                        guard (isKnownTarget lv)
+                                        return lv
+                                    resolvedTarget = resolveDisplayName varName
+                                    targetLV = fromMaybe compiledLV resolvedTarget
                                     xconNames =
                                         [ (nm, uni)
                                         | LV_Named nm <- Set.toList (getLVars t_compiled)
@@ -281,12 +305,14 @@ runREPL mode program notationDB expansionDB
                                     xconErrors = concat
                                         [ case IntMap.lookup uni (_ConTypes labelingForCheck) of
                                             Nothing -> ["'c_" ++ show uni ++ "' is not a known rigid constant in this state"]
-                                            Just actual -> case Map.lookup nm nameToType of
-                                                Nothing -> []  -- typechecker didn't constrain it; trust the runtime type
-                                                Just inferred
-                                                    | typeCompatible actual inferred -> []
-                                                    | otherwise -> pure ("type mismatch for 'c_" ++ shows uni ("' — runtime type is " ++ showsMonoType notationDB 0 actual (", but context requires " ++ showsMonoType notationDB 0 inferred "")))
+                                            Just _ -> []
                                         | (nm, uni) <- xconNames
+                                        ]
+                                    lvarErrors =
+                                        [ "'?" ++ nm ++ "' is not an active debugger variable"
+                                        | LV_Named nm <- Set.toList (getLVars t_compiled)
+                                        , Nothing <- [parseXcon nm]
+                                        , Nothing <- [resolveDisplayName nm]
                                         ]
                                     xconSwap = Map.fromList
                                         [ (LV_Named nm, mkNCon (DC_Unique (Unique uni) noHint))
@@ -301,21 +327,45 @@ runREPL mode program notationDB expansionDB
                                         ]
                                     nameSwap = VarBinding (xconSwap `Map.union` lvarSwap)
                                     t_resolved = bindVars nameSwap t_compiled
-                                    mexpectedTy = Map.lookup targetLV typeMap
-                                    badType = case mexpectedTy of
-                                        Just expectedTy -> not (typeCompatible expectedTy inferredTy)
-                                        Nothing -> False  -- anonymous targets: fall back to HOPU/kernel
-                                if not (null xconErrors) then do
-                                    _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text (List.intercalate "; " xconErrors)])
+                                    mexpectedTy = lookupLVarType targetLV labelingForCheck `mplus` Map.lookup targetLV typeMap
+                                    runtimeTypeChecks =
+                                        [ ("?" ++ varName, inferredTy, actual)
+                                        | actual <- maybeToList mexpectedTy
+                                        ]
+                                        ++ [ ("c_" ++ show uni, inferred, actual)
+                                           | (nm, uni) <- xconNames
+                                           , actual <- maybeToList (IntMap.lookup uni (_ConTypes labelingForCheck))
+                                           , inferred <- maybeToList (Map.lookup nm nameToType)
+                                           ]
+                                        ++ [ ("?" ++ nm, inferred, actual)
+                                           | LV_Named nm <- Set.toList (getLVars t_compiled)
+                                           , Nothing <- [parseXcon nm]
+                                           , Just resolved <- [resolveDisplayName nm]
+                                           , actual <- maybeToList (lookupLVarType resolved labelingForCheck `mplus` Map.lookup resolved typeMap)
+                                           , inferred <- maybeToList (Map.lookup nm nameToType)
+                                           ]
+                                    runtimeTypesAgree = typesJointlyCompatible
+                                        [ (inferred, separateRuntimeMTVs actual)
+                                        | (_, inferred, actual) <- runtimeTypeChecks
+                                        ]
+                                    runtimeTypeSummary = List.intercalate "; "
+                                        [ label ++ " : " ++ showsMonoType notationDB 0 actual ""
+                                        | (label, _, actual) <- runtimeTypeChecks
+                                        ]
+                                if isNothing resolvedTarget then do
+                                    _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text ("Unknown or inactive debugger variable '?" ++ varName ++ "'.")])
                                     return ()
-                                else if badType then do
-                                    case mexpectedTy of
-                                        Just expectedTy -> do
-                                            _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text ("Type mismatch for '" ++ varName ++ "'; expected " ++ showsMonoType notationDB 0 expectedTy (", got " ++ showsMonoType notationDB 0 inferredTy ""))])
-                                            return ()
-                                        Nothing -> return ()  -- unreachable
+                                else if not (null (xconErrors ++ lvarErrors)) then do
+                                    _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text (List.intercalate "; " (xconErrors ++ lvarErrors))])
+                                    return ()
+                                else if not runtimeTypesAgree then do
+                                    _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError"
+                                        [ Z.Doc.text "The assignment is inconsistent with the active debugger variable types."
+                                        , Z.Doc.text runtimeTypeSummary
+                                        ])
+                                    return ()
                                 else do
-                                    result <- runRuntime (cmdAssign varName t_resolved) env
+                                    result <- runRuntime (cmdAssignVar targetLV t_resolved) env
                                     case result of
                                         Left err -> do
                                             _ <- promptify (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text err])
@@ -328,15 +378,24 @@ runREPL mode program notationDB expansionDB
                                                 pp = prettyTerm notationDB cache
                                             _ <- promptify ("*** :assign: " ++ pp (mkLVar targetLV) (" := " ++ pp t_zonked "."))
                                             return ()
-                mapConToLVar :: String -> String
-                mapConToLVar = go where
+                rewriteAssignSource :: String -> String
+                rewriteAssignSource = go Nothing False where
                     isIdChar c = c `elem` (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ "_")
                     isDigitC c = c `elem` ['0' .. '9']
-                    go [] = []
-                    go str@(c : rest0)
-                        | not (isIdChar c) = c : go rest0
+                    go _ _ [] = []
+                    go (Just quote) escaped (c : rest)
+                        | escaped = c : go (Just quote) False rest
+                        | c == '\\' = c : go (Just quote) True rest
+                        | c == quote = c : go Nothing False rest
+                        | otherwise = c : go (Just quote) False rest
+                    go Nothing _ ('?' : rest) = go Nothing False rest
+                    go Nothing _ (c : rest)
+                        | c == '\'' || c == '"' = c : go (Just c) False rest
+                        | not (isIdChar c) = c : go Nothing False rest
                         | otherwise = case span isIdChar str of
-                            (ident, rest) -> rewrite ident ++ go rest
+                            (ident, rest') -> rewrite ident ++ go Nothing False rest'
+                        where
+                            str = c : rest
                     rewrite ident = case ident of
                         'c' : '_' : ds | not (null ds) && all isDigitC ds -> "XCON_" ++ ds
                         _ -> ident
@@ -346,19 +405,21 @@ runREPL mode program notationDB expansionDB
                         [(n, "")] -> Just n
                         _ -> Nothing
                     _ -> Nothing
-                typeCompatible :: MonoType Int -> MonoType Int -> Bool
-                typeCompatible (TyMTV _) _ = True
-                typeCompatible _ (TyMTV _) = True
-                typeCompatible (TyVar _) _ = True
-                typeCompatible _ (TyVar _) = True
-                typeCompatible (TyCon (TCon tc1 _)) (TyCon (TCon tc2 _)) = tc1 == tc2
-                typeCompatible (TyApp f1 a1) (TyApp f2 a2) = typeCompatible f1 f2 && typeCompatible a1 a2
-                typeCompatible _ _ = False
+                typesJointlyCompatible :: [(MonoType Int, MonoType Int)] -> Bool
+                typesJointlyCompatible pairs = case runIdentity (runExceptT (unify pairs)) of
+                    Left _ -> False
+                    Right _ -> True
+                separateRuntimeMTVs :: MonoType Int -> MonoType Int
+                separateRuntimeMTVs typ = case typ of
+                    TyVar idx -> TyVar idx
+                    TyCon con -> TyCon con
+                    TyApp fun arg -> TyApp (separateRuntimeMTVs fun) (separateRuntimeMTVs arg)
+                    TyMTV uni -> TyMTV (Unique (negate (unUnique uni) - 1))
                 compileAssign :: MonadUnique m => String -> String -> ExceptT ErrMsg m (LogicVar, TermNode, MonoType Int, Map.Map LargeId (MonoType Int))
                 compileAssign varName queryStr = case runHolLexer queryStr of
                     Left (row, col) -> throwE (diagnosticWith mode "HolBETA-AssignError" (Just (lines queryStr)) (SLoc (row, col) (row, col)) [Z.Doc.text "Lexing failed."])
                     Right tokens -> case runHolParser tokens of
-                        Left Nothing -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "Parsing failed at EOF."])
+                        Left Nothing -> throwE (diagnosticWith mode "HolBETA-AssignError" (Just (lines queryStr)) (eofSLoc queryStr) [Z.Doc.text "Parsing failed at EOF."])
                         Left (Just token) -> throwE (diagnosticWith mode "HolBETA-AssignError" (Just (lines queryStr)) (getSLoc token) [Z.Doc.text "Parsing failed."])
                         Right (Right _) -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "Expected a query, not a declaration."])
                         Right (Left termRep0) -> do
@@ -370,14 +431,17 @@ runREPL mode program notationDB expansionDB
                             let freeVarEnv = Map.fromList [ (ivar, mkLVar (LV_Named name)) | (name, ivar) <- Map.toList free_vars ]
                                 presburgerEnv = Map.fromList [ (name, term) | (name, ivar) <- Map.toList free_vars, Just term <- [Map.lookup ivar freeVarEnv] ]
                             term4 <- convertQuery used_mtvs assumptions freeVarEnv term3
-                            term5 <- either throwE return (installPresburgerWithEnv presburgerEnv term4)
+                            term5 <- either throwE return (installPresburgerWithEnvDiagnostic mode (Just (moduleName program)) (Just (lines queryStr)) presburgerEnv term4)
                             inferredTy <- case Map.lookup varName free_vars >>= \ivar -> Map.lookup ivar assumptions of
                                 Just typ -> return typ
                                 Nothing -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "Could not infer type for the binding."])
                             let nameToType = Map.fromList [ (nm, ty) | (nm, ivar) <- Map.toList free_vars , Just ty <- [Map.lookup ivar assumptions] ]
                             case unfoldlNApp (rewrite NF term5) of
                                 (NCon (DC DC_eq) _, [_typeArg, lhs, rhs]) -> case rewrite NF lhs of
-                                    LVar lv -> return (lv, rhs, inferredTy, nameToType)
+                                    LVar lv -> do
+                                        when (inferredTy == mkTyO) $
+                                            either (throwE . invalidGoalDiagnostic "HolBETA-AssignError" queryStr rhs) return (validateGoalTerm rhs)
+                                        return (lv, rhs, inferredTy, nameToType)
                                     _ -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "LHS did not resolve to a logic variable."])
                                 _ -> throwE (diagnosticNoLocWith mode "HolBETA-AssignError" [Z.Doc.text "Did not compile to an equality."])
                 printAnswer :: Context -> IO RunMore
@@ -398,7 +462,48 @@ runREPL mode program notationDB expansionDB
                         printDisagreements
                         askToRunMore
                     where
-                        transCl :: Ord a => (a -> Set.Set a) -> a -> Set.Set a
+                        -- Treat substitutions and surviving residual constraints
+                        -- as variable-connectivity hyperedges.  A generated
+                        -- variable is part of the observable answer whenever it
+                        -- is connected (possibly transitively) to a named query
+                        -- variable through either kind of edge.  Looking only at
+                        -- substitution RHSs would miss, for example, the shared
+                        -- @Y@ in @X > Y@ and @presburger "Y = 5"@.
+                        answerRelevantVars :: Set.Set LogicVar
+                        answerRelevantVars = closeRelevance namedQueryVars where
+                            closeRelevance known
+                                | known' == known = known
+                                | otherwise = closeRelevance known'
+                                where
+                                    connected = Set.unions
+                                        [ edge
+                                        | edge <- relevanceEdges
+                                        , not (Set.disjoint known edge)
+                                        ]
+                                    known' = known `Set.union` connected
+                        namedQueryVars :: Set.Set LogicVar
+                        namedQueryVars = Set.filter isNamedLVar (getLVars query)
+                        relevanceEdges :: [Set.Set LogicVar]
+                        relevanceEdges = substitutionEdges ++ map constraintVars universallyDropped
+                        substitutionEdges =
+                            [ Set.insert lv (getLVars term)
+                            | (lv, term) <- Map.toList (unVarBinding (_TotalVarBinding ctx))
+                            ]
+                        constraintVars :: Constraint -> Set.Set LogicVar
+                        constraintVars (DisagreementConstraint (lhs :=?=: rhs)) = getLVars lhs `Set.union` getLVars rhs
+                        constraintVars (EvalutionConstraint lhs rhs) = getLVars lhs `Set.union` getLVars rhs
+                        constraintVars (ArithmeticConstraint premises term) = Set.unions (getLVars term : map getLVars (arithStoreTerms premises))
+                        constraintVars (PresburgerConstraint premises _ freeOf) = Set.unions (map getLVars (arithStoreTerms premises ++ Map.elems freeOf))
+                        isNamedLVar :: LogicVar -> Bool
+                        isNamedLVar (LV_Named _) = True
+                        isNamedLVar _ = False
+                        -- Keep the long-standing answer-substitution projection
+                        -- directed: internal bindings that merely point back into
+                        -- a relevant component are not themselves user-visible.
+                        visibleSubstitutionVars :: Set.Set LogicVar
+                        visibleSubstitutionVars = namedBindingVars `Set.union` Set.unions [ transCl dependOn lv | lv <- Set.toList namedBindingVars ]
+                        namedBindingVars = Set.filter isNamedLVar (Map.keysSet (unVarBinding (_TotalVarBinding ctx)))
+                        dependOn lv = maybe Set.empty getLVars (Map.lookup lv (unVarBinding (_TotalVarBinding ctx)))
                         transCl rel start = dfs (rel start) Set.empty where
                             dfs current visited
                                 | Set.null current = visited
@@ -407,55 +512,67 @@ runREPL mode program notationDB expansionDB
                                     news = current `Set.difference` visited
                                     visited' = visited `Set.union` news
                                     next = Set.unions [ rel x | x <- Set.toList news ]
-                        dependOn :: LogicVar -> Set.Set LogicVar
-                        dependOn x
-                            = case Map.lookup x (unVarBinding (_TotalVarBinding ctx)) of
-                                Nothing -> Set.empty
-                                Just t -> getLVars t
-                        relevants :: Set.Set LogicVar
-                        relevants = Set.fromList [ LV_Named nm | nm <- nms ] `Set.union` Set.unions [ transCl dependOn (LV_Named nm) | nm <- nms ] where
-                            nms = [ nm | LV_Named nm <- Set.toList (Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]
                         final_ctx :: Context
                         final_ctx = Context
-                            { _TotalVarBinding = VarBinding (unVarBinding (_TotalVarBinding ctx) `Map.restrictKeys` relevants)
+                            { _TotalVarBinding = VarBinding (unVarBinding (_TotalVarBinding ctx) `Map.restrictKeys` visibleSubstitutionVars)
                             , _CurrentLabeling = _CurrentLabeling ctx
                             , _LeftConstraints = prunedConstraints
                             , _ContextThreadId = _ContextThreadId ctx
                             , _debuggindModeOn = _debuggindModeOn ctx
                             }
-                        groundDropped :: [Constraint]
-                        groundDropped = do
+                        universallyDropped :: [Constraint]
+                        universallyDropped = do
                             it <- _LeftConstraints ctx
                             case it of
-                                ArithmeticConstraint b -> case evaluateB b of
-                                    Right True -> []
-                                    _ -> pure it
+                                ArithmeticConstraint _ _
+                                    | guardedUniversallyValid it -> []
+                                    | otherwise -> pure it
                                 EvalutionConstraint lhs rhs -> case (evaluateA lhs, evaluateA rhs) of
                                     (Right x, Right y) -> if x == y then [] else pure it
                                     _ -> pure it
-                                PresburgerConstraint rep freeOf
-                                    -- Drop a retained presburger constraint that carries no information:
-                                    -- it is valid, or it has no escaping (named) variable and was already
-                                    -- discharged as satisfiable during proof search.
-                                    | presburgerValid rep freeOf -> []
-                                    | not (any hasNamedFreeVar (Map.elems freeOf)) && presburgerStoreSat ([], []) ([], [(rep, freeOf)]) -> []
+                                PresburgerConstraint _ _ _
+                                    | guardedUniversallyValid it -> []
                                     | otherwise -> pure it
                                 it -> pure it
-                        hasNamedFreeVar :: TermNode -> Bool
-                        hasNamedFreeVar t = any isNamedLVar (Set.toList (getLVars t))
-                        isNamedLVar :: LogicVar -> Bool
-                        isNamedLVar (LV_Named _) = True
-                        isNamedLVar _ = False
+                        groundDropped :: [Constraint]
+                        groundDropped = do
+                            it <- universallyDropped
+                            case it of
+                                PresburgerConstraint _ _ _
+                                    | guardedPresburgerRedundant it -> []
+                                    | otherwise -> pure it
+                                _ -> pure it
+                        guardedUniversallyValid :: Constraint -> Bool
+                        guardedUniversallyValid constraint = case guardedConstraintStore (_TotalVarBinding ctx) constraint of
+                            Nothing -> False
+                            Just guarded -> presburgerGuardedValid [guarded]
+                        guardedPresburgerRedundant :: Constraint -> Bool
+                        guardedPresburgerRedundant constraint = case guardedConstraintStore (_TotalVarBinding ctx) constraint of
+                            Nothing -> False
+                            Just guarded@(premises, obligations) -> guardedUniversallyValid constraint
+                                || (not (any hasAnswerRelevantFreeVar (arithStoreTerms premises ++ arithStoreTerms obligations))
+                                    && presburgerGuardedStoreSat [guarded])
+                        -- A generated variable can still be part of the visible
+                        -- answer when a named query variable reaches it through
+                        -- substitutions or another residual.  In that case
+                        -- existential satisfiability is not enough to discard a
+                        -- Presburger residual: doing so would turn, for example,
+                        -- @X > Y, Y = 5@ into the weaker @X > Y@.
+                        hasAnswerRelevantFreeVar :: TermNode -> Bool
+                        hasAnswerRelevantFreeVar t = any isAnswerRelevant (Set.toList (getLVars t))
+                        isAnswerRelevant :: LogicVar -> Bool
+                        isAnswerRelevant lv = lv `Set.member` answerRelevantVars
                         entailmentDropped :: [Constraint]
                         entailmentDropped = go [] groundDropped where
                             go kept [] = reverse kept
                             go kept (c : rest) = case c of
-                                ArithmeticConstraint t
-                                    | arithEntails (otherArith kept rest) t -> go kept rest
+                                ArithmeticConstraint premises t
+                                    | nullArithStore premises
+                                    , arithEntails (otherArith kept rest) t -> go kept rest
                                 _ -> go (c : kept) rest
                             otherArith :: [Constraint] -> [Constraint] -> [TermNode]
                             otherArith kept rest =
-                                [ t | ArithmeticConstraint t <- kept ++ rest ]
+                                [ t | ArithmeticConstraint premises t <- kept ++ rest, nullArithStore premises ]
                         prunedConstraints :: [Constraint]
                         prunedConstraints = List.sortOn (\c -> shows c "") entailmentDropped
                         theAnswerSubst :: [(LargeId, TermNode)]
@@ -467,23 +584,27 @@ runREPL mode program notationDB expansionDB
                         hasGroundContradiction :: Bool
                         hasGroundContradiction = any contradicts (_LeftConstraints final_ctx)
                         contradicts :: Constraint -> Bool
-                        contradicts (ArithmeticConstraint b)
-                            = case evaluateB b of
-                                Right False -> True
-                                Left "ill" -> True
-                                _ -> False
+                        contradicts constraint@(ArithmeticConstraint _ _)
+                            = maybe False (not . presburgerGuardedStoreSat . pure) (guardedConstraintStore (_TotalVarBinding ctx) constraint)
                         contradicts (EvalutionConstraint lhs rhs)
                             = case (evaluateA lhs, evaluateA rhs) of
                                 (Right x, Right y) -> x /= y
                                 (Left "ill", _) -> True
                                 (_, Left "ill") -> True
                                 _ -> False
-                        contradicts (PresburgerConstraint rep freeOf) = not (presburgerStoreSat ([], []) ([], [(rep, freeOf)]))
+                        contradicts constraint@(PresburgerConstraint _ _ _)
+                            = maybe False (not . presburgerGuardedStoreSat . pure) (guardedConstraintStore (_TotalVarBinding ctx) constraint)
                         contradicts _ = False
                         askToRunMore :: IO RunMore
                         askToRunMore = do
                             str <- promptify "Find more solutions? [Y/n] "
-                            if List.null str then askToRunMore else return (isYES str)
+                            if List.null str then
+                                askToRunMore
+                            else if str == ":reload" then do
+                                _ <- promptify (diagnosticNoLocWith mode "HolBETA-REPLError" [Z.Doc.text "`:reload' is not available inside `:debug' mode or while a query is searching for answers."])
+                                askToRunMore
+                            else
+                                return (isYES str)
                         printDisagreements :: IO ()
                         printDisagreements = do
                             cache <- readIORef nameCache
@@ -498,23 +619,6 @@ runREPL mode program notationDB expansionDB
                                 [ promptify (myTabs ++ pp (mkLVar v) (" := " ++ pp t "."))
                                 | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding final_ctx))
                                 ]
-                        evalokay :: Bool
-                        evalokay = and
-                            [ case (evaluateA lhs, evaluateA rhs) of
-                                (Right x, Right y) -> x == y
-                                _ -> False 
-                            | EvalutionConstraint lhs rhs <- _LeftConstraints final_ctx
-                            ]
-                        arithokay :: Bool
-                        arithokay = and
-                            [ case evaluateB b of
-                                Right b -> b
-                                _ -> False
-                            | ArithmeticConstraint b <- _LeftConstraints final_ctx
-                            ]
-                        consistent :: Bool
-                        consistent = evalokay && arithokay
-
 theInitialKindDecls :: KindEnv
 theInitialKindDecls = Map.fromList
     [ (TC_Arrow, read "* -> * -> *")

@@ -4,14 +4,13 @@ ppap =<<
 ppap >>= exec (Hol.main "test")
 Hol =<< 
 Hol> Compiling test.notation.typing_error_fold ( test/notation/typing_error_fold.hol, interpreted )
-/home/lim/portfolio/ppap/test/notation/typing_error_fold.hol:10:3-10:3: error: [HolBETA-TypeError]
+<PROJECT_ROOT>/test/notation/typing_error_fold.hol:10:3-10:3: error: [HolBETA-TypeError]
     |     
  10 | p 7.
     |   ^ 
-Couldn't match expected type `nat -> o'
-            with actual type `pp -> o'
-Relevant equation: `pp' ~ `nat'
-Reason: the two types are not unifiable.
+Function argument has the wrong type.
+Expected: `pp'
+Actual:   `nat'
 
 Hol =<< 
 Hol >>= quit

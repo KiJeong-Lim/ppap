@@ -1,4 +1,4 @@
-% Section 2.4 (C5): two imports must not declare the same operator with
+% Section 5.5 (C5): two imports must not declare the same operator with
 % different fixity or precedence.  The second import raises a
 % `module-error` attributed to its own line.
 import test.module.inc_fixity_a.

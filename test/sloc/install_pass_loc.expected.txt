@@ -4,6 +4,11 @@ ppap =<<
 ppap >>= exec (Hol.main "test")
 Hol =<< 
 Hol> Compiling test.sloc.install_pass_loc ( test/sloc/install_pass_loc.hol, interpreted )
-presburger[(8,13)]: expected ")", got: "= 1"
+<PROJECT_ROOT>/test/sloc/install_pass_loc.hol:8:24-8:31: error: [HolBETA-PresburgerError]
+   |                                 
+ 8 | checkBad :- presburger "(X = 1".
+   |                        ^^^^^^^^ 
+expected ")", got: "= 1"
+
 Hol =<< 
 Hol >>= quit

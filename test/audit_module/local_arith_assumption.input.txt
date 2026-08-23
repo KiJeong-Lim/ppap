@@ -1,0 +1,29 @@
+Hol --test
+test/audit_module/local_arith_assumption.hol
+?- audit_local_cmp.
+?- audit_local_pres.
+?- pi C\ (C > 3 => C < 2).
+?- pi C\ (C > 3 => C > 2).
+?- ((pi C\ C > 3) => presburger "5 > 100").
+?- ((pi C\ presburger "C > 3") => presburger "5 > 100").
+?- ((pi C\ C >= 0) => presburger "5 > 100").
+?- ((pi C\ presburger "C >= 0") => presburger "5 > 100").
+?- (X > 3 => Y > 2).
+n
+?- (X > 1 => (Y > 2 => Z > 3)).
+n
+?- (X > 3 => Y > 2), X = 0, Y = 0.
+n
+?- ((1 = 2) => (1 = 2)).
+?- ((1 + 0 = 2) => (1 + 0 = 2)).
+?- (X = 3 => X > 2).
+?- 1 = 2.
+?- ((1 = 1) => (1 = 1)), X = 0.
+y
+?- (('a' = 'a') => ('a' = 'a')), X = 0.
+y
+?- ((0 + 1 = 1 + 0) => X + 1 = 1 + X), Y = 0.
+y
+?- ((0 = 1) => X = 3), Y = 0.
+n
+:q

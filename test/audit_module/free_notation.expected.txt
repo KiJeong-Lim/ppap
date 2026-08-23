@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.free_notation ( test/audit_module/free_notation.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/free_notation.hol:1:25-1:25: error: [HolBETA-DesugarError]
+   |                           
+ 1 | notation audit_bad X := Y.
+   |                         ^ 
+The notation right-hand side has undeclared free variable `Y'.
+
+Hol =<< 
+Hol >>= quit

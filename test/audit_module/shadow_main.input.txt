@@ -1,0 +1,5 @@
+Hol --test
+test/audit_module/shadow_main.hol
+?- audit_string X.
+n
+:q

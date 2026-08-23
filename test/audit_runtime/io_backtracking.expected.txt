@@ -1,0 +1,33 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.io_backtracking ( test/audit_runtime/io_backtracking.hol, interpreted )
+test.audit_runtime.io_backtracking> Ok, one module loaded.
+test.audit_runtime.io_backtracking> 
+test.audit_runtime.io_backtracking> 1
+test.audit_runtime.io_backtracking> The answer substitution is:
+test.audit_runtime.io_backtracking> X := 1.
+test.audit_runtime.io_backtracking> Find more solutions? [Y/n] 
+test.audit_runtime.io_backtracking> 2
+test.audit_runtime.io_backtracking> The answer substitution is:
+test.audit_runtime.io_backtracking> X := 2.
+test.audit_runtime.io_backtracking> Find more solutions? [Y/n] 
+test.audit_runtime.io_backtracking> yes.
+test.audit_runtime.io_backtracking> 
+test.audit_runtime.io_backtracking> read> 
+test.audit_runtime.io_backtracking> The answer substitution is:
+test.audit_runtime.io_backtracking> X := 1.
+test.audit_runtime.io_backtracking> Find more solutions? [Y/n] 
+test.audit_runtime.io_backtracking> read> 
+test.audit_runtime.io_backtracking> The answer substitution is:
+test.audit_runtime.io_backtracking> X := 2.
+test.audit_runtime.io_backtracking> Find more solutions? [Y/n] 
+test.audit_runtime.io_backtracking> yes.
+test.audit_runtime.io_backtracking> 
+test.audit_runtime.io_backtracking> read> 
+test.audit_runtime.io_backtracking> 21
+test.audit_runtime.io_backtracking> yes.
+test.audit_runtime.io_backtracking> 
+Hol >>= quit

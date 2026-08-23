@@ -1,0 +1,35 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.cut.activation ( test/cut/activation.hol, interpreted )
+test.cut.activation> Ok, one module loaded.
+test.cut.activation> 
+test.cut.activation> no.
+test.cut.activation> 
+test.cut.activation> The answer substitution is:
+test.cut.activation> X := 1.
+test.cut.activation> Find more solutions? [Y/n] 
+test.cut.activation> no.
+test.cut.activation> 
+test.cut.activation> The answer substitution is:
+test.cut.activation> X := 1.
+test.cut.activation> Find more solutions? [Y/n] 
+test.cut.activation> The answer substitution is:
+test.cut.activation> X := 2.
+test.cut.activation> Find more solutions? [Y/n] 
+test.cut.activation> no.
+test.cut.activation> 
+test.cut.activation> The answer substitution is:
+test.cut.activation> X := 2.
+test.cut.activation> Find more solutions? [Y/n] 
+test.cut.activation> no.
+test.cut.activation> 
+test.cut.activation> no.
+test.cut.activation> 
+test.cut.activation> yes.
+test.cut.activation> 
+test.cut.activation> no.
+test.cut.activation> 
+Hol >>= quit

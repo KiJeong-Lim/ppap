@@ -1,0 +1,10 @@
+kind audit_shadow_obj type.
+type audit_shadow_nat (nat -> audit_shadow_obj).
+type audit_shadow_char (char -> audit_shadow_obj).
+type audit_x audit_shadow_obj.
+type audit_accept_obj (audit_shadow_obj -> o).
+
+abbrev audit_diamond_type := list nat.
+notation audit_diamond_term X := audit_shadow_nat X.
+
+audit_accept_obj audit_x.

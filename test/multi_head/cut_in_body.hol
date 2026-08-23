@@ -1,4 +1,4 @@
-% Section 1.4 / 2.5: cut inside the shared body is local to *each*
+% Sections 2.2, 3.3, and 3.4: cut inside the shared body is local to *each*
 % cloned clause.  Both `p` and `q` commit to the first matching `r`
 % via their own cut barrier; backtracking inside one clone does not
 % leak into the other.  Each query therefore returns exactly one
@@ -6,6 +6,15 @@
 type p (nat -> o).
 type q (nat -> o).
 type r (nat -> o).
+type same (nat -> o).
 r 1.
 r 2.
 p X & q X :- r X, !.
+
+% Same-predicate siblings share one predicate activation.  The cut reached
+% through `same 1` therefore commits past the `same 2` sibling.
+same 1 & same 2 :- !.
+
+% Different-predicate siblings do not share an activation.  After `p` cuts and
+% the caller branch deliberately fails, the caller disjunction and the `q`
+% sibling must remain reachable in the same search.

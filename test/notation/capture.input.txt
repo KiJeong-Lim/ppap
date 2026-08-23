@@ -1,7 +1,6 @@
 Hol --test
 test/notation/capture.hol
 ?- p (W\ cnst 8).
-
-n
+?- p2 (W\ 9).
+?- p3 (Z\ pair_nat 7 Z).
 :q
-

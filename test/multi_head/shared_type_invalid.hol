@@ -1,0 +1,4 @@
+% H4 negative case: one multi-head clause has one shared type for X.
+type nat_head (nat -> o).
+type char_head (char -> o).
+nat_head X & char_head X.

@@ -26,7 +26,7 @@ test.debug.show>
 --------------------------------
 
 test.debug.show> Press the enter key to go to next state: 
-test.debug.show> *** :show: ?X = unknown variable '?X'
+test.debug.show> *** :show: ?X = unbound
 --------------------------------
 * The top of the current stack is:
     + progressings = []
@@ -45,7 +45,7 @@ test.debug.show> *** :show: ?X = unknown variable '?X'
 --------------------------------
 
 test.debug.show> Press the enter key to go to next state: 
-test.debug.show> *** :show: ?X = unknown variable '?X'
+test.debug.show> *** :show: ?X = 3
 test.debug.show> The answer substitution is:
 test.debug.show> X := 3.
 test.debug.show> Find more solutions? [Y/n] 

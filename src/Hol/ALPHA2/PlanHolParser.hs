@@ -236,6 +236,7 @@ runHolParser = fmap (getEither getQuery (getSequence getDecl)) . runLALR1 theLAL
     toTerminal (T_nat_lit loc contents) = 35
     toTerminal (T_chr_lit loc contents) = 36
     toTerminal (T_str_lit loc contents) = 37
+    toTerminal _ = -1
     runLALR1 :: LR1Parser -> [Token] -> Either (Maybe (Token)) ParsingTree
     runLALR1 (LR1Parser getInitS getActionT getReduceT) = go where
         loop inputs = do

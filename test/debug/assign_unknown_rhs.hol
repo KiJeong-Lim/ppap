@@ -1,0 +1,4 @@
+module test.debug.assign_unknown_rhs.
+
+type p (nat -> o).
+p 1.

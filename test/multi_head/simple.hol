@@ -1,6 +1,22 @@
-% Section 1.4 / 2.5: multi-head clause `foo X & bar X :- ...` desugars
+% Sections 2.2 and 3.3: multi-head clause `foo X & bar X :- ...` desugars
 % to two independent clauses sharing the body.  Querying `foo 3` and
 % `bar 3` both succeed via the cloned body.
 type foo (nat -> o).
 type bar (nat -> o).
 foo X & bar X :- X = 3.
+
+% H1: comma and ampersand are the same conjunction in conclusions and goals.
+type baz (nat -> o).
+type qux (nat -> o).
+baz X, qux X :- X = 5.
+
+% H3: the two indexed clauses do not share one runtime instantiation of X.
+type independent_left (nat -> o).
+type independent_right (nat -> o).
+independent_left X & independent_right X.
+
+% H3 also covers constraints: each installed head gets its own clone of X,
+% so the conjunction retains two independent residual comparisons.
+type constrained_left (nat -> o).
+type constrained_right (nat -> o).
+constrained_left X & constrained_right X :- X > 0.

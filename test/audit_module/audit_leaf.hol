@@ -1,0 +1,9 @@
+module test.audit_module.audit_leaf.
+
+type audit_order (nat -> o).
+kind audit_obj type.
+type audit_cnst (nat -> audit_obj).
+type audit_pair (nat -> nat -> audit_obj).
+notation audit_bottom X := audit_cnst X.
+
+audit_order 1.

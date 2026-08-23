@@ -1,0 +1,9 @@
+% Focused runtime/HOPU regressions found by the src/Hol audit.
+kind i type.
+type h ((i -> i) -> i -> i).
+
+type p (nat -> o).
+type q o.
+p 6.
+p 5.
+q.

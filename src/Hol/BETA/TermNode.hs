@@ -41,7 +41,55 @@ newtype LamType
 data SuspItem
     = Dummy {-# UNPACK #-} !Int
     | Binds TermNode {-# UNPACK #-} !Int
-    deriving (Eq, Ord)
+    deriving ()
+
+-- Force the semantic-domain invariant at API boundaries which inspect a
+-- complete term.  The raw constructor remains available for internal tests,
+-- so consumers must not reinterpret a forged negative index as an ordinary
+-- term or a recoverable failure.
+assertNonnegativeIndices :: TermNode -> ()
+assertNonnegativeIndices term = case term of
+    LVar _ -> ()
+    NCon _ _ -> ()
+    NIdx i
+        | i >= 0 -> ()
+        | otherwise -> undefined
+    NApp t1 t2 _ -> assertNonnegativeIndices t1 `seq` assertNonnegativeIndices t2
+    NLam _ _ body _ -> assertNonnegativeIndices body
+    Susp body _ _ env -> assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv env
+    NPresburgerCheck _ freeOf _ -> assertNonnegativeTerms (Map.elems freeOf)
+
+assertNonnegativeTerms :: [TermNode] -> ()
+assertNonnegativeTerms [] = ()
+assertNonnegativeTerms (term : rest) = assertNonnegativeIndices term `seq` assertNonnegativeTerms rest
+
+assertNonnegativeSuspEnv :: SuspEnv -> ()
+assertNonnegativeSuspEnv [] = ()
+assertNonnegativeSuspEnv (Dummy _ : rest) = assertNonnegativeSuspEnv rest
+assertNonnegativeSuspEnv (Binds body _ : rest) = assertNonnegativeIndices body `seq` assertNonnegativeSuspEnv rest
+
+assertNonnegativeSuspItem :: SuspItem -> ()
+assertNonnegativeSuspItem (Dummy _) = ()
+assertNonnegativeSuspItem (Binds body _) = assertNonnegativeIndices body
+
+instance Eq SuspItem where
+    lhs == rhs
+        = assertNonnegativeSuspItem lhs `seq`
+          assertNonnegativeSuspItem rhs `seq`
+          case (lhs, rhs) of
+            (Dummy l1, Dummy l2) -> l1 == l2
+            (Binds t1 l1, Binds t2 l2) -> t1 == t2 && l1 == l2
+            _ -> False
+
+instance Ord SuspItem where
+    compare lhs rhs
+        = assertNonnegativeSuspItem lhs `seq`
+          assertNonnegativeSuspItem rhs `seq`
+          case (lhs, rhs) of
+            (Dummy l1, Dummy l2) -> compare l1 l2
+            (Dummy _, Binds _ _) -> LT
+            (Binds _ _, Dummy _) -> GT
+            (Binds t1 l1, Binds t2 l2) -> compare t1 t2 <> compare l1 l2
 
 data ReduceOption
     = WHNF
@@ -79,21 +127,32 @@ instance Ord LamType where
     compare _ _ = EQ
 
 instance Eq TermNode where
-    LVar v1 == LVar v2 = v1 == v2
-    NCon c1 _ == NCon c2 _ = c1 == c2
-    NIdx i == NIdx j = i == j
-    NApp a1 b1 _ == NApp a2 b2 _ = a1 == a2 && b1 == b2
-    NLam _ _ b1 _ == NLam _ _ b2 _ = b1 == b2
-    Susp b1 ol1 nl1 e1 == Susp b2 ol2 nl2 e2 = b1 == b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
-    NPresburgerCheck f1 m1 _ == NPresburgerCheck f2 m2 _ = f1 == f2 && m1 == m2
-    _ == _ = False
+    lhs == rhs
+        = assertNonnegativeIndices lhs `seq`
+          assertNonnegativeIndices rhs `seq`
+          eqTerm lhs rhs
+      where
+        eqTerm (LVar v1) (LVar v2) = v1 == v2
+        eqTerm (NCon c1 _) (NCon c2 _) = c1 == c2
+        eqTerm (NIdx i) (NIdx j) = i == j
+        eqTerm (NApp a1 b1 _) (NApp a2 b2 _) = eqTerm a1 a2 && eqTerm b1 b2
+        eqTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = eqTerm b1 b2
+        eqTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) = eqTerm b1 b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
+        eqTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) = f1 == f2 && m1 == m2
+        eqTerm _ _ = False
 
 instance Ord TermNode where
-    compare = cmpTerm where
+    compare lhs rhs
+        = assertNonnegativeIndices lhs `seq`
+          assertNonnegativeIndices rhs `seq`
+          cmpTerm lhs rhs
+      where
         ctorIdx :: TermNode -> Int
         ctorIdx (LVar _) = 0
         ctorIdx (NCon _ _) = 1
-        ctorIdx (NIdx _) = 2
+        ctorIdx (NIdx i)
+            | i >= 0 = 2
+            | otherwise = undefined
         ctorIdx (NApp _ _ _) = 3
         ctorIdx (NLam _ _ _ _) = 4
         ctorIdx (Susp {}) = 5
@@ -101,11 +160,13 @@ instance Ord TermNode where
         cmpTerm :: TermNode -> TermNode -> Ordering
         cmpTerm (LVar v1) (LVar v2) = compare v1 v2
         cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
-        cmpTerm (NIdx i) (NIdx j) = compare i j
-        cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = compare a1 a2 <> compare b1 b2
-        cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = compare b1 b2
+        cmpTerm (NIdx i) (NIdx j)
+            | i < 0 || j < 0 = undefined
+            | otherwise = compare i j
+        cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = cmpTerm a1 a2 <> cmpTerm b1 b2
+        cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = cmpTerm b1 b2
         cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
-            compare b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
+            cmpTerm b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
         cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
             compare f1 f2 <> compare m1 m2
         cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
@@ -119,6 +180,19 @@ instance Outputable ViewNode where
         parenthesize prec' delta
             | prec > prec' = strstr "(" . delta . strstr ")"
             | otherwise = delta
+        sameLevelOperand :: (Fixity ViewNode -> Bool) -> Precedence -> ViewNode -> String -> String
+        sameLevelOperand compatible prec' viewer = case viewer of
+            ViewOper (oper', viewer_prec)
+                | viewer_prec == prec'
+                , not (compatible oper')
+                -> strstr "(" . pprint 0 viewer . strstr ")"
+            _ -> pprint prec' viewer
+        isInfixL :: Fixity ViewNode -> Bool
+        isInfixL (InfixL _ _ _) = True
+        isInfixL _ = False
+        isInfixR :: Fixity ViewNode -> Bool
+        isInfixR (InfixR _ _ _) = True
+        isInfixR _ = False
         go :: ViewNode -> String -> String
         go (ViewIVar var) = strstr var
         go (ViewLVar var) = strstr var
@@ -130,13 +204,13 @@ instance Outputable ViewNode where
         go (ViewTApp viewer1 viewer2) = parenthesize appViewPrec (pprint appViewPrec viewer1 . strstr " " . pprint (appViewPrec + 1) viewer2)
         go (ViewOper (oper, prec')) = case oper of
             Prefix str viewer1 -> parenthesize prec' (strstr str . pprint prec' viewer1)
-            InfixL viewer1 str viewer2 -> parenthesize prec' (pprint prec' viewer1 . strstr str . pprint (prec' + 1) viewer2)
-            InfixR viewer1 str viewer2 -> parenthesize prec' (pprint (prec' + 1) viewer1 . strstr str . pprint prec' viewer2)
+            InfixL viewer1 str viewer2 -> parenthesize prec' (sameLevelOperand isInfixL prec' viewer1 . strstr str . pprint (prec' + 1) viewer2)
+            InfixR viewer1 str viewer2 -> parenthesize prec' (pprint (prec' + 1) viewer1 . strstr str . sameLevelOperand isInfixR prec' viewer2)
             InfixN viewer1 str viewer2 -> parenthesize prec' (pprint (prec' + 1) viewer1 . strstr str . pprint (prec' + 1) viewer2)
         go (ViewChrL chr) = showsPrec 0 chr
         go (ViewStrL str) = showsPrec 0 str
         go (ViewNatL nat) = showsPrec 0 nat
-        go (ViewList viewers) = strstr "[" . ppunc ", " (map (pprint 5) viewers) . strstr "]"
+        go (ViewList viewers) = strstr "[" . ppunc ", " (map (pprint 6) viewers) . strstr "]"
 
 instance Show LogicVar where
     showsPrec prec (LV_ty_var uni) = strstr "?TV_" . showsPrec prec (unUnique uni)
@@ -164,7 +238,9 @@ mkNConLoc sl x = NCon (makeConstant x) sl
 
 {-# INLINE mkNIdx #-}
 mkNIdx :: DeBruijn -> TermNode
-mkNIdx i = NIdx i
+mkNIdx i
+    | i >= 0 = NIdx i
+    | otherwise = undefined
 
 {-# INLINABLE mkNApp #-}
 mkNApp :: TermNode -> TermNode -> TermNode
@@ -215,7 +291,7 @@ mkBinds :: TermNode -> Int -> SuspItem
 mkBinds t l = Binds t l
 
 substTyMTV :: MetaTVar -> Unique -> TermNode -> TermNode
-substTyMTV mtv uni = go where
+substTyMTV mtv uni term = assertNonnegativeIndices term `seq` go term where
     refTy :: MonoType Int
     refTy = TyCon (TCon (TC_Unique uni) Star)
     go :: TermNode -> TermNode
@@ -235,56 +311,66 @@ substTyMTV mtv uni = go where
     goMono t = t
 
 rewriteWithSusp :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
-rewriteWithSusp t ol nl env option = dispatch t where
+rewriteWithSusp t ol nl env option
+    = assertNonnegativeIndices t `seq`
+        assertNonnegativeSuspEnv env `seq`
+        rewriteWithSuspUnchecked t ol nl env option
+
+rewriteWithSuspUnchecked :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
+rewriteWithSuspUnchecked t ol nl env option = dispatch t where
     dispatch :: TermNode -> TermNode
     dispatch (LVar {})
         = t
     dispatch (NIdx i)
+        | i < 0 = undefined
         | i >= ol = if ol == nl then t else mkNIdx (i - ol + nl)
-        | i >= 0 = case env !! i of
-            Dummy l -> mkNIdx (nl - l)
-            Binds t' l -> rewriteWithSusp t' 0 (nl - l) [] option
-        | otherwise = error "***normalizeWithSuspEnv: A negative De-Bruijn index given..."
+        | i >= 0 = case drop i env of
+            Dummy l : _ -> mkNIdx (nl - l)
+            Binds t' l : _ -> rewriteWithSuspUnchecked t' 0 (nl - l) [] option
+            [] -> undefined
+        | otherwise = undefined
     dispatch (NCon {})
         = t
     dispatch (NApp t1 t2 sl)
         | NLam _ _ t11 _ <- t1' = beta t11
         | option == WHNF = mkNAppLoc sl t1' (mkSusp t2 ol nl env)
-        | option == HNF = mkNAppLoc sl (rewriteWithSusp t1' 0 0 [] option) (mkSusp t2 ol nl env)
-        | option == NF = mkNAppLoc sl (rewriteWithSusp t1' 0 0 [] option) (rewriteWithSusp t2 ol nl env option)
+        | option == HNF = mkNAppLoc sl (rewriteWithSuspUnchecked t1' 0 0 [] option) (mkSusp t2 ol nl env)
+        | option == NF = mkNAppLoc sl (rewriteWithSuspUnchecked t1' 0 0 [] option) (rewriteWithSuspUnchecked t2 ol nl env option)
         where
             t1' :: TermNode
-            t1' = rewriteWithSusp t1 ol nl env WHNF
+            t1' = rewriteWithSuspUnchecked t1 ol nl env WHNF
             beta :: TermNode -> TermNode
             beta (Susp t' ol' nl' (Dummy l' : env'))
-                | nl' == l' = rewriteWithSusp t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
-            beta t' = rewriteWithSusp t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
+                | nl' == l' = rewriteWithSuspUnchecked t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
+            beta t' = rewriteWithSuspUnchecked t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
     dispatch (NLam h ty t1 sl)
         | option == WHNF = mkNLamLoc sl h ty (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
-        | otherwise = mkNLamLoc sl h ty (rewriteWithSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
+        | otherwise = mkNLamLoc sl h ty (rewriteWithSuspUnchecked t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
     dispatch (Susp t' ol' nl' env')
-        | ol' == 0 && nl' == 0 = rewriteWithSusp t' ol nl env option
-        | ol == 0 = rewriteWithSusp t' ol' (nl + nl') env' option
-        | otherwise = rewriteWithSusp (rewriteWithSusp t' ol' nl' env' WHNF) ol nl env option
+        | ol' == 0 && nl' == 0 = rewriteWithSuspUnchecked t' ol nl env option
+        | ol == 0 = rewriteWithSuspUnchecked t' ol' (nl + nl') env' option
+        | otherwise = rewriteWithSuspUnchecked (rewriteWithSuspUnchecked t' ol' nl' env' WHNF) ol nl env option
     dispatch (NPresburgerCheck rep freeOf sl)
-        = NPresburgerCheck rep (Map.map (\t' -> rewriteWithSusp t' ol nl env option) freeOf) sl
+        = NPresburgerCheck rep (Map.map (\t' -> rewriteWithSuspUnchecked t' ol nl env option) freeOf) sl
 
 {-# INLINE rewrite #-}
 rewrite :: ReduceOption -> TermNode -> TermNode
-rewrite option t = case t of
+rewrite option t = assertNonnegativeIndices t `seq` case t of
     LVar {} -> t
     NCon {} -> t
-    NIdx {} -> t
+    NIdx i
+        | i >= 0 -> t
+        | otherwise -> undefined
     NPresburgerCheck rep freeOf sl -> NPresburgerCheck rep (Map.map (rewrite option) freeOf) sl
-    _ -> rewriteWithSusp t 0 0 [] option
+    _ -> rewriteWithSuspUnchecked t 0 0 [] option
 
 unfoldlNApp :: TermNode -> (TermNode, [TermNode])
-unfoldlNApp = flip go [] where
+unfoldlNApp term = assertNonnegativeIndices term `seq` go term [] where
     go :: TermNode -> [TermNode] -> (TermNode, [TermNode])
-    go (NCon (DC (DC_NatL n)) _) ts
+    go t@(NCon (DC (DC_NatL n)) _) ts
         | n == 0 = (mkNCon (DC_NatL 0), ts)
         | n > 0 = n' `seq` (mkNCon DC_Succ, mkNCon (DC_NatL n') : ts)
-        | otherwise = error "`unfoldlNApp\': negative integer"
+        | otherwise = (t, ts)
         where
             n' = n - 1
     go (NApp t1 t2 _) ts
@@ -324,13 +410,13 @@ freshenName h live
             cand = base ++ show i
 
 viewNestedNLam :: TermNode -> (Int, TermNode)
-viewNestedNLam = go 0 where
+viewNestedNLam term = assertNonnegativeIndices term `seq` go 0 term where
     go :: Int -> TermNode -> (Int, TermNode)
     go n (NLam _ _ t _) = go (n + 1) t
     go n t = (n, t)
 
 viewNestedNLamH :: TermNode -> ([Maybe SmallId], TermNode)
-viewNestedNLamH = go [] where
+viewNestedNLamH term = assertNonnegativeIndices term `seq` go [] term where
     go :: [Maybe SmallId] -> TermNode -> ([Maybe SmallId], TermNode)
     go hs (NLam h _ t _) = go (h : hs) t
     go hs t = (reverse hs, t)
@@ -364,7 +450,75 @@ defaultCheckOper "/" = Just (InfixL () " / " (), 7)
 defaultCheckOper _ = Nothing
 
 constructViewerCustom :: (String -> Maybe (Fixity (), Precedence)) -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
-constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runStateT . formatView . eraseType) . runIdentity . flip runStateT 1 . makeView [] . rewrite NF where
+constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT (formatView rendered_names (eraseType raw_view)) next_fresh where
+    normalized :: TermNode
+    normalized = rewrite NF term
+    raw_view :: ViewNode
+    next_fresh :: Int
+    (raw_view, next_fresh) = runIdentity (runStateT (makeView [] normalized) 1)
+    free_names :: Set.Set SmallId
+    free_names = collectFreeNames normalized
+    rendered_names :: Set.Set SmallId
+    rendered_names = collectViewNames raw_view
+    displayLogicName :: LogicVar -> SmallId
+    displayLogicName var = case lookupName var of
+        Just cached -> cached
+        Nothing -> case var of
+            LV_ty_var v -> "?TV_" ++ show v
+            LV_Unique v (DispHint mhint) -> case mhint of
+                Just hint -> hint
+                Nothing -> "?V_" ++ show v
+            LV_Named name -> name
+    collectFreeNames :: TermNode -> Set.Set SmallId
+    collectFreeNames (LVar var) = case var of
+        LV_ty_var _ -> Set.empty
+        _ -> Set.singleton (displayLogicName var)
+    collectFreeNames (NCon con _) = case con of
+        DC (DC_Named name) -> Set.singleton name
+        DC (DC_Unique uni (DispHint mhint)) -> Set.singleton (case mhint of
+            Just hint -> hint
+            Nothing -> "c_" ++ show uni)
+        _ -> Set.empty
+    collectFreeNames (NIdx i)
+        | i >= 0 = Set.empty
+        | otherwise = undefined
+    collectFreeNames (NApp t1 t2 _) = Set.union (collectFreeNames t1) (collectFreeNames t2)
+    collectFreeNames (NLam _ _ t _) = collectFreeNames t
+    collectFreeNames (Susp body _ _ env) = Set.unions (collectFreeNames body : map collectItemNames env) where
+        collectItemNames (Dummy _) = Set.empty
+        collectItemNames (Binds t _) = collectFreeNames t
+    collectFreeNames (NPresburgerCheck _ freeOf _) = Set.unions (map collectFreeNames (Map.elems freeOf))
+    collectViewNames :: ViewNode -> Set.Set SmallId
+    collectViewNames viewer = case viewer of
+        ViewIVar var -> Set.singleton var
+        ViewLVar var -> Set.singleton var
+        ViewDCon ('_' : '_' : con) -> Set.singleton con
+        ViewDCon con -> Set.singleton con
+        ViewIApp t1 t2 -> Set.union (collectViewNames t1) (collectViewNames t2)
+        ViewIAbs var t -> Set.insert var (collectViewNames t)
+        ViewTVar var -> Set.singleton var
+        ViewTCon ('_' : '_' : con) -> Set.singleton con
+        ViewTCon con -> Set.singleton con
+        ViewTApp t1 t2 -> Set.union (collectViewNames t1) (collectViewNames t2)
+        ViewOper (oper, _) -> case oper of
+            Prefix _ t -> collectViewNames t
+            InfixL t1 _ t2 -> Set.union (collectViewNames t1) (collectViewNames t2)
+            InfixR t1 _ t2 -> Set.union (collectViewNames t1) (collectViewNames t2)
+            InfixN t1 _ t2 -> Set.union (collectViewNames t1) (collectViewNames t2)
+        ViewNatL _ -> Set.empty
+        ViewChrL _ -> Set.empty
+        ViewStrL _ -> Set.empty
+        ViewList ts -> Set.unions (map collectViewNames ts)
+    freshGeneratedName :: Set.Set SmallId -> StateT Int Identity SmallId
+    freshGeneratedName forbidden = do
+        candidate0 <- get
+        let name candidate = "W_" ++ show candidate
+            pick candidate
+                | Set.member (name candidate) forbidden = pick (candidate + 1)
+                | otherwise = candidate
+            candidate = pick candidate0
+        put (candidate + 1)
+        return (name candidate)
     isType :: ViewNode -> Bool
     isType (ViewTVar _) = True
     isType (ViewTCon _) = True
@@ -373,14 +527,8 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
     makeView :: [SmallId] -> TermNode -> StateT Int Identity ViewNode
     makeView vars (LVar var) = case var of
         LV_ty_var v -> return (ViewTVar ("?TV_" ++ show v))
-        LV_Unique v (DispHint mhint) -> return (ViewLVar (case lookupName var of
-            Just cached -> cached
-            Nothing -> case mhint of
-                Just s -> s
-                Nothing -> "?V_" ++ show v))
-        LV_Named v -> return (ViewLVar (case lookupName var of
-            Just cached -> cached
-            Nothing -> v))
+        LV_Unique {} -> return (ViewLVar (displayLogicName var))
+        LV_Named {} -> return (ViewLVar (displayLogicName var))
     makeView vars (NCon con _) = case con of
         DC data_constructor -> case data_constructor of
             DC_LO logical_operator -> return (ViewDCon (show logical_operator))
@@ -405,7 +553,10 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
             TC_Arrow -> return (ViewTCon "->")
             TC_Unique uni -> return (ViewTCon ("tc_" ++ show uni))
             TC_Named name -> return (ViewTCon ("__" ++ name))
-    makeView vars (NIdx idx) = return (ViewIVar (vars !! idx))
+    makeView vars (NIdx idx)
+        | idx < 0 = undefined
+        | var : _ <- drop idx vars = return (ViewIVar var)
+        | otherwise = undefined
     makeView vars (NApp t1 t2 _) = do
         t1_rep <- makeView vars t1
         t2_rep <- makeView vars t2
@@ -416,7 +567,7 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
         let preferred = case mhint of
                 Just s -> s
                 Nothing -> "W_" ++ show counter
-            chosen = freshenName preferred vars
+            chosen = freshenName preferred (vars ++ Set.toList free_names)
         t_rep <- makeView (chosen : vars) t
         return (ViewIAbs chosen t_rep)
     makeView vars (NPresburgerCheck rep freeOf _) = do
@@ -510,7 +661,7 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
             renderFreeTerm :: [SmallId] -> TermNode -> StateT Int Identity SmallId
             renderFreeTerm boundVars t = do
                 v <- makeView boundVars (rewrite NF t)
-                v' <- formatView (eraseType v)
+                v' <- formatView (collectViewNames v) (eraseType v)
                 return (pprint 0 v' "")
 
             foldedNat :: PresburgerTermRep -> Maybe Integer
@@ -530,112 +681,92 @@ constructViewerCustom checkOper lookupName = fst . runIdentity . uncurry (runSta
     eraseType (ViewNatL nat) = ViewNatL nat
     eraseType (ViewChrL chr) = ViewChrL chr
     eraseType (ViewDCon c) = ViewDCon c
-    formatView :: ViewNode -> StateT Int Identity ViewNode
-    formatView (ViewDCon "[]") = return (ViewList [])
-    formatView (ViewIApp (ViewIApp (ViewDCon "::") (ViewChrL chr)) t) = do
-        t' <- formatView t
+    formatView :: Set.Set SmallId -> ViewNode -> StateT Int Identity ViewNode
+    formatView _ (ViewDCon "[]") = return (ViewList [])
+    formatView forbidden (ViewIApp (ViewIApp (ViewDCon "::") (ViewChrL chr)) t) = do
+        t' <- formatView forbidden t
         case t' of
             ViewStrL str -> return (ViewStrL (chr : str))
             t' -> return (ViewOper (InfixR (ViewChrL chr) " :: " t', 4))
-    formatView (ViewIApp (ViewIApp (ViewDCon "::") t1) t2) = do
-        t1' <- formatView t1
-        t2' <- formatView t2
+    formatView forbidden (ViewIApp (ViewIApp (ViewDCon "::") t1) t2) = do
+        t1' <- formatView forbidden t1
+        t2' <- formatView forbidden t2
         case t2' of
             ViewList ts -> return (ViewList (t1' : ts))
             _ -> return (ViewOper (InfixR t1' " :: " t2', 4))
-    formatView (ViewIApp (ViewIApp (ViewDCon con) t1) t2)
+    formatView forbidden (ViewIApp (ViewIApp (ViewDCon con) t1) t2)
         | Just (oper, prec) <- checkOper con
         = case oper of
             Prefix str _ -> do
-                t1' <- formatView t1
-                t2' <- formatView t2
+                t1' <- formatView forbidden t1
+                t2' <- formatView forbidden t2
                 return (ViewIApp (ViewOper (Prefix str t1', prec)) t2')
             InfixL _ str _ -> do
-                t1' <- formatView t1
-                t2' <- formatView t2
+                t1' <- formatView forbidden t1
+                t2' <- formatView forbidden t2
                 return (ViewOper (InfixL t1' str t2', prec))
             InfixR _ str _ -> do
-                t1' <- formatView t1
-                t2' <- formatView t2
+                t1' <- formatView forbidden t1
+                t2' <- formatView forbidden t2
                 return (ViewOper (InfixR t1' str t2', prec))
             InfixN _ str _ -> do
-                t1' <- formatView t1
-                t2' <- formatView t2
+                t1' <- formatView forbidden t1
+                t2' <- formatView forbidden t2
                 return (ViewOper (InfixN t1' str t2', prec))
-    formatView (ViewIApp (ViewDCon con) t1)
+    formatView forbidden (ViewIApp (ViewDCon con) t1)
         | Just (oper, prec) <- checkOper con
         = case oper of
             Prefix str _ -> do
-                t1' <- formatView t1
+                t1' <- formatView forbidden t1
                 return (ViewOper (Prefix str t1', prec))
             InfixL _ str _ -> do
-                t1' <- formatView t1
-                v2 <- get
-                let v2' = v2 + 1
-                v2' `seq` put v2'
-                let n2 = "W_" ++ show v2
+                t1' <- formatView forbidden t1
+                n2 <- freshGeneratedName forbidden
                 return (ViewIAbs n2 (ViewOper (InfixL t1' str (ViewIVar n2), prec)))
             InfixR _ str _ -> do
-                t1' <- formatView t1
-                v2 <- get
-                let v2' = v2 + 1
-                v2' `seq` put v2'
-                let n2 = "W_" ++ show v2
+                t1' <- formatView forbidden t1
+                n2 <- freshGeneratedName forbidden
                 return (ViewIAbs n2 (ViewOper (InfixR t1' str (ViewIVar n2), prec)))
             InfixN _ str _ -> do
-                t1' <- formatView t1
-                v2 <- get
-                let v2' = v2 + 1
-                v2' `seq` put v2'
-                let n2 = "W_" ++ show v2
+                t1' <- formatView forbidden t1
+                n2 <- freshGeneratedName forbidden
                 return (ViewIAbs n2 (ViewOper (InfixN t1' str (ViewIVar n2), prec)))
-    formatView (ViewDCon con)
+    formatView forbidden (ViewDCon con)
         | Just (oper, prec) <- checkOper con
         = case oper of
             Prefix str _ -> do
-                v1 <- get
-                put (v1 + 1)
-                let n1 = "W_" ++ show v1
+                n1 <- freshGeneratedName forbidden
                 return (ViewIAbs n1 (ViewOper (Prefix str (ViewIVar n1), prec)))
             InfixL _ str _ -> do
-                v1 <- get
-                let v2 = v1 + 1
-                put (v2 + 1)
-                let n1 = "W_" ++ show v1
-                    n2 = "W_" ++ show v2
+                n1 <- freshGeneratedName forbidden
+                n2 <- freshGeneratedName forbidden
                 return (ViewIAbs n1 (ViewIAbs n2 (ViewOper (InfixL (ViewIVar n1) str (ViewIVar n2), prec))))
             InfixR _ str _ -> do
-                v1 <- get
-                let v2 = v1 + 1
-                put (v2 + 1)
-                let n1 = "W_" ++ show v1
-                    n2 = "W_" ++ show v2
+                n1 <- freshGeneratedName forbidden
+                n2 <- freshGeneratedName forbidden
                 return (ViewIAbs n1 (ViewIAbs n2 (ViewOper (InfixR (ViewIVar n1) str (ViewIVar n2), prec))))
             InfixN _ str _ -> do
-                v1 <- get
-                let v2 = v1 + 1
-                put (v2 + 1)
-                let n1 = "W_" ++ show v1
-                    n2 = "W_" ++ show v2
-                return (ViewIAbs n1 (ViewIAbs n2 (ViewIAbs n2 (ViewOper (InfixN (ViewIVar n1) str (ViewIVar n2), prec)))))
-    formatView (ViewTApp (ViewTApp (ViewTCon "->") t1) t2) = do
-        t1' <- formatView t1
-        t2' <- formatView t2
+                n1 <- freshGeneratedName forbidden
+                n2 <- freshGeneratedName forbidden
+                return (ViewIAbs n1 (ViewIAbs n2 (ViewOper (InfixN (ViewIVar n1) str (ViewIVar n2), prec))))
+    formatView forbidden (ViewTApp (ViewTApp (ViewTCon "->") t1) t2) = do
+        t1' <- formatView forbidden t1
+        t2' <- formatView forbidden t2
         return (ViewOper (InfixR t1' " -> " t2', 4))
-    formatView (ViewIApp t1 t2) = do
-        t1' <- formatView t1
-        t2' <- formatView t2
+    formatView forbidden (ViewIApp t1 t2) = do
+        t1' <- formatView forbidden t1
+        t2' <- formatView forbidden t2
         return (ViewIApp t1' t2')
-    formatView (ViewTApp t1 t2) = do
-        t1' <- formatView t1
-        t2' <- formatView t2
+    formatView forbidden (ViewTApp t1 t2) = do
+        t1' <- formatView forbidden t1
+        t2' <- formatView forbidden t2
         return (ViewTApp t1' t2')
-    formatView (ViewIAbs v1 t2) = do
-        t2' <- formatView t2
+    formatView forbidden (ViewIAbs v1 t2) = do
+        t2' <- formatView forbidden t2
         return (ViewIAbs v1 t2')
-    formatView (ViewDCon ('_' : '_' : c)) = return (ViewDCon c)
-    formatView (ViewTCon ('_' : '_' : c)) = return (ViewTCon c)
-    formatView viewer = return viewer
+    formatView _ (ViewDCon ('_' : '_' : c)) = return (ViewDCon c)
+    formatView _ (ViewTCon ('_' : '_' : c)) = return (ViewTCon c)
+    formatView _ viewer = return viewer
 
 appViewPrec :: Precedence
 appViewPrec = 10

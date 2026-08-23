@@ -139,6 +139,12 @@ formalChar :: Char -> ShowS
 formalChar '\"' = strstr "\'\\\"\'"
 formalChar ch = showsPrec 0 ch
 
+-- The lexer-spec language needs to be able to name carriage return so a
+-- generated source lexer can accept CRLF files.  Keep this an LGS escape; it
+-- does not add `\r` to any generated language's literal policy.
+charPCWithCR :: PC Char
+charPCWithCR = ('\r' <$ consumePC "'\\r'") <|> charPC
+
 readCharSet :: PC CharSet
 readCharSet = go 0 where
     go :: Int -> PC CharSet
@@ -152,8 +158,8 @@ readCharSet = go 0 where
         ]
     go 2 = mconcat
         [ (CsVar <$ consumePC "$") <*> smallid
-        , CsSingle <$> charPC
-        , CsEnum <$> charPC <* consumePC "-" <*> charPC
+        , CsSingle <$> charPCWithCR
+        , CsEnum <$> charPCWithCR <* consumePC "-" <*> charPCWithCR
         , consumePC "." $> CsUniv
         , go 3
         ]
@@ -800,7 +806,7 @@ genLexer xblocks = do
         tellLine (strstr "    theDFA = DFA")
         tellLine (strstr "        { getInitialQOfDFA = " . shows (getInitialQOfDFA theDFA))
         tellLine (strstr "        , getFinalQsOfDFA = XMap.fromAscList [" . ppunc ", " [ strstr "(" . shows q . strstr ", " . shows p . strstr ")" | (q, p) <- Map.toAscList (getFinalQsOfDFA theDFA) ] . strstr "]")
-        tellLine (strstr "        , getTransitionsOfDFA = XMap.fromList " . plist 12 [ ppunc ", " [ strstr "((" . shows q . strstr ", " . shows (symToMaybeChar sym) . strstr "), " . shows p . strstr ")" | ((q, sym), p) <- deltas ] | deltas <- splitUnless (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList (getTransitionsOfDFA theDFA)) ])
+        tellLine (strstr "        , getTransitionsOfDFA = XMap.fromList" . plist 12 [ ppunc ", " [ strstr "((" . shows q . strstr ", " . shows (symToMaybeChar sym) . strstr "), " . shows p . strstr ")" | ((q, sym), p) <- deltas ] | deltas <- splitUnless (\x1 -> \x2 -> fst (fst x1) == fst (fst x2)) (Map.toAscList (getTransitionsOfDFA theDFA)) ])
         tellLine (strstr "        }")
         tellLine (strstr "    theAlphabet :: XSet.Set Char")
         tellLine (strstr "    theAlphabet = XSet.fromAscList " . shows (Set.toAscList theAlphabet))

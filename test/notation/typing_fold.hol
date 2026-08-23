@@ -1,4 +1,4 @@
-% Spec 1.6 core invariant + 2.7 (W) write-boundary fold for the typing
+% Sections 1.6 and 7.1: write-boundary folding for the typing
 % context display. The kernel never sees `pp` -- it sees `list nat`,
 % the form `expandTypeRep` produced. The debugger's `_typing` block
 % is, however, a user-facing surface, so the runtime pipes every

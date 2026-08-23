@@ -1,0 +1,68 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.typecheck.application_errors ( test/typecheck/application_errors.hol, interpreted )
+test.typecheck.application_errors> Ok, one module loaded.
+test.typecheck.application_errors> 
+1:4-1:4: error: [HolBETA-TypeError]
+   |        
+ 1 | ?- 3 4.
+   |    ^   
+Cannot apply a non-function value.
+Actual:   `nat'
+Expected: `nat -> A_0'
+The expression in function position must have a function type.
+
+test.typecheck.application_errors> 
+1:6-1:8: error: [HolBETA-TypeError]
+   |          
+ 1 | ?- s 'a'.
+   |      ^^^ 
+Function argument has the wrong type.
+Expected: `nat'
+Actual:   `char'
+
+test.typecheck.application_errors> 
+1:4-1:6: error: [HolBETA-TypeError]
+   |        
+ 1 | ?- X X.
+   |    ^^^ 
+Self-application requires an infinite type.
+Actual:   `A_1'
+Required: `A_1 -> A_2'
+A value cannot be applied to itself in this simply typed language.
+
+test.typecheck.application_errors> 
+1:4-1:4: error: [HolBETA-TypeError]
+   |      
+ 1 | ?- 3.
+   |    ^ 
+Expression has the wrong result type.
+Expected: `o'
+Actual:   `nat'
+Hint: a query or fact must have proposition type `o'.
+      Apply a predicate or add a comparison if a proposition was intended.
+
+test.typecheck.application_errors> 
+1:4-1:20: error: [HolBETA-NotInScope]
+   |                        
+ 1 | ?- unknown_predicate X.
+   |    ^^^^^^^^^^^^^^^^^   
+Unknown predicate or constructor `unknown_predicate'.
+No type declaration for this name is visible here.
+Declare it with `type', import its module, or check the spelling.
+
+test.typecheck.application_errors> 
+1:13-1:13: error: [HolBETA-TypeError]
+   |                
+ 1 | ?- (k X) (g X).
+   |             ^  
+Logic variable `X' has conflicting type requirements.
+Earlier use at 1:7-1:7 requires:     `nat'
+Conflicting use at 1:13-1:13 requires: `char'
+Every occurrence of a logic variable in one expression must have the same type.
+
+test.typecheck.application_errors> 
+Hol >>= quit

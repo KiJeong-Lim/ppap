@@ -1,4 +1,4 @@
-% Section 2.5 step (ii): in each cloned clause, variables that appear in
+% Section 2.2: in each installed clause, variables that appear in
 % the head share types with their occurrences in the body.  Here `X`
 % appears in every head and in the body; the body fixes `X = 7`, and
 % querying `p (s (s ... 0))` yields the corresponding nat for every head.

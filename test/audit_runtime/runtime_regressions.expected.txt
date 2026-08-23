@@ -1,0 +1,70 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.runtime_regressions ( test/audit_runtime/runtime_regressions.hol, interpreted )
+test.audit_runtime.runtime_regressions> Ok, one module loaded.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> F := h (y\ y).
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> no.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> X := 5.
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> X := 5.
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> no.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> 10
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> X := 1.
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> X := 2.
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> read> 
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> X := 1.
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> X := 2.
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> read> 
+test.audit_runtime.runtime_regressions> The answer substitution is:
+test.audit_runtime.runtime_regressions> X := 2.
+test.audit_runtime.runtime_regressions> Find more solutions? [Y/n] 
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> no.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> 92
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> no.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> no.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> no.
+test.audit_runtime.runtime_regressions> 
+test.audit_runtime.runtime_regressions> 95
+test.audit_runtime.runtime_regressions> yes.
+test.audit_runtime.runtime_regressions> 
+Hol >>= quit

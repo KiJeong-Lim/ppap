@@ -1,0 +1,3 @@
+% A later import with only the built-in seed must not erase this user shadow.
+import shadow_string.
+import audit_leaf.

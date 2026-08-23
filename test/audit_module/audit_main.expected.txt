@@ -1,0 +1,33 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.audit_main ( test/audit_module/audit_main.hol, interpreted )
+test.audit_module.audit_main> Ok, one module loaded.
+test.audit_module.audit_main> 
+test.audit_module.audit_main> The answer substitution is:
+test.audit_module.audit_main> X := 1.
+test.audit_module.audit_main> Find more solutions? [Y/n] 
+test.audit_module.audit_main> The answer substitution is:
+test.audit_module.audit_main> X := 2.
+test.audit_module.audit_main> Find more solutions? [Y/n] 
+test.audit_module.audit_main> The answer substitution is:
+test.audit_module.audit_main> X := 3.
+test.audit_module.audit_main> Find more solutions? [Y/n] 
+test.audit_module.audit_main> The answer substitution is:
+test.audit_module.audit_main> X := 4.
+test.audit_module.audit_main> Find more solutions? [Y/n] 
+test.audit_module.audit_main> no.
+test.audit_module.audit_main> 
+test.audit_module.audit_main> The answer substitution is:
+test.audit_module.audit_main> X := audit_cnst.
+test.audit_module.audit_main> Find more solutions? [Y/n] 
+test.audit_module.audit_main> yes.
+test.audit_module.audit_main> 
+test.audit_module.audit_main> The answer substitution is:
+test.audit_module.audit_main> X := audit_left_fold 5.
+test.audit_module.audit_main> Find more solutions? [Y/n] 
+test.audit_module.audit_main> yes.
+test.audit_module.audit_main> 
+Hol >>= quit

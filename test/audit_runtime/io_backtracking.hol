@@ -1,0 +1,2 @@
+% I/O effects are replayed by search and structured arguments are not unified.
+type io_backtracking_fixture o.

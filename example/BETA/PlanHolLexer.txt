@@ -2,17 +2,20 @@
     module Hol.BETA.PlanHolLexer where
 
     import Hol.BETA.Header
+    import Data.Char (isPrint)
 }
 
 \target {
     token-type: "Token"
-    lexer-name: "runHolLexer"
+    lexer-name: "runHolLexerRaw"
 }
 
 \define $small_letter = 'a'-'z'
 \define $big_letter = 'A'-'Z'
 \define $digit = '0'-'9'
-\define $Char = [. \ '\n' \ '\\' \ '\"'] + "\\n" + "\\\\" + "\\\"" + "\\\'" + "\\t"
+\define $Escape = "\\n" + "\\t" + "\\\\" + "\\\"" + "\\\'"
+\define $StringChar = [. \ '\n' \ '\\' \ '\"'] + $Escape
+\define $CharChar = [. \ '\n' \ '\\' \ '\''] + $Escape
 \define $SmallId = [$small_letter] [$small_letter $digit '_' $big_letter]*
 \define $LargeId = [$big_letter] [$small_letter $digit '_' $big_letter]* + "_"
 \define $SymbolStart = "!" + "@" + "#" + "$" + "^" + "&" + "*" + "+" + "-" + "=" + "<" + ">" + "?" + "/" + "|" + "~" + ":"
@@ -134,11 +137,11 @@
         _ -> T_id (SLoc (row1, col1) (row2, col2)) this
 \xmatch [$digit]+:
     T_nat_lit (SLoc (row1, col1) (row2, col2)) (read this)
-\xmatch "\"" $Char* "\"":
-    T_str_lit (SLoc (row1, col1) (row2, col2)) (read this)
-\xmatch "\'" $Char "\'":
-    T_chr_lit (SLoc (row1, col1) (row2, col2)) (read this)
-\xmatch [' ' '\n']+: skip
+\xmatch "\"" $StringChar* "\"":
+    mkStringToken (SLoc (row1, col1) (row2, col2)) this
+\xmatch "\'" $CharChar "\'":
+    mkCharToken (SLoc (row1, col1) (row2, col2)) this
+\xmatch [' ' '\t' '\r' '\n']+: skip
 \xmatch "%" [. \ '\n']*: skip
 \xmatch "(*" ([. \ '*'] + "*" [. \ ')'])* "*)": skip
 
@@ -192,6 +195,7 @@
         | T_nat_lit SLoc Integer
         | T_chr_lit SLoc Char
         | T_str_lit SLoc String
+        | T_lex_error SLoc
         deriving (Show)
 
     data TermRep
@@ -284,6 +288,7 @@
             T_nat_lit loc _ -> loc
             T_chr_lit loc _ -> loc
             T_str_lit loc _ -> loc
+            T_lex_error loc -> loc
 
     instance HasSLoc TermRep where
         getSLoc term_rep = case term_rep of
@@ -313,6 +318,54 @@
     mkChrLit :: SLoc -> Char -> TermRep
     mkChrLit loc chr = RCon loc (DC_ChrL chr)
 
+    runHolLexer :: String -> Either (Int, Int) [Token]
+    runHolLexer src = do
+        tokens <- runHolLexerRaw src
+        case [start | T_lex_error (SLoc start _) <- tokens] of
+            start : _ -> Left start
+            [] -> Right tokens
+
+    isHolLiteralChar :: Char -> Bool
+    isHolLiteralChar ch = isPrint ch || ch == '\n' || ch == '\t'
+
+    isHolEscapeCode :: Char -> Bool
+    isHolEscapeCode ch = ch `elem` ['n', 't', '\\', '\"', '\'']
+
+    validHolStringLexeme :: String -> Bool
+    validHolStringLexeme ('\"' : rest) = scan rest where
+        scan ['\"'] = True
+        scan ('\\' : escaped : more)
+            | isHolEscapeCode escaped = scan more
+        scan (ch : more)
+            | isPrint ch && ch /= '\"' && ch /= '\\' = scan more
+        scan _ = False
+    validHolStringLexeme _ = False
+
+    validHolCharLexeme :: String -> Bool
+    validHolCharLexeme ['\'', '\\', escaped, '\''] = isHolEscapeCode escaped
+    validHolCharLexeme ['\'', ch, '\''] = isPrint ch && ch /= '\'' && ch /= '\\'
+    validHolCharLexeme _ = False
+
+    readHolStringLiteral :: String -> Maybe String
+    readHolStringLiteral src
+        | validHolStringLexeme src = case reads src of
+            [(str, "")] | all isHolLiteralChar str -> Just str
+            _ -> Nothing
+        | otherwise = Nothing
+
+    readHolCharLiteral :: String -> Maybe Char
+    readHolCharLiteral src
+        | validHolCharLexeme src = case reads src of
+            [(ch, "")] | isHolLiteralChar ch -> Just ch
+            _ -> Nothing
+        | otherwise = Nothing
+
+    mkStringToken :: SLoc -> String -> Token
+    mkStringToken loc src = maybe (T_lex_error loc) (T_str_lit loc) (readHolStringLiteral src)
+
+    mkCharToken :: SLoc -> String -> Token
+    mkCharToken loc src = maybe (T_lex_error loc) (T_chr_lit loc) (readHolCharLiteral src)
+
     mkStrLit :: SLoc -> String -> TermRep
-    mkStrLit loc str = foldr (\ch -> \acc -> RApp loc (RApp loc (RCon loc DC_Cons) (RCon loc (DC_ChrL ch))) acc) (RCon loc DC_Nil) str
+    mkStrLit loc str = RPrn loc $ foldr (\ch -> \acc -> RApp loc (RApp loc (RCon loc DC_Cons) (RCon loc (DC_ChrL ch))) acc) (RCon loc DC_Nil) str
 }

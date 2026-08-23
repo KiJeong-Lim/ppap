@@ -1,0 +1,9 @@
+Hol --test
+test/typecheck/application_errors.hol
+?- 3 4.
+?- s 'a'.
+?- X X.
+?- 3.
+?- unknown_predicate X.
+?- (k X) (g X).
+:q

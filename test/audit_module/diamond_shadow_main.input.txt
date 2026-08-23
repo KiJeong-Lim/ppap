@@ -1,0 +1,8 @@
+Hol --test
+test/audit_module/diamond_shadow_main.hol
+?- audit_shadow_list ['a'].
+?- audit_shadow_term (audit_shadow_char 'a').
+?- audit_capture_ok.
+?- audit_fold_source X.
+n
+:q

@@ -1,10 +1,11 @@
 Hol --test
 test/multi_head/cut_in_body.hol
 ?- p Z.
-
-n
+Y
 ?- q Z.
-
-n
+Y
+?- same Z.
+Y
+?- (p FromP, fail); q FromQ.
+Y
 :q
-

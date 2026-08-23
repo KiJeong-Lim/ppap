@@ -1,0 +1,3 @@
+Hol --test
+test/audit_module/local_imply_invalid.hol
+:q

@@ -1,0 +1,5 @@
+Hol --test
+test/typecheck/notation_callsite_loc.hol
+?- (duplicated 7) 1.
+?- duplicated 'a'.
+:q

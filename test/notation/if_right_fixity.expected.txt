@@ -4,6 +4,11 @@ ppap =<<
 ppap >>= exec (Hol.main "test")
 Hol =<< 
 Hol> Compiling test.notation.if_right_fixity ( test/notation/if_right_fixity.hol, interpreted )
-test.notation.if_right_fixity> Ok, one module loaded.
-test.notation.if_right_fixity> 
+<PROJECT_ROOT>/test/notation/if_right_fixity.hol:3:1-3:4: error: [HolBETA-ModuleError]
+   |                      
+ 3 | true :- true :- true.
+   | ^^^^                 
+Clause validation failed: program heads must be user-declared named predicates; local heads may additionally use an in-scope predicate parameter. Local comparison assumptions must be bare linear-Presburger constraints. Logical controls, primitive I/O, and unsupported constraints are not clauses.
+
+Hol =<< 
 Hol >>= quit

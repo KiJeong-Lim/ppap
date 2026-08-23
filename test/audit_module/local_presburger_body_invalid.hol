@@ -1,0 +1,4 @@
+type local_presburger_body_invalid o.
+
+% The same bare-assumption restriction applies after Presburger installation.
+local_presburger_body_invalid :- ((presburger "3 > 2" :- true) => true).

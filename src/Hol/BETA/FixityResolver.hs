@@ -46,8 +46,8 @@ collectModuleFixities :: NotationDB -> [DeclRep] -> Either FixityError NotationD
 collectModuleFixities db0 decls = snd <$> foldM step (Map.empty, db0) decls where
     step (local, db) decl = case decl of
         RFixityDecl loc form name prec -> do
+            checkFixityPrecedence loc prec
             let fp@(kind, precedence) = (toKind form, fromInteger prec)
-            checkFixityPrecedence loc precedence
             checkImportedFixity db0 loc name fp
             checkLocalFixity local loc name fp
             let origin = FixityOrigin loc name fp
@@ -55,9 +55,9 @@ collectModuleFixities db0 decls = snd <$> foldM step (Map.empty, db0) decls wher
             return (local', Notation.addFixity name kind precedence db)
         _ -> return (local, db)
 
-checkFixityPrecedence :: SLoc -> Precedence -> Either FixityError ()
+checkFixityPrecedence :: SLoc -> Integer -> Either FixityError ()
 checkFixityPrecedence loc precedence
-    | precedence <= maxFixityPrec = Right ()
+    | 0 <= precedence && precedence <= toInteger maxFixityPrec = Right ()
     | otherwise = Left (FixityError loc ("Fixity precedence must be between 0 and " ++ show maxFixityPrec ++ "."))
 
 checkImportedFixity :: NotationDB -> SLoc -> SmallId -> (FixityKind, Precedence) -> Either FixityError ()

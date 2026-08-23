@@ -1,0 +1,2 @@
+% Primitive I/O goals cannot be overridden by an unreachable program clause.
+print X.

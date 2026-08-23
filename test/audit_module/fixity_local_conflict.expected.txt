@@ -1,0 +1,15 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.fixity_local_conflict ( test/audit_module/fixity_local_conflict.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/fixity_local_conflict.hol:3:1-3:11: error: [HolBETA-ParseError]
+   |            
+ 3 | infixl + 8.
+   | ^^^^^^^^^^^
+Parsing failed in `<PROJECT_ROOT>/test/audit_module/fixity_local_conflict.hol'.
+Fixity declaration for `+' conflicts with an imported fixity.
+
+Hol =<< 
+Hol >>= quit

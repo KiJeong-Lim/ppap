@@ -13,4 +13,12 @@ test.io.print_read> read>
 test.io.print_read> 3
 test.io.print_read> yes.
 test.io.print_read> 
+test.io.print_read> read> 
+test.io.print_read> 'A'
+test.io.print_read> yes.
+test.io.print_read> 
+test.io.print_read> read> 
+test.io.print_read> "abc"
+test.io.print_read> yes.
+test.io.print_read> 
 Hol >>= quit

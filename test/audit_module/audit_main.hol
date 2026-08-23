@@ -1,0 +1,13 @@
+% The local and root-qualified leaf imports resolve to the same canonical file.
+% The two arms form a diamond and intentionally alpha-rename C2/C3/C4 binders.
+import audit_left.
+import test.audit_module.audit_leaf.
+import audit_right.
+
+type audit_arr_pred (audit_arr nat char -> o).
+type audit_notation_value ((nat -> audit_obj) -> o).
+type audit_fold_value (audit_obj -> o).
+
+audit_order 4.
+audit_notation_value (audit_lift (Z\ Z)).
+audit_fold_value (audit_cnst 5).

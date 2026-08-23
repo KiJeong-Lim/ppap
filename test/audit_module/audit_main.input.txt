@@ -1,0 +1,12 @@
+Hol --test
+test/audit_module/audit_main.hol
+?- audit_order X.
+Y
+Y
+Y
+Y
+?- audit_notation_value X.
+n
+?- audit_fold_value X.
+n
+:q

@@ -1,0 +1,8 @@
+Hol --test
+test/notation/string_literal_atom.hol
+?- S = "a".
+n
+?- "a" = "a".
+?- S = ("a" :: []).
+n
+:q

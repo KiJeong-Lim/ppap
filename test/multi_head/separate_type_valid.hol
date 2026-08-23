@@ -1,0 +1,5 @@
+% H4 control: the same source name in separate clauses denotes fresh variables.
+type separate_nat (nat -> o).
+type separate_char (char -> o).
+separate_nat X.
+separate_char X.

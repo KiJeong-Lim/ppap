@@ -1,0 +1,29 @@
+Hol --test
+test/audit_runtime/runtime_regressions.hol
+?- F = (x\ h (y\ y) x).
+n
+?- presburger "X = 5", X is 6.
+?- presburger "X = 5", X is 5.
+n
+?- presburger "X = 5", p X.
+n
+?- presburger "X = 5", q, X > 7.
+?- pi X\ pi Y\ (X + Y = Y + X).
+?- pi X\ pi Y\ ((X + 1) * (Y + 1) = Y * X + Y + X + 1).
+?- (print 10, X = 1) ; X = 2.
+y
+n
+?- (read 1, X = 1) ; X = 2.
+1
+y
+n
+?- (read 1, X = 1) ; X = 2.
+9
+n
+?- sigma X\ (X + 1) is 3, X is 1, print 91.
+?- sigma X\ (X + 1) is 3, X is 2, print 92.
+?- sigma X\ (3 - X) is 0, X is 5, print 93.
+?- 1 is 3 / 0.
+?- sigma X\ (X + 1) is 4, p X, print 94.
+?- sigma X\ (X + 1) is 6, p X, print 95.
+:q

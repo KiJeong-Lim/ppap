@@ -12,10 +12,6 @@ test.module.transitive_import> Find more solutions? [Y/n]
 test.module.transitive_import> The answer substitution is:
 test.module.transitive_import> X := 200.
 test.module.transitive_import> Find more solutions? [Y/n] 
-test.module.transitive_import> no.
-test.module.transitive_import> 
-error: [HolBETA-ParseError]
-Parsing failed at EOF.
-
+test.module.transitive_import> yes.
 test.module.transitive_import> 
 Hol >>= quit

@@ -1,0 +1,48 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.debug_namecache ( test/audit_runtime/debug_namecache.hol, interpreted )
+test.audit_runtime.debug_namecache> Ok, one module loaded.
+test.audit_runtime.debug_namecache> 
+test.audit_runtime.debug_namecache> Debugging mode on.
+test.audit_runtime.debug_namecache> 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- sigma (X\ eq5 X) ] # call_id = 6
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = []
+        , _thread_id = 6
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.audit_runtime.debug_namecache> Press the enter key to go to next state: 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- eq5 X ] # call_id = 6
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ ?V_7 : nat
+            ]
+        , _thread_id = 6
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.audit_runtime.debug_namecache> Press the enter key to go to next state: 
+test.audit_runtime.debug_namecache> *** :assign: X := 6.
+test.audit_runtime.debug_namecache> no.
+test.audit_runtime.debug_namecache> 
+Hol >>= quit

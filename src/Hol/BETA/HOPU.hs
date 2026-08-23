@@ -43,7 +43,28 @@ data Labeling
 
 data Disagreement
     = TermNode :=?=: TermNode
-    deriving (Eq, Ord, Show)
+    deriving (Show)
+
+assertDisagreement :: Disagreement -> ()
+assertDisagreement (lhs :=?=: rhs)
+    = assertNonnegativeIndices lhs `seq` assertNonnegativeIndices rhs
+
+assertDisagreements :: [Disagreement] -> ()
+assertDisagreements [] = ()
+assertDisagreements (disagreement : rest)
+    = assertDisagreement disagreement `seq` assertDisagreements rest
+
+instance Eq Disagreement where
+    d1@(lhs1 :=?=: rhs1) == d2@(lhs2 :=?=: rhs2)
+        = assertDisagreement d1 `seq`
+          assertDisagreement d2 `seq`
+          lhs1 == lhs2 && rhs1 == rhs2
+
+instance Ord Disagreement where
+    compare d1@(lhs1 :=?=: rhs1) d2@(lhs2 :=?=: rhs2)
+        = assertDisagreement d1 `seq`
+          assertDisagreement d2 `seq`
+          compare lhs1 lhs2 <> compare rhs1 rhs2
 
 data HopuSol
     = HopuSol
@@ -64,7 +85,19 @@ data HopuFail
 
 newtype VarBinding
     = VarBinding { unVarBinding :: Map.Map LogicVar TermNode }
-    deriving (Eq, Ord, Show)
+    deriving (Show)
+
+instance Eq VarBinding where
+    lhs == rhs
+        = assertVarBinding lhs `seq`
+          assertVarBinding rhs `seq`
+          unVarBinding lhs == unVarBinding rhs
+
+instance Ord VarBinding where
+    compare lhs rhs
+        = assertVarBinding lhs `seq`
+          assertVarBinding rhs `seq`
+          compare (unVarBinding lhs) (unVarBinding rhs)
 
 class Labelable atom where
     enrollLabel :: atom -> ScopeLevel -> Labeling -> Labeling
@@ -77,6 +110,9 @@ class HasLVar expr where
 
 class ZonkLVar expr where
     zonkLVar :: LogicVarSubst -> expr -> expr
+
+assertHasLVar :: HasLVar expr => expr -> ()
+assertHasLVar expr = Set.size (accLVars expr Set.empty) `seq` ()
 
 instance Labelable Constant where
     {-# INLINE enrollLabel #-}
@@ -124,6 +160,10 @@ mkArrowsHOPU :: [MonoType Int] -> MonoType Int -> MonoType Int
 mkArrowsHOPU args result = foldr mkTyArrow result args
 
 lookupConType :: Constant -> Labeling -> Maybe (MonoType Int)
+lookupConType (DC (DC_NatL _)) _
+    = Just mkTyNat
+lookupConType (DC (DC_ChrL _)) _
+    = Just mkTyChr
 lookupConType (DC (DC_Unique uni _)) lbl
     = IntMap.lookup (unUnique uni) (_ConTypes lbl)
 lookupConType (DC dc) lbl
@@ -134,27 +174,32 @@ lookupConType _ _
     = Nothing
 
 typeOfTerm :: Labeling -> [MonoType Int] -> TermNode -> Maybe (MonoType Int)
-typeOfTerm lbl env t
-    = case t of
+typeOfTerm lbl env term
+    = assertNonnegativeIndices term `seq` go env term
+  where
+    go localEnv t = case t of
         LVar v -> lookupLVarType v lbl
         NCon c _ -> lookupConType c lbl
         NIdx i
-            | i >= 0 && i < length env -> Just (env !! i)
+            | i < 0 -> undefined
+            | i < length localEnv -> Just (localEnv !! i)
             | otherwise -> Nothing
         NApp t1 t2 _ -> do
-            ty1 <- typeOfTerm lbl env t1
+            ty1 <- go localEnv t1
+            ty2 <- go localEnv t2
             case ty1 of
-                TyApp (TyApp (TyCon (TCon TC_Arrow _)) _) r -> Just r
+                TyApp (TyApp (TyCon (TCon TC_Arrow _)) domain) result
+                    | domain == ty2 -> Just result
                 _ -> Nothing
         NLam _ (LamType (Just dom)) body _ -> do
-            cod <- typeOfTerm lbl (dom : env) body
+            cod <- go (dom : localEnv) body
             Just (mkTyArrow dom cod)
         NLam _ _ _ _ -> Nothing
-        Susp body _ _ _ -> typeOfTerm lbl env body
+        Susp body _ _ _ -> go localEnv body
         NPresburgerCheck _ _ _ -> Just mkTyO
 
 commonHeadType :: Labeling -> LogicVar -> Int -> [TermNode] -> Maybe (MonoType Int)
-commonHeadType labeling var k args = do
+commonHeadType labeling var k args = assertNonnegativeTerms args `seq` do
     varTy <- lookupLVarType var labeling
     (paramTypes, resultTy) <- splitArrowsHOPU k varTy
     let env = reverse paramTypes
@@ -162,7 +207,10 @@ commonHeadType labeling var k args = do
     return (mkArrowsHOPU argTypes resultTy)
 
 instance ZonkLVar Labeling where
-    zonkLVar subst labeling = Map.foldlWithKey' applyBinding labeling (unVarBinding subst) where
+    zonkLVar subst labeling
+        = assertVarBinding subst `seq`
+          Map.foldlWithKey' applyBinding labeling (unVarBinding subst)
+      where
         applyBinding :: Labeling -> LogicVar -> TermNode -> Labeling
         applyBinding lbl v t
             = case getLevel v lbl of
@@ -178,7 +226,9 @@ instance ZonkLVar Labeling where
 accLVarsTerm :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
 accLVarsTerm (LVar v) = Set.insert v
 accLVarsTerm (NCon _ _) = id
-accLVarsTerm (NIdx _) = id
+accLVarsTerm (NIdx i)
+    | i >= 0 = id
+    | otherwise = undefined
 accLVarsTerm (NApp t1 t2 _) = accLVarsTerm t1 . accLVarsTerm t2
 accLVarsTerm (NLam _ _ t _) = accLVarsTerm t
 accLVarsTerm (Susp t _ _ env) = accLVarsTerm t . accLVarsSuspEnv env
@@ -190,29 +240,42 @@ accLVarsSuspEnv (Dummy _ : env) = accLVarsSuspEnv env
 accLVarsSuspEnv (Binds t _ : env) = accLVarsTerm t . accLVarsSuspEnv env
 
 instance HasLVar TermNode where
-    accLVars = accLVarsTerm
+    accLVars term = assertNonnegativeIndices term `seq` accLVarsTerm term
     bindVars = flatten
 
 instance HasLVar a => HasLVar [a] where
     accLVars = flip (foldr accLVars)
-    bindVars = map . bindVars
+    bindVars theta values
+        = assertVarBinding theta `seq`
+          assertHasLVar values `seq`
+          map (bindVars theta) values
 
 instance HasLVar b => HasLVar (a, b) where
     accLVars = accLVars . snd
-    bindVars = fmap . bindVars
+    bindVars theta value
+        = assertVarBinding theta `seq`
+          assertHasLVar value `seq`
+          fmap (bindVars theta) value
 
 instance HasLVar a => HasLVar (Map.Map k a) where
     accLVars = accLVars . Map.elems
-    bindVars = Map.map . bindVars
+    bindVars theta values
+        = assertVarBinding theta `seq`
+          assertHasLVar values `seq`
+          Map.map (bindVars theta) values
 
 instance Semigroup VarBinding where
     theta2 <> theta1
-        | Map.null map2 = theta1
-        | Map.null map1 = theta2
-        | otherwise = VarBinding $! bindVars theta2 map1 `Map.union` map2
+        = assertVarBinding theta2 `seq`
+          assertVarBinding theta1 `seq`
+          combine
         where
             map1 = unVarBinding theta1
             map2 = unVarBinding theta2
+            combine
+                | Map.null map2 = theta1
+                | Map.null map1 = theta2
+                | otherwise = VarBinding $! bindVars theta2 map1 `Map.union` map2
 
 instance Monoid VarBinding where
     mempty = VarBinding Map.empty
@@ -221,14 +284,27 @@ instance ZonkLVar VarBinding where
     zonkLVar subst binding = subst <> binding
 
 instance ZonkLVar a => ZonkLVar [a] where
-    zonkLVar = map . zonkLVar
+    zonkLVar subst values
+        = assertVarBinding subst `seq`
+          validate values `seq`
+          map (zonkLVar subst) values
+      where
+        validate [] = ()
+        validate (value : rest) = zonkLVar subst value `seq` validate rest
 
 instance HasLVar Disagreement where
-    accLVars (lhs :=?=: rhs) = accLVars lhs . accLVars rhs
-    bindVars theta (lhs :=?=: rhs) = bindVars theta lhs :=?=: bindVars theta rhs
+    accLVars disagreement@(lhs :=?=: rhs)
+        = assertDisagreement disagreement `seq` accLVars lhs . accLVars rhs
+    bindVars theta disagreement@(lhs :=?=: rhs)
+        = assertVarBinding theta `seq`
+          assertDisagreement disagreement `seq`
+          (bindVars theta lhs :=?=: bindVars theta rhs)
 
 instance ZonkLVar HopuSol where
-    zonkLVar subst (HopuSol labeling binding) = HopuSol (zonkLVar subst labeling) (zonkLVar subst binding)
+    zonkLVar subst (HopuSol labeling binding)
+        = assertVarBinding subst `seq`
+          assertVarBinding binding `seq`
+          HopuSol (zonkLVar subst labeling) (zonkLVar subst binding)
 
 instance Outputable Labeling where
     pprint _ labeling
@@ -251,12 +327,12 @@ instance Outputable Disagreement where
             go :: ShowS
             go = shows lhs . strstr " ~ " . shows rhs
 
-{-# INLINE isRigidAtom #-}
 isRigidAtom :: TermNode -> Bool
-isRigidAtom (NCon (DC DC_wc) _) = False
-isRigidAtom (NCon {}) = True
-isRigidAtom (NIdx {}) = True
-isRigidAtom _ = False
+isRigidAtom term = assertNonnegativeIndices term `seq` case term of
+    NCon (DC DC_wc) _ -> False
+    NCon {} -> True
+    NIdx _ -> True
+    _ -> False
 
 {-# INLINE isTyLVar #-}
 isTyLVar :: LogicVar -> Bool
@@ -264,24 +340,37 @@ isTyLVar (LV_ty_var {}) = True
 isTyLVar _ = False
 
 isPatternRespectTo :: LogicVar -> [TermNode] -> Labeling -> Bool
-isPatternRespectTo v ts labeling = all isRigidAtom ts && areAllDistinct ts && and [ lookupLabel v labeling < lookupLabel c labeling | NCon c _ <- ts ]
+isPatternRespectTo v ts labeling
+    = assertNonnegativeTerms ts `seq`
+      (all isRigidAtom ts && areAllDistinct ts && and [ lookupLabel v labeling < lookupLabel c labeling | NCon c _ <- ts ])
 
 down :: Monad m => [TermNode] -> [TermNode] -> StateT Labeling (ExceptT HopuFail m) [TermNode]
-zs `down` ts = if downable then return indices else lift (throwE DownFail) where
+zs `down` ts
+    = assertNonnegativeTerms zs `seq`
+      assertNonnegativeTerms ts `seq`
+      if downable then return indices else lift (throwE DownFail)
+  where
     downable :: Bool
     downable = areAllDistinct ts && all isRigidAtom ts && areAllDistinct zs && all isRigidAtom zs
     indices :: [TermNode]
     indices = [ mkNIdx (length ts - i - 1) | z <- zs, i <- toList (z `List.elemIndex` ts) ]
 
 up :: Monad m => [TermNode] -> LogicVar -> StateT Labeling (ExceptT HopuFail m) [TermNode]
-ts `up` y = if upable then fmap findVisibles get else lift (throwE UpFail) where
+ts `up` y
+    = assertNonnegativeTerms ts `seq`
+      if upable then fmap findVisibles get else lift (throwE UpFail)
+  where
     upable :: Bool
     upable = areAllDistinct ts && all isRigidAtom ts
     findVisibles :: Labeling -> [TermNode]
     findVisibles labeling = [ mkNCon c | NCon c _ <- ts, lookupLabel c labeling <= lookupLabel y labeling ]
 
 bind :: UniqueM m => [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail m) (LogicVarSubst, TermNode)
-bind outerHints var = go . rewrite HNF where
+bind outerHints var rhs parameters bindHints
+    = assertNonnegativeIndices rhs `seq`
+      assertNonnegativeTerms parameters `seq`
+      go (rewrite HNF rhs) parameters bindHints
+  where
     go :: UniqueM m => TermNode -> [TermNode] -> [Maybe SmallId] -> StateT Labeling (ExceptT HopuFail m) (LogicVarSubst, TermNode)
     go (NLam mhint mty rhs' _) parameters bindHints = do
         (subst, lhs') <- go rhs' parameters (bindHints ++ [mhint])
@@ -358,19 +447,24 @@ bind outerHints var = go . rewrite HNF where
         = lift (throwE BindFail)
 
 paramHint :: [Maybe SmallId] -> TermNode -> Maybe SmallId
-paramHint _ (NCon (DC (DC_Unique _ (DispHint mh))) _)
-    = mh
-paramHint _ (LVar (LV_Unique _ (DispHint mh)))
-    = mh
-paramHint outerHints (NIdx i)
-    | i >= 0 && i < n = outerHints !! (n - 1 - i)
-    where
-        n = length outerHints
-paramHint _ _
-    = Nothing
+paramHint outerHints term = assertNonnegativeIndices term `seq` go term where
+    go (NCon (DC (DC_Unique _ (DispHint mh))) _)
+        = mh
+    go (LVar (LV_Unique _ (DispHint mh)))
+        = mh
+    go (NIdx i)
+        | i < n = outerHints !! (n - 1 - i)
+        where
+            n = length outerHints
+    go _
+        = Nothing
 
 mksubst :: UniqueM m => [Maybe SmallId] -> LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail m (Maybe HopuSol)
-mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr where
+mksubst outerHints var rhs parameters labeling
+    = assertNonnegativeIndices rhs `seq`
+      assertNonnegativeTerms parameters `seq`
+      catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr
+  where
     dispatch :: UniqueM m => TermNode -> [TermNode] -> StateT Labeling (ExceptT HopuFail m) LogicVarSubst
     dispatch rhs parameters
         | (rhsLamHints, rhs') <- viewNestedNLamH rhs
@@ -422,7 +516,10 @@ mksubst outerHints var rhs parameters labeling = catchE (Just . uncurry (flip Ho
         go (LVar x) = lookupLabel var labeling >= lookupLabel x labeling
 
 simplify :: UniqueM m => [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
-simplify = flip loop mempty . zip (repeat []) where
+simplify disagreements labeling
+    = assertDisagreements disagreements `seq`
+      loop (zip (repeat []) disagreements) mempty labeling
+  where
     loop :: UniqueM m => [([Maybe SmallId], Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
     loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
@@ -486,7 +583,10 @@ simplify = flip loop mempty . zip (repeat []) where
             return (bindVars subst' (makeNestedNLamH l lhs :=?=: makeNestedNLamH l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
 
 runHOPU :: UniqueM m => Labeling -> [Disagreement] -> m (Maybe ([Disagreement], HopuSol))
-runHOPU = go where
+runHOPU labeling disagreements
+    = assertDisagreements disagreements `seq`
+      go labeling disagreements
+  where
     loop :: UniqueM m => ([Disagreement], HopuSol) -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
     loop (disagreements, HopuSol labeling subst)
         | null disagreements = return (disagreements, HopuSol labeling subst)
@@ -506,9 +606,10 @@ getLVars :: HasLVar expr => expr -> Set.Set LogicVar
 getLVars = flip accLVars Set.empty
 
 flatten :: VarBinding -> TermNode -> TermNode
-flatten (VarBinding mapsto)
-    | Map.null mapsto = id
-    | otherwise = go . rewrite NF
+flatten binding@(VarBinding mapsto) term
+    = assertVarBinding binding `seq`
+      assertNonnegativeIndices term `seq`
+      if Map.null mapsto then term else go (rewrite NF term)
     where
         go :: TermNode -> TermNode
         go (LVar v) = case Map.lookup v mapsto of
@@ -520,6 +621,9 @@ flatten (VarBinding mapsto)
         go (NLam h ty t _) = mkNLamHintTy h ty (go t)
         go (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map go freeOf) sl
         go t = t
+
+assertVarBinding :: VarBinding -> ()
+assertVarBinding (VarBinding mapsto) = assertNonnegativeTerms (Map.elems mapsto)
 
 (+->) :: Monad m => LogicVar -> TermNode -> ExceptT HopuFail m VarBinding
 v +-> t
@@ -552,18 +656,34 @@ etaReduce = go . rewrite NF where
     isFreeIn i (NLam _ _ t1 _) = isFreeIn (i + 1) t1
     isFreeIn i (NPresburgerCheck _ freeOf _) = any (isFreeIn i) (Map.elems freeOf)
     isFreeIn i _ = False
-    decr :: TermNode -> TermNode
-    decr (LVar x) = mkLVar x
-    decr (NIdx i) = if i > 0 then mkNIdx (i - 1) else error "etaReduce.decr: unreachable..."
-    decr (NCon c _) = mkNCon c
-    decr (NApp t1 t2 _) = mkNApp (decr t1) (decr t2)
-    decr (NLam h ty t1 _) = mkNLamHintTy h ty (decr t1)
-    decr (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map decr freeOf) sl
+    -- Removing an eta-contracted binder shifts only indices that refer past
+    -- that binder.  Indices below the cutoff belong to nested lambdas and
+    -- must remain unchanged.  Returning Nothing for the removed binder makes
+    -- this operation total even if a future caller weakens the free-variable
+    -- guard above it.
+    decr :: TermNode -> Maybe TermNode
+    decr = decrFrom 0 where
+        decrFrom :: DeBruijn -> TermNode -> Maybe TermNode
+        decrFrom _ (LVar x) = Just (mkLVar x)
+        decrFrom cutoff (NIdx i)
+            | i < cutoff = Just (mkNIdx i)
+            | i > cutoff = Just (mkNIdx (i - 1))
+            | otherwise = Nothing
+        decrFrom _ (NCon c _) = Just (mkNCon c)
+        decrFrom cutoff (NApp t1 t2 _) = liftM2 mkNApp (decrFrom cutoff t1) (decrFrom cutoff t2)
+        decrFrom cutoff (NLam h ty t1 _) = mkNLamHintTy h ty <$> decrFrom (cutoff + 1) t1
+        decrFrom cutoff (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep <$> traverse (decrFrom cutoff) freeOf <*> pure sl
+        -- etaReduce starts from normal form, so a surviving suspension is not
+        -- expected.  Declining the contraction is safer than shifting through
+        -- its environment with the wrong cutoff.
+        decrFrom _ (Susp {}) = Nothing
     go :: TermNode -> TermNode
     go (NApp t1 t2 _) = mkNApp (go t1) (go t2)
     go (NLam h ty t1 _) = case go t1 of
         NApp t1' (NIdx 0) _
-            | not (isFreeIn 0 t1') -> decr t1'
+            | not (isFreeIn 0 t1')
+            , Just t1'' <- decr t1'
+            -> t1''
         t1' -> mkNLamHintTy h ty t1'
     go (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map go freeOf) sl
     go t = t

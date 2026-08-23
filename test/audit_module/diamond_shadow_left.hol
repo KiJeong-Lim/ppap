@@ -1,0 +1,14 @@
+import diamond_shadow_base.
+
+abbrev audit_diamond_type := list char.
+notation audit_diamond_term X := audit_shadow_char X.
+notation audit_c4_lambda F := x\ F x.
+notation audit_capture X := audit_x\ X.
+
+type audit_shadow_list (audit_diamond_type -> o).
+type audit_shadow_term (audit_shadow_obj -> o).
+type audit_capture_ok o.
+
+audit_shadow_list ['a'].
+audit_shadow_term (audit_diamond_term 'a').
+audit_capture_ok :- audit_accept_obj (audit_capture audit_x 'a').

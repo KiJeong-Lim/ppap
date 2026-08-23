@@ -1,4 +1,4 @@
-% Section 2.2: `import test.module.mid.` loads `mid.hol`, whose own
+% Sections 5.2-5.3: `import test.module.mid.` loads `mid.hol`, whose own
 % `import test.module.leaf.` brings in `tag` transitively.  Without
 % transitive resolution `mid_pred` would fail to type-check (it
 % references `tag` which is declared only in `leaf`).

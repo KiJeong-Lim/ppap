@@ -8,11 +8,16 @@ module Hol.BETA.Arith
     , entails
     , arithEntails
     , ArithStore
+    , GuardedArithStore
     , presburgerStoreSat
+    , presburgerGuardedStoreSat
+    , presburgerGuardedValid
     , presburgerEntails
     , presburgerValid
     , installPresburger
     , installPresburgerWithEnv
+    , installPresburgerWithDiagnostic
+    , installPresburgerWithEnvDiagnostic
     ) where
 
 import Calc.Presburger.Internal
@@ -28,6 +33,9 @@ import Hol.BETA.Header
 import Hol.BETA.TermNode
 import qualified Z.Doc
 import Z.Utils (ErrMsg, unUnique)
+
+assertTermMap :: Map.Map k TermNode -> ()
+assertTermMap = assertNonnegativeTerms . Map.elems
 
 data ParseResult
     = ParseResult
@@ -46,11 +54,18 @@ data LiftResult
 
 parsePresburger :: SLoc -> String -> Map.Map LargeId TermNode -> Either ErrMsg ParseResult
 parsePresburger sloc src env0
-    = case runP parseTop initState of
+    = case parsePresburgerRaw src env0 of
         Left msg -> Left (locPrefix ++ msg)
-        Right (f, st') -> Right (ParseResult { _formula = f, _freeOfFormula = psFreeMap st', _updatedEnv = psNameToVar st' })
+        Right result -> Right result
     where
         locPrefix = "presburger[" ++ shows (_BegPos sloc) "]: "
+
+parsePresburgerRaw :: String -> Map.Map LargeId TermNode -> Either ErrMsg ParseResult
+parsePresburgerRaw src env0
+    = assertTermMap env0 `seq` case runP parseTop initState of
+        Left msg -> Left msg
+        Right (f, st') -> Right (ParseResult { _formula = f, _freeOfFormula = psFreeMap st', _updatedEnv = psNameToVar st' })
+    where
         initState = PState
             { psInput = src
             , psNameToVar = env0
@@ -182,6 +197,8 @@ decimalNat = do
 natToTermRep :: Integer -> PresburgerTermRep
 natToTermRep n
     | n <= 0 = Zero
+    | n == 1 = Succ Zero
+    | even n = let half = natToTermRep (n `div` 2) in Plus half half
     | otherwise = Succ (natToTermRep (n - 1))
 
 resolveVar :: LargeId -> P MyVar
@@ -402,7 +419,10 @@ parseAtomFormula = do
         _ -> throwP ("expected a relational operator, got: " ++ shows (take 20 inp) "")
 
 zonkPresburger :: Map.Map MyVar TermNode -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-zonkPresburger freeOf = goFormula Set.empty where
+zonkPresburger freeOf rep
+    = assertTermMap freeOf `seq`
+      goFormula Set.empty rep
+  where
     goFormula bound (ValF b) = ValF b
     goFormula bound (EqnF t1 t2) = EqnF (goTerm bound t1) (goTerm bound t2)
     goFormula bound (LtnF t1 t2) = LtnF (goTerm bound t1) (goTerm bound t2)
@@ -439,7 +459,7 @@ zonkPresburger freeOf = goFormula Set.empty where
 
 liftConstraint :: TermNode -> Maybe LiftResult
 liftConstraint t
-    = case runLift (liftFormula t) emptyLS of
+    = case runLift (liftFormula (rewrite NF t)) emptyLS of
         Nothing -> Nothing
         Just (f, st) -> Just (LiftResult { _liftedFormula = f, _freeOfLifted = lsFreeMap st })
     where
@@ -482,13 +502,12 @@ instance Monad L where
 fail_ :: L a
 fail_ = L $ \_ -> Nothing
 
-allocL :: LogicVar -> L MyVar
-allocL lv
-    = L $ \s -> case Map.lookup (mkLVar lv) (lsInverse s) of
+allocTerm :: TermNode -> L MyVar
+allocTerm term
+    = L $ \s -> case Map.lookup term (lsInverse s) of
         Just v -> Just (v, s)
         Nothing -> let v = lsNextVar s
-                       t = mkLVar lv
-                   in Just (v, s { lsFreeMap = Map.insert v t (lsFreeMap s), lsInverse = Map.insert t v (lsInverse s), lsNextVar = v + 1 })
+                   in Just (v, s { lsFreeMap = Map.insert v term (lsFreeMap s), lsInverse = Map.insert term v (lsInverse s), lsNextVar = v + 1 })
 
 liftFormula :: TermNode -> L MyPresburgerFormulaRep
 liftFormula t
@@ -533,8 +552,16 @@ liftTerm t
                 (Just n, _) -> scaleTermRep n <$> liftTerm b
                 (_, Just n) -> scaleTermRep n <$> liftTerm a
                 _ -> fail_
-        LVar lv -> do
-            v <- allocL lv
+        t'@(LVar _) -> do
+            v <- allocTerm t'
+            return (IVar v)
+        t'@(NIdx i)
+            | i < 0 -> undefined
+            | otherwise -> do
+                v <- allocTerm t'
+                return (IVar v)
+        t'@(NCon (DC (DC_Unique _ _)) _) -> do
+            v <- allocTerm t'
             return (IVar v)
         _ -> fail_
 
@@ -561,10 +588,15 @@ scaleTermRep :: Integer -> PresburgerTermRep -> PresburgerTermRep
 scaleTermRep n t
     | n <= 0 = Zero
     | n == 1 = t
+    | even n = let half = scaleTermRep (n `div` 2) t in Plus half half
     | otherwise = Plus t (scaleTermRep (n - 1) t)
 
 renumberFormula :: Map.Map TermNode MyVar -> Map.Map MyVar TermNode -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
-renumberFormula shared local rep = fst (goFormula startFresh Map.empty rep) where
+renumberFormula shared local rep
+    = assertNonnegativeTerms (Map.keys shared) `seq`
+      assertTermMap local `seq`
+      fst (goFormula startFresh Map.empty rep)
+  where
     startFresh = maxMyVar (Map.elems shared) + 1
     maxMyVar :: [MyVar] -> MyVar
     maxMyVar = foldr max (theMinNumOfMyVar - 1)
@@ -623,7 +655,9 @@ entails phis phi = checkTruthValueOfMyPresburgerFormula eliminated == Just True 
 
 arithEntails :: [TermNode] -> TermNode -> Bool
 arithEntails hyps phi
-    = case liftConstraint phi of
+    = assertNonnegativeTerms hyps `seq`
+      assertNonnegativeIndices phi `seq`
+      case liftConstraint phi of
         Nothing -> False
         Just lrPhi -> entails compiledHyps compiledPhi where
             liftedHs = mapMaybe liftConstraint hyps
@@ -657,6 +691,25 @@ data LeafSt
 --   its own freeOf linking the formula's free variables to HOL terms).
 type ArithStore = ([TermNode], [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)])
 
+-- | Residual arithmetic constraints do not all necessarily arise under the
+-- same local implication.  Each pair is one captured premise together with
+-- the obligation created while that premise was in scope.  The pairs are
+-- conjoined before their shared free leaves are closed, so query variables
+-- still denote one value across the complete residual store.
+type GuardedArithStore = [(ArithStore, ArithStore)]
+
+assertArithStore :: ArithStore -> ()
+assertArithStore (comparisons, formulas)
+    = assertNonnegativeTerms comparisons `seq`
+      assertNonnegativeTerms (concatMap (Map.elems . snd) formulas)
+
+assertGuardedArithStore :: GuardedArithStore -> ()
+assertGuardedArithStore [] = ()
+assertGuardedArithStore ((assumptions, obligations) : rest)
+    = assertArithStore assumptions `seq`
+      assertArithStore obligations `seq`
+      assertGuardedArithStore rest
+
 -- | Close a constraint store into a single presburger formula under the
 --   lia-style semantics, as @assumptions => obligations@.
 --
@@ -676,13 +729,20 @@ type ArithStore = ([TermNode], [(MyPresburgerFormulaRep, Map.Map MyVar TermNode)
 --   Assumptions are the arithmetic facts in scope (the left-hand sides of @=>@);
 --   obligations are the deferred goal constraints and the goal itself.
 closeStore :: ArithStore -> ArithStore -> MyPresburgerFormula
-closeStore assumptions obligations = fullyClosed where
+closeStore assumptions obligations
+    = assertArithStore assumptions `seq`
+      assertArithStore obligations `seq`
+      closeGuardedStore [(assumptions, obligations)]
+
+-- | Close a conjunction of separately guarded residual obligations.  Keeping
+-- one 'LeafSt' for the whole conjunction is essential: closing every pair on
+-- its own would allow the same existential query variable to take a different
+-- value in each residual constraint.
+closeGuardedStore :: GuardedArithStore -> MyPresburgerFormula
+closeGuardedStore guarded = assertGuardedArithStore guarded `seq` fullyClosed where
     (body0, finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
     build :: State LeafSt MyPresburgerFormulaRep
-    build = do
-        antecedent <- conjoinStore assumptions
-        consequent <- conjoinStore obligations
-        return (ImpF antecedent consequent)
+    build = buildGuardedStore guarded
     bodyC :: MyPresburgerFormula
     bodyC = fmap compilePresburgerTerm body0
     orderedLeaves :: [(MyVar, (FreeQuant, FreeKey))]
@@ -698,12 +758,48 @@ closeStore assumptions obligations = fullyClosed where
     fullyClosed :: MyPresburgerFormula
     fullyClosed = foldr AllF closedC leftover
 
--- | Is the constraint store satisfiable under its assumptions? Used both to
---   gate a @presburger@ goal (store conjoined with the new goal) and to prune
---   inconsistent branches.
+-- | Is the lia-style closure from assumptions to obligations valid? Used both
+--   to gate a @presburger@ goal and to prune inadmissible residual stores.
 presburgerStoreSat :: ArithStore -> ArithStore -> Bool
 presburgerStoreSat assumptions obligations
-    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeStore assumptions obligations)) == Just True
+    = assertArithStore assumptions `seq`
+      assertArithStore obligations `seq`
+      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeStore assumptions obligations)) == Just True
+
+-- | Is the shared existential/universal closure of all guarded residuals true?
+-- This is the branch-admissibility check used while proof search accumulates
+-- constraints from nested local implications.
+presburgerGuardedStoreSat :: GuardedArithStore -> Bool
+presburgerGuardedStoreSat guarded
+    = assertGuardedArithStore guarded `seq`
+      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeGuardedStore guarded)) == Just True
+
+-- | Does a guarded residual conjunction carry no information for any values of
+-- its free leaves?  Unlike 'presburgerGuardedStoreSat', every free leaf is
+-- universally closed; this is suitable for removing tautological residuals
+-- from a displayed answer.
+presburgerGuardedValid :: GuardedArithStore -> Bool
+presburgerGuardedValid guarded
+    = assertGuardedArithStore guarded `seq`
+      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
+    where
+        (body0, _finalSt) = runState (buildGuardedStore guarded) (LeafSt Map.empty Map.empty theMinNumOfMyVar)
+        bodyC :: MyPresburgerFormula
+        bodyC = fmap compilePresburgerTerm body0
+        validClosed :: MyPresburgerFormula
+        validClosed = foldr AllF bodyC (Set.toAscList (freeMyVarsF bodyC))
+
+-- | Build the conjunction of @premise => obligation@ pairs while sharing the
+-- atom-renaming state across every pair.
+buildGuardedStore :: GuardedArithStore -> State LeafSt MyPresburgerFormulaRep
+buildGuardedStore guarded = do
+    implications <- mapM buildOne guarded
+    return (foldr ConF (ValF True) implications)
+    where
+        buildOne (assumptions, obligations) = do
+            antecedent <- conjoinStore assumptions
+            consequent <- conjoinStore obligations
+            return (ImpF antecedent consequent)
 
 -- | Lift a store (comparisons + presburger formulas) into one conjunction,
 --   atomizing free leaves into the shared 'LeafSt'.
@@ -718,7 +814,9 @@ conjoinStore (cmpTerms, presForms) = do
 --   is fully discharged and need not be retained as a residual.
 presburgerEntails :: ArithStore -> (MyPresburgerFormulaRep, Map.Map MyVar TermNode) -> Bool
 presburgerEntails assumptions (rep, freeOf)
-    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
+    = assertArithStore assumptions `seq`
+      assertTermMap freeOf `seq`
+      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
     where
         (body0, _finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
         build :: State LeafSt MyPresburgerFormulaRep
@@ -735,7 +833,8 @@ presburgerEntails assumptions (rep, freeOf)
 --   its universal closure already holds; such a residual can be dropped.
 presburgerValid :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> Bool
 presburgerValid rep freeOf
-    = checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
+    = assertTermMap freeOf `seq`
+      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
     where
         (body0, _finalSt) = runState (renumFormulaDecomp (Map.map (rewrite NF) freeOf) Map.empty rep) (LeafSt Map.empty Map.empty theMinNumOfMyVar)
         bodyC :: MyPresburgerFormula
@@ -861,7 +960,34 @@ installPresburger :: TermNode -> Either ErrMsg TermNode
 installPresburger = installPresburgerWithEnv Map.empty
 
 installPresburgerWithEnv :: Map.Map LargeId TermNode -> TermNode -> Either ErrMsg TermNode
-installPresburgerWithEnv = go where
+installPresburgerWithEnv = installPresburgerUsing parseWithLegacyError badArgumentLegacy where
+    parseWithLegacyError loc src env = parsePresburger loc src env
+    badArgumentLegacy _ = diagnosticNoLoc "HolBETA-PresburgerError" [Z.Doc.text "The argument must be a closed string literal."]
+
+installPresburgerWithDiagnostic :: DiagnosticMode -> Maybe String -> SourceLines -> TermNode -> Either ErrMsg TermNode
+installPresburgerWithDiagnostic mode sourceName sourceLines
+    = installPresburgerWithEnvDiagnostic mode sourceName sourceLines Map.empty
+
+installPresburgerWithEnvDiagnostic :: DiagnosticMode -> Maybe String -> SourceLines -> Map.Map LargeId TermNode -> TermNode -> Either ErrMsg TermNode
+installPresburgerWithEnvDiagnostic mode sourceName sourceLines
+    = installPresburgerUsing parseWithDiagnostic badArgumentDiagnostic
+    where
+        parseWithDiagnostic loc src env = case parsePresburgerRaw src env of
+            Left msg -> Left (diagnosticWithModule mode "HolBETA-PresburgerError" sourceName sourceLines loc [Z.Doc.text msg])
+            Right result -> Right result
+        badArgumentDiagnostic loc = diagnosticWithModule mode "HolBETA-PresburgerError" sourceName sourceLines loc [Z.Doc.text "The argument must be a closed string literal."]
+
+installPresburgerUsing
+    :: (SLoc -> String -> Map.Map LargeId TermNode -> Either ErrMsg ParseResult)
+    -> (SLoc -> ErrMsg)
+    -> Map.Map LargeId TermNode
+    -> TermNode
+    -> Either ErrMsg TermNode
+installPresburgerUsing parseLiteral badArgument env term
+    = assertTermMap env `seq`
+      assertNonnegativeIndices term `seq`
+      go env term
+  where
     placeholderSLoc :: SLoc
     placeholderSLoc = SLoc (0, 0) (0, 0)
 
@@ -869,11 +995,10 @@ installPresburgerWithEnv = go where
     go env (NApp (NCon (DC (DC_Named "presburger")) _) arg sl)
         = case extractString arg of
             Just src -> do
-                let litLoc = case sl of { Just l -> l; Nothing -> placeholderSLoc }
-                r <- parsePresburger litLoc src env
+                let litLoc = fromMaybeLoc (getNodeSLoc arg) (fromMaybeLoc sl placeholderSLoc)
+                r <- parseLiteral litLoc src env
                 return (NPresburgerCheck (_formula r) (_freeOfFormula r) sl)
-            Nothing -> Left
-                (diagnosticNoLoc "HolBETA-PresburgerError" [Z.Doc.text "The argument must be a closed string literal."])
+            Nothing -> Left (badArgument (fromMaybeLoc (getNodeSLoc arg) (fromMaybeLoc sl placeholderSLoc)))
     go env (NApp t1 t2 sl) = do
         t1' <- go env t1
         t2' <- go env t2
@@ -886,6 +1011,10 @@ installPresburgerWithEnv = go where
         senv' <- traverse (goSuspItem env) senv
         return (Susp body' ol nl senv')
     go _ t = return t
+
+    fromMaybeLoc :: Maybe SLoc -> SLoc -> SLoc
+    fromMaybeLoc (Just loc) _ = loc
+    fromMaybeLoc Nothing fallback = fallback
 
     enterLam :: Maybe SmallId -> Map.Map LargeId TermNode -> Map.Map LargeId TermNode
     enterLam mh env =

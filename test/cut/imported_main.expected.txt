@@ -1,0 +1,11 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.cut.imported_main ( test/cut/imported_main.hol, interpreted )
+test.cut.imported_main> Ok, one module loaded.
+test.cut.imported_main> 
+test.cut.imported_main> no.
+test.cut.imported_main> 
+Hol >>= quit

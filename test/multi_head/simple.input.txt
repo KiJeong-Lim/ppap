@@ -4,5 +4,11 @@ test/multi_head/simple.hol
 ?- bar 3.
 ?- foo 4.
 ?- bar 4.
+?- foo 3, bar 3.
+?- foo 3 & bar 3.
+?- baz 5, qux 5.
+?- baz 5 & qux 5.
+?- independent_left 1, independent_right 2.
+?- constrained_left X, constrained_right Y.
+n
 :q
-

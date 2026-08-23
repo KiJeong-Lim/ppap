@@ -1,0 +1,53 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.notation.escape_policy ( test/notation/escape_policy.hol, interpreted )
+test.notation.escape_policy> Ok, one module loaded.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+test.notation.escape_policy> yes.
+test.notation.escape_policy> 
+1:15-1:15: error: [HolBETA-LexError]
+   |                    
+ 1 | ?- char_value '\r'.
+   |               ^    
+Lexing failed.
+
+test.notation.escape_policy> 
+1:15-1:15: error: [HolBETA-LexError]
+   |                      
+ 1 | ?- char_value '\x41'.
+   |               ^      
+Lexing failed.
+
+test.notation.escape_policy> 
+1:17-1:17: error: [HolBETA-LexError]
+   |                       
+ 1 | ?- string_value "\65".
+   |                 ^     
+Lexing failed.
+
+test.notation.escape_policy> 
+1:15-1:15: error: [HolBETA-LexError]
+   |                   
+ 1 | ?- char_value '''.
+   |               ^   
+Lexing failed.
+
+test.notation.escape_policy> 
+Hol >>= quit

@@ -1,0 +1,8 @@
+import audit_leaf.
+
+type audit_poly (Z -> Y -> Z -> o).
+abbrev audit_arr X Y := X -> Y.
+notation audit_lift G := Y\ audit_cnst (G Y).
+notation audit_right_fold X := audit_pair X X.
+
+audit_order 3.

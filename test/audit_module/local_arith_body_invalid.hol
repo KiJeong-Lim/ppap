@@ -1,0 +1,4 @@
+type local_arith_body_invalid o.
+
+% Arithmetic assumptions are solver premises, not callable clauses with bodies.
+local_arith_body_invalid :- ((3 > 2 :- true) => true).

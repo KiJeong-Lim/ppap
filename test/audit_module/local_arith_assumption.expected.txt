@@ -1,0 +1,73 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.local_arith_assumption ( test/audit_module/local_arith_assumption.hol, interpreted )
+test.audit_module.local_arith_assumption> Ok, one module loaded.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> no.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> no.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> no.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> The remaining constraints are:
+test.audit_module.local_arith_assumption> (X > 3) => Y > 2
+test.audit_module.local_arith_assumption> The binding is:
+test.audit_module.local_arith_assumption> Find more solutions? [Y/n] 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> The remaining constraints are:
+test.audit_module.local_arith_assumption> (X > 1 & Y > 2) => Z > 3
+test.audit_module.local_arith_assumption> The binding is:
+test.audit_module.local_arith_assumption> Find more solutions? [Y/n] 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> The answer substitution is:
+test.audit_module.local_arith_assumption> X := 0.
+test.audit_module.local_arith_assumption> Y := 0.
+test.audit_module.local_arith_assumption> Find more solutions? [Y/n] 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> no.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> The answer substitution is:
+test.audit_module.local_arith_assumption> X := 0.
+test.audit_module.local_arith_assumption> Find more solutions? [Y/n] 
+test.audit_module.local_arith_assumption> no.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> The answer substitution is:
+test.audit_module.local_arith_assumption> X := 0.
+test.audit_module.local_arith_assumption> Find more solutions? [Y/n] 
+test.audit_module.local_arith_assumption> no.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> The answer substitution is:
+test.audit_module.local_arith_assumption> X := 0.
+test.audit_module.local_arith_assumption> Y := 0.
+test.audit_module.local_arith_assumption> Find more solutions? [Y/n] 
+test.audit_module.local_arith_assumption> no.
+test.audit_module.local_arith_assumption> 
+test.audit_module.local_arith_assumption> The answer substitution is:
+test.audit_module.local_arith_assumption> X := 3.
+test.audit_module.local_arith_assumption> Y := 0.
+test.audit_module.local_arith_assumption> Find more solutions? [Y/n] 
+test.audit_module.local_arith_assumption> yes.
+test.audit_module.local_arith_assumption> 
+Hol >>= quit

@@ -1,0 +1,82 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.debug.assign_runtime_type_conflict ( test/debug/assign_runtime_type_conflict.hol, interpreted )
+test.debug.assign_runtime_type_conflict> Ok, one module loaded.
+test.debug.assign_runtime_type_conflict> 
+test.debug.assign_runtime_type_conflict> Debugging mode on.
+test.debug.assign_runtime_type_conflict> 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- pair X Y ] # call_id = 8
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            , Y : char
+            ]
+        , _thread_id = 8
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_runtime_type_conflict> Press the enter key to go to next state: 
+test.debug.assign_runtime_type_conflict> error: [HolBETA-AssignError]
+The assignment is inconsistent with the active debugger variable types.
+?X : nat; ?Y : char
+
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- true ] # call_id = 9
+        ]
+    + context = Context
+        { _substitution = 
+            [ X := 1
+            , Y := 'a'
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            , Y : char
+            ]
+        , _thread_id = 9
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_runtime_type_conflict> Press the enter key to go to next state: 
+--------------------------------
+* The top of the current stack is:
+    + progressings = []
+    + context = Context
+        { _substitution = 
+            [ X := 1
+            , Y := 'a'
+            ]
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            , Y : char
+            ]
+        , _thread_id = 9
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.debug.assign_runtime_type_conflict> Press the enter key to go to next state: 
+test.debug.assign_runtime_type_conflict> The answer substitution is:
+test.debug.assign_runtime_type_conflict> X := 1.
+test.debug.assign_runtime_type_conflict> Y := 'a'.
+test.debug.assign_runtime_type_conflict> Find more solutions? [Y/n] 
+test.debug.assign_runtime_type_conflict> yes.
+test.debug.assign_runtime_type_conflict> 
+Hol >>= quit

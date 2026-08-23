@@ -1,0 +1,4 @@
+type local_nonlinear_assumption_invalid o.
+
+% A nonlinear comparison cannot silently disappear from the local solver store.
+local_nonlinear_assumption_invalid :- pi X\ pi Y\ (X * Y > 10 => true).

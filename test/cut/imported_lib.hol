@@ -1,0 +1,5 @@
+module test.cut.imported_lib.
+
+type imported_cut (nat -> o).
+imported_cut 1 :- !, fail.
+imported_cut 2.

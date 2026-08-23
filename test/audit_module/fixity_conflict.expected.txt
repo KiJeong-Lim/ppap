@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.fixity_conflict ( test/audit_module/fixity_conflict.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/fixity_conflict.hol:2:1-2:19: error: [HolBETA-ModuleError]
+   |                    
+ 2 | import fixity_seed.
+   | ^^^^^^^^^^^^^^^^^^^
+Import inconsistency (C5): `+' is declared by both `test.audit_module.fixity_override' and `test.audit_module.fixity_seed' with disagreeing fixity. (`test.audit_module.fixity_override': FK_InfixL 8; `test.audit_module.fixity_seed': FK_InfixL 6.)
+
+Hol =<< 
+Hol >>= quit

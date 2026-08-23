@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.expansion_cycle_main ( test/audit_module/expansion_cycle_main.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/expansion_cycle_main.hol:2:1-2:29: error: [HolBETA-ModuleError]
+   |                              
+ 2 | import expansion_cycle_right.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Import composition creates a cyclic term notation: audit_cycle_n -> audit_cycle_m -> audit_cycle_n.
+
+Hol =<< 
+Hol >>= quit

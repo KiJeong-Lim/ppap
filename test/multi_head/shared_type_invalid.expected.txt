@@ -1,0 +1,17 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.multi_head.shared_type_invalid ( test/multi_head/shared_type_invalid.hol, interpreted )
+<PROJECT_ROOT>/test/multi_head/shared_type_invalid.hol:4:24-4:24: error: [HolBETA-TypeError]
+   |                          
+ 4 | nat_head X & char_head X.
+   |                        ^ 
+Logic variable `X' has conflicting type requirements.
+Earlier use at 4:10-4:10 requires:     `nat'
+Conflicting use at 4:24-4:24 requires: `char'
+Every occurrence of a logic variable in one expression must have the same type.
+
+Hol =<< 
+Hol >>= quit

@@ -1,0 +1,20 @@
+Hol --test
+test/audit_runtime/presburger_relevance.hol
+?- sigma Y\ (X = Y, presburger "X = 5").
+n
+?- sigma Y\ (X = Y, (X > 3 => presburger "X > 5")).
+n
+?- sigma Y\ (X = Y, X > 5).
+n
+?- sigma Y\ (X > Y, presburger "Y = 5").
+n
+?- sigma Y\ (X + 1 is Y + 1, presburger "Y = 5").
+n
+?- sigma A\ sigma B\ (X = A, A = B, presburger "X = 5").
+n
+?- sigma Y\ (presburger "X = Y", presburger "Y = 5").
+n
+?- sigma Y\ (presburger "Y = 5", presburger "X = Y").
+n
+?- sigma Y\ presburger "Y = 5".
+:q

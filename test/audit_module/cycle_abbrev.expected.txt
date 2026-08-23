@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.cycle_abbrev ( test/audit_module/cycle_abbrev.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/cycle_abbrev.hol:1:25-1:35: error: [HolBETA-DesugarError]
+   |                                       
+ 1 | abbrev audit_cycle A := audit_cycle A.
+   |                         ^^^^^^^^^^^   
+Cyclic type abbreviation: audit_cycle -> audit_cycle.
+
+Hol =<< 
+Hol >>= quit

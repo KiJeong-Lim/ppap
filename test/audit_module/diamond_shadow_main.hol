@@ -1,0 +1,8 @@
+import diamond_shadow_left.
+import diamond_shadow_right.
+
+% Source-later presentation entry must win even though `audit_a' sorts first.
+notation audit_z X := audit_shadow_char X.
+notation audit_a X := audit_shadow_char X.
+type audit_fold_source (audit_shadow_obj -> o).
+audit_fold_source (audit_shadow_char 'z').

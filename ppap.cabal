@@ -10,6 +10,63 @@ maintainer: gijungdduk@naver.com
 copyright: 2021-2026, Kijeong Lim
 build-type: Simple
 cabal-version: 2.0
+extra-source-files:
+  doc/HolBETA.txt
+  test/SmokeMain.hs
+  test/smoke.sh
+  test/audit_module/*.hol
+  test/audit_module/*.input.txt
+  test/audit_module/*.expected.txt
+  test/audit_module/*.hs
+  test/audit_module/*.sh
+  test/audit_runtime/*.hol
+  test/audit_runtime/*.input.txt
+  test/audit_runtime/*.expected.txt
+  test/audit_runtime/*.hs
+  test/audit_runtime/*.sh
+  test/cut/*.hol
+  test/cut/*.input.txt
+  test/cut/*.expected.txt
+  test/debug/*.hol
+  test/debug/*.input.txt
+  test/debug/*.expected.txt
+  test/example/*.hol
+  test/example/*.input.txt
+  test/example/*.expected.txt
+  test/fibonacci/*.hol
+  test/fibonacci/*.input.txt
+  test/fibonacci/*.expected.txt
+  test/io/*.hol
+  test/io/*.input.txt
+  test/io/*.expected.txt
+  test/kind/*.hol
+  test/kind/*.input.txt
+  test/kind/*.expected.txt
+  test/module/*.hol
+  test/module/*.input.txt
+  test/module/*.expected.txt
+  test/multi_head/*.hol
+  test/multi_head/*.input.txt
+  test/multi_head/*.expected.txt
+  test/notation/*.hol
+  test/notation/*.input.txt
+  test/notation/*.expected.txt
+  test/presburger/*.hol
+  test/presburger/*.input.txt
+  test/presburger/*.expected.txt
+  test/sloc/*.hol
+  test/sloc/*.input.txt
+  test/sloc/*.expected.txt
+  test/sloc/*.hs
+  test/sloc/*.sh
+  test/symbolic/*.hol
+  test/symbolic/*.input.txt
+  test/symbolic/*.expected.txt
+  test/typecheck/*.hol
+  test/typecheck/*.input.txt
+  test/typecheck/*.expected.txt
+  test/typecheck/*.hs
+  test/typecheck/*.sh
 
 executable ppap
   hs-source-dirs: src
@@ -106,3 +163,11 @@ executable ppap
     machine.h
   c-sources:
     src/X/machine.c
+
+test-suite hol-beta-smoke
+  type: exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is: SmokeMain.hs
+  default-language: Haskell2010
+  build-depends: base >= 4.7 && < 5, directory >= 1.3, filepath >= 1.4, process >= 1.0
+  build-tool-depends: ppap:ppap

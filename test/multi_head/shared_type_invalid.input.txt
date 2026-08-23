@@ -1,0 +1,3 @@
+Hol --test
+test/multi_head/shared_type_invalid.hol
+:q

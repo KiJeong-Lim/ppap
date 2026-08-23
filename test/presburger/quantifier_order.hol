@@ -1,4 +1,4 @@
-% Lia-style closure of `presburger` goals (BETA spec section 2.3.4).
+% Lia-style closure of `presburger` goals (BETA spec section 4.3).
 % A logic variable substituted into a presburger literal is closed
 % existentially -- even under a constructor such as `s _` -- while an
 % eigenvariable introduced by `pi` is closed universally. The prenex

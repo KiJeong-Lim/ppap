@@ -12,10 +12,6 @@ test.module.simple_import> Find more solutions? [Y/n]
 test.module.simple_import> The answer substitution is:
 test.module.simple_import> X := 9.
 test.module.simple_import> Find more solutions? [Y/n] 
-test.module.simple_import> no.
-test.module.simple_import> 
-error: [HolBETA-ParseError]
-Parsing failed at EOF.
-
+test.module.simple_import> yes.
 test.module.simple_import> 
 Hol >>= quit

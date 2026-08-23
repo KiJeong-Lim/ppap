@@ -1,0 +1,10 @@
+Hol --test
+test/symbolic/is_polymorphic.hol
+?- X is 'a'.
+n
+?- 'a' is 'a'.
+?- 'a' is 'b'.
+?- X is [1, 2].
+n
+?- (x\ x) is (y\ y).
+:q

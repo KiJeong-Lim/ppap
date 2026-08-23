@@ -1,0 +1,4 @@
+% A sigma-generated X must be the target of `:assign ?X`, not a new
+% unrelated LV_Named "X" reconstructed from its display spelling.
+type eq5 (nat -> o).
+eq5 5.

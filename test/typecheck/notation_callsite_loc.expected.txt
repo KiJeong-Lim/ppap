@@ -1,0 +1,28 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.typecheck.notation_callsite_loc ( test/typecheck/notation_callsite_loc.hol, interpreted )
+test.typecheck.notation_callsite_loc> Ok, one module loaded.
+test.typecheck.notation_callsite_loc> 
+1:5-1:16: error: [HolBETA-TypeError]
+   |                     
+ 1 | ?- (duplicated 7) 1.
+   |     ^^^^^^^^^^^^    
+Cannot apply a non-function value.
+Actual:   `callsite_result'
+Expected: `nat -> A_0'
+The expression in function position must have a function type.
+
+test.typecheck.notation_callsite_loc> 
+1:15-1:17: error: [HolBETA-TypeError]
+   |                   
+ 1 | ?- duplicated 'a'.
+   |               ^^^ 
+Function argument has the wrong type.
+Expected: `nat'
+Actual:   `char'
+
+test.typecheck.notation_callsite_loc> 
+Hol >>= quit

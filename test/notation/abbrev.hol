@@ -1,4 +1,4 @@
-% Section 1.6.1: a user-defined type abbreviation behaves like the
+% Section 1.6: a user-defined type abbreviation behaves like the
 % built-in `string := list char`. The desugarer's expansion pass
 % rewrites `pp` to `list nat` everywhere it appears in a type, so the
 % type checker accepts a fact whose declared type uses `pp` but whose

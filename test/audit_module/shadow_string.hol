@@ -1,0 +1,4 @@
+abbrev string := list nat.
+
+type audit_string (string -> o).
+audit_string [1].

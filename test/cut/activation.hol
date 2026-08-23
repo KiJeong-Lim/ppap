@@ -1,0 +1,33 @@
+module test.cut.activation.
+
+type pick (nat -> o).
+pick 1.
+pick 2.
+
+% C1: cut commits past the remaining clauses even when this branch later fails.
+type cut_fail (nat -> o).
+cut_fail 1 :- !, fail.
+cut_fail 2.
+
+% C2: a choice made to the left of cut in this activation is pruned.
+type left_choice (nat -> o).
+left_choice X :- pick X, !.
+
+% C3: choices first created to the right of cut remain searchable.
+type right_choice (nat -> o).
+right_choice X :- !, (X = 1; X = 2).
+
+% C4: a nested cut prunes the callee, but not the caller's next clause.
+type inner o.
+type outer (nat -> o).
+inner :- !, fail.
+inner.
+outer 1 :- inner.
+outer 2.
+
+% C6: likewise, a callee cut leaves a caller disjunction available.
+type inner_ok o.
+inner_ok :- !.
+
+% C7 uses this declared predicate for temporary local clauses.
+type local (nat -> o).

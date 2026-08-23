@@ -1,0 +1,4 @@
+type audit_p o.
+type audit_q o.
+type audit_r o.
+audit_p :- (audit_q :- audit_r).

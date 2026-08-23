@@ -1,0 +1,25 @@
+Hol --test
+test/audit_runtime/read_escape_policy.hol
+?- read_char '\n'.
+'\n'
+?- read_char '"'.
+'"'
+?- (read_char '\n', print 1) ; print 2.
+'\r'
+?- read_string "a'b\n\t\\\"\'한글".
+"a'b\n\t\\\"\'한글"
+?- (read_char 'A', print 3) ; print 4.
+'\x41'
+?- (read_string "A", print 5) ; print 6.
+"\65"
+?- (read 16, print 7) ; print 8.
+0x10
+?- (read 16, print 9) ; print 10.
+0o20
+?- (read 16, print 11) ; print 12.
+ 16
+?- (read 16, print 13) ; print 14.
++16
+?- (read 16, print 15) ; print 16.
+-1
+:q

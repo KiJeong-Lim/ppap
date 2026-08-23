@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.invalid_duplicate_parameter ( test/audit_module/invalid_duplicate_parameter.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/invalid_duplicate_parameter.hol:1:1-1:37: error: [HolBETA-DesugarError]
+   |                                      
+ 1 | abbrev audit_duplicate X X := list X.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The parameter list of type abbreviation `audit_duplicate' contains duplicate parameter `X'.
+
+Hol =<< 
+Hol >>= quit

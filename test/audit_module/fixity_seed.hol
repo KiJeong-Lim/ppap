@@ -1,0 +1,2 @@
+% Explicitly repeating a built-in fixity still has user provenance.
+infixl + 6.

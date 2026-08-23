@@ -8,12 +8,12 @@ import qualified Hol.BETA.Notation as Notation
 import Hol.BETA.PlanHolLexer
 import Hol.BETA.TermNode (TermNode, LogicVar (..), freshenName, mkLVar)
 import Hol.BETA.TypeChecker (inferTypeWithModule)
+import Control.Monad (unless)
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.State.Strict
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
-import qualified Data.Set as Set
 import qualified Z.Doc
 import Z.Utils
 
@@ -45,14 +45,14 @@ makeKindEnvInModule mode moduleName sourceLines = go where
                 kin <- unRep krep
                 return (kin, loc)
         if getRank kin > 1
-            then Left (desugarErrInModule mode moduleName sourceLines loc "The higher-order kind expression is not allowed.")
+            then Left (desugarErrInModule mode moduleName sourceLines loc "Higher-order kinds are not supported; expected a kind of rank at most 1.")
             else return kin
     go :: [(SLoc, (TypeConstructor, KindRep))] -> KindEnv -> Either ErrMsg KindEnv
     go [] kind_env = return kind_env
     go ((loc, (tcon, krep)) : triples) kind_env
-        | TC_Named (tc : _) <- tcon, tc `elem` ['A' .. 'Z'] = Left (desugarErrInModule mode moduleName sourceLines loc "The identifier of a type constructor must be started with a small letter.")
+        | TC_Named (tc : _) <- tcon, tc `elem` ['A' .. 'Z'] = Left (desugarErrInModule mode moduleName sourceLines loc "A type-constructor name must start with a lowercase letter.")
         | otherwise = case Map.lookup tcon kind_env of
-            Just _ -> Left (desugarErrInModule mode moduleName sourceLines loc "It is wrong to redeclare an already declared type constructor.")
+            Just _ -> Left (desugarErrInModule mode moduleName sourceLines loc ("Type constructor `" ++ showsPrec 0 tcon "' is already declared."))
             Nothing -> do
                 kin <- unRep krep
                 go triples (Map.insert tcon kin kind_env)
@@ -66,9 +66,9 @@ typeRepToMonoInModule mode moduleName sourceLines kind_env = go where
     applyModusPonens (kin1 `KArr` kin2) kin3
         | kin1 == kin3 = Right kin2
     applyModusPonens (kin1 `KArr` kin2) kin3
-        = Left ("  ? couldn't solve `" ++ pprint 0 kin1 ("\' ~ `" ++ pprint 0 kin3 "\'"))
+        = Left ("Kind mismatch: expected `" ++ pprint 0 kin1 ("', but got `" ++ pprint 0 kin3 "'"))
     applyModusPonens Star kin1
-        = Left ("  ? coudln't solve `type\' ~ `" ++ pprint 1 kin1 " -> _\'")
+        = Left ("Cannot apply a type of kind `*' to an argument of kind `" ++ pprint 0 kin1 "'")
     go :: TypeRep -> Either ErrMsg (KindExpr, MonoType LargeId)
     go trep = case trep of
         RTyVar loc tvrep -> return (Star, TyVar tvrep)
@@ -90,20 +90,20 @@ makeTypeEnv mode = makeTypeEnvInModule mode Nothing
 makeTypeEnvInModule :: DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> [(SLoc, (DataConstructor, TypeRep))] -> TypeEnv -> Either ErrMsg TypeEnv
 makeTypeEnvInModule mode moduleName sourceLines kind_env = go where
     unRep = typeRepToMonoInModule mode moduleName sourceLines kind_env
-    generalize :: MonoType LargeId -> PolyType
-    generalize typ = Forall tvars (indexify typ) where
-        getFreeTVs :: MonoType LargeId -> Set.Set LargeId
-        getFreeTVs (TyVar tvar) = Set.singleton tvar
-        getFreeTVs (TyCon tcon) = Set.empty
-        getFreeTVs (TyApp typ1 typ2) = getFreeTVs typ1 `Set.union` getFreeTVs typ2
-        getFreeTVs (TyMTV mtv) = Set.empty
+    generalize :: MonoType LargeId -> Maybe PolyType
+    generalize typ = Forall tvars <$> indexify typ where
+        getFreeTVs :: MonoType LargeId -> [LargeId]
+        getFreeTVs (TyVar tvar) = [tvar]
+        getFreeTVs (TyCon _) = []
+        getFreeTVs (TyApp typ1 typ2) = getFreeTVs typ1 ++ getFreeTVs typ2
+        getFreeTVs (TyMTV _) = []
         tvars :: [LargeId]
-        tvars = Set.toAscList (getFreeTVs typ)
-        indexify :: MonoType LargeId -> MonoType Int
-        indexify (TyVar tvar) = maybe (error "unreachable!") TyVar $ tvar `List.elemIndex` tvars
-        indexify (TyCon tcon) = TyCon tcon
-        indexify (TyApp typ1 typ2) = TyApp (indexify typ1) (indexify typ2)
-        indexify (TyMTV mtv) = TyMTV mtv
+        tvars = List.nub (getFreeTVs typ)
+        indexify :: MonoType LargeId -> Maybe (MonoType Int)
+        indexify (TyVar tvar) = TyVar <$> List.elemIndex tvar tvars
+        indexify (TyCon tcon) = Just (TyCon tcon)
+        indexify (TyApp typ1 typ2) = TyApp <$> indexify typ1 <*> indexify typ2
+        indexify (TyMTV mtv) = Just (TyMTV mtv)
     hasValidHead :: MonoType LargeId -> Bool
     hasValidHead = go2 . go1 where
         go1 :: MonoType LargeId -> MonoType LargeId
@@ -125,13 +125,14 @@ makeTypeEnvInModule mode moduleName sourceLines kind_env = go where
             Nothing -> do
                 (kin, typ) <- unRep trep
                 if kin == Star then
-                    if hasValidHead typ then
-                        go triples (Map.insert con (generalize typ) type_env)
+                    if hasValidHead typ then case generalize typ of
+                        Just scheme -> go triples (Map.insert con scheme type_env)
+                        Nothing -> Left (desugarErrInModule mode moduleName sourceLines loc "Could not generalize the declaration's type variables.")
                     else
                         Left (desugarErrInModule mode moduleName sourceLines loc ("The head of the type `" ++ showsPrec 0 con "' is invalid."))
                 else
-                    Left (desugarErrInModule mode moduleName sourceLines loc ("Couldn't solve `" ++ pprint 0 kin "' ~ `type'."))
-            _ -> Left (desugarErrInModule mode moduleName sourceLines loc ("It is wrong to redeclare the already declared constant `" ++ showsPrec 0 con "'."))
+                    Left (desugarErrInModule mode moduleName sourceLines loc ("A term declaration must have kind `*', but this type has kind `" ++ pprint 0 kin "'."))
+            _ -> Left (desugarErrInModule mode moduleName sourceLines loc ("Predicate or constructor `" ++ showsPrec 0 con "' is already declared."))
 
 desugarTerm :: MonadUnique m => [SmallId] -> TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
 desugarTerm _ (R_wc loc1) = do
@@ -181,32 +182,91 @@ desugarProgramWithDiagnostic :: MonadUnique m => DiagnosticMode -> SourceLines -
 desugarProgramWithDiagnostic mode sourceLines kind_env type_env file_name program0 = desugarProgramWithModule mode Nothing sourceLines kind_env type_env file_name program0
 
 desugarProgramWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> TypeEnv -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc, Map.Map LargeId IVar), NotationDB, ExpansionDB)
-desugarProgramWithModule mode moduleName sourceLines kind_env type_env file_name program0
-    = case makeKindEnvInModule mode moduleName sourceLines [ (loc, (tcon, krep)) | RKindDecl loc tcon krep <- program ] kind_env of
-        Left err_msg -> throwE err_msg
-        Right kind_env' -> case makeTypeEnvInModule mode moduleName sourceLines kind_env' expandedTypes type_env of
-            Left err_msg -> throwE err_msg
-            Right type_env' -> case populateTypeFoldTableInModule mode moduleName sourceLines kind_env' expansion_db notation_db0 of
-                Left err_msg -> throwE err_msg
-                Right notation_db1 -> do
-                    notation_db <- populateTermFoldTableInModule mode moduleName sourceLines type_env' expansion_db notation_db1
-                    facts' <- lift (mapM (flip runStateT Map.empty . desugarTerm []) expandedFacts)
-                    return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name }, notation_db, expansion_db)
+desugarProgramWithModule mode moduleName sourceLines kind_env type_env =
+    desugarProgramWithInherited mode moduleName sourceLines kind_env type_env Notation.initial Notation.initialExpansionDB
+
+desugarProgramWithInherited :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> TypeEnv -> NotationDB -> ExpansionDB -> String -> [DeclRep] -> ExceptT ErrMsg m (Program (TermExpr DataConstructor SLoc, Map.Map LargeId IVar), NotationDB, ExpansionDB)
+desugarProgramWithInherited mode moduleName sourceLines kind_env type_env inheritedNotation inheritedExpansion file_name program0 = do
+    mapM_ validateDeclarationParameters program
+    either (throwE . expansionErr mode moduleName sourceLines) return (Notation.validateExpansionDB expansion_db)
+    expandedTypes <- sequence
+        [ do
+            expanded <- either (throwE . expansionErr mode moduleName sourceLines) return (Notation.expandTypeRepChecked expansion_db trep)
+            return (loc, (con, expanded))
+        | RTypeDecl loc con trep <- program
+        ]
+    expandedFacts <- sequence
+        [ either (throwE . expansionErr mode moduleName sourceLines) return (Notation.expandTermRepChecked expansion_db factRep)
+        | RFactDecl _ factRep <- program
+        ]
+    kind_env' <- either throwE return
+        (makeKindEnvInModule mode moduleName sourceLines [ (loc, (tcon, krep)) | RKindDecl loc tcon krep <- program ] kind_env)
+    type_env' <- either throwE return
+        (makeTypeEnvInModule mode moduleName sourceLines kind_env' expandedTypes type_env)
+    notation_db1 <- either throwE return
+        (populateTypeFoldEntriesInModule mode moduleName sourceLines kind_env' expansion_db
+            (Notation.declaredTypeAbbrevList ownExpansion) notation_db0)
+    notation_db <- populateTermFoldEntriesInModule mode moduleName sourceLines type_env' expansion_db
+        (Notation.declaredTermNotationList ownExpansion) notation_db1
+    facts' <- lift (mapM (flip runStateT Map.empty . desugarTerm []) expandedFacts)
+    return (kind_env' `seq` type_env' `seq` facts' `seq` Program { _KindDecls = kind_env', _TypeDecls = type_env', _FactDecls = facts', moduleName = file_name }, notation_db, expansion_db)
     where
         program = program0
-        expansion_db = collectExpansions program
-        notation_db0 = collectNotation program
-        expandedTypes = [ (loc, (con, Notation.expandTypeRep expansion_db trep)) | RTypeDecl loc con trep <- program ]
-        expandedFacts = [ Notation.expandTermRep expansion_db fact_rep | RFactDecl _ fact_rep <- program ]
+        ownExpansion = collectExpansions program
+        expansion_db = Notation.mergeExpansion inheritedExpansion ownExpansion
+        notation_db0 = Notation.merge inheritedNotation (collectNotation program)
+
+        validateDeclarationParameters (RAbbrevDecl loc name params _) =
+            validateParameters loc "type abbreviation" name params
+        validateDeclarationParameters (RNotationDecl loc name params _) =
+            validateParameters loc "term notation" name params
+        validateDeclarationParameters _ = return ()
+
+        validateParameters loc declarationKind name params = do
+            unless (null invalid) $
+                throwE (desugarErrInModule mode moduleName sourceLines loc
+                    ("Every parameter of " ++ declarationKind ++ " `" ++ name
+                        ++ "' must start with an upper-case letter; invalid parameter"
+                        ++ plural invalid ++ ": `" ++ List.intercalate "', `" invalid ++ "'."))
+            unless (null duplicates) $
+                throwE (desugarErrInModule mode moduleName sourceLines loc
+                    ("The parameter list of " ++ declarationKind ++ " `" ++ name
+                        ++ "' contains duplicate parameter" ++ plural duplicates
+                        ++ " `" ++ List.intercalate "', `" duplicates ++ "'."))
+            where
+                invalid = [ param | param <- params, not (startsUpper param) ]
+                duplicates = List.nub
+                    [ param
+                    | param : remaining <- List.tails params
+                    , param `elem` remaining
+                    ]
+                startsUpper (c : _) = c `elem` ['A' .. 'Z']
+                startsUpper [] = False
+                plural [_] = ""
+                plural _ = "s"
+
+expansionErr :: DiagnosticMode -> Maybe String -> SourceLines -> Notation.ExpansionError -> ErrMsg
+expansionErr mode moduleName sourceLines err = case err of
+    Notation.TypeExpansionCycle loc names ->
+        desugarErrInModule mode moduleName sourceLines loc
+            ("Cyclic type abbreviation: " ++ List.intercalate " -> " names ++ ".")
+    Notation.TermExpansionCycle loc names ->
+        desugarErrInModule mode moduleName sourceLines loc
+            ("Cyclic term notation: " ++ List.intercalate " -> " names ++ ".")
 
 populateTypeFoldTable :: DiagnosticMode -> SourceLines -> KindEnv -> ExpansionDB -> NotationDB -> Either ErrMsg NotationDB
 populateTypeFoldTable mode = populateTypeFoldTableInModule mode Nothing
 
 populateTypeFoldTableInModule :: DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> ExpansionDB -> NotationDB -> Either ErrMsg NotationDB
-populateTypeFoldTableInModule mode moduleName sourceLines kind_env expansion_db = go (Notation.typeAbbrevList expansion_db) where
+populateTypeFoldTableInModule mode moduleName sourceLines kind_env expansion_db =
+    populateTypeFoldEntriesInModule mode moduleName sourceLines kind_env expansion_db (Notation.typeAbbrevList expansion_db)
+
+populateTypeFoldEntriesInModule :: DiagnosticMode -> Maybe String -> SourceLines -> KindEnv -> ExpansionDB -> [(SmallId, [LargeId], TypeRep)] -> NotationDB -> Either ErrMsg NotationDB
+populateTypeFoldEntriesInModule mode moduleName sourceLines kind_env expansion_db = go where
     go [] db = Right db
     go ((name, params, rhs) : rest) db = do
-        let expanded = Notation.expandTypeRep expansion_db rhs
+        expanded <- either (Left . expansionErr mode moduleName sourceLines) Right
+            (Notation.expandTypeRepChecked expansion_db rhs)
         (_, monoType) <- typeRepToMonoInModule mode moduleName sourceLines kind_env expanded
         go rest (Notation.addAbbrev name params monoType db)
 
@@ -214,23 +274,41 @@ populateTermFoldTable :: MonadUnique m => DiagnosticMode -> SourceLines -> TypeE
 populateTermFoldTable mode = populateTermFoldTableInModule mode Nothing
 
 populateTermFoldTableInModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> TypeEnv -> ExpansionDB -> NotationDB -> ExceptT ErrMsg m NotationDB
-populateTermFoldTableInModule mode moduleName sourceLines type_env expansion_db db0 = go (Notation.termNotationList expansion_db) db0 where
+populateTermFoldTableInModule mode moduleName sourceLines type_env expansion_db =
+    populateTermFoldEntriesInModule mode moduleName sourceLines type_env expansion_db (Notation.termNotationList expansion_db)
+
+populateTermFoldEntriesInModule :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> TypeEnv -> ExpansionDB -> [(SmallId, [LargeId], TermRep)] -> NotationDB -> ExceptT ErrMsg m NotationDB
+populateTermFoldEntriesInModule mode moduleName sourceLines type_env expansion_db = go where
     go [] db = return db
     go ((name, params, rhs) : rest) db = do
-        let expanded = Notation.expandTermRep expansion_db rhs
-        mTemplate <- lift (runExceptT (compileNotationRHS mode moduleName sourceLines db0 type_env params expanded))
-        case mTemplate of
-            Left _    -> go rest db
-            Right tn  -> go rest (Notation.addNotation name params tn db)
+        expanded <- either (throwE . expansionErr mode moduleName sourceLines) return
+            (Notation.expandTermRepChecked expansion_db rhs)
+        template <- compileNotationRHS mode moduleName sourceLines db type_env params expanded
+        go rest (Notation.addNotation name params template db)
 
 compileNotationRHS :: MonadUnique m => DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -> TypeEnv -> [LargeId] -> TermRep -> ExceptT ErrMsg m TermNode
 compileNotationRHS mode moduleName sourceLines db type_env params body = do
     paramIVars <- lift (mapM (\_ -> getUnique) params)
     let initialNameEnv = Map.fromList (zip params paramIVars)
     (typedTerm, freeVars) <- runStateT (desugarTerm [] body) initialNameEnv
+    let undeclared = [ name | name <- Map.keys freeVars, name `notElem` params ]
+    unless (null undeclared) $
+        throwE (desugarErrInModule mode moduleName sourceLines (termRepLoc body)
+            ("The notation right-hand side has undeclared free variable" ++ plural undeclared ++ " `" ++ List.intercalate "', `" undeclared ++ "'."))
     ((typedExpr, assumptions), used_mtvs) <- inferTypeWithModule mode moduleName sourceLines db type_env typedTerm
-    let nameEnv = Map.fromList [ (ivar, mkLVar (LV_Named pname)) | (pname, ivar) <- Map.toList freeVars, pname `elem` params ]
+    let nameEnv = Map.fromList [ (ivar, mkLVar (LV_Named pname)) | (pname, ivar) <- zip params paramIVars ]
     convertQuery used_mtvs assumptions nameEnv typedExpr
+    where
+        plural [_] = ""
+        plural _ = "s"
+
+termRepLoc :: TermRep -> SLoc
+termRepLoc (R_wc loc) = loc
+termRepLoc (RVar loc _) = loc
+termRepLoc (RCon loc _) = loc
+termRepLoc (RApp loc _ _) = loc
+termRepLoc (RAbs loc _ _) = loc
+termRepLoc (RPrn loc _) = loc
 
 collectNotation :: [DeclRep] -> NotationDB
 collectNotation = List.foldl' step Notation.initial where

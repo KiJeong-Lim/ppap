@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.fixity_negative ( test/audit_module/fixity_negative.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/fixity_negative.hol:1:18-1:18: error: [HolBETA-ParseError]
+   |                     
+ 1 | infixl audit_neg -1.
+   |                  ^  
+Parsing failed in `<PROJECT_ROOT>/test/audit_module/fixity_negative.hol'.
+
+Hol =<< 
+Hol >>= quit

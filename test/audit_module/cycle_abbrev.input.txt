@@ -1,0 +1,3 @@
+Hol --test
+test/audit_module/cycle_abbrev.hol
+:q

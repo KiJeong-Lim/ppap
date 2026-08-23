@@ -1,0 +1,12 @@
+% Literal values admit printable characters and exactly five escape spellings.
+type char_value (char -> o).
+type string_value (list char -> o).
+
+char_value '\n'.
+char_value '\t'.
+char_value '\\'.
+char_value '\"'.
+char_value '\''.
+char_value '한'.
+
+string_value "a'b\n\t\\\"\'한글".

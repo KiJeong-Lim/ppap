@@ -1,0 +1,25 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.symbolic.is_polymorphic ( test/symbolic/is_polymorphic.hol, interpreted )
+test.symbolic.is_polymorphic> Ok, one module loaded.
+test.symbolic.is_polymorphic> 
+test.symbolic.is_polymorphic> The answer substitution is:
+test.symbolic.is_polymorphic> X := 'a'.
+test.symbolic.is_polymorphic> Find more solutions? [Y/n] 
+test.symbolic.is_polymorphic> yes.
+test.symbolic.is_polymorphic> 
+test.symbolic.is_polymorphic> yes.
+test.symbolic.is_polymorphic> 
+test.symbolic.is_polymorphic> no.
+test.symbolic.is_polymorphic> 
+test.symbolic.is_polymorphic> The answer substitution is:
+test.symbolic.is_polymorphic> X := [1, 2].
+test.symbolic.is_polymorphic> Find more solutions? [Y/n] 
+test.symbolic.is_polymorphic> yes.
+test.symbolic.is_polymorphic> 
+test.symbolic.is_polymorphic> yes.
+test.symbolic.is_polymorphic> 
+Hol >>= quit

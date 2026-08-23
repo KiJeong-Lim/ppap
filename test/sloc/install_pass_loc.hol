@@ -1,4 +1,4 @@
-% Section 2.3.4 close-out: a parse error inside a `presburger "..."`
+% Sections 4.3 and 6: a parse error inside a `presburger "..."`
 % literal must attribute its position to the literal's column on the
 % source line, not the placeholder `(0,0)-(0,0)`.  Here the
 % literal is malformed (unbalanced parenthesis), so loading must fail

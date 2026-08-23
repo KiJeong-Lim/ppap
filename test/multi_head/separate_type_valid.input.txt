@@ -1,0 +1,4 @@
+Hol --test
+test/multi_head/separate_type_valid.hol
+?- separate_nat 1, separate_char 'a'.
+:q

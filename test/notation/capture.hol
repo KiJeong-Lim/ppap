@@ -1,4 +1,4 @@
-% Capture-avoiding substitution test (spec 1.6.3).
+% Capture-avoiding substitution test (Section 1.6).
 % The notation body `Y\ cnst (F Y)` binds `Y` internally. The second
 % fact passes an argument `(Z\ Y)` whose free variable `Y` collides
 % with that binder. Without capture-avoidance, the outer `Y` would be
@@ -13,3 +13,16 @@ notation lift F := Y\ cnst (F Y).
 type p ((nat -> myt) -> o).
 p (lift (Z\ Z)).
 p (lift (Z\ Y)) :- Y = 8.
+
+% A shadowed formal must not hide capture caused by another actual argument.
+notation shadow X Y := X\ Y.
+type p2 ((nat -> nat) -> o).
+p2 (shadow A X) :- X = 9.
+
+% Remaining parameters of a partially applied notation are binders too.
+% They must be introduced before consumed arguments are substituted, or a
+% free variable in an argument can be captured by the eta-expanded binder.
+type pair_nat (nat -> nat -> myt).
+notation partial X Y := pair_nat X Y.
+type p3 ((nat -> myt) -> o).
+p3 (partial Y) :- Y = 7.

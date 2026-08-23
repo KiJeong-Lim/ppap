@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.invalid_lower_parameter ( test/audit_module/invalid_lower_parameter.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/invalid_lower_parameter.hol:1:1-1:28: error: [HolBETA-DesugarError]
+   |                             
+ 1 | notation audit_lower x := x.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Every parameter of term notation `audit_lower' must start with an upper-case letter; invalid parameter: `x'.
+
+Hol =<< 
+Hol >>= quit

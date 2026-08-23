@@ -1,0 +1,20 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.diamond_shadow_main ( test/audit_module/diamond_shadow_main.hol, interpreted )
+test.audit_module.diamond_shadow_main> Ok, one module loaded.
+test.audit_module.diamond_shadow_main> 
+test.audit_module.diamond_shadow_main> yes.
+test.audit_module.diamond_shadow_main> 
+test.audit_module.diamond_shadow_main> yes.
+test.audit_module.diamond_shadow_main> 
+test.audit_module.diamond_shadow_main> yes.
+test.audit_module.diamond_shadow_main> 
+test.audit_module.diamond_shadow_main> The answer substitution is:
+test.audit_module.diamond_shadow_main> X := audit_a 'z'.
+test.audit_module.diamond_shadow_main> Find more solutions? [Y/n] 
+test.audit_module.diamond_shadow_main> yes.
+test.audit_module.diamond_shadow_main> 
+Hol >>= quit

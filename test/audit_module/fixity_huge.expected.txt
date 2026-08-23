@@ -1,0 +1,15 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.fixity_huge ( test/audit_module/fixity_huge.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/fixity_huge.hol:1:1-1:58: error: [HolBETA-ParseError]
+   |                                                           
+ 1 | infixl audit_huge 999999999999999999999999999999999999999.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Parsing failed in `<PROJECT_ROOT>/test/audit_module/fixity_huge.hol'.
+Fixity precedence must be between 0 and 9.
+
+Hol =<< 
+Hol >>= quit

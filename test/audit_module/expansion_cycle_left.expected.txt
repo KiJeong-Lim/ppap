@@ -1,0 +1,9 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.expansion_cycle_left ( test/audit_module/expansion_cycle_left.hol, interpreted )
+test.audit_module.expansion_cycle_left> Ok, one module loaded.
+test.audit_module.expansion_cycle_left> 
+Hol >>= quit

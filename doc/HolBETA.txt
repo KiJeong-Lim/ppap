@@ -1,997 +1,1097 @@
 ================================================================================
-Hol BETA — Language Specification (Draft)
+Hol BETA — Normative Language and Runtime Specification
 ================================================================================
 
-This document specifies the syntax and semantics of `Hol BETA`, the current
-λProlog dialect shipped by `ppap`. BETA provides:
+Status
+--------------------------------------------------------------------------------
 
-  (A) A first-class module system: an optional `module <name>.` header, an
-  `import <name>.` declaration that brings another file's declarations
-  into scope, and a consistency check that turns silently-disagreeing
-  imports into compile errors.
-  (B) Source-location threading from the surface syntax all the way through
-  desugaring, type checking, runtime reduction, HOPU, and the debugger.
-  The implementation threads source locations through cases that previously
-  used placeholder locations, including `presburger` literals and debug goals.
-  (C) Multi-head clauses `h_1 & ... & h_n :- body.` that desugar to `n`
-  independent clauses sharing the body.
+This document is the complete specification of the Hol BETA dialect shipped by
+`ppap`. It does not extend, and does not require the reader to possess, another
+"base BETA" document. Chapters 0 through 8 and Chapter 10 are normative.
+Chapter 9 is an informative map to the Haskell implementation.
 
-Compatibility minimum: every `test/**/*.hol` smoke case must continue to pass
-with byte-identical output unless a documented diagnostic or pretty-printing
-change intentionally updates the sidecar. The example/ acceptance set
-(einstein, fibonacci, lbeta) carries the same obligation.
+The words MUST, MUST NOT, SHOULD, and MAY have their usual specification
+meanings. When prose and an informative implementation note disagree, the
+normative prose wins. A source location and a pretty-printed name are metadata;
+neither changes kernel equality or proof-search results.
 
-Arithmetic clarification (2026-05-19). BETA's `is` symbolic-calculus
-semantics normalise the `+`/`*` arithmetic fragment before suspending an
-`EvaluationConstraint`. Thus `20 * 20` is treated as `400`,
-`6765 is 20 * 20` is a
-contradictory closed equality and the branch fails, and a query such as
-`Y is C * (x + 1) * (x + 2)` can bind `Y` to
-`C * x * x + 3 * C * x + 2 * C` when the contextual scope check allows
-it. In BETA, equality at type `nat` also tries the same arithmetic
-normalisation before falling back to ordinary higher-order unification:
-closed arithmetic equality is decided immediately, and symbolic
-polynomial identities such as `C * (x + 1) = C * x + C` succeed without
-requiring a solver. Comparison predicates (`<`, `=<`, `>`, `>=`) may
-leave residual constraints only when the constraint is ground or belongs
-to the linear Presburger fragment. Nonlinear inequalities such as
-`X * Y > 10` are rejected as unsupported runtime arithmetic constraints
-rather than silently remaining in C.
+BETA is a simply typed, higher-order logic-programming language in the
+lambda-Prolog family. Its defining runtime properties are:
 
-Primitive I/O predicates (2026-05-19). BETA includes two built-in
-predicates:
-
-```
-type print (A -> o).
-type read (A -> o).
-```
-
-`print t` writes the current pretty-printed value of `t` and succeeds
-without changing the proof state. `read X` reads one REPL line, parses it
-as a primitive literal (`nat`, `char`, or `string`/`list char` when the
-expected type is known; otherwise natural first, then character, then
-string), and binds an unbound flexible variable `X` to that value when
-the usual occurs/scope checks pass. If the argument is already ground,
-`read t` succeeds exactly when the input parses to the same value. Failed
-parsing or mismatch makes the branch fail rather than entering debug
-mode or invoking `:assign`.
+  * depth-first, left-to-right proof search;
+  * higher-order pattern unification with universe-level scope checks;
+  * hereditary Harrop goals (`pi`, `sigma`, and local implication);
+  * Prolog-style predicate-activation cut;
+  * canonical-path modules with transitive, once-only imports;
+  * multi-head clauses; and
+  * natural-number arithmetic, Presburger constraints, and primitive I/O.
 
 
 ================================================================================
-Chapter 0. Overview
+Chapter 0. Vocabulary and Conventions
 ================================================================================
 
-0.1 Design Goals
+0.1 Project and module vocabulary
 --------------------------------------------------------------------------------
 
-BETA pursues these design goals.
+The *project root* is the canonical current working directory captured when a
+main file starts loading. A *canonical path* is the filesystem's canonical,
+absolute path after resolving relative components and symbolic links. A module's
+identity is its canonical path, not an import spelling and not a header string.
 
-  1. *Module-resolution surface* — give the user a single, coherent story
-  for splitting code across files, importing notation tables coherently
-  (Q5), and re-exporting transitively. The Coq-on-λProlog motto still applies:
-  follow Coq where a choice presents itself.
-  2. *Diagnostic fidelity* — every user-visible error must identify the
-  source position responsible for it, down to the offending token, not
-  just the offending clause. The BETA placeholder
-  `SLoc (0,0) (0,0)` is treated as a bug, not a feature.
+An import declaration contains a *module locator*, such as `util` or
+`stdlib.list`. Resolution maps a locator at one import site to a canonical path.
+Two locators that resolve to the same canonical path denote the same module.
 
-The Coq-on-λProlog motto remains the tie-breaker for design decisions.
+`ownEnv(M)` is the environment contributed by declarations physically present
+in module `M`. It excludes built-ins and every imported declaration.
+`exportEnv(M)` is the deterministic, once-only composition of the built-ins and
+the `ownEnv`s in `M`'s transitive import closure, including `ownEnv(M)` itself.
 
-
-0.2 Core Additions
+0.2 Runtime vocabulary
 --------------------------------------------------------------------------------
 
-  +-----------------------+--------------------------+----------------------------+
-  | Aspect                | Older surface            | BETA                       |
-  +-----------------------+--------------------------+----------------------------+
-  | `module` header       | unreserved keyword       | reserved + optional header |
-  | `import` declarations | not in surface           | `import M.` brings M in    |
-  | Module name           | derived from file path   | also explicit in header    |
-  | Notation merge        | within one file          | across imports + main file |
-  | Import inconsistency  | n/a                      | compile error              |
-  | SLoc inside literals  | placeholder `(0,0)-(0,0)`| original token SLoc        |
-  | SLoc on goals         | not threaded             | threaded; debug shows it   |
-  | Multi-head clauses    | n/a                      | `h₁ & ... & hₙ :- body.`   |
-  +-----------------------+--------------------------+----------------------------+
+A *query activation* is execution of one top-level query. A *predicate
+activation* is one invocation of a predicate, including all of the clauses and
+local hypotheses considered for that invocation. A *choice point* is a saved
+alternative branch. A *caller choice* was created before the current predicate
+activation; a *right-hand choice* is created by a goal textually to the right of
+an already executed cut.
 
+A clause's free term variables are implicitly universally quantified and are
+freshened on every clause invocation. A `sigma` variable is flexible; a `pi`
+constant is rigid and belongs to a deeper universe level.
 
-0.3 Notational Conventions
+0.3 Order convention
 --------------------------------------------------------------------------------
 
-Additional notation used below:
-
-  - `M`, `N`     : module names (dotted identifier paths, e.g.
-  `Stdlib.list`, `test.module.util`)
-  - `μ`          : a single module's *exported environment*
-  - `ℒ`          : a multiset of import edges (used during loading)
+"Source order" means top to bottom within a file and left to right within a
+conjunction or multi-head conclusion. "First" in search order means the branch
+visited first by depth-first search. Unless stated otherwise, sequences in this
+document preserve source order and are not sets.
 
 
 ================================================================================
-Chapter 1. Syntax
+Chapter 1. Source Language
 ================================================================================
 
-1.1 Lexical Additions
+1.1 Lexical forms
 --------------------------------------------------------------------------------
 
-The lexical structure includes reserved module keywords and a token class for
-dotted identifiers.
+Whitespace separates tokens. `%` begins a line comment. Block comments use
+`(* ... *)`. Identifiers may be ordinary alphanumeric identifiers (with `_`),
+quoted identifiers, or accepted symbolic identifiers. An unbound ordinary term
+identifier beginning with an ASCII upper-case letter is a logic variable; an
+ordinary lower-case identifier is a constant. A lambda binder shadows either
+form.
 
-  - reserved words : `module`, `import`, plus the core Hol keywords.
-  - intentionally non-reserved word: `presburger` (§2.3.3).
-  - token          : `<qid>`, a dotted identifier of two or more
-  segments (`foo.bar`, `test.module.util`), each segment a Hol identifier.
+The exact identifier spellings are:
 
-A module name is a `'.'`-separated sequence of identifiers:
+  small-id      ::= [a-z] [A-Za-z0-9_]*
+  large-id      ::= [A-Z] [A-Za-z0-9_]*
+  quoted-id     ::= '`' small-id '`'
+  symbol-start  ::= one of ! @ # $ ^ & * + - = < > ? / | ~ :
+  symbol-rest   ::= symbol-start | '%'
+  symbolic-id   ::= symbol-start symbol-rest*
+  ident         ::= small-id | large-id | quoted-id | non-reserved-symbolic-id
 
-  module-name ::= ident ( '.' ident )*
-  ident       ::= letter ( letter | digit | '_' )*
+Reserved words and reserved operator spellings are tokenized before `ident`.
+Thus a reserved word is not an identifier merely because its characters match
+`small-id`, and punctuation such as `+`, `:-`, or `=>` is not an `ident`.
+Lexing uses maximal munch. In particular, `foo.bar.` contains the dotted module
+token `foo.bar`, not two adjacent declarations `foo.` and `bar.`; separate such
+declarations with whitespace.
 
-The first character of each segment is any ASCII letter (upper or
-lower case), so that path-derived names such as `example.foo.bar`
-(§2.1) round-trip through the surface unchanged. The lexer emits
-`<id>` when the name has a single segment and `<qid>` when it has
-two or more — both forms are accepted in module/import positions.
+Natural literals are non-negative decimal integers. Character and string
+literals use Haskell-style single and double quotes, but the only accepted
+escape spellings are `\n`, `\t`, `\\`, `\"`, and `\'`. An unescaped payload
+character must be printable; other control characters and other Haskell escape
+spellings (for example `\r` and `\NUL`) are lexical errors. A string denotes a
+`list char`. `_` is a fresh wildcard at each occurrence. Lists use `[]`,
+`[t1, ..., tn]`, and the right-associative constructor `::`.
 
-Module names do not appear in expression position; they appear only inside
-`module <name>.` headers and `import <name>.` declarations.
+A surface module name is:
 
-Lexer caveat. Because `<qid>` is matched greedily by the lexer, a
-two-fact sequence written on a single line with no whitespace
-(`foo.bar.`) would be misread as a single `<qid>` followed by `.`.
-Programs in `test/**.hol` and `example/**.hol` avoid this corner;
-authors are advised to place declarations on separate lines or to
-insert whitespace around a terminating period if they wish to keep a
-single-line layout.
+  module-name    ::= simple-module-name
+                   | module-segment ('.' module-segment)+
+  module-segment ::= ASCII-letter (ASCII-letter | digit | '_')*
 
+A `simple-module-name` is any single token classified by the lexer as an
+ordinary `id`: a non-reserved ordinary identifier, a backtick-quoted lower-case
+identifier, or a non-reserved symbolic identifier. Dotted names use the
+stricter `module-segment` spelling shown above; quoted or symbolic segments are
+not accepted inside a dotted name.
 
-1.2 Module Headers
+Module names occur only after `module` and `import`; they are locators or
+path-derived display names, not term-level qualified names.
+
+1.2 Programs and queries
 --------------------------------------------------------------------------------
 
-A program may begin with at most one *module header*:
+The top-level grammar is:
 
-  module <module-name>.
+  program       ::= module-header? import-decl* declaration*
+  module-header ::= 'module' module-name '.'
+  import-decl   ::= 'import' module-name '.'
 
-If present, the header must be the first declaration in the file (after any
-leading comments and whitespace). If absent, the module's name is derived
-from the file path with `/` replaced by `.`, identical to BETA §1.7.
+  declaration   ::= 'kind' ident kind-expr '.'
+                  | 'type' ident type-expr '.'
+                  | fixity-decl
+                  | abbrev-decl
+                  | notation-decl
+                  | term '.'
 
-If the header is present and the declared name disagrees with the path-
-derived name, the compiler raises
+  fixity-decl   ::= ('infixl' | 'infixr' | 'infix' | 'prefix')
+                    operator precedence '.'
+  abbrev-decl   ::= 'abbrev' ident ident* ':=' type-expr '.'
+  notation-decl ::= 'notation' ident ident* ':=' term '.'
+  query         ::= '?-' term '.'
 
-```
-*** desugaring-error[<loc>]:
-  ? module header `<declared>` does not match file path-derived
-  ? name `<path-derived>`.
-```
+`precedence` is an integer from 0 through 9. `infix` is non-associative.
+Here `operator` is an `ident` or one of `+`, `-`, `*`, `/`, `=`, `=<`, `<`,
+`>=`, `>`, `::`, `:-`, `;`, `=>`, `,`, `&`, `->`, `pi`, `sigma`, `s`, and
+`is`. Other reserved words and punctuation cannot be named by a fixity
+declaration.
+The module header, when present, MUST be the first declaration. Imports MUST be
+a contiguous block after the optional header. A later header or import is an
+error. Repeating the same locator in one import block produces a warning and
+has no additional effect. Repetition by a different spelling is collapsed if
+both edges ultimately resolve to the same canonical path.
 
-The header is purely documentation when the two agree: it has no semantic
-content beyond *fixing* the path-derived name in source.
+The REPL accepts queries, not module or import declarations. Loading a different
+module is a load/reload operation rather than an interactive import mutation.
 
-Rationale. The header is optional because (i) the file path is already a
-unique identifier in a project tree, and (ii) tests and one-off scripts
-should not be required to repeat their own filename. The header is
-*allowed* because LoL (and human readers) prefer the module name to be
-visible without consulting the filesystem.
-
-
-1.3 Import Declarations
+1.3 Kinds and types
 --------------------------------------------------------------------------------
 
-After the optional module header, a contiguous block of `import`
-declarations may appear:
+Kinds are generated by the first-order grammar
+`K ::= type | type -> K` (with parentheses for grouping). In particular, every
+arrow domain must be `type`; a higher-order domain such as the one in
+`(type -> type) -> type` is rejected.
 
-  import-decl ::= 'import' <module-name> '.'
+Types are generated by type variables, declared type constructors, application,
+parentheses, and right-associative `->`. A type identifier beginning with an
+upper-case letter is a type variable. Free type variables in a `type`
+declaration are implicitly and simultaneously universally quantified. Their
+source names and enumeration order do not change the scheme; every occurrence
+still has one consistent binder identity. Every referenced type or data
+constructor must be present in the composed declaration environment; kind and
+type declarations are collected before facts are checked, so textual order
+within those declaration classes is not a visibility rule.
 
-`import M.` brings *every* declaration of `M` into the importing module's
-scope: kind declarations, type declarations, clauses, abbreviations,
-notations, and fixities. Import declarations are transitive: `import M.`
-inside `M` itself makes that import's declarations available to anyone
-who imports `M`.
+The built-in and reserved surface kinds are:
 
-Two surface restrictions, both enforced at desugaring:
+  o      : type
+  nat    : type
+  char   : type
+  list   : type -> type
+  (->)   : type -> type -> type
+  string : type                    (reserved direct type-constructor name)
 
-  (i)  All `import` declarations must precede the first non-import
-  declaration in the file. A second `import` after a clause is a
-  parse error. This restricts imports to a "header band" that a
-  reader can scan in one place.
-  (ii) An `import M.` repeated in the same file is a desugaring
-  warning, not an error; the second occurrence has no effect
-  (set semantics for the import edges).
+The initial abbreviation maps `string` to `list char`. Like other
+abbreviations, a module may shadow that default abbreviation in its own
+expansion environment. The separate reserved kind entry prevents a direct
+`kind string ...` type-constructor declaration; it does not prohibit
+`abbrev string := ...`.
 
-There is no surface mechanism for *selective* import (`import M (only a, b)`)
-or for *qualified* import (`import M as N`). Neither is on the BETA
-roadmap: BETA's import is unconditional and unqualified by design,
-and a future revision is expected to address scoping needs at a
-higher level rather than by extending the import surface.
-
-Implementation status (initial draft): not yet wired. See §4.2 for the
-module-loader sketch.
-
-
-1.4 Multi-Head Clauses
+1.4 Terms, binders, and clauses
 --------------------------------------------------------------------------------
 
-BETA accepts the multi-head clause form:
+Term application associates left. `X\ t` is lambda abstraction. Parentheses
+override precedence. The principal built-in term forms and their types are:
 
-  clause ::= 
-    | ... (ordinary clause forms) ...
-    | <atom> ( '&' <atom> )+ ':-' <body> '.'
-    | <atom> ( '&' <atom> )+ '.'
+  true, fail, !                 : o
+  (&), (,), (;), (=>), (:-)    : o -> o -> o
+  pi, sigma                    : (A -> o) -> o
+  (=), is                      : A -> A -> o
+  debug                        : string -> o
+  [], (::)                     : list A; A -> list A -> list A
+  s                            : nat -> nat
+  =<, <, >=, >                 : nat -> nat -> o
+  +, -, *, /                   : nat -> nat -> nat
+  presburger                   : string -> o
+  print, read                  : A -> o
 
-The `&` token is parsed as a term-level `LO_and` connective at a precedence
-between `,` and the comparison/arithmetic predicates. In fact position,
-`&` still has the multi-head meaning: it binds tighter than `:-`, so the
-conclusion of the fact is an `&`-chain. The same shape is accepted inside
-the left-hand side of local implication when it is parenthesised:
+A fact `h.` is a unit clause. `h :- b.` is a clause with conclusion `h` and
+body `b`. A global clause conclusion must ultimately be an application of a
+user-declared named predicate of type `o`, except that a conjunction conclusion
+is a multi-head clause as specified in Chapter 3. Logical goals must have type
+`o`. Section 3.3 separately permits supported arithmetic assumptions in the
+antecedent of a local implication; that permission does not create global
+arithmetic-headed program clauses.
 
-  (h_1 & h_2 & ... & h_n :- body) => goal
-
-This local form is not a goal connective at fact-install time. It is
-syntactic sugar for installing several temporary clauses before proving
-`goal`.
-
-Expansion. The clause
-
-  h_1 & h_2 & ... & h_n :- body.
-
-expands to `n` independent clauses
-
-  h_1 :- body.
-  h_2 :- body.
-  ...
-  h_n :- body.
-
-The body is *cloned* for each head at fact installation/instantiation
-time, with logic variables renamed under the clause-level freshening
-invariant of §4.5.1. The clauses are emitted in declaration order, so the
-search tries them in the same order as the user wrote the `&` chain.
-
-The unit form
-
-  h_1 & h_2 & ... & h_n.
-
-expands analogously to `n` unit facts.
-
-The local implication form
-
-  (pi x\ h_1 & h_2 :- body) => goal
-
-is interpreted as
-
-  (pi x\ h_1 :- body) => ((pi x\ h_2 :- body) => goal)
-
-and similarly for longer head chains. The `pi` prefix is shared by the
-local heads, so variables introduced by the prefix may occur in every
-head and in the shared body.
-
-Sharing semantics. Two heads `h_i` and `h_j` of the same multi-head clause
-do *not* share any runtime state: each cloned body has its own logic
-variables, its own cut scope, and its own constraint accumulation. Cut
-(`!`) inside the shared body is local to one cloned clause, not committed
-across all of them.
-
-Display. Since `&` is now the canonical surface spelling of `LO_and` in
-BETA, TermNode viewers print that logical operator as `&`. The comma
-syntax remains accepted for inherited goal conjunctions, but the rendered
-form is `&`.
-
-
-1.5 Source-Location Annotations
+1.5 Fixity and concrete conjunction spellings
 --------------------------------------------------------------------------------
 
-Source locations (`SLoc`s) are not part of the surface syntax. They are
-attached implicitly by the lexer (per-token) and propagated through the
-parser (per-AST-node), through the desugarer (onto the produced
-`TermNode`s), and through every reduction step that may emit a
-diagnostic. The user has no way to write an `SLoc` literal and no
-reason to.
+Application has precedence 10. The initial fixities are:
 
-Every `TermNode` constructor carries (or can be queried for) an `SLoc`
-that points at the surface position from which that subtree originally
-arose, modulo the technical caveat of §2.6.
+  prefix  Lambda 0       infixr :- 0       infixl ; 1
+  infixr  => 2           infixl , 3        infixl & 3
+  infixr  -> 4           infixr :: 4       prefix  pi 5
+  prefix  sigma 5        infix   = 5        infix   =< 5
+  infix   < 5            infix   >= 5       infix   > 5
+  infix   is 5           infixl  + 6        infixl  - 6
+  infixl  * 7            infixl  / 7
 
+All fixity declarations in a module are collected before any term or notation
+body in that module is resolved, so a declaration is module-wide regardless of
+its textual position. Imported fixities are already in scope during this pass.
 
-================================================================================
-Chapter 2. Semantics
-================================================================================
+Comma and `&` are aliases for the same logical constructor, conjunction. A
+fixity declaration for either spelling applies to both. They have identical
+goal semantics and identical multi-head semantics. The canonical pretty-printer
+spelling is `&`; comma remains accepted source syntax. In list syntax, commas
+separate elements and are not goal conjunctions.
 
-2.1 Module Names and File Resolution
+1.6 Abbreviations and notations
 --------------------------------------------------------------------------------
 
-Every loaded module has a *name* of the form `s_1.s_2....s_k`. The name
-is derived as follows.
-
-  (a) If the file `<path>.hol` opens with `module N.`, then the module
-  name is exactly `N`. (The compiler then checks that `N` matches
-  the file path; see §1.2.)
-  (b) Otherwise, `<path>.hol` (e.g. `example/foo/bar.hol`) becomes
-  `example.foo.bar` — `/` replaced by `.`, the trailing `.hol`
-  stripped, no case change.
-
-Lookup direction. An import `import M.` issued from a file at
-`<dir>/<file>.hol` is resolved by:
-
-  1. Split `M` at dots to obtain segments `s_1, ..., s_k`.
-  2. Look for `<dir>/s_1/s_2/.../s_k.hol`. If found, that is the
-  resolved file.
-  3. Otherwise, look for `<root>/s_1/s_2/.../s_k.hol`, where `<root>`
-  is the directory the REPL was launched from (the working directory
-  of the `ppap` process). If found, that is the resolved file.
-  4. Otherwise, report
-
-```
-*** module-error[<import-loc>]:
-  ? cannot resolve module `M' from `<file>'.
-```
-
-`<dir>` precedence over `<root>` lets a directory hold its own private
-helper modules without leaking into the project-wide namespace.
-
-The "main file". The REPL launches with a `Hol =<< <path>.hol`. The
-main file's directory becomes `<dir>` for *its own* imports. The
-working directory the REPL was launched from becomes `<root>` for the
-whole session.
-
-No `import` outside of files. The interactive REPL does not accept
-`import M.` lines — the user loads a different main file with `:q`
-followed by relaunching. This avoids an unbounded scope for `:assign`
-and the display-name cache; everything visible at a debug prompt is the
-transitive closure of the main file's imports.
-
-
-2.2 Loading Order and Cycle Detection
---------------------------------------------------------------------------------
-
-Loading is a topological walk of the import graph.
-
-  - Each `import M.` adds an edge `(current, M)` to the load graph.
-  - The loader processes modules in depth-first order from the main
-  file: load all transitive imports first, then load the main file
-  itself.
-  - Each module is loaded *exactly once* per session, even if multiple
-  paths reach it through different importers (a "diamond" import).
-  - A back-edge — encountering a module that is already on the
-  in-progress stack — is a compile error:
-
-```
-*** module-error[<loc>]:
-  ? import cycle detected: <M_1> -> <M_2> -> ... -> <M_1>.
-```
-
-Order within a module. Within a single module, declarations are
-processed in source order, except that fixity declarations are collected
-for the whole module before term fixity resolution. Thus a fixity
-declaration applies to every term in its module regardless of where the
-declaration appears. The processing order *across* modules is: built-ins
-→ imports (in topological order, leaves first) → main file.
-
-Idempotence. Loading a module twice in the same session is impossible
-under the topological walk; the loader's table maps `M` to its
-already-loaded environment μ_M and returns the cached value. Two
-*importers* observing the same μ_M is intentional and is exactly the
-diamond-import case.
-
-
-2.3 Import Composition
---------------------------------------------------------------------------------
-
-Loading produces, for each module `M`, an *exported environment*
-
-  μ_M = ( kindEnv_M, typeEnv_M, clauses_M, notationDB_M, expansionDB_M )
-
-The composed environment seen by a clause inside module `M_0` (the
-current module) is
-
-  μ = (∪_{M ∈ deps(M_0)} μ_M) ∪ μ_{M_0}
-
-where `deps(M_0)` is the set of `M_0`'s transitive imports plus the
-implicit built-in module. The composition uses the rules below for each
-component.
-
-KindEnv / TypeEnv. The union is taken with *equality* on the right-hand
-side: two declarations of the same name with identical right-hand sides
-collapse to one; two declarations with different right-hand sides are an
-import-inconsistency error (§2.4). The main file may *not* redeclare a
-kind or type constant introduced by an import — the constant is closed
-once its first declaration is seen.
-
-Clauses. The clause set is the *multiset* union, in the order
-declared. Clauses are never inconsistent with one another (alternation
-is the proof-search semantics).
-
-NotationDB (fixity table). The fixity table merges by name. Identical
-declarations collapse; conflicting declarations across imports, or between
-an import and the current module, are errors. The implicit built-in fixity
-table is only a default: a module may override a built-in fixity, and the
-override is part of the module's exported environment.
-
-NotationDB (fold table). Same rule. Two imports declaring the same
-abbreviation/notation name must agree on the right-hand side
-(α-equivalence on the parameters, syntactic equality on the body
-modulo NotationDB itself). Main-file shadowing is allowed under the
-inherited "last declared wins" rule (BETA §2.7.4) and is re-exported
-as part of the shadowing module's environment.
-
-ExpansionDB (parser-direction expansion). Composed identically to the
-fold table — the two databases share the underlying entry list (§4.3
-of BETA).
-
-
-2.4 Consistency Rules
---------------------------------------------------------------------------------
-
-An *import inconsistency* arises when two distinct imports `M_a` and
-`M_b` of the current module disagree on a name. Inconsistencies are
-flagged at compile time. The full taxonomy:
-
-  (C1) Two imports declare the same kind constant with different kinds.
-  (C2) Two imports declare the same type constant with different types
-  (after instance-equivalence checking — universally quantified
-  type variables may be α-renamed).
-  (C3) Two imports declare the same abbreviation with different bodies
-  (modulo α-renaming of parameters).
-  (C4) Two imports declare the same notation with different bodies.
-  (C5) Two imports declare the same operator with different fixity or
-  different precedence.
-
-Each is reported as
-
-```
-*** module-error[<importer-loc>]:
-  ? import inconsistency (C<n>): `<name>' is declared by `<M_b>'
-  ? with a different <kind|type|fixity|abbreviation|notation> than a
-  ? prior import.
-```
-
-A two-sided variant naming the earlier import `<M_a>` and showing both
-right-hand sides is also conformant:
-
-```
-*** module-error[<importer-loc>]:
-  ? import inconsistency (C<n>): `<name>' is declared by both
-  ? `<M_a>' and `<M_b>' with disagreeing <kind|type|...>.
-  ? (`<M_a>': <rhs_a>; `<M_b>': <rhs_b>.)
-```
-
-Choosing between the two forms is an implementation matter: the
-single-sided form requires only the importer's local state; the
-two-sided form additionally requires a per-name origin table.
-
-The check fires when the second of the two imports is processed,
-attributing the error to the later import's location.
-
-Built-in escape. The implicit built-in module is *not* a "import" for
-the purpose of (C1)-(C5). A user module declaring `abbrev s := T.` for
-a name `s` that the built-in module also declares does not constitute
-an inconsistency — it is shadowing under the inherited "last declared
-wins" rule of BETA §2.7.4.
-
-Main-file shadowing. The main file's own declarations are not subject
-to (C1)-(C5) against imports either, *except* for kind/type constants
-which are closed (see §2.3). A main file may freely shadow imported
-abbreviations and notations with its own declarations. Fixity declarations
-must agree with imported user fixities; disagreement is a compile-time
-error. Built-in default fixities remain overridable.
-
-
-2.5 Multi-Head Clause Expansion
---------------------------------------------------------------------------------
-
-The fact installer expands a multi-head clause
-
-  h_1 & ... & h_n :- body.
-
-in three steps after the parser has represented the head chain as
-`LO_and`.
-
-  (i)   Type-check the body once under a fresh logic-variable map,
-  producing a typed body `body_T` along with its monotype
-  constraints and free-variable typing.
-  (ii)  For each head `h_i`, type-check `h_i` against `o` under the
-  same map, propagating the body's type unification. This makes
-  the multi-head clause's heads share the same logic-variable
-  types — the heads are *the same proposition* up to syntactic
-  spelling.
-  (iii) At fact indexing time, split the compiled `LO_and` conclusion
-  into `n` clauses `h_i' :- body_T'`. Each clause is instantiated
-  independently when searched, so internal logic variables are fresh
-  per head. Variables that occur only in a head keep the types inferred
-  by the shared type unification in (ii).
-
-Equivalent surface fact. The user is free to write the desugared form
-by hand:
-
-  h_1 :- body.   h_2 :- body.   ...   h_n :- body.
-
-The observable search result is identical to compiling the `&`-form,
-modulo source ordering. The `&` form is surface sugar for the installed
-fact set, even though the parser now keeps it as `LO_and` until fact
-installation.
-
-Diagnostics. Because the surface `&` chain is type-checked before fact
-installation, a type error reports at the smallest offending sub-term
-inside the original unsplit clause. The compiler is not required to
-split a type-invalid multi-head fact merely to enumerate every bad head:
-splitting is an installation/runtime operation that happens only after
-the whole clause has type-checked.
-
-
-2.6 Source Locations
---------------------------------------------------------------------------------
-
-2.6.1 The threading invariant
-
-Every `TermNode` produced by the desugarer carries (in a side band
-that the runtime forwards unchanged) the `SLoc` of the surface
-construct it was desugared from. Two `TermNode`s that agree on every
-constructor except their `SLoc` annotation are equal under every
-kernel operation (α-equivalence, β-reduction, unification, HOPU). The
-annotation is *advisory*, in the same sense `_hint` is advisory
-(§2.8.4 of BETA).
-
-Three implementation strategies are admissible; the implementer
-chooses one. None of them must affect the semantic equality above.
-
-  (a) Wrapper constructor: introduce `NLoc :: SLoc -> TermNode ->
-  TermNode` and strip-or-preserve it in every reducer. The
-  easiest to reason about, the most invasive to write.
-  (b) Per-node side table: a `Map (StableNodeId) SLoc` keyed by a
-  counter the desugarer threads through node construction. The
-  runtime never inspects the table; only the diagnostic path
-  does. Less invasive but harder to debug when the table goes
-  stale.
-  (c) Hint on `NLam`, `NCon`, `NApp`: add an `_sloc :: Maybe SLoc`
-  to each constructor. Symmetric with the BETA `_hint` field on
-  `NLam`. Medium invasion. *Recommended* — matches the BETA
-  precedent and survives reduction trivially because reducers
-  already pattern-match constructors.
-
-Whichever strategy is picked, the threading must satisfy:
-
-  (T1) Surface-to-TermNode: every leaf and binder reaching the
-  runtime can be traced to a specific source span.
-  (T2) Reduction preservation: a reduced term records the SLoc of
-  *some* surface position that produced it (the call site, the
-  definition site, or the redex — implementer's choice; the only
-  requirement is "not silently dropped").
-  (T3) Diagnostic granularity: a type error, runtime error, debugger
-  prompt, or `presburger` install-pass parse error attributes
-  its SLoc to the smallest enclosing annotated construct, not
-  to the whole clause.
-
-(T3) requires the install pass to walk `RTermRep` *before* desugaring
-(or, equivalently, walk the SLoc-annotated `TermNode` after desugaring)
-and pass the actual literal's SLoc to `parsePresburger`. Parse errors
-inside the literal point at the literal's column position, not at
-`(0,0)-(0,0)`.
-
-2.6.2 Debug output
-
-The per-step debug print intentionally omits source-location metadata. SLocs
-are still threaded through runtime nodes for diagnostics, but the interactive
-state view stays focused on goals, constraints, substitution, typing, and the
-thread id.
-
-2.6.3 Recovered diagnostics
-
-Three classes of diagnostic point at the originating token.
-
-  - `presburger` install-pass parse errors (§2.3.3).
-  - Type-check errors that mention a sub-term of a clause body
-  (BETA reports the sub-term rather than the whole clause).
-  - HOPU disagreement reports during debugging (BETA cites both a useful
-  display hint and the position where the disagreement first arose).
-
-Every message is still emitted, but with a narrow SLoc.
-
-
-2.7 Shared Core Semantics
---------------------------------------------------------------------------------
-
-BETA includes the runtime calculus (§2.2), arithmetic constraint machinery
-(§2.3.1-§2.3.6), `is` predicate (§2.4), answer substitution (§2.5),
-notation-preserving pretty printing (§2.6), abbreviation folding (§2.7),
-and the hybrid name-hint representation (§2.8), with the arithmetic
-equality/comparison clarification stated in the introduction of this
-document.
-
-Two clarifying notes about the module surface:
-
-  (a) Implicit consistency pruning (§2.3.6) fires at the
-  same (T1)-(T4) sites. The set of arithmetic constraints under
-  consideration is now drawn from the full composed environment
-  μ (§2.3) — both the main file's and the imports' clauses
-  contribute.
-  (b) The display-name cache (§3.5) is per-session, not
-  per-module. A logic variable's display name persists across
-  the boundary between a main-file clause and a body that
-  invokes an imported clause.
+`abbrev a X1 ... Xn := T.` defines a type-level read expansion. `notation n X1
+... Xn := t.` defines a term-level read expansion. The declared parameters are
+placeholders; expansion substitutes actual arguments capture-avoidingly.
+Expansion happens before type checking and the kernel never treats an
+abbreviation or notation name as definitional equality.
+
+Parameter occurrences obey the ordinary variable syntax: type parameters occur
+as upper-case type variables and term-notation parameters as upper-case logic
+variables. A type abbreviation expands when it has at least its declared arity;
+extra arguments are reapplied, while an under-applied type name remains
+unexpanded. A term notation consumes its declared arity, reapplies extra
+arguments, and eta-expands an under-application with lambdas for the missing
+parameters. Expansion is recursive. A direct or indirect expansion cycle is a
+compile-time error rather than an infinite rewrite.
+
+The notation database also records inverse, presentation-only fold templates.
+At user-facing write boundaries the pretty-printer MAY replace a matching
+expanded term or type with the most recently applicable surface name. Folding
+must not change the internal term and must not affect equality or search.
+
+Within one module, a later abbreviation or notation with the same name shadows
+an earlier one. Import composition and cross-module conflicts are specified in
+Chapter 5.
 
 
 ================================================================================
-Chapter 3. Runtime and Debugger
+Chapter 2. Static Semantics and Compilation
 ================================================================================
 
-3.1 Debug Output
+2.1 Declaration checking
 --------------------------------------------------------------------------------
 
-The debug print has these lines:
+Kind and type environments are finite maps. Redeclaring an already visible kind
+or data constant in the same composed environment is an error, except that two
+imports may contribute an identical declaration as described in Chapter 5.
+Built-in primitive data types (`nat`, `char`, and `list`) cannot be used as the
+result head of a user data-constructor declaration.
 
-  - the goal under consideration
-  - the constraint multiset C
-  - the binding substitution restricted to user-visible names
-  - the typing context
-  - the thread id
-  - (unchanged) the prompt
+Each clause is inferred and checked against `o`. Each query is independently
+inferred and checked against `o` using the main module's `exportEnv`. Source
+abbreviations and term notations are expanded before checking. Compilation then
+introduces explicit type and term quantifiers for inferred free variables and
+converts named binders to the kernel representation.
 
-The debug print does not include an `_sloc` row; source locations are reserved
-for diagnostics (§2.6.3).
-
-
-3.2 Module-Aware Diagnostics
+2.2 Multi-head shared typing
 --------------------------------------------------------------------------------
 
-Every diagnostic that names an `SLoc` (§2.6.3) now also names the
-module the location came from. The format is
+If a top-level clause conclusion, or the conclusion of a clause used as a local
+assumption, is a conjunction, flatten it left to right:
 
-  [<module-name>]:<line>:<col>-<line>:<col>
+  h1 & h2 & ... & hn :- body.             (n >= 2)
 
-instead of a bare `<line>:<col>-<line>:<col>`. The module
-name is the path-derived form (§2.1) or the explicit header form
-(§1.2), whichever applies to the file in question.
+The whole source clause is type-checked as one term with one free-variable map
+and one type-unification state. Thus a variable name repeated in different
+heads or in the body has one shared static type. The conclusion conjunction and
+every `hi` have type `o`.
 
-This applies uniformly to:
+This shared checking is observably stricter than separately written clauses.
+For example, if `p : nat -> o` and `q : char -> o`, then
 
-  - desugaring errors,
-  - type-checking errors (still folded through `NotationDB`),
-  - runtime / HOPU disagreement reports.
+  p X & q X.
 
-Bare locations (without a module prefix) are reserved for diagnostics
-that genuinely have no module context (e.g., REPL command-line parse
-errors, which originate from stdin rather than a file).
+is ill-typed. The two independent declarations `p X.` and `q X.` are each
+well-typed because their `X`s belong to different clause scopes. Consequently,
+a valid multi-head clause is not, in general, statically equivalent to blindly
+copying its text into separate declarations.
 
-Type-checking diagnostics are rendered through `Z.Doc` (not
-`Z.Text.Doc`) and use a GHC-like layout:
+Only after the shared type check succeeds may the fact installer/indexer split
+the conclusion into searchable clauses; the compiled source clause may remain a
+single conjunction until that point. Each indexed clause retains the common
+typed body and the source order of its head. At runtime each clause is
+instantiated separately, so logic variables, substitutions, residual
+constraints, and cut activations are not shared between invocations. This
+runtime independence does not undo the shared static typing rule.
 
-  <line>:<col>: error: [HolBETA-TypeError]
-          |
-   <line> | <source line>
-          |    ^
-  Couldn't match expected type `<expected>'
-              with actual type `<actual>'
-  Relevant equation: `<lhs>' ~ `<rhs>'
-  Reason: <why unification failed>
-
-The type printer still folds user abbreviations through `NotationDB`,
-so the improved layout does not regress the abbreviation-aware messages
-from notation-aware printing.
-
-
-3.3 Debugger Semantics
+2.3 Source locations during compilation
 --------------------------------------------------------------------------------
 
-The REPL commands, `:assign`, `:show`, and display-name cache are part of
-the BETA debugger contract. The documented preconditions gate every
-`:assign`; successful assignments remain transactional and propagate to
-the current runtime context.
+Every surface `TermRep` node has an `SLoc`. An `SLoc` is exactly a begin and end
+`(row, column)` pair, using one-based coordinates. It does not contain a module
+name or file path; source identity travels separately in the compiler and
+diagnostic context.
 
-Note on backtracking. BETA deliberately does *not* add a `:undo`
-command that rolls back a committed `:assign` from inside a debug
-session. Tactic-style exploration is expected to *remember* prior
-states explicitly via the public `snapshot` / `restore` interface and
-re-issue them from the client side, rather than relying on
-the runtime to maintain an implicit undo stack. This keeps `:assign`
-a forward-only commit and avoids reconciling an undo stack with cut
-barriers (§2.2), the display-name cache (§3.5), and
-module loads (§2.2 of this doc).
+The compiler preserves locations on kernel constructors that support them.
+Synthesized nodes MAY lack a location. Type errors SHOULD select the smallest
+available surface subterm responsible for the error. Location metadata is
+ignored by alpha-equivalence, beta reduction, unification, constraint solving,
+fact indexing, and every other kernel decision.
+
+Term-notation expansion rebases every node copied from the notation template to
+the complete notation call-site span. A subtree substituted for a notation
+parameter instead retains the subtree's original locations. Consequently, an
+error in expansion-generated structure points to the use of the notation, while
+an error inside an actual argument may point more precisely to that argument;
+the template's declaration-site locations MUST NOT leak into diagnostics for a
+later use.
+
+2.4 Kernel index domain
+--------------------------------------------------------------------------------
+
+The semantic domain of a De Bruijn index is exactly the set of non-negative
+integers. Constructing an index from a negative integer, evaluating or
+otherwise semantically inspecting an internally forged negative index, and
+passing a negative nesting count to the kernel's nested-lambda constructor are
+deliberately `undefined`. A negative index is outside the term domain; it is not
+an ill-formed term that an implementation may preserve or recover as an ordinary
+error value.
 
 
 ================================================================================
-Chapter 4. Implementation Notes (informative)
+Chapter 3. Logical and Search Semantics
 ================================================================================
 
-4.1 Module Layout
+3.1 Search order
 --------------------------------------------------------------------------------
 
-4.1.1 Source organisation
+Proof search is depth-first and left-to-right. Global clauses are indexed by
+predicate and tried in the once-composed clause order of `exportEnv`. Matching
+global clauses are tried before matching local hypotheses. Local hypotheses are
+tried in their installed order. A clause is freshly instantiated each time it
+is tried.
 
-The current implementation lives under `Hol.BETA.*`. It is self-contained
-within that namespace and does not import retired BETA-era modules.
+For a predicate call, higher-order pattern unification matches the goal with a
+candidate head. A successful match runs the candidate body and then the
+remaining goals. Failed unification, an inconsistent constraint store, or
+`fail` abandons that branch and resumes at the newest surviving choice point.
 
-  src/Hol/BETA/
-    Header.hs
-      `SLoc` records its
-      originating file (module name via §2.1).
-      `TermNode` constructors get `_sloc :: Maybe
-      SLoc` under the (c) strategy of §2.6.1.
-    Constant.hs
-      shared constant definitions.
-    TermNode.hs
-      constructor changes per §2.6.1 (c).
-      Viewer takes an `SLoc` along with every
-      emitted `ViewNode` for the new debug-output
-      line.
-    PlanHolLexer.hs
-      `module` / `import` reserved.
-      LGS regen.
-    PlanHolParser.hs
-      `module` header, `import` block, and
-      `&` as an infix `LO_and` term production. PGS regen.
-    Desugarer.hs
-      SLoc threading per §2.6.1. `desugarProgram`
-      now returns a `ModuleEnv` (per-import)
-      rather than a single composed environment.
-    TypeChecker.hs
-      receives SLocs on every inferred
-      sub-term and uses them in error attribution
-      (§2.6.3). Type errors are rendered through
-      `Z.Doc` with a GHC-style expected/actual
-      layout.
-    HOPU.hs
-      passes SLoc through disagreement
-      reports (§2.6.3).
-    Runtime.hs
-      debug state printing and runtime diagnostics.
-    Compiler.hs
-      SLoc threading from `TermRep` into
-      compiled `TermNode`.
-    Main.hs
-      loads the main file through
-      `ModuleLoader` (§4.2) rather than directly.
-      Debug-mode prompt uses the runtime state printer.
-    Arith.hs
-      `installPresburger` receives
-      the literal's actual SLoc (§2.6.3).
-    Notation.hs
-      the `merge` operation used by
-      `ModuleLoader` enforces the consistency
-      rules of §2.4.
-    Debugger.hs
-      unchanged (no new debugger commands
-      in BETA).
-    ModuleLoader.hs
-      module loader;
-      implements the topological load of §2.2,
-      the import-composition of §2.3, and the
-      consistency checks of §2.4.
-
-`ppap.cabal` registers the `Hol.BETA.*` modules directly. The top-level
-`Hol` command dispatches to `Hol.BETA.Main`.
-
-4.1.2 Why `ModuleLoader.hs` and not extending `Desugarer.hs`
-
-The composition logic in §2.3 is independent of any one module's
-syntactic structure: it operates on already-elaborated `ModuleEnv`s.
-Putting it in `Desugarer.hs` would couple two unrelated concerns
-("how do I lower a `RDecl` to a `Decl`?" and "how do I merge two
-`ModuleEnv`s?"). The split also makes the consistency checks
-testable in isolation.
-
-
-4.2 The Module Loader
+3.2 Primitive logical goals
 --------------------------------------------------------------------------------
 
-4.2.1 Public surface
+The logical forms have these operational meanings:
 
-  data LoadedModule                            -- opaque
-  data ModuleEnv                               -- opaque
+  true             succeed once without changing the proof state
+  fail             fail the current branch
+  G1 & G2          prove G1, then prove G2 with G1's resulting state
+  G1, G2           exactly the same as G1 & G2
+  G1 ; G2          try G1; on backtracking try G2
+  F => G           install the clauses obtained from F, then prove G
+  sigma X\ G       introduce a fresh flexible variable X, then prove G
+  pi X\ G          introduce a fresh rigid constant at a deeper level, then G
+  !                commit as specified in 3.4, then succeed
+  debug "label"    enable interactive debugging, report the label, and succeed
 
-  loadMain :: FilePath -> IO (Either LoadError LoadedModule)
-    -- Reads the main file, parses any `module`/`import` header,
-    -- topologically loads every transitive import, runs the
-    -- consistency checks of §2.4, and returns a `LoadedModule`
-    -- whose `mainEnv` is the composed environment of §2.3.
+Bindings must pass occurs and universe-level scope checks. A flexible variable
+cannot be bound to a rigid constant or flexible variable introduced at a deeper
+level.
 
-  mainEnv :: LoadedModule -> ModuleEnv
-    -- Total composed environment seen by main-file clauses.
-
-  envOfModule :: ModuleName -> LoadedModule -> Maybe ModuleEnv
-    -- Exposed environment of one named module. Used by §3.2 to
-    -- attribute diagnostics to the module that introduced the
-    -- offending declaration.
-
-4.2.2 Algorithm
-
-The loader maintains two pieces of state:
-
-  - `loaded   :: Map ModuleName ModuleEnv`  (already-completed)
-  - `loading  :: [ModuleName]`              (in-progress stack, for cycle detection)
-
-`loadModule(path, importSLoc)` is defined recursively:
-
-  1. Compute the file's `ModuleName` via §2.1.
-  2. If `ModuleName ∈ loaded`, return (diamond import).
-  3. If `ModuleName ∈ loading`, emit a cycle error at
-  `importSLoc` (§2.2) and abort.
-  4. Push `ModuleName` onto `loading`.
-  5. Lex/parse the file. Read its `module` header (if any) and
-  check against the path-derived name (§1.2).
-  6. For each `import M.` in the header band, resolve `M` per
-  §2.1 and recurse on the resolved file. When the call
-  returns, `M` is in `loaded`.
-  7. Desugar the file's body against the *composed* environment
-  of those dependencies. The result is a `ModuleEnv`. Run
-  the consistency checks of §2.4 against the union with
-  already-loaded modules.
-  8. Pop `ModuleName` from `loading`; insert the `ModuleEnv`
-  into `loaded`.
-
-`loadMain(path)` invokes `loadModule(path, REPL-launch)`. The main
-file is processed last; its `ModuleEnv` is `mainEnv`.
-
-4.2.3 Caching
-
-The loader caches by absolute path (resolved via `canonicalizePath`)
-to avoid loading the same file twice through two different relative
-paths. Symlinks resolve to their canonical targets.
-
-4.2.4 The `:reload` command
-
-BETA provides a `:reload` REPL command whose semantics are exactly
-those of a full shutdown and relaunch with the same main file: the
-loader's `loaded` and `loading` tables are dropped, the display-name
-cache (§3.5 of BETA) is cleared, every snapshot becomes invalid,
-and `loadMain(path)` is re-invoked from scratch against the
-current contents of the file system.
-
-`:reload` is only accepted at the top-level prompt. It is rejected
-with
-
-```
-*** repl-error:
-  ? `:reload' is not available inside `:debug' mode
-  ? or while a query is searching for answers.
-```
-
-if invoked while a `:debug` session is open or while the runtime is
-still enumerating answers for a pending query. This makes `:reload`
-a strictly off-line operation: there is no need to reconcile it with
-cut barriers (§2.2 of BETA), pending `:assign`s (§3.2 of BETA),
-or partially-instantiated logic variables. The contract "the file
-system is consulted only at top-level transitions" replaces BETA's
-narrower "the file system is consulted only at REPL launch".
-
-Because `:reload` is observationally identical to `:q` followed by
-relaunching, §2.1's invariant — "everything visible at a debug prompt
-is the transitive closure of the main file's imports" — remains
-intact: a debug prompt opens only after a load completes, and a load
-completes only at top-level.
-
-
-4.3 SLoc-Threaded TermNode Wrappers
+3.3 Local implication and multi-head installation
 --------------------------------------------------------------------------------
 
-The recommended strategy (c) of §2.6.1 adds an `Maybe SLoc` field to
-each of `NCon`, `NApp`, and `NLam` (plus the BETA-introduced
-`NPresburgerCheck`). The desugarer fills the field with the
-corresponding `RTermRep` node's SLoc; HOPU-introduced nodes leave the
-field as `Nothing`.
+The antecedent `F` of `F => G` is an admissible local assumption or a
+conjunction of admissible local assumptions. An atomic local clause may have a
+user-declared named-predicate head or a predicate parameter already in scope
+(for example one introduced by `pi`). A bare typed
+equality is also admissible as a local equality hypothesis; when it is a
+linear-natural equality, it additionally contributes an arithmetic premise.
+The other supported arithmetic assumptions are bare `=<`, `<`, `>=`, `>`, and
+installed `presburger` constraints. Equality, comparison, and Presburger
+assumptions may occur under a universal `pi` prefix or conjunction, but none
+may be the conclusion of `:-` with a body. Comparisons and Presburger
+assumptions are solver premises, not callable predicate clauses. Logical
+controls such as `true`, `fail`, `!`, `is`, disjunction, and a bare clause
+constructor are executable goals, not admissible antecedent heads. Before
+proving `G`, the runtime recursively expands
+conjunctions in `F` and conjunctions in named-predicate clause conclusions.
+For an arithmetic premise, a `pi` inside `F` quantifies the premise formula
+itself: `(pi X\ A X) => G` has the shape `(forall X. A X) => G`, not
+`forall X. (A X => G)`.
+Quantifier prefixes and a shared body are copied onto each produced named head.
+For example:
 
-4.3.1 Reduction rules
+  (pi X\ (p X & q X :- r X)) => goal
 
-β-reduction with SLoc:
+installs, in this order, temporary equivalents of:
 
-  ( NLam { _sloc = sl_l, _hint, _body = b } ) `app` u ⟶  b [ 0 := u ]
+  pi X\ (p X :- r X)
+  pi X\ (q X :- r X)
 
-The result's outer SLoc is the SLoc of the original redex's
-*application node*, not of the lambda or of `u`. This matches the
-user expectation that "this beta-reduces here" → the trace points at
-the application site.
+and then proves `goal` with that ordered block prepended to the pre-existing
+local hypotheses. The expansion is simultaneous and left-to-right. It MUST NOT
+be specified as the nested surface expression
+`F1 => (F2 => (... => G))`, because repeated prepending would reverse the
+search order of the produced hypotheses.
 
-Suspension threads SLocs unchanged.
+The installed user-named local clauses are scoped to `G`; they disappear when
+that implication branch is left. Their invocation and cut behavior are
+otherwise the same as global clauses. Local comparisons and Presburger
+assumptions instead remain solver premises for the scope of `G` and are never
+searched as predicate alternatives. A bare equality retains its ordinary local
+equality-hypothesis behavior as well as any applicable natural-arithmetic role.
+Every residual comparison or Presburger goal created in `G` captures the exact
+arithmetic premise then in scope. That captured guard remains attached after
+the implication cell is left; it is not reconstructed from whichever cell is
+active during a later substitution or while printing the final answer.
 
-`rewriteWithSusp` walks the redex tree and merges SLocs by the
-following rule: if a sub-position has an explicit SLoc, that SLoc is
-preserved; if it is `Nothing` and the surrounding context has an
-SLoc, the surrounding SLoc is propagated downward (best-effort fill).
-
-4.3.2 Equality
-
-α-equivalence, β-reduction, unification, and HOPU all ignore the
-SLoc field. The lemma
-
-  eraseSLocs t  ≅_kernel  t
-
-(where `eraseSLocs` replaces every `_sloc` with `Nothing`) is the
-formal counterpart of the advisory-hint lemma.
-
-4.3.3 Cost
-
-The added field grows `TermNode` by one word per node. The most
-common operations (β-reduction, unification) do not allocate on the
-SLoc path. The cost is paid only by code that *emits diagnostics* —
-the type checker's error path, runtime / HOPU error reporting, and the
-arithmetic install pass — which are not hot.
-
-
-4.4 Test Directory
+3.4 Cut
 --------------------------------------------------------------------------------
 
-4.4.1 Regression Parity
+Cut has Prolog predicate-activation semantics. Executing `!` commits the current
+predicate activation to all choices made since that activation began. It prunes:
 
-Every test case under `test/` must continue to pass with byte-identical
-output unless the expected output is intentionally updated for a documented
-surface change. Debug-mode state dumps intentionally omit `_sloc` rows;
-source-location regressions are covered by diagnostic tests.
+  * the current predicate's remaining alternative clauses;
+  * same-predicate sibling clauses produced by one multi-head declaration;
+  * disjunction and other choice points created by goals to the left of the cut
+    within that activation; and
+  * equivalent alternatives from local hypotheses in that activation.
 
-4.4.2 BETA-only tests
+Cut does not prune caller choice points created before the current predicate
+activation. It also does not prune choices first created by goals to the right
+of the cut. A cut inside an imported clause behaves exactly like one inside a
+main-file clause: a module boundary is not a cut barrier.
 
-The `test/` tree exercises BETA's additions.
+At top level there is no caller predicate. A cut executed directly by the query
+therefore commits the current query activation. If execution later fails, no
+pruned query alternative is reconsidered.
 
-  test/
-    module/
-      simple_import.hol
-        main file imports one module;
-        a constant from the import is used
-        in a main-file clause. Output
-        identical to inlining the import.
-      transitive_import.hol
-        A imports B; B imports C; C declares
-        `i : type` and `c : i`. A uses `c`.
-        Verifies transitive re-export per §2.3.
-      diamond_import.hol
-        A imports B and D; both import C;
-        C declares `abbrev s := list nat.`
-        exactly once. Verifies idempotent
-        loading per §2.2.
-      cycle.hol
-        A imports B; B imports A.
-        Expected output: cycle error per §2.2.
-      inconsistent_abbrev.hol
-        A imports B and D;
-        B declares `abbrev s := list nat.`;
-        D declares `abbrev s := list char.`.
-        Expected: §2.4 (C3) error.
-      inconsistent_fixity.hol
-        A imports B and D; B declares `infixl + 6.`;
-        D declares`infixl + 8.`.
-        Expected: §2.4 (C5) error.
-      explicit_header.hol
-        the main file opens with
-        `module test.module.explicit_header.`
-        matching its file path.
-        Loads cleanly.
-      mismatched_header.hol
-        the main file opens with `module Wrong.Name.`.
-        Expected: §1.2 path-mismatch error.
-    multi_head/
-      simple.hol
-        `p X & q X :- nat_kind X.` then
-        `?- p 7.` and `?- q 7.` both
-        succeed.
-      type_unification.hol
-        multi-head shares logic-var types
-        across heads per §2.5 (ii).
-      cut_in_body.hol
-        multi-head body contains `!`;
-        each cloned clause's cut is local.
-    sloc/
-      install_pass_loc.hol
-        a `presburger` literal with a syntax
-        error inside. Expected: the parse
-        error is attributed to the literal's
-        actual SLoc, not to `(0,0)-(0,0)`.
-        Closes §2.6.3's literal-location requirement.
-      goal_loc_in_debug.hol
-        debug-mode step boundary omits the
-        goal's SLoc from state output.
-      type_error_subterm.hol
-        a sub-term of a clause body fails
-        type-check; the error is attributed
-        to the sub-term's SLoc, not the
-        clause's. Closes §2.6.3 refinement 3.
-    smoke.sh
-      runs the smoke suite and supports --update.
+Splitting a multi-head declaration produces independent installed clauses, but
+this is not a cut barrier. If two produced heads are alternatives for the same
+predicate activation, a cut reached through the first commits past the sibling.
+If they name different predicates, they can only be reached by distinct
+predicate activations and no cross-predicate pruning follows.
 
-Each `.hol` file has the same sidecar pair (`.input.txt`,
-`.expected.txt`). The runner is `test/smoke.sh`.
-
-
-4.5 Implementation Notes
+3.5 Equality and higher-order unification
 --------------------------------------------------------------------------------
 
-The session does not maintain a runtime-side undo stack. Backtracking-style
-clients capture state explicitly through the public `snapshot` / `restore`
-pair and re-issue it as needed.
+`T = U` uses typed higher-order pattern unification. Beta-normalization and
+scope-safe substitutions are kernel operations. Pattern disagreements that are
+not yet decidable MAY remain as residual constraints; inconsistent
+disagreements fail the branch. At every type, eligible bare equality hypotheses
+have strict precedence over the built-in equality alternatives. If at least one
+local hypothesis matches, only that ordered local branch block is returned and
+enumerated; an identical or more general built-in answer is not appended. The
+built-in equality path is used only when the local block is empty. At type
+`nat`, arithmetic normalization is the first additional fallback; an undecided
+equality then falls back to ordinary higher-order unification.
+Consequently both `(1 = 2) => (1 = 2)` and its
+normalized-source variant `(1 + 0 = 2) => (1 + 0 = 2)` succeed by reusing the
+local hypothesis; the same equalities still contribute arithmetic premises to
+other goals.
 
-The display-name cache is per session and is cleared by `:reload`.
+User names, display hints, notation folds, and `SLoc`s do not participate in
+kernel equality.
+
+
+================================================================================
+Chapter 4. Arithmetic, Presburger Constraints, and I/O
+================================================================================
+
+4.1 Natural arithmetic and polymorphic `is`
+--------------------------------------------------------------------------------
+
+Natural literals and `s` denote non-negative integers. `+`, `-`, `*`, and `/`
+have type `nat -> nat -> nat`. Evaluation of a ground expression is exact;
+subtraction underflow and division by zero fail the branch.
+
+`is` deliberately retains the polymorphic type `A -> A -> o`. Its behavior is
+selected by the instantiated operand type and term shape. At `nat`, or whenever
+an operand contains a natural-arithmetic constructor, `L is R` uses directional
+arithmetic evaluation: the runtime evaluates or simplifies `R` before comparing
+it with `L`:
+
+  * a ground `R` is evaluated; a flexible-variable `L` may bind to that value,
+    while a ground arithmetic `L` is evaluated and compared with it;
+  * more generally, a flexible-variable `L` may bind to a simplified polynomial
+    expression if occurs and scope checks pass;
+  * an arithmetic equality decidable by evaluation or normalization is decided
+    immediately; and
+  * otherwise the goal leaves an evaluation constraint to be rechecked after
+    later substitutions.
+
+The symbolic `+`/`*` fragment is normalized as a polynomial. Thus
+`20 * 20` normalizes to `400`, and
+`C * (x + 1) = C * x + C` is recognized as an identity. A contradictory closed
+arithmetic equality fails rather than becoming a residual constraint.
+
+When neither operand has type `nat` and neither contains a natural-arithmetic
+constructor, `is` normalizes both operands and submits their disagreement to the
+same typed higher-order pattern unifier used by ordinary equality and clause
+matching. Thus `X is 'a'` binds `X`, `'a' is 'a'` succeeds, and `'a' is 'b'`
+fails. Occurs checks and universe-level scope checks still apply, and a
+genuinely unresolved higher-order disagreement may remain as a residual
+unification constraint. This non-arithmetic case is equality-like; only
+arithmetic mode gives `is` its directional evaluation role.
+
+4.2 Comparisons
+--------------------------------------------------------------------------------
+
+With no local arithmetic premise, `=<`, `<`, `>=`, and `>` decide ground
+operands directly. Under a local implication, even a ground comparison is the
+consequent of its captured premise; an inconsistent premise can therefore
+discharge a false consequent. A non-ground comparison is accepted as a residual
+constraint only when it can be translated to linear Presburger arithmetic.
+Multiplication by a constant is linear;
+`X * Y > 10` is not. An unsupported non-linear comparison is a runtime error,
+not a silently retained opaque constraint.
+
+Each retained comparison captures the local arithmetic assumptions in scope at
+its creation and denotes a guarded lia-style implication. The runtime conjoins
+all such guarded implications, then closes the conjunction once using the
+quantifier order induced by logic-variable scope. Closing the whole store at
+once makes one query variable denote one value across constraints even when
+their captured guards differ. The runtime revalidates this closed conjunction
+after relevant bindings and added constraints. Failure of that validity check
+fails the branch. Entailed constraints may be omitted from the residual answer;
+an unresolved guarded constraint is reported as `(premise) => consequent`.
+Nested premises are captured and displayed in lexical outer-to-inner source
+order.
+
+4.3 `presburger`
+--------------------------------------------------------------------------------
+
+`presburger "formula"` parses the closed string during query or fact
+installation and contributes the represented formula to the arithmetic store.
+The literal must be available as a string at installation; a dynamic string
+argument is not a Presburger source program. Free upper-case names in the
+formula refer to same-named Hol logic variables in the installation context.
+
+The formula language is:
+
+  arithmetic atoms : non-negative decimals, upper-case/underscore variables,
+                     parentheses, and `+`
+  relations        : `=<`, `=`, `<`, `>=`, `>`
+  congruence       : `t ==_{n} u`, where n is positive
+  connectives      : `~`, `/\`, `\/`, `->`, `<->`
+  quantifiers      : `forall X, f` and `exists X, f`
+  false            : `_|_`
+
+From weakest to strongest, connective precedence is `<->`/`->`, `\/`, `/\`,
+then prefix `~`/quantification and atomic relations. Implication and equivalence
+associate right; repeated disjunctions and conjunctions associate left.
+
+Quantifier binding is lexical. A parse error is attributed to the actual Hol
+string literal when that location is available. A retained formula succeeds
+only while the conjunction of its captured premise implication and all earlier
+guarded residuals is valid under the shared quantifier closure induced by
+logic-variable scope. In particular, an inconsistent premise entails any
+Presburger goal, as in ordinary implication.
+
+4.4 `print`
+--------------------------------------------------------------------------------
+
+`print T` applies the current substitution, pretty-prints `T` using the active
+module notation database and display-name cache, writes it, and succeeds without
+changing the logical proof state.
+
+Output is an external, irreversible effect. Backtracking does not retract a
+line. If search re-enters the `print` goal, including after restoring a
+snapshot, the line is printed again.
+
+4.5 `read`
+--------------------------------------------------------------------------------
+
+Every execution of `read T` consumes exactly one REPL input line. The parser
+uses the expected type when it is known:
+
+  nat                 non-negative decimal natural
+  char                one quoted character under the 1.1 escape policy
+  string/list char    one quoted string under the 1.1 escape policy
+
+Without one of those expected types it tries natural, then character, then
+string. Parsing must consume the entire line. The five source escape spellings
+and printable-character restriction from 1.1 apply here as well; in particular,
+a host-Haskell escape outside that set is rejected. Invalid syntax or a
+type/value mismatch fails the current branch, but the consumed line is not
+returned to the input stream.
+
+If `T` is one unbound flexible variable, the parsed value may bind it subject to
+the usual occurs, type, and scope checks. If `T` is ground, `read T` succeeds
+exactly when the normalized parsed value is structurally equal to it. A
+partially-ground structured argument is not recursively unified by this
+primitive and normally fails.
+
+Backtracking or snapshot restoration does not restore input. Re-executing the
+goal consumes another line.
+
+
+================================================================================
+Chapter 5. Modules
+================================================================================
+
+5.1 Canonical identity and path-derived names
+--------------------------------------------------------------------------------
+
+The loader canonicalizes the main path before reading it. That canonical path
+is the main module's identity. Every successfully resolved import is likewise
+canonicalized before cache lookup, cycle detection, duplicate elimination, or
+composition.
+
+Every loaded module MUST be inside the project root after canonicalization,
+using filesystem path-component containment rather than a textual prefix test.
+A main path outside the root is a load error. An import candidate (including a
+symlink located under the root) whose canonical target is outside the root is
+also a load error at its import declaration. The loader must perform this check
+before admitting the path to its cache or graph.
+
+For a canonical path under the project root, its path-derived name is the
+root-relative path with the final `.hol` removed and path separators replaced
+by dots. No case folding occurs. For example, canonical file
+`<root>/lib/list.hol` has path-derived name `lib.list`.
+
+An optional `module N.` header is an assertion, not a second identity. `N` MUST
+equal the path-derived name exactly or loading fails. Headerless files retain
+the path-derived display name. Because out-of-root modules are rejected, every
+loaded file has a root-relative path-derived name.
+
+5.2 Import resolution
+--------------------------------------------------------------------------------
+
+At `import a.b.c.` in canonical file `P`, replace dots by path separators and
+append `.hol`, yielding `a/b/c.hol`. Test these candidates in order:
+
+  1. the directory containing `P`; then
+  2. the project root.
+
+The first existing regular file wins and is canonicalized. If neither exists,
+loading fails at the import declaration. Directory-first lookup permits
+importer-local helpers. Therefore the locator string alone is not a globally
+unique module name; only the resolved canonical path is identity.
+
+Resolution is performed per edge. The resolved target path, not the locator
+text, is retained in the import graph. A cache hit returns the already loaded
+canonical module.
+
+5.3 Deterministic once linearization
+--------------------------------------------------------------------------------
+
+For a root module `M`, compute `linearize(M)` with one global `visited` set and
+one active recursion stack, both keyed by canonical path:
+
+  visit(P):
+    if P is active, report an import cycle;
+    if P is visited, return;
+    mark P active;
+    visit each distinct direct import of P in source order;
+    unmark P active; mark P visited; append P to the output.
+
+The result is a depth-first, source-order postorder. Every canonical path occurs
+exactly once, imports precede importers, and the main module is last. A diamond
+such as `M -> A -> C` and `M -> B -> C` contributes `ownEnv(C)` once, at the
+position of its first depth-first visit.
+
+The built-in environment precedes the linearization. Formally:
+
+  exportEnv(M) = fold compose builtins
+                   [ ownEnv(P) | P <- linearize(M) ]
+
+An implementation MAY cache parsed or elaborated modules, but it MUST NOT
+construct this fold by concatenating already-transitive `exportEnv`s; doing so
+would duplicate diamond dependencies. Cache, cycle, visited, and once keys are
+canonical paths.
+
+5.4 Environment components and declaration order
+--------------------------------------------------------------------------------
+
+`ownEnv(M)` contains only M's own kinds, type schemes, installed clauses,
+fixities, type abbreviations, term notations, and warnings. `exportEnv(M)` makes
+all composed declarations available transitively and unqualified.
+
+Kind and type maps merge by name under the consistency rules in 5.5. Clause
+sequences concatenate in linearization and source order; clauses never conflict
+merely because their predicate names agree. Multi-head expansion preserves the
+left-to-right head positions at the point of the source declaration.
+
+Fixity, expansion, and presentation-fold databases are distinct components.
+They are composed under the same once linearization but do not share an
+underlying entry list. The final main-module databases govern interactive query
+parsing and user-facing rendering.
+
+5.5 Consistency and shadowing
+--------------------------------------------------------------------------------
+
+Two imported modules that contribute the same declaration name must agree as
+follows:
+
+  C1  kind declarations have structurally equal kinds;
+  C2  type declarations have alpha-equivalent polymorphic type schemes, treating
+      their quantified variables as one simultaneous binder set, so binder
+      spelling and enumeration order are immaterial;
+  C3  type abbreviations have the same arity and alpha-normalized parameter/body
+      structure after discarding source locations and redundant parentheses;
+  C4  term notations satisfy the analogous alpha-normalized structural check;
+  C5  user fixities have the same associativity and precedence.
+
+The equality in C3/C4 is deliberately structural and non-circular: normalize
+formal parameter names to positions, normalize bound lambda names to binder
+indices, ignore `SLoc` and parentheses, and compare constructors and
+applications. It is not defined "modulo the notation database being merged".
+A disagreement is a compile-time import inconsistency attributed to the later
+import edge and should identify both origins when known.
+
+Identical C1-C5 declarations collapse. Clauses concatenate rather than collapse.
+Built-in fixities are defaults and may be overridden by a user module. A local
+user fixity may not disagree with an imported user fixity. A module's own
+abbreviation or notation may shadow an imported one; the shadow applies in that
+module and is re-exported from it. Kind and data-constant declarations are
+closed: a module may not redeclare an imported name even with a different local
+intent.
+
+5.6 Load failure and atomicity
+--------------------------------------------------------------------------------
+
+Lexing, parsing, resolution, cycles, inconsistent imports, kind/type errors,
+notation installation errors, and Presburger installation errors abort the
+load. No partially loaded environment becomes the active REPL program. Warnings,
+including ignored duplicate imports, are emitted only for a successful load or
+as otherwise explicitly reported by the loader.
+
+
+================================================================================
+Chapter 6. Source Locations and Diagnostics
+================================================================================
+
+6.1 `SLoc` contract
+--------------------------------------------------------------------------------
+
+`SLoc` is a metadata value containing inclusive begin and end positions:
+
+  SLoc { begin = (row, column), end = (row, column) }
+
+Rows and columns are one-based Unicode code-point positions; a horizontal tab
+occupies one source column. Diagnostic caret indentation preserves preceding
+tabs so the source and caret follow the same terminal tab stops. Coordinates
+are not terminal-cell widths: exact visual alignment after East-Asian wide,
+combining, or emoji code points is terminal-dependent and is not guaranteed.
+
+It contains no path. The diagnostic call separately supplies an optional source
+identity and source lines. Surface AST terms carry locations. In compiled
+`TermNode`, `NCon`, `NApp`, `NLam`, and `NPresburgerCheck` may carry `Maybe
+SLoc`; logic variables, de Bruijn indices, and suspensions do not themselves
+carry a direct location. Compiler- or runtime-synthesized nodes may use
+`Nothing`. Term-notation expansion follows the call-site/actual-argument
+location rule in 2.3.
+
+Reducers SHOULD preserve an existing useful annotation when reconstructing a
+node. They are not required to invent a location for every result or to move an
+application-site location onto a beta-reduced body. Diagnostics use the smallest
+relevant available annotation and may be locationless when no sound annotation
+exists. A fabricated `(0,0)-(0,0)` span is only a last-resort compatibility
+fallback, not evidence of an actual source location.
+
+Debug state rendering intentionally omits location metadata. This keeps the
+proof-state view stable while retaining locations for errors.
+
+6.2 Diagnostic rendering
+--------------------------------------------------------------------------------
+
+A located file diagnostic starts with a one-line GHC-like header:
+
+  <canonical-path>:<line>:<column>-<end-line>:<end-column>: <severity>: [<tag>]
+
+The renderer follows it with the source line and caret range when source text is
+available. When a valid multiline `SLoc` is available but source lines are not,
+it still renders every spanned row and a minimal caret: the first row starts at
+the begin column, intermediate rows start at column one, and the last row marks
+through the inclusive end column. File diagnostics use the canonical source
+path, not a module header in square brackets. Interactive or truly locationless
+errors may omit the source prefix and/or location.
+
+`DiagnosticPretty` may use ANSI styling. `DiagnosticTest` removes ANSI escape
+sequences while retaining the same words, coordinates, source excerpt, and
+caret geometry so sidecar output is deterministic.
+
+Lex and parse failures point to the failing token or EOF when available. The EOF
+position is the cursor immediately after the last source code point; a final
+newline therefore places EOF at column one of the following row. Module errors
+point to the responsible header/import. Type errors point to the smallest
+available offending subterm. For a term-notation use, 2.3 determines whether
+that subterm has the call-site or actual-argument span. A Presburger parse error
+points to its literal. Some runtime and HOPU failures have no trustworthy term
+annotation and are therefore conformingly locationless; the specification does
+not promise a location on every runtime error.
+
+
+================================================================================
+Chapter 7. REPL, Debugger, Snapshots, and Reload
+================================================================================
+
+7.1 Query lifecycle
+--------------------------------------------------------------------------------
+
+The REPL elaborates each query against the active main `exportEnv`, creates a
+fresh search stack and query-variable type map, and enumerates answers in search
+order. Query variables retain stable display names within the load generation.
+When an answer has further alternatives, the REPL may ask whether to continue;
+declining abandons the remaining stack.
+
+At the top-level prompt:
+
+  :q         leaves the current REPL
+  :reload    reloads the current main file
+  :d         toggles step debugging
+  :short     selects abbreviated type display
+  :verbose   selects expanded type display
+
+During an active debug interaction, `:show ?X` inspects a displayed logic
+variable and `:assign ?X := term.` proposes a scope- and type-checked binding.
+Assignment failure is atomic. `:reload` is rejected while a query is searching
+or at an in-query debug prompt.
+
+Each displayed debug frame shows its pending goals/local hypotheses and call
+identifiers, followed by the visible substitution, residual constraints, typing
+context, and search-thread identifier. The remaining search stack follows the
+current frame. `:short` shows the immediate folded type when known; `:verbose`
+also renders the in-scope rigid/flexible context used to interpret generated
+variables. Neither mode prints `SLoc` metadata.
+
+7.2 Snapshot and restore
+--------------------------------------------------------------------------------
+
+A runtime snapshot records the logical search stack, pending debugger
+substitution, and display-name cache state required to continue that search.
+Restoring it is explicit logical time travel: the recorded stack replaces the
+current stack. Consequently, restoring a snapshot taken before a cut resurrects
+the alternatives that the later cut pruned. This does not weaken the cut rule;
+restore deliberately moves execution to an earlier proof state.
+
+The display-name cache is presentation metadata, not logical state. Restore may
+merge it monotonically with names allocated after the snapshot so an already
+shown name is not reassigned to another variable. Such retained mappings do not
+retain a substitution, constraint, goal, or choice point from the later state.
+
+Snapshot/restore covers logical runtime state only. It does not undo terminal
+output, return consumed `read` input, retract other external I/O, or rewind the
+global supply of implementation identifiers. Re-entered effects occur again.
+
+A snapshot is valid only for the runtime instance and load generation that
+created it. Reload invalidates all earlier snapshots; clients MUST NOT restore a
+snapshot across reload. Implementations exposing snapshot values should enforce
+or document this generation check rather than silently mixing environments.
+
+7.3 Reload
+--------------------------------------------------------------------------------
+
+Top-level `:reload` starts a new load generation for the same requested main
+file. It re-reads the file graph, re-resolves canonical imports, rebuilds loader
+caches and composed environments, and creates new REPL debug, verbosity,
+display-name, query-stack, and pending-substitution state. It is not an in-place
+addition to the old environment.
+
+Reload is not specified as operating-system process restart. Internal unique
+identifier supplies may continue, and external effects remain visible. User
+program meaning, module composition, diagnostics, and fresh REPL control state
+must match a new load from the same filesystem state.
+
+
+================================================================================
+Chapter 8. Observable Compatibility Requirements
+================================================================================
+
+8.1 Determinism
+--------------------------------------------------------------------------------
+
+Given the same canonical project tree, query text, interactive responses, and
+primitive input lines, module linearization, clause order, first answer, and
+subsequent answer order are deterministic. Filesystem aliases must not duplicate
+a module. Different canonical files reached through importer-local resolution
+remain distinct even if their locators have the same spelling.
+
+8.2 Existing programs
+--------------------------------------------------------------------------------
+
+BETA makes no blanket compatibility promise merely because a program is
+headerless or uses only single-head clauses. Such programs still obey the exact
+literal policy in 1.1, the local-assumption and equality rules in 3.3 and 3.5,
+the polymorphic `is` and arithmetic rules in Chapter 4, and main-path root
+containment in 5.1. Compatibility is therefore stated rule by rule: comma
+remains accepted for conjunction, while presentation may intentionally differ
+where BETA specifies canonical `&`, path-aware diagnostics, notation folding,
+or explicit warning text.
+
+The regression suite's `.expected.txt` files define exact CLI presentation
+only where the test invokes the same diagnostic mode and canonical-path
+normalization. They do not override the logical rules in this specification.
+
+
+================================================================================
+Chapter 9. Implementation Map (Informative)
+================================================================================
+
+9.1 Source organization
+--------------------------------------------------------------------------------
+
+The current implementation is under `src/Hol/BETA`:
+
+  Header.hs          common kinds, types, logical operators, and `SLoc`
+  Constant.hs        typed wrappers for runtime data/type constants
+  PlanHolLexer.hs    tokens, surface AST, and source spans
+  PlanHolParser.hs   programs, declarations, queries, and fixed core grammar
+  FixityResolver.hs  module-wide user/imported fixity resolution
+  ModuleLoader.hs    canonical resolution, graph loading, and composition
+  Desugarer.hs       expansion and conversion from surface names/binders
+  TypeChecker.hs     kinded type inference and checking
+  Compiler.hs        explicit quantification and kernel conversion
+  TermNode.hs        runtime term representation and reduction
+  HOPU.hs            higher-order pattern unification
+  Arith.hs           arithmetic and Presburger parsing/installation
+  Runtime.hs         search, constraints, cut, debugger state, snapshots, I/O
+  Notation.hs        fixity, expansion, and presentation folding databases
+  Diagnostic.hs      tagged source/caret diagnostics and test rendering
+  Debugger.hs        display-name cache helpers
+  Main.hs            built-ins, CLI, REPL, primitive I/O, and reload loop
+
+`src/Hol/Main.hs` dispatches the public Hol entry points to `Hol.BETA.Main`.
+
+9.2 Current loader API
+--------------------------------------------------------------------------------
+
+`Hol.BETA.ModuleLoader` currently exports the record types `ModuleEnv(..)` and
+`LoadedModule(..)`, plus:
+
+  loadMain
+    :: UniqueM m
+    => KindEnv -> TypeEnv -> [TermNode] -> FilePath
+    -> m (Either ErrMsg LoadedModule)
+
+  loadMainWithDiagnostic
+    :: UniqueM m
+    => DiagnosticMode
+    -> KindEnv -> TypeEnv -> [TermNode] -> FilePath
+    -> m (Either ErrMsg LoadedModule)
+
+  pathDerivedName :: FilePath -> FilePath -> String
+
+  validateClauseTerm, validateLocalClauseTerm, validateGoalTerm
+    :: TermNode -> Either TermNode ()
+
+  polyTypeEq :: PolyType -> PolyType -> Bool
+
+`ModuleEnv` exposes its path-derived name and canonical path, composed kind,
+type, fact, notation, and expansion databases; separate own kind, type, fact,
+notation, and expansion deltas; its canonical closure; direct import spellings
+and their canonical target paths; and warnings. The three validators distinguish
+global clauses, local clauses (including the arithmetic cases in 3.3), and
+executable goals. `polyTypeEq` implements the C2 comparison. `LoadedModule`
+exposes the composed main environment, the canonical-path-keyed loaded module
+collection, the once-only load order, and warnings. These are Haskell
+implementation interfaces, not stable Hol language syntax.
+
+9.3 Runtime API status
+--------------------------------------------------------------------------------
+
+`Hol.BETA.Runtime` currently exposes its module contents, including
+`RuntimeEnv`, `Snapshot`, `snapshot`, `restore`, and debugger commands. These
+interfaces are internal integration surfaces. The semantic requirements in
+Chapter 7 apply even if their Haskell representation changes.
+
+The normative De Bruijn-index domain and failure policy are specified in 2.4.
+
+
+================================================================================
+Chapter 10. Required Conformance Cases
+================================================================================
+
+10.1 Module composition
+--------------------------------------------------------------------------------
+
+A conforming test suite must cover at least:
+
+  M1  a headerless main module and an exactly matching explicit header;
+  M2  a mismatched header at the header span;
+  M3  importer-directory precedence over project-root resolution;
+  M4  a missing import at its declaration;
+  M5  a canonical-path cycle with the complete cycle chain;
+  M6  a diamond in which a shared dependency's clause contributes once;
+  M7  two locator spellings or symlink paths that canonicalize to one module;
+  M8  distinct importer-local files with the same locator spelling remain
+      distinct identities;
+  M9  deterministic DFS source-order postorder and main-last composition;
+  M10 identical and conflicting C1-C5 declarations, including both origins;
+  M11 local abbreviation/notation shadowing and imported user-fixity rejection;
+  M12 reload after an imported file changes, with no stale loader cache;
+  M13 rejection of an out-of-root main path and an in-root symlink whose
+      canonical import target escapes the root.
+
+10.2 Multi-head and local assumptions
+--------------------------------------------------------------------------------
+
+Required cases are:
+
+  H1  comma and `&` have identical goal and conclusion behavior;
+  H2  head order is preserved after top-level splitting;
+  H3  different heads receive independent runtime variables/constraints;
+  H4  `p X & q X` is rejected when the two heads require incompatible types,
+      while separately declared clauses type-check independently;
+  H5  a shared binder and body are copied to every installed local head;
+  H6  local multi-head hypotheses are searched left-to-right as one prepended
+      block, without the reversal caused by naive nested implication;
+  H7  comparison and Presburger premises beneath an antecedent-local `pi` are
+      retained as universally quantified solver premises;
+  H8  a residual arithmetic constraint keeps its originating premise after the
+      local implication cell has been left and after later substitutions;
+  H9  a bare nat equality is both a searchable local hypothesis and an
+      arithmetic premise, including syntactically normalized equalities; its
+      nonempty local match block suppresses built-in enumeration, while an
+      empty block falls back normally.
+
+10.3 Cut barrier matrix
+--------------------------------------------------------------------------------
+
+The suite must distinguish all of these cases:
+
+  C1  `p :- !, fail.` prevents trying a later `p` clause;
+  C2  a choice made to the left of cut in the same activation is pruned;
+  C3  a disjunction first reached to the right of cut remains searchable;
+  C4  a cut in a nested callee preserves an alternative in its caller;
+  C5  a direct top-level cut commits the query activation;
+  C6  caller disjunction remains available after a callee-local cut;
+  C7  cut has the same barrier in a local-implication clause;
+  C8  a cut through one same-predicate multi-head sibling prunes the other;
+  C9  after post-cut failure in one different-predicate multi-head clause, its
+      sibling remains reachable in the same caller search and uses a distinct
+      activation;
+  C10 importing the clause does not introduce a cut barrier;
+  C11 restoring a pre-cut snapshot resurrects the recorded alternatives, while
+      continuing without restore does not.
+
+Each case must demand another answer or force post-cut failure where necessary;
+merely accepting the first answer and declining enumeration does not prove that
+alternatives were pruned.
+
+10.4 I/O and snapshot effects
+--------------------------------------------------------------------------------
+
+Required cases are:
+
+  I1  `print` observes the current substitution;
+  I2  backtracking through `print` emits the line again and never erases output;
+  I3  `read` parses known `nat`, `char`, and `string` types and uses the stated
+      fallback order when no primitive expected type is known;
+  I4  parse failure and ground mismatch consume the line and fail the branch;
+  I5  backtracking re-executes `read` and consumes a new line;
+  I6  a partially-ground structured `read` argument is not recursively unified;
+  I7  restore rewinds logical state but not prior `print`/`read` effects;
+  I8  a snapshot from an earlier load generation cannot be restored.
+
+10.5 Locations, diagnostics, and arithmetic
+--------------------------------------------------------------------------------
+
+Required cases include multiline `SLoc` rendering both with and without source
+lines, EOF cursor locations (including EOF after a final newline), canonical
+file paths, color-free `DiagnosticTest` output, smallest-subterm type errors,
+term-notation call-site rebasing with precise actual-argument locations, actual
+Presburger-literal spans, a conforming locationless runtime error, polynomial
+normalization, subtraction/division failure, linear residual comparison, and an
+explicit unsupported-nonlinear runtime error. Conformance cases must directly
+force the negative-index and negative nested-lambda cases from 2.4. Arithmetic
+cases must also cover antecedent-local universal premises, guarded residual
+display/rechecking, and the local-equality-before-arithmetic behavior specified
+in 3.5.

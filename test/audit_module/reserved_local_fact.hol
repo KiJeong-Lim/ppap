@@ -1,0 +1,3 @@
+% The same restriction applies to clause heads installed by local implication.
+type reserved_local_fact o.
+reserved_local_fact :- (print X => true).

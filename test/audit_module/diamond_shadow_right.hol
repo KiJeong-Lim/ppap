@@ -1,0 +1,3 @@
+import diamond_shadow_base.
+
+notation audit_c4_lambda F := y\ F y.

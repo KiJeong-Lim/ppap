@@ -1,0 +1,15 @@
+Hol --test
+test/notation/escape_policy.hol
+?- char_value '\n'.
+?- char_value '\t'.
+?- char_value '\\'.
+?- char_value '\"'.
+?- char_value '\''.
+?- char_value '"'.
+?- char_value '한'.
+?- string_value "a'b\n\t\\\"\'한글".
+?- char_value '\r'.
+?- char_value '\x41'.
+?- string_value "\65".
+?- char_value '''.
+:q

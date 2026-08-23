@@ -1,0 +1,8 @@
+Hol --test
+test/audit_runtime/debug_namecache.hol
+:d
+?- sigma X\ eq5 X.
+
+:assign ?X := 6.
+:q
+

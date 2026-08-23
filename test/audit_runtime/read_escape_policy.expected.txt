@@ -1,0 +1,50 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.read_escape_policy ( test/audit_runtime/read_escape_policy.hol, interpreted )
+test.audit_runtime.read_escape_policy> Ok, one module loaded.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 2
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 4
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 6
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 8
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 10
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 12
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 14
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+test.audit_runtime.read_escape_policy> read> 
+test.audit_runtime.read_escape_policy> 16
+test.audit_runtime.read_escape_policy> yes.
+test.audit_runtime.read_escape_policy> 
+Hol >>= quit

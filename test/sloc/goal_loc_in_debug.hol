@@ -1,4 +1,4 @@
-% Section 3.1: under `:d`, the per-step state print omits `_sloc`
+% Sections 6 and 7.1: under `:d`, the per-step state print omits `_sloc`
 % metadata even when the topmost cell's goal carries an SLoc annotation.
 type p (nat -> o).
 type q (nat -> o).

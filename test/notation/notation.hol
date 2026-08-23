@@ -1,6 +1,6 @@
-% Section 1.6.2 (read) + 2.7 (write): the term notation
+% Section 1.6 (read expansion and presentation folding): the term notation
 % `duplo X := pair X X.` is expanded at every call site so the kernel
-% only ever sees `pair 7 7`. At display time the 2.7 fold pre-pass
+% only ever sees `pair 7 7`. At the Section 1.6 display boundary, the fold pass
 % folds matched subterms back to `duplo 7`, so the answer below is
 % `Y := duplo 7.`, not `Y := pair 7 7.`. Regressing to `pair 7 7`
 % means the term fold table is empty (populateTermFoldTable broken)

@@ -1,0 +1,3 @@
+import fixity_seed.
+
+infixl + 8.

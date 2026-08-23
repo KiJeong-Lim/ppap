@@ -1,0 +1,73 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_runtime.debug_presburger_assign ( test/audit_runtime/debug_presburger_assign.hol, interpreted )
+test.audit_runtime.debug_presburger_assign> Ok, one module loaded.
+test.audit_runtime.debug_presburger_assign> 
+test.audit_runtime.debug_presburger_assign> Debugging mode on.
+test.audit_runtime.debug_presburger_assign> 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- presburger "X = 5" & X is 6 ] # call_id = 24
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 24
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.audit_runtime.debug_presburger_assign> Press the enter key to go to next state: 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- presburger "X = 5" ] # call_id = 24
+        , ?- [ |- X is 6 ] # call_id = 24
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = []
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 24
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.audit_runtime.debug_presburger_assign> Press the enter key to go to next state: 
+--------------------------------
+* The top of the current stack is:
+    + progressings = 
+        [ ?- [ |- X is 6 ] # call_id = 24
+        ]
+    + context = Context
+        { _substitution = []
+        , _constraints = 
+            [ presburger "X = 5"
+            ]
+        , _typing = 
+            [ X : nat
+            ]
+        , _thread_id = 24
+        }
+
+* The rest of the current stack is:
+--------------------------------
+
+test.audit_runtime.debug_presburger_assign> Press the enter key to go to next state: 
+test.audit_runtime.debug_presburger_assign> error: [HolBETA-AssignError]
+inconsistent with arithmetic constraints for 'X'
+
+test.audit_runtime.debug_presburger_assign> no.
+test.audit_runtime.debug_presburger_assign> 
+Hol >>= quit

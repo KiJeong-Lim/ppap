@@ -1,0 +1,14 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.audit_module.clause_in_goal_invalid ( test/audit_module/clause_in_goal_invalid.hol, interpreted )
+<PROJECT_ROOT>/test/audit_module/clause_in_goal_invalid.hol:4:13-4:30: error: [HolBETA-ModuleError]
+   |                                 
+ 4 | audit_p :- (audit_q :- audit_r).
+   |             ^^^^^^^^^^^^^^^^^^  
+Clause validation failed: program heads must be user-declared named predicates; local heads may additionally use an in-scope predicate parameter. Local comparison assumptions must be bare linear-Presburger constraints. Logical controls, primitive I/O, and unsupported constraints are not clauses.
+
+Hol =<< 
+Hol >>= quit

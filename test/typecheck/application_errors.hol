@@ -1,0 +1,7 @@
+% Type-error diagnostics: application context, proposition result, and scope.
+% The queries live in the sibling input transcript so one loaded module covers
+% every independent failure mode.
+type diagnostic_fixture o.
+kind diagnostic_result type.
+type k (nat -> diagnostic_result -> o).
+type g (char -> diagnostic_result).
