@@ -137,9 +137,16 @@ data YBlock
     | Target YTarget
     deriving (Show)
 
+-- `SyntaxError` is a cell that the resolution policy leaves empty on purpose, e.g. a `none` terminal
+-- used associatively; the generated parser rejects such an input at run-time.
+data Resolution
+    = TakeAction Action
+    | SyntaxError
+    deriving (Eq, Show)
+
 data Conflict
     = Conflict
-        { because :: (Action, Action)
+        { because :: [Action]
         , whereIs :: (ParserS, TSym)
         , withEnv :: Cannonical0
         }
@@ -486,29 +493,52 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
                 , Just q <- [calcGOTO p _omega]
                 ]
     resolveConflicts :: Either Conflict (Map.Map (ParserS, TSym) Action)
-    resolveConflicts = foldr loop (Right base) [ ((q, t), (lhs, rhs)) | ((q, (lhs, rhs)), ts) <- getLATable, t <- Set.toList ts ] where
-        base :: Map.Map (ParserS, TSym) Action
-        base = Map.fromList
-            [ ((q, t), if t == TSEOF then Accept else Shift p)
-            | ((q, TS t), p) <- Map.toList (getEdges getCannonical0)
-            ]
-        loop :: ((ParserS, TSym), ProductionRule) -> Either Conflict (Map.Map (ParserS, TSym) Action) -> Either Conflict (Map.Map (ParserS, TSym) Action)
-        loop _ (Left conf) = Left conf
-        loop ((q, t), production) (Right getActionT) = case (Map.lookup (q, t) getActionT, Reduce production) of
-            (Nothing, ra) -> Right (Map.insert (q, t) ra getActionT)
-            (Just Accept, ra) -> Right getActionT
-            (Just (Shift p), ra) -> case (Map.lookup t terminals', Map.lookup production productions') of
-                (Just (assoc, prec1), Just prec2)
-                    | prec1 > prec2 -> Right getActionT
-                    | prec1 < prec2 -> Right (Map.adjust (const ra) (q, t) getActionT)
-                    | assoc == ALeft -> Right (Map.adjust (const ra) (q, t) getActionT)
-                    | assoc == ARight -> Right getActionT
-                _ -> Left (Conflict { because = (Shift p, ra), whereIs = (q, t), withEnv = getCannonical0 })
-            (Just (Reduce production'), ra) -> case (Map.lookup production' productions', Map.lookup production productions') of
-                (Just prec1, Just prec2)
-                    | prec1 > prec2 -> Right getActionT
-                    | prec1 < prec2 -> Right (Map.adjust (const ra) (q, t) getActionT)
-                _ -> Left (Conflict { because = (Reduce production', ra), whereIs = (q, t), withEnv = getCannonical0 })
+    resolveConflicts = fmap (Map.mapMaybe takenAction) (Map.traverseWithKey resolveCell cells) where
+        cells :: Map.Map (ParserS, TSym) [Action]
+        cells = Map.unionWith (++) shifting reducing where
+            shifting :: Map.Map (ParserS, TSym) [Action]
+            shifting = Map.fromList
+                [ ((q, t), [if t == TSEOF then Accept else Shift p])
+                | ((q, TS t), p) <- Map.toList (getEdges getCannonical0)
+                ]
+            reducing :: Map.Map (ParserS, TSym) [Action]
+            reducing = Map.fromListWith (++)
+                [ ((q, t), [Reduce (lhs, rhs)])
+                | ((q, (lhs, rhs)), ts) <- getLATable
+                , t <- Set.toList ts
+                ]
+        takenAction :: Resolution -> Maybe Action
+        takenAction (TakeAction action) = Just action
+        takenAction (SyntaxError) = Nothing
+        weigh :: TSym -> Action -> Maybe (Precedence, Action)
+        weigh t (Shift p) = fmap (\(_, prec) -> (prec, Shift p)) (Map.lookup t terminals')
+        weigh _ (Reduce production) = fmap (\prec -> (prec, Reduce production)) (Map.lookup production productions')
+        weigh _ (Accept) = Just (maxPrec, Accept)
+        -- a cell is decided from all of its candidates at once: comparing them pairwise may fail on two
+        -- of them before meeting the one that dominates both, and a cell rejected by `none` must not be
+        -- refilled by a later candidate that sees it as still empty
+        resolveCell :: (ParserS, TSym) -> [Action] -> Either Conflict Resolution
+        resolveCell (q, t) actions
+            | Accept `elem` actions = Right (TakeAction Accept)
+            | otherwise = case actions of
+                [] -> Right SyntaxError
+                [action] -> Right (TakeAction action)
+                _ -> case traverse (weigh t) actions of
+                    Nothing -> Left (conflictAmong actions)
+                    Just candidates -> arbitrate [ action | (prec, action) <- candidates, prec == maximum (map fst candidates) ]
+            where
+                conflictAmong :: [Action] -> Conflict
+                conflictAmong culprits = Conflict { because = culprits, whereIs = (q, t), withEnv = getCannonical0 }
+                arbitrate :: [Action] -> Either Conflict Resolution
+                arbitrate tops = case ([ p | Shift p <- tops ], [ production | Reduce production <- tops ]) of
+                    ([p], []) -> Right (TakeAction (Shift p))
+                    ([], [production]) -> Right (TakeAction (Reduce production))
+                    ([p], [production]) -> case Map.lookup t terminals' of
+                        Just (ALeft, _) -> Right (TakeAction (Reduce production))
+                        Just (ARight, _) -> Right (TakeAction (Shift p))
+                        Just (ANone, _) -> Right SyntaxError
+                        Nothing -> Left (conflictAmong tops)
+                    _ -> Left (conflictAmong tops)
     undefinedNSyms :: Set.Set NSym
     undefinedNSyms
         = Set.fromList
@@ -1070,10 +1100,10 @@ instance Show ParserGenErr where
 instance Show Conflict where
     show = flip (shows) ""
     showList = undefined
-    showsPrec _ (Conflict (action1, action2) (q, t) (Cannonical0 vertices root edges))
+    showsPrec _ (Conflict actions (q, t) (Cannonical0 vertices root edges))
         = strcat
             [ strstr "couldn't resolve conflict:" . nl
-            , strstr "  ? " . pprint 0 action1 . strstr " v.s. " . pprint 0 action2 . strstr " at { state = " . shows q . strstr ", terminal = " . pprint 0 (TS t) . strstr " }" . nl
+            , strstr "  ? " . ppunc " v.s. " (map (pprint 0) actions) . strstr " at { state = " . shows q . strstr ", terminal = " . pprint 0 (TS t) . strstr " }" . nl
             , strstr "  ? collection = {" . nl
             , strstr "    getParserSInfo :: ParserS -> ParserSInfo" . nl
             , ppunc "\n"

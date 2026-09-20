@@ -357,25 +357,29 @@ mkTyErr mode moduleName source_lines db used_mtvs loc ((actual_typ, expected_typ
 
 mkApplicationTyErr :: DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -> Map.Map MetaTVar LargeId -> SLoc -> SLoc -> SLoc -> Bool -> MonoType Int -> MonoType Int -> MonoType Int -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
 mkApplicationTyErr mode moduleName sourceLines db usedMTVs appLoc functionLoc argumentLoc isSelf actualFunction actualArgument resultType mismatch@(_, typError)
-    | isSelf && isOccursFailure typError = emit appLoc
+    | isSelf && isOccursFailure typError
+    = emit appLoc
         [ text "Self-application requires an infinite type."
         , text ("Actual:   `" ++ ty selfActual ++ "'")
         , text ("Required: `" ++ ty selfRequired ++ "'")
         , text "A value cannot be applied to itself in this simply typed language."
         ]
-    | not (isFunctionType actualFunction) && not (isMetaType actualFunction) = emit functionLoc
+    | not (isFunctionType actualFunction) && not (isMetaType actualFunction)
+    = emit functionLoc
         [ text "Cannot apply a non-function value."
         , text ("Actual:   `" ++ ty actualFunction ++ "'")
         , text ("Expected: `" ++ ty requiredFunction ++ "'")
         , text "The expression in function position must have a function type."
         ]
     | Just (expectedArgument, _) <- viewArrow actualFunction
-    , typesDefinitelyDisagree expectedArgument actualArgument = emit argumentLoc
+    , typesDefinitelyDisagree expectedArgument actualArgument
+    = emit argumentLoc
         [ text "Function argument has the wrong type."
         , text ("Expected: `" ++ ty expectedArgument ++ "'")
         , text ("Actual:   `" ++ ty actualArgument ++ "'")
         ]
-    | otherwise = mkTyErr mode moduleName sourceLines db usedMTVs argumentLoc mismatch
+    | otherwise
+    = mkTyErr mode moduleName sourceLines db usedMTVs argumentLoc mismatch
     where
         text = Z.Doc.text
         emit loc = diagnosticWithModule mode "HolBETA-TypeError" moduleName sourceLines loc

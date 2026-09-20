@@ -1,0 +1,11 @@
+kind nat1 type.
+type zero nat1.
+type suc nat1 -> nat1.
+
+type f list nat1 -> o.
+type g nat1 -> list nat1 -> o.
+
+f [].
+f (X0 :: X1 :: Ys) :- X1 = suc X0, f Ys.
+
+g X0 (X0 :: X1 :: Ys) :- (X1 = suc (suc (suc zero)), Ys = []); g (suc X1) Ys.
