@@ -1,14 +1,3 @@
--- LGS.Alpha2 is LGS.Alpha1 with support for non-ASCII input in the *generated* lexer.
--- In Alpha1, the wildcard `.' (`CsUniv') only ever stood for a fixed table of ASCII
--- characters, so a generated lexer could never match "." against e.g. Korean text.
--- Enumerating the whole Unicode range instead is not an option, since every character
--- of the alphabet is emitted as a literal transition-table entry in the generated
--- source file. So here, the alphabet used to build the DFA is exactly the set of
--- characters that are actually written down in the `.lgs' spec, plus one extra symbol
--- `AnyChar' standing for "every other character" (`.' expands to that alphabet plus
--- `AnyChar'). The generated lexer classifies each input character against the (small,
--- literally embedded) explicit alphabet and falls back to `AnyChar' otherwise, so any
--- non-ASCII character not mentioned in the spec is accepted wherever "." is accepted.
 module LGS.Alpha2 where
 
 import Control.Applicative
@@ -63,9 +52,6 @@ data RegEx
     | ReCharSet CharSet
     deriving (Eq, Show)
 
--- A symbol of the alphabet that the NFA/DFA are actually built over: either one
--- specific character, or `AnyChar', the catch-all for every character that is not
--- individually tracked (see the module comment above).
 data DFAChar
     = LitChar Char
     | AnyChar
@@ -139,9 +125,6 @@ formalChar :: Char -> ShowS
 formalChar '\"' = strstr "\'\\\"\'"
 formalChar ch = showsPrec 0 ch
 
--- The lexer-spec language needs to be able to name carriage return so a
--- generated source lexer can accept CRLF files.  Keep this an LGS escape; it
--- does not add `\r` to any generated language's literal policy.
 charPCWithCR :: PC Char
 charPCWithCR = ('\r' <$ consumePC "'\\r'") <|> charPC
 
@@ -276,10 +259,6 @@ readBlock = mconcat
             }
     ]
 
--- The alphabet the DFA is built over: every character that is written down somewhere
--- in the spec (as a literal char, a range bound, or inside a quoted word), across every
--- `\xmatch' rule and its right context. `CsUniv' (".") itself contributes nothing here
--- -- it is resolved against this alphabet (plus `AnyChar') by `runCharSet' below.
 computeAlphabet :: [(RegEx, RightContext)] -> Set.Set Char
 computeAlphabet xmatch_defns = Set.unions (concatMap collectPair xmatch_defns) where
     collectPair :: (RegEx, RightContext) -> [Set.Set Char]

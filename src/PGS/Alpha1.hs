@@ -137,8 +137,6 @@ data YBlock
     | Target YTarget
     deriving (Show)
 
--- `SyntaxError` is a cell that the resolution policy leaves empty on purpose, e.g. a `none` terminal
--- used associatively; the generated parser rejects such an input at run-time.
 data Resolution
     = TakeAction Action
     | SyntaxError
@@ -514,9 +512,6 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         weigh t (Shift p) = fmap (\(_, prec) -> (prec, Shift p)) (Map.lookup t terminals')
         weigh _ (Reduce production) = fmap (\prec -> (prec, Reduce production)) (Map.lookup production productions')
         weigh _ (Accept) = Just (maxPrec, Accept)
-        -- a cell is decided from all of its candidates at once: comparing them pairwise may fail on two
-        -- of them before meeting the one that dominates both, and a cell rejected by `none` must not be
-        -- refilled by a later candidate that sees it as still empty
         resolveCell :: (ParserS, TSym) -> [Action] -> Either Conflict Resolution
         resolveCell (q, t) actions
             | Accept `elem` actions = Right (TakeAction Accept)
