@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified ALPHA1.Main as ALPHA1
 import qualified Calc.Main as Calc
 import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS
@@ -25,7 +26,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = takeFirstOf matchPrefix ["Hol", "Calc", "LGS", "PGS", "TEST"]
+    | otherwise = takeFirstOf matchPrefix ["Hol", "ALPHA1", "Calc", "LGS", "PGS", "TEST"]
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix cmd = go (splitAt (length cmd) str) where
@@ -46,6 +47,10 @@ ppap = do
             | args `elem` [[], ["pretty"], ["test"]] -> do
                 shellyM ("ppap >>= exec (Hol.main" ++ shownArgs args ++ ")")
                 Hol.mainWithArgsM args
+        Just ("ALPHA1", args)
+            | null args -> do
+                shellyM ("ppap >>= exec (ALPHA1.main)")
+                liftIO ALPHA1.main
         Just ("Calc", args)
             | null args -> do
                 shellyM ("ppap >>= exec (Calc.main)")

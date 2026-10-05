@@ -1,0 +1,341 @@
+\hshead {
+    module ALPHA1.PlanHolLexer where
+
+    import ALPHA1.Header
+    import Data.Char (isPrint)
+}
+
+\target {
+    token-type: "Token"
+    lexer-name: "runHolLexerRaw"
+}
+
+\define $small_letter = 'a'-'z'
+\define $big_letter = 'A'-'Z'
+\define $digit = '0'-'9'
+\define $Escape = "\\n" + "\\t" + "\\\\" + "\\\"" + "\\\'"
+\define $StringChar = [. \ '\n' \ '\\' \ '\"'] + $Escape
+\define $CharChar = [. \ '\n' \ '\\' \ '\''] + $Escape
+\define $SmallId = [$small_letter] [$small_letter $digit '_' $big_letter]*
+\define $LargeId = [$big_letter] [$small_letter $digit '_' $big_letter]* + "_"
+
+\xmatch "_":
+    T_wildcard (SLoc (row1, col1) (row2, col2))
+\xmatch ".":
+    T_dot (SLoc (row1, col1) (row2, col2))
+\xmatch "->":
+    T_arrow (SLoc (row1, col1) (row2, col2))
+\xmatch "=>":
+    T_fatarrow (SLoc (row1, col1) (row2, col2))
+\xmatch "(":
+    T_lparen (SLoc (row1, col1) (row2, col2))
+\xmatch ")":
+    T_rparen (SLoc (row1, col1) (row2, col2))
+\xmatch "[":
+    T_lbracket (SLoc (row1, col1) (row2, col2))
+\xmatch "]":
+    T_rbracket (SLoc (row1, col1) (row2, col2))
+\xmatch "?-":
+    T_quest (SLoc (row1, col1) (row2, col2))
+\xmatch ",":
+    T_comma (SLoc (row1, col1) (row2, col2))
+\xmatch "=>":
+    T_fatarrow (SLoc (row1, col1) (row2, col2))
+\xmatch ":-":
+    T_if (SLoc (row1, col1) (row2, col2))
+\xmatch "s":
+    T_succ (SLoc (row1, col1) (row2, col2))
+\xmatch "=":
+    T_eq (SLoc (row1, col1) (row2, col2))
+\xmatch "=<":
+    T_le (SLoc (row1, col1) (row2, col2))
+\xmatch "<":
+    T_lt (SLoc (row1, col1) (row2, col2))
+\xmatch ">=":
+    T_ge (SLoc (row1, col1) (row2, col2))
+\xmatch ">":
+    T_gt (SLoc (row1, col1) (row2, col2))
+\xmatch "+":
+    T_plus (SLoc (row1, col1) (row2, col2))
+\xmatch "-":
+    T_minus (SLoc (row1, col1) (row2, col2))
+\xmatch "*":
+    T_star (SLoc (row1, col1) (row2, col2))
+\xmatch "/":
+    T_slash (SLoc (row1, col1) (row2, col2))
+\xmatch "pi":
+    T_pi (SLoc (row1, col1) (row2, col2))
+\xmatch "sigma":
+    T_sigma (SLoc (row1, col1) (row2, col2))
+\xmatch ";":
+    T_semicolon (SLoc (row1, col1) (row2, col2))
+\xmatch "!":
+    T_cut (SLoc (row1, col1) (row2, col2))
+\xmatch "true":
+    T_true (SLoc (row1, col1) (row2, col2))
+\xmatch "fail":
+    T_fail (SLoc (row1, col1) (row2, col2))
+\xmatch "is":
+    T_is (SLoc (row1, col1) (row2, col2))
+\xmatch "debug":
+    T_debug (SLoc (row1, col1) (row2, col2))
+\xmatch "\\":
+    T_bslash (SLoc (row1, col1) (row2, col2))
+\xmatch "::":
+    T_cons (SLoc (row1, col1) (row2, col2))
+\xmatch "kind":
+    T_kind (SLoc (row1, col1) (row2, col2))
+\xmatch "type":
+    T_type (SLoc (row1, col1) (row2, col2))
+\xmatch "`" $SmallId "`":
+    T_id (SLoc (row1, col1) (row2, col2)) (init (tail this))
+\xmatch $LargeId + $SmallId:
+    T_id (SLoc (row1, col1) (row2, col2)) this
+\xmatch [$digit]+:
+    T_nat_lit (SLoc (row1, col1) (row2, col2)) (read this)
+\xmatch "\"" $StringChar* "\"":
+    mkStringToken (SLoc (row1, col1) (row2, col2)) this
+\xmatch "\'" $CharChar "\'":
+    mkCharToken (SLoc (row1, col1) (row2, col2)) this
+\xmatch [' ' '\t' '\r' '\n']+: skip
+\xmatch "%" [. \ '\n']*: skip
+\xmatch "(*" ([. \ '*'] + "*"+ [. \ '*' \ ')'])* "*"+ ")": skip
+
+\hstail {
+    data Token
+        = T_dot SLoc
+        | T_arrow SLoc
+        | T_lparen SLoc
+        | T_rparen SLoc
+        | T_lbracket SLoc
+        | T_rbracket SLoc
+        | T_quest SLoc
+        | T_if SLoc
+        | T_comma SLoc
+        | T_semicolon SLoc
+        | T_fatarrow SLoc
+        | T_succ SLoc
+        | T_eq SLoc
+        | T_le SLoc
+        | T_lt SLoc
+        | T_gt SLoc
+        | T_ge SLoc
+        | T_plus SLoc
+        | T_minus SLoc
+        | T_star SLoc
+        | T_slash SLoc
+        | T_pi SLoc
+        | T_sigma SLoc
+        | T_cut SLoc
+        | T_true SLoc
+        | T_fail SLoc
+        | T_is SLoc
+        | T_debug SLoc
+        | T_bslash SLoc
+        | T_cons SLoc
+        | T_kind SLoc
+        | T_type SLoc
+        | T_wildcard SLoc
+        | T_id SLoc String
+        | T_nat_lit SLoc Integer
+        | T_chr_lit SLoc Char
+        | T_str_lit SLoc String
+        | T_lex_error SLoc
+        deriving (Show)
+
+    data TermRep
+        = RVar SLoc LargeId
+        | RCon SLoc DataConstructor
+        | RApp SLoc TermRep TermRep
+        | RAbs SLoc LargeId TermRep
+        | RPrn SLoc TermRep
+        | R_wc SLoc
+        deriving (Show)
+
+    data TypeRep
+        = RTyVar SLoc LargeId
+        | RTyCon SLoc TypeConstructor
+        | RTyApp SLoc TypeRep TypeRep
+        | RTyPrn SLoc TypeRep
+        deriving (Show)
+
+    data KindRep
+        = RStar SLoc
+        | RKArr SLoc KindRep KindRep
+        | RKPrn SLoc KindRep
+        deriving (Show)
+
+    data DeclRep
+        = RKindDecl SLoc TypeConstructor KindRep
+        | RTypeDecl SLoc DataConstructor TypeRep
+        | RFactDecl SLoc TermRep
+        deriving (Show)
+
+    instance HasSLoc Token where
+        getSLoc token = case token of
+            T_dot loc -> loc
+            T_arrow loc -> loc
+            T_lparen loc -> loc
+            T_rparen loc -> loc
+            T_lbracket loc -> loc
+            T_rbracket loc -> loc
+            T_if loc -> loc
+            T_quest loc -> loc
+            T_comma loc -> loc
+            T_semicolon loc -> loc
+            T_fatarrow loc -> loc
+            T_succ loc -> loc
+            T_eq loc -> loc
+            T_le loc -> loc
+            T_lt loc -> loc
+            T_gt loc -> loc
+            T_ge loc -> loc
+            T_plus loc -> loc
+            T_minus loc -> loc
+            T_star loc -> loc
+            T_slash loc -> loc
+            T_pi loc -> loc
+            T_sigma loc -> loc
+            T_cut loc -> loc
+            T_true loc -> loc
+            T_fail loc -> loc
+            T_is loc -> loc
+            T_debug loc -> loc
+            T_bslash loc -> loc
+            T_cons loc -> loc
+            T_kind loc -> loc
+            T_type loc -> loc
+            T_wildcard loc -> loc
+            T_id loc _ -> loc
+            T_nat_lit loc _ -> loc
+            T_chr_lit loc _ -> loc
+            T_str_lit loc _ -> loc
+            T_lex_error loc -> loc
+
+    instance HasSLoc TermRep where
+        getSLoc term_rep = case term_rep of
+            RVar loc _ -> loc
+            RCon loc _ -> loc
+            RApp loc _ _ -> loc
+            RAbs loc _ _ -> loc
+            RPrn loc _ -> loc
+            R_wc loc -> loc
+
+    instance HasSLoc TypeRep where
+        getSLoc type_rep = case type_rep of
+            RTyVar loc _ -> loc
+            RTyCon loc _ -> loc
+            RTyApp loc _ _ -> loc
+            RTyPrn loc _ -> loc
+
+    instance HasSLoc KindRep where
+        getSLoc kind_rep = case kind_rep of
+            RStar loc -> loc
+            RKArr loc _ _ -> loc
+            RKPrn loc _ -> loc
+
+    mkNatLit :: SLoc -> Integer -> TermRep
+    mkNatLit loc nat = RCon loc (DC_NatL nat)
+
+    mkChrLit :: SLoc -> Char -> TermRep
+    mkChrLit loc chr = RCon loc (DC_ChrL chr)
+
+    runHolLexer :: String -> Either (Int, Int) [Token]
+    runHolLexer src = do
+        case unterminatedBlockComment src of
+            Just start -> Left start
+            Nothing -> return ()
+        tokens <- runHolLexerRaw src
+        case [start | T_lex_error (SLoc start _) <- tokens] of
+            start : _ -> Left start
+            [] -> Right tokens
+
+    -- Keep the hand-written lexical policy in sync with the generated DFA.  The
+    -- DFA recognizes complete, non-nesting `(* ... *)' comments; this preflight
+    -- prevents an unterminated opener from falling back to ordinary punctuation.
+    unterminatedBlockComment :: String -> Maybe (Int, Int)
+    unterminatedBlockComment = normal 1 1 where
+        normal _ _ [] = Nothing
+        normal row col ('(' : '*' : rest) = block (row, col) row (col + 2) rest
+        normal row col ('%' : rest) = lineComment row (col + 1) rest
+        normal row col ('"' : rest) = quoted '"' row (col + 1) rest
+        normal row col ('\'' : rest) = quoted '\'' row (col + 1) rest
+        normal row col input@(ch : _)
+            | isSymbolStart ch =
+                let ((row', col'), rest) = consumeSymbol row col input
+                in normal row' col' rest
+        normal row col (ch : rest) = uncurry normal (advance row col ch) rest
+
+        lineComment _ _ [] = Nothing
+        lineComment row col ('\n' : rest) = normal (row + 1) 1 rest
+        lineComment row col (_ : rest) = lineComment row (col + 1) rest
+
+        quoted _ _ _ [] = Nothing
+        quoted quote row col ('\\' : escaped : rest) =
+            let (row', col') = advance row col '\\'
+                (row'', col'') = advance row' col' escaped
+            in quoted quote row'' col'' rest
+        quoted quote row col (ch : rest)
+            | ch == quote = uncurry normal (advance row col ch) rest
+            | otherwise = uncurry (quoted quote) (advance row col ch) rest
+
+        block start _ _ [] = Just start
+        block _ row col ('*' : ')' : rest) = normal row (col + 2) rest
+        block start row col (ch : rest) = uncurry (block start) (advance row col ch) rest
+
+        consumeSymbol row col [] = ((row, col), [])
+        consumeSymbol row col input@(ch : rest)
+            | isSymbolRest ch =
+                let (row', col') = advance row col ch
+                in consumeSymbol row' col' rest
+            | otherwise = ((row, col), input)
+
+        isSymbolStart ch = ch `elem` ("!@#$^&*+-=<>?/|~:" :: String)
+        isSymbolRest ch = isSymbolStart ch || ch == '%'
+        advance row _ '\n' = (row + 1, 1)
+        advance row col _ = (row, col + 1)
+
+    isHolLiteralChar :: Char -> Bool
+    isHolLiteralChar ch = isPrint ch || ch == '\n' || ch == '\t'
+
+    isHolEscapeCode :: Char -> Bool
+    isHolEscapeCode ch = ch `elem` ['n', 't', '\\', '\"', '\'']
+
+    validHolStringLexeme :: String -> Bool
+    validHolStringLexeme ('\"' : rest) = scan rest where
+        scan ['\"'] = True
+        scan ('\\' : escaped : more)
+            | isHolEscapeCode escaped = scan more
+        scan (ch : more)
+            | isPrint ch && ch /= '\"' && ch /= '\\' = scan more
+        scan _ = False
+    validHolStringLexeme _ = False
+
+    validHolCharLexeme :: String -> Bool
+    validHolCharLexeme ['\'', '\\', escaped, '\''] = isHolEscapeCode escaped
+    validHolCharLexeme ['\'', ch, '\''] = isPrint ch && ch /= '\'' && ch /= '\\'
+    validHolCharLexeme _ = False
+
+    readHolStringLiteral :: String -> Maybe String
+    readHolStringLiteral src
+        | validHolStringLexeme src = case reads src of
+            [(str, "")] | all isHolLiteralChar str -> Just str
+            _ -> Nothing
+        | otherwise = Nothing
+
+    readHolCharLiteral :: String -> Maybe Char
+    readHolCharLiteral src
+        | validHolCharLexeme src = case reads src of
+            [(ch, "")] | isHolLiteralChar ch -> Just ch
+            _ -> Nothing
+        | otherwise = Nothing
+
+    mkStringToken :: SLoc -> String -> Token
+    mkStringToken loc src = maybe (T_lex_error loc) (T_str_lit loc) (readHolStringLiteral src)
+
+    mkCharToken :: SLoc -> String -> Token
+    mkCharToken loc src = maybe (T_lex_error loc) (T_chr_lit loc) (readHolCharLiteral src)
+
+    mkStrLit :: SLoc -> String -> TermRep
+    mkStrLit loc str = foldr (\ch -> \acc -> RApp loc (RApp loc (RCon loc DC_Cons) (RCon loc (DC_ChrL ch))) acc) (RCon loc DC_Nil) str
+}

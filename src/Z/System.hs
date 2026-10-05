@@ -85,8 +85,9 @@ matchPrefix prefix = PM $ \str -> let n = length prefix in if take n str == pref
 matchFileDirWithExtension :: String -> (String, String)
 matchFileDirWithExtension dir
     = case span (\ch -> ch /= '.') (reverse dir) of
-        (reversed_extension, '.' : reversed_filename) -> (reverse reversed_filename, '.' : reverse reversed_extension)
-        (reversed_filename, must_be_null) -> (reverse reversed_filename, [])
+        (reversed_extension, '.' : reversed_filename)
+            | all (\ch -> ch /= '/' && ch /= '\\') reversed_extension -> (reverse reversed_filename, '.' : reverse reversed_extension)
+        _ -> (dir, [])
 
 makePathAbsolutely :: FilePath -> IO (Maybe FilePath)
 makePathAbsolutely = fmap (uncurry go . span (\ch -> ch /= ':')) . makeAbsolute where
