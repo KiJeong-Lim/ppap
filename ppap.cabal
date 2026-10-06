@@ -14,7 +14,9 @@ extra-source-files:
   doc/HolBETA.txt
   test/SmokeMain.hs
   test/smoke.sh
-  test/alpha1/*.aladdin
+  test/alpha1/*.hol
+  test/alpha1/*.input.txt
+  test/alpha1/*.expected.txt
   test/alpha1/*.hs
   test/alpha1/*.sh
   test/audit_module/*.hol

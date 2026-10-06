@@ -1,4 +1,4 @@
-module Hol.ALPHA1.Main where
+module Hol.ALPHA1.Main (main) where
 
 import Hol.ALPHA1.Back.BackEnd
 import Hol.ALPHA1.Back.Base.Constant
@@ -85,13 +85,13 @@ theInitialFactDecls = [eqFact] where
 theDefaultModuleName :: String
 theDefaultModuleName = "Aladdin"
 
-runAladdin :: UniqueGenT IO ()
-runAladdin = do
+runAlpha1 :: UniqueGenT IO ()
+runAlpha1 = do
     consistency_ptr <- lift $ newIORef ""
     file_dir <- lift $ shelly "Aladdin =<< "
     maybe_file_name <- case matchFileDirWithExtension file_dir of
         ("", "") -> return Nothing
-        (file_name, ".aladdin") -> return (Just file_name)
+        (file_name, ".hol") -> return (Just file_name)
         (file_name, "") -> return (Just file_name)
         (file_name, '.' : wrong_extension) -> do
             lift $ writeIORef consistency_ptr (theDefaultModuleName ++ "> " ++ shows wrong_extension " is a non-executable file extension.")
@@ -103,24 +103,24 @@ runAladdin = do
                 lift $ shelly (theDefaultModuleName ++ "> Ok, no module loaded.")
                 runREPL (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
             Just file_name -> do
-                let my_file_dir = file_name ++ ".aladdin"
+                let my_file_dir = file_name ++ ".hol"
                     myModuleName = modifySep '/' (const ".") id file_name
                 maybe_src <- lift $ readFileNow my_file_dir
                 case maybe_src of
                     Nothing -> do
                         lift $ putStrLn ("*** loading-error: couldn't read the file `" ++ my_file_dir ++ "'.")
-                        runAladdin
+                        runAlpha1
                     Just src -> do
                         file_abs_dir <- fmap (fromMaybe my_file_dir) (lift $ makePathAbsolutely my_file_dir)
                         lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
                         case runAnalyzer src of
                             Left err_msg -> do
                                 lift $ putStrLn err_msg
-                                runAladdin
+                                runAlpha1
                             Right output -> case output of
                                 Left query1 -> do
                                     lift $ putStrLn "*** parsing-error: it is not a program."
-                                    runAladdin
+                                    runAlpha1
                                 Right program1 -> do
                                     result <- runExceptT $ do
                                         module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
@@ -130,7 +130,7 @@ runAladdin = do
                                     case result of
                                         Left err_msg -> do
                                             lift $ putStrLn err_msg
-                                            runAladdin
+                                            runAlpha1
                                         Right program2 -> do
                                             lift $ shelly (myModuleName ++ "> Ok, one module loaded.")
                                             runREPL program2
@@ -140,7 +140,7 @@ runAladdin = do
             return ()
 
 main :: IO ()
-main = runUniqueGenT runAladdin `catch` endOfInput where
+main = runUniqueGenT runAlpha1 `catch` endOfInput where
     endOfInput :: IOException -> IO ()
     endOfInput err
         | isEOFError err = return ()

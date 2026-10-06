@@ -1,0 +1,6 @@
+ALPHA1
+test/alpha1/legacy.hol
+?- true.
+?- add 2 3 N.
+n
+:q

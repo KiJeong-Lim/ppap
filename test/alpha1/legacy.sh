@@ -5,9 +5,9 @@ cabal exec -- runghc -isrc test/alpha1/LegacyRegression.hs
 PPAP_EXECUTABLE=${PPAP_BIN:-$(cabal list-bin ppap)}
 ALPHA1_TEST_DIR=$(mktemp -d)
 trap 'rm -rf -- "$ALPHA1_TEST_DIR"' EXIT
-printf 'ALPHA1\n%s/missing\n\n?- true.\n:q\n' "$ALPHA1_TEST_DIR" | "$PPAP_EXECUTABLE" >"$ALPHA1_TEST_DIR/loading.txt" 2>&1
+printf 'ALPHA1\n%s/missing\ntest/alpha1/legacy\n?- true.\n:q\n' "$ALPHA1_TEST_DIR" | "$PPAP_EXECUTABLE" >"$ALPHA1_TEST_DIR/loading.txt" 2>&1
 grep -F "loading-error: couldn't read" "$ALPHA1_TEST_DIR/loading.txt" >/dev/null
-grep -F 'Aladdin> yes.' "$ALPHA1_TEST_DIR/loading.txt" >/dev/null
+grep -F 'test.alpha1.legacy> yes.' "$ALPHA1_TEST_DIR/loading.txt" >/dev/null
 printf 'ALPHA1\n\n:d\n?- true.\n:q\n' | "$PPAP_EXECUTABLE" >"$ALPHA1_TEST_DIR/debugging.txt" 2>&1
 grep -F 'Aladdin >>= quit' "$ALPHA1_TEST_DIR/debugging.txt" >/dev/null
 if grep -F 'Aladdin> yes.' "$ALPHA1_TEST_DIR/debugging.txt" >/dev/null; then

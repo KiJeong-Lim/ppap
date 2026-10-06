@@ -1,0 +1,16 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (ALPHA1.main)
+Aladdin =<< 
+Aladdin> Compiling test.alpha1.legacy ( test/alpha1/legacy.hol, interpreted )
+test.alpha1.legacy> Ok, one module loaded.
+test.alpha1.legacy> 
+test.alpha1.legacy> yes.
+test.alpha1.legacy> 
+test.alpha1.legacy> The answer substitution is:
+test.alpha1.legacy> N := 5.
+test.alpha1.legacy> Find more solutions? [Y/n] 
+test.alpha1.legacy> yes.
+test.alpha1.legacy> 
+Aladdin >>= quit

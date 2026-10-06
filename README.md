@@ -99,7 +99,7 @@ Useful REPL commands:
 
 Examples live under `example/*.hol` and `test/**/*.hol`.
 
-The final legacy Aladdin implementation (`086a9d1`) lives in `src/Hol/ALPHA1/`. Run it with the `ALPHA1` dispatcher command; it loads `.aladdin` files and retains the original Aladdin syntax, with natural-number arithmetic added explicitly.
+The final legacy Aladdin implementation (`086a9d1`) lives in `src/Hol/ALPHA1/`. Run it with the `ALPHA1` dispatcher command; it loads `.hol` files and retains the original Aladdin syntax, with natural-number arithmetic added explicitly.
 
 Arithmetic follows [SWI-Prolog's ordinary evaluation rules](https://www.swi-prolog.org/pldoc/man?section=arith), restricted to `nat`: `is` evaluates its right operand and unifies the result with its left operand; `=:=`, `=\=`, `<`, `=<`, `>`, and `>=` evaluate both operands. Structural `=` still unifies terms without evaluating arithmetic. Supported expressions use binary `+`, `-`, `*`, `/`, `//`, `div`, `mod`, `rem`, unary `+`/`-`, and the legacy successor `s`. The words `is`, `div`, `mod`, and `rem` are reserved arithmetic keywords. Expressions may contain previously bound variables, but an unbound variable raises `instantiation_error` immediately.
 

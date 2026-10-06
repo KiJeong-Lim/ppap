@@ -72,7 +72,7 @@ main = do
     mapM_ (\source -> assert ("old literal/comment rejected: " ++ source) (either (const False) (const True) (runAnalyzer source))) ["?- X = '\"'.", "(***) true.", "(****) true.", "(* ** text *** *) true.", "?- X = \"a\\n\\t\\\\\\\"\\'\"."]
     assert "free variable captured in printed lambda" (show (mkNAbs (mkLVar (LV_Named "W_1"))) == "W_2\\ W_1")
     assert "bare equality has wrong arity" (show (mkNCon DC_Eq) == "W_1\\ W_2\\ W_1 = W_2")
-    source <- readFile "test/alpha1/legacy.aladdin"
+    source <- readFile "test/alpha1/legacy.hol"
     runUniqueGenT $ do
         mapM_ (\bad -> compileProgram bad >>= liftIO . assert ("invalid clause compiled: " ++ bad) . either (isInfixOf "converting-error") (const False)) ["type p o. p. true.", "type p o. p :- true => p.", "type p o. (p :- true) :- true."]
         compiled <- compileProgram source
