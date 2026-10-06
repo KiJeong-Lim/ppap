@@ -1,7 +1,6 @@
+module Hol.ALPHA1.Front.TypeChecker.Util where
 
-module ALPHA1.TypeChecker where
-
-import ALPHA1.Header
+import Hol.ALPHA1.Front.Header
 import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
@@ -9,7 +8,8 @@ import Control.Monad.Trans.State.Strict
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
-import Z.Utils
+import Y.Base
+import Z.Utils hiding (Outputable, pprint, pshow, Indentation, IsInt, toInt, fromInt, ErrMsg, Unique, unUnique, UniqueT, runUniqueT, HasAnnot, getAnnot, setAnnot, strstr, strcat, nl, pindent, ppunc, plist', plist, quotify, plist1)
 
 infix 4 +->
 infix 4 ->>
@@ -27,6 +27,14 @@ newtype TypeSubst
 class HasMTVar a where
     getFreeMTVs :: a -> Set.Set MetaTVar -> Set.Set MetaTVar
     substMTVars :: TypeSubst -> a -> a
+
+class IsInt a where
+    fromInt :: Int -> a
+    toInt :: a -> Int
+
+instance IsInt Int where
+    fromInt = id
+    toInt = id
 
 instance IsInt tvar => HasMTVar (MonoType tvar) where
     getFreeMTVs (TyMTV mtv) = Set.insert mtv
@@ -81,7 +89,8 @@ getKind = maybe (error "`getKind\'") id . go where
     go (TyCon (TCon _ kin)) = return kin
     go (TyApp typ1 typ2) = do
         (kin1 `KArr` kin2) <- go typ1
-        return kin2
+        kin3 <- go typ2
+        if kin1 == kin3 then return kin2 else Nothing
     go (TyMTV _) = return Star
 
 getMGU :: Monad mnd => MonoType Int -> MonoType Int -> ExceptT ((MonoType Int, MonoType Int), TypeError) mnd TypeSubst
@@ -183,23 +192,23 @@ showMonoType name_env = go 0 where
             Nothing -> strstr "mtv_" . showsPrec 0 mtv
             Just name -> strstr name
 
-instantiateScheme :: MonadUnique m => PolyType -> StateT (Map.Map MetaTVar LargeId) (ExceptT ErrMsg m) ([MetaTVar], MonoType Int)
+instantiateScheme :: GenUniqueM m => PolyType -> StateT (Map.Map MetaTVar LargeId) (ExceptT ErrMsg m) ([MetaTVar], MonoType Int)
 instantiateScheme = go where
     loop :: [MonoType Int] -> MonoType Int -> MonoType Int
     loop tvars (TyVar idx) = tvars !! idx
     loop tvars (TyCon tcon) = TyCon tcon
     loop tvars (TyApp typ1 typ2) = TyApp (loop tvars typ1) (loop tvars typ2)
     loop tvars (TyMTV mtv) = TyMTV mtv 
-    go :: MonadUnique m => PolyType -> StateT (Map.Map MetaTVar LargeId) (ExceptT ErrMsg m) ([MetaTVar], MonoType Int)
+    go :: GenUniqueM m => PolyType -> StateT (Map.Map MetaTVar LargeId) (ExceptT ErrMsg m) ([MetaTVar], MonoType Int)
     go (Forall tvars typ) = do
         mtvs <- mapM getNewMTV tvars
         return (mtvs, loop (map TyMTV mtvs) typ)
 
-getNewMTV :: MonadUnique m => LargeId -> StateT (Map.Map MetaTVar LargeId) (ExceptT ErrMsg m) MetaTVar
+getNewMTV :: GenUniqueM m => LargeId -> StateT (Map.Map MetaTVar LargeId) (ExceptT ErrMsg m) MetaTVar
 getNewMTV largeid
     = do
         used_mtvs_0 <- get
-        mtv <- getUnique
+        mtv <- getNewUnique
         let name = makeName used_mtvs_0 largeid
         put (Map.insert mtv name used_mtvs_0)
         return mtv
@@ -214,10 +223,10 @@ getNewMTV largeid
 zonkMTV :: TypeSubst -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int)
 zonkMTV theta = go where
     go :: TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int)
-    go (Var (loc, typ) var) = Var (loc, substMTVars theta typ) var
-    go (Con (loc, typ) (con, tapps)) = Con (loc, substMTVars theta typ) (con, substMTVars theta tapps)
-    go (App (loc, typ) term1 term2) = App (loc, substMTVars theta typ) (go term1) (go term2)
-    go (Lam (loc, typ) var term) = Lam (loc, substMTVars theta typ) var (go term)
+    go (IVar (loc, typ) var) = IVar (loc, substMTVars theta typ) var
+    go (DCon (loc, typ) (con, tapps)) = DCon (loc, substMTVars theta typ) (con, substMTVars theta tapps)
+    go (IApp (loc, typ) term1 term2) = IApp (loc, substMTVars theta typ) (go term1) (go term2)
+    go (IAbs (loc, typ) var term) = IAbs (loc, substMTVars theta typ) var (go term)
 
 mkTyErr :: Map.Map MetaTVar LargeId -> SLoc -> ((MonoType Int, MonoType Int), TypeError) -> ErrMsg
 mkTyErr used_mtvs loc ((actual_typ, expected_typ), typ_error) = case typ_error of
@@ -239,46 +248,3 @@ mkTyErr used_mtvs loc ((actual_typ, expected_typ), typ_error) = case typ_error o
         , "  ? couldn't solve the equation `" ++ showMonoType used_mtvs typ1 ("\' ~ `" ++ showMonoType used_mtvs typ2 "\',\n")
         , "  ? because the types `" ++ showMonoType used_mtvs typ1 ("\' and `" ++ showMonoType used_mtvs typ2 "\' are non-unifiable.")
         ]
-
-inferType :: MonadUnique m => TypeEnv -> TermExpr DataConstructor SLoc -> ExceptT ErrMsg m ((TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int)), Map.Map MetaTVar LargeId)
-inferType type_env = flip runStateT Map.empty . infer where
-    infer :: MonadUnique m => TermExpr DataConstructor SLoc -> StateT (Map.Map MetaTVar SmallId) (ExceptT ErrMsg m) (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar (MonoType Int))
-    infer (Var loc var) = do
-        mtv <- getNewMTV "A"
-        return (Var (loc, TyMTV mtv) var, Map.singleton var (TyMTV mtv))
-    infer (Con loc con) = case con of
-        DC_ChrL chr -> return (Con (loc, mkTyChr) (con, []), Map.empty)
-        DC_NatL nat -> return (Con (loc, mkTyNat) (con, []), Map.empty)
-        con -> do
-            used_mtvs_0 <- get
-            (mtvs, typ) <- case Map.lookup con type_env of
-                Nothing -> lift (throwE ("*** tc-error[" ++ pprint 0 loc ("]:\n  ? the data constructor `" ++ showsPrec 0 con "\' hasn't declared yet.")))
-                Just scheme -> instantiateScheme scheme
-            return (Con (loc, typ) (con, map TyMTV mtvs), Map.empty)
-    infer (App loc term1 term2) = do
-        (term1', assumptions1) <- infer term1
-        (term2', assumptions2) <- infer term2
-        mtv <- getNewMTV "A"
-        used_mtvs <- get
-        let disagrees = (snd (getAnnot term1'), snd (getAnnot term2') `mkTyArrow` TyMTV mtv) : [ (assumptions1 Map.! mtv0, assumptions2 Map.! mtv0) | mtv0 <- Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2) ]
-        theta <- lift $ catchE (unify disagrees) $ throwE . mkTyErr used_mtvs loc
-        let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
-            assumptions' = substMTVars theta assumptions1 `Map.union` substMTVars theta assumptions2
-        put used_mtvs'
-        return (zonkMTV theta (App (loc, TyMTV mtv) term1' term2'), assumptions')
-    infer (Lam loc var term) = do
-        (term', assumptions) <- infer term
-        case Map.lookup var assumptions of
-            Nothing -> do
-                mtv <- getNewMTV "A"
-                return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var term', assumptions)
-            Just typ -> return (Lam (loc, typ `mkTyArrow` snd (getAnnot term')) var term', Map.delete var assumptions)
-
-checkType :: MonadUnique m => TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
-checkType type_env term expected_typ = do
-    ((term', assumptions), used_mtvs) <- inferType type_env term
-    let actual_typ = snd (getAnnot term')
-    theta <- catchE (actual_typ ->> expected_typ) $ throwE . mkTyErr used_mtvs (getAnnot term)
-    let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
-        assumptions' = substMTVars theta assumptions
-    return (zonkMTV theta term', (used_mtvs', assumptions'))

@@ -1,7 +1,7 @@
-module ALPHA1.Constant where
+module Hol.ALPHA1.Back.Base.Constant where
 
-import ALPHA1.Header
-import Z.Utils
+import Hol.ALPHA1.Front.Header
+import Y.Base
 
 data Constant
     = DC DataConstructor

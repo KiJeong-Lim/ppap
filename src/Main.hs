@@ -1,6 +1,6 @@
 module Main (main) where
 
-import qualified ALPHA1.Main as ALPHA1
+import qualified Hol.ALPHA1.Main as ALPHA1
 import qualified Calc.Main as Calc
 import qualified Hol.Main as Hol
 import qualified LGS.Main as LGS

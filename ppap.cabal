@@ -14,6 +14,9 @@ extra-source-files:
   doc/HolBETA.txt
   test/SmokeMain.hs
   test/smoke.sh
+  test/alpha1/*.aladdin
+  test/alpha1/*.hs
+  test/alpha1/*.sh
   test/audit_module/*.hol
   test/audit_module/*.input.txt
   test/audit_module/*.expected.txt
@@ -75,17 +78,41 @@ executable ppap
   ghc-options: -O2 -funbox-strict-fields -fspec-constr -fexpose-all-unfoldings -fspecialise-aggressively
   build-depends: base >= 4.7 && < 5, array >= 0.5, containers >= 0.6, transformers >= 0.5, pretty-terminal >= 0.1, QuickCheck >= 2.13, checkers >= 0.5, directory >= 1.3, vector >= 0.12, math-functions >= 0.3, extra >= 1.7, filepath >= 1.5, process >= 1.0, random >= 1.0
   other-modules:
-    ALPHA1.Header
-    ALPHA1.PlanHolLexer
-    ALPHA1.PlanHolParser
-    ALPHA1.Constant
-    ALPHA1.Desugarer
-    ALPHA1.TypeChecker
-    ALPHA1.TermNode
-    ALPHA1.HOPU
-    ALPHA1.Runtime
-    ALPHA1.Compiler
-    ALPHA1.Main
+    Hol.ALPHA1.Back.BackEnd
+    Hol.ALPHA1.Back.Base.Constant
+    Hol.ALPHA1.Back.Base.Labeling
+    Hol.ALPHA1.Back.Base.TermNode.Read
+    Hol.ALPHA1.Back.Base.TermNode.Show
+    Hol.ALPHA1.Back.Base.TermNode.Util
+    Hol.ALPHA1.Back.Base.TermNode
+    Hol.ALPHA1.Back.Base.VarBinding
+    Hol.ALPHA1.Back.Converter.Main
+    Hol.ALPHA1.Back.Converter.Scheme
+    Hol.ALPHA1.Back.Converter.Util
+    Hol.ALPHA1.Back.HOPU.Bind
+    Hol.ALPHA1.Back.HOPU.Main
+    Hol.ALPHA1.Back.HOPU.MkSubst
+    Hol.ALPHA1.Back.HOPU.Select
+    Hol.ALPHA1.Back.HOPU.Simplify
+    Hol.ALPHA1.Back.HOPU.Util
+    Hol.ALPHA1.Back.Runtime.Arith
+    Hol.ALPHA1.Back.Runtime.Instantiation
+    Hol.ALPHA1.Back.Runtime.LogicalOperator
+    Hol.ALPHA1.Back.Runtime.Main
+    Hol.ALPHA1.Back.Runtime.Transition
+    Hol.ALPHA1.Back.Runtime.Util
+    Hol.ALPHA1.Front.Analyzer.Grammar
+    Hol.ALPHA1.Front.Analyzer.Lexer
+    Hol.ALPHA1.Front.Analyzer.Main
+    Hol.ALPHA1.Front.Analyzer.Parser
+    Hol.ALPHA1.Front.Desugarer.ForKind
+    Hol.ALPHA1.Front.Desugarer.ForTerm
+    Hol.ALPHA1.Front.Desugarer.ForType
+    Hol.ALPHA1.Front.Desugarer.Main
+    Hol.ALPHA1.Front.Header
+    Hol.ALPHA1.Front.TypeChecker.Main
+    Hol.ALPHA1.Front.TypeChecker.Util
+    Hol.ALPHA1.Main
     Calc.ControlSystem.Diagram.Solver
     Calc.ControlSystem.Export
     Calc.ControlSystem.Test

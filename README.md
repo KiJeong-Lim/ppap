@@ -99,6 +99,14 @@ Useful REPL commands:
 
 Examples live under `example/*.hol` and `test/**/*.hol`.
 
+The final legacy Aladdin implementation (`086a9d1`) lives in `src/Hol/ALPHA1/`. Run it with the `ALPHA1` dispatcher command; it loads `.aladdin` files and retains the original Aladdin syntax, with natural-number arithmetic added explicitly.
+
+Arithmetic follows [SWI-Prolog's ordinary evaluation rules](https://www.swi-prolog.org/pldoc/man?section=arith), restricted to `nat`: `is` evaluates its right operand and unifies the result with its left operand; `=:=`, `=\=`, `<`, `=<`, `>`, and `>=` evaluate both operands. Structural `=` still unifies terms without evaluating arithmetic. Supported expressions use binary `+`, `-`, `*`, `/`, `//`, `div`, `mod`, `rem`, unary `+`/`-`, and the legacy successor `s`. The words `is`, `div`, `mod`, and `rem` are reserved arithmetic keywords. Expressions may contain previously bound variables, but an unbound variable raises `instantiation_error` immediately.
+
+Every evaluated subexpression must be a natural number. Negative results raise `domain_error(not_less_than_zero)`, nonintegral `/` results raise `domain_error(nat)`, and division by zero raises `evaluation_error(zero_divisor)`. `/` therefore requires an exact natural quotient; `//` and `div` compute the integer quotient. For example, `?- X is 7 // 2.` gives `X := 3`, while `?- X is 7 / 2.` reports an error. These restrictions apply to arithmetic evaluation; ordinary term unification retains Aladdin's existing behavior.
+
+ALPHA1's lexer and parser are generated from the specifications in `example/ALPHA1/` by `src/LGS/Alpha2.hs` and `src/PGS/Alpha1.hs`, respectively. The `LGS` and `PGS` dispatcher commands call these implementations. `test/typecheck/generated_sources.sh` regenerates them and checks that both the example and executable copies match byte for byte.
+
 ```bash
 cabal run -v0 ppap
 # then:

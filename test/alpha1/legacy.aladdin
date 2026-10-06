@@ -1,0 +1,17 @@
+type call (o -> o).
+call G :- G.
+
+type store (o -> o).
+store (true => true).
+
+type choice (nat -> o).
+choice 1.
+choice 2.
+
+type cuttest (nat -> nat -> o).
+cuttest 3 4 :- !.
+cuttest 3 5.
+
+type add (nat -> nat -> nat -> o).
+add 0 N N.
+add (s M) N (s P) :- add M N P.
