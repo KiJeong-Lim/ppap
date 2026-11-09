@@ -13,6 +13,7 @@ import Hol.ALPHA1.Back.Converter.Main
 import Hol.ALPHA1.Back.Runtime.Main
 import Hol.ALPHA1.Back.Runtime.Util
 import Hol.ALPHA1.Front.Analyzer.Main
+import Hol.ALPHA1.Front.Desugarer.ForTerm (isWildCard)
 import Hol.ALPHA1.Front.Desugarer.Main
 import Hol.ALPHA1.Front.Header
 import Hol.ALPHA1.Front.TypeChecker.Main
@@ -43,7 +44,7 @@ queryResult program source = do
             _ -> throwE "expected a query"
         (desugared, variables) <- desugarQuery query
         (checked, (used, assumptions)) <- checkType (_TypeDecls program) desugared mkTyO
-        convertQuery used assumptions (Map.fromList [(var, mkLVar (LV_Named name)) | (name, var) <- Map.toList variables]) checked
+        convertQuery used assumptions (mkQueryFreeVariableEnv variables) checked
     case compiled of
         Left err -> liftIO (putStrLn err >> exitFailure)
         Right query -> do
@@ -62,33 +63,46 @@ queryAnswers program source = do
         Left _ -> liftIO (putStrLn ("ALPHA1 runtime failed: " ++ source) >> exitFailure)
         Right answers -> return answers
 
+isWildVar :: LogicVar -> Bool
+isWildVar (LV_Named name) = isWildCard name
+isWildVar _ = False
+
 binding :: String -> Context -> Maybe String
-binding name = fmap show . Map.lookup (LV_Named name) . unVarBinding . _TotalVarBinding
+binding name ctx = fmap (show . resolveBinding (_TotalVarBinding ctx)) (Map.lookup (LV_Named name) (unVarBinding (_TotalVarBinding ctx)))
 
 main :: IO ()
 main = do
-    mapM_ (\source -> assert ("unsupported syntax accepted: " ++ source) (either (const True) (const False) (runAnalyzer source))) ["?- X = `true`.", "?- X = (x\\ x).", "type P o."]
-    mapM_ (\source -> assert ("invalid input accepted: " ++ source) (either (const True) (const False) (runAnalyzer source))) ["?- =.", "?- X = '''."]
+    mapM_ (\source -> assert ("unsupported syntax accepted: " ++ source) (either (const True) (const False) (runAnalyzer source))) ["?- X = `true`.", "type P o."]
+    mapM_ (\source -> assert ("invalid input accepted: " ++ source) (either (const True) (const False) (runAnalyzer source))) ["?- =.", "?- X = '''.", "?- pi s\\ true."]
     mapM_ (\source -> assert ("old literal/comment rejected: " ++ source) (either (const False) (const True) (runAnalyzer source))) ["?- X = '\"'.", "(***) true.", "(****) true.", "(* ** text *** *) true.", "?- X = \"a\\n\\t\\\\\\\"\\'\"."]
     assert "free variable captured in printed lambda" (show (mkNAbs (mkLVar (LV_Named "W_1"))) == "W_2\\ W_1")
     assert "bare equality has wrong arity" (show (mkNCon DC_Eq) == "W_1\\ W_2\\ W_1 = W_2")
+    assert "trailing abstraction is parenthesized" (show (mkNApp (mkNCon LO_pi) (mkNAbs (mkLVar (LV_Named "A")))) == "pi W_1\\ A")
     source <- readFile "test/alpha1/legacy.hol"
     runUniqueGenT $ do
-        mapM_ (\bad -> compileProgram bad >>= liftIO . assert ("invalid clause compiled: " ++ bad) . either (isInfixOf "converting-error") (const False)) ["type p o. p. true.", "type p o. p :- true => p.", "type p o. (p :- true) :- true."]
+        mapM_ (\bad -> compileProgram bad >>= liftIO . assert ("invalid clause compiled: " ++ bad) . either (isInfixOf "converting-error") (const False)) ["type p o. p. true.", "type p o. p :- true => p.", "type p o. (p :- true) :- true.", "type p o. type q o. p :- q :- q.", "type p o. 1 = 1.", "type p o. p :- (1 = 1 :- true)."]
         compiled <- compileProgram source
         facts <- case compiled of
             Left err -> liftIO (putStrLn err >> exitFailure)
             Right facts -> return facts
-        successes <- mapM (queryAnswers facts) ["?- true.", "?- call true.", "?- store (true => true).", "?- pi (X\\ sigma (Y\\ Y = X)).", "?- pi (X\\ F X = X).", "?- pi (P\\ P => P)."]
+        successes <- mapM (queryAnswers facts) ["?- true.", "?- call true.", "?- store (true => true).", "?- pi (X\\ sigma (Y\\ Y = X)).", "?- pi (X\\ F X = X).", "?- pi (P\\ P => P).", "?- pi X\\ sigma Y\\ Y = X.", "?- X = (Y\\ Y) s.", "?- X = (x\\ x).", "?- pi x\\ sigma Y\\ Y = x.", "?- pi call\\ (call => call)."]
         liftIO (assert "old higher-order or quantified goal failed" (all (not . null) successes))
-        failures <- mapM (queryAnswers facts) ["?- fail.", "?- pi (X\\ Y = X).", "?- 1 = 2."]
+        failures <- mapM (queryAnswers facts) ["?- fail.", "?- pi (X\\ Y = X).", "?- 1 = 2.", "?- pi x\\ Y = x."]
         liftIO (assert "failure or scope escape succeeded" (all null failures))
         choices <- queryAnswers facts "?- choice N."
         liftIO (assert "backtracking changed" (map (binding "N") choices == [Just "1", Just "2"]))
         cuts <- queryAnswers facts "?- cuttest 3 N."
         liftIO (assert "cut changed" (map (binding "N") cuts == [Just "4"]))
+        lambdas <- queryAnswers facts "?- X = (x\\ x)."
+        liftIO (assert "lower-case binder changed" (map (binding "X") lambdas == [Just "W_1\\ W_1"]))
+        kept <- queryAnswers facts "?- X = s (F 1)."
+        liftIO (assert "non-pattern subterm deferred" (map (binding "X") kept == [Just "s (F 1)"] && all (null . _LeftConstraints) kept))
+        repeated <- queryAnswers facts "?- F = (x\\ G x x)."
+        liftIO (assert "repeated-argument subterm deferred" (map (binding "F") repeated == [Just "W_1\\ G W_1 W_1"] && all (null . _LeftConstraints) repeated))
         sums <- queryAnswers facts "?- add 2 3 N."
         liftIO (assert "successor recursion changed" (map (binding "N") sums == [Just "5"]))
+        wilds <- queryAnswers facts "?- N = 5, add _ 3 N."
+        liftIO (assert "wildcard leaked into the answer" (map (binding "N") wilds == [Just "5"] && all (all (not . isWildVar) . Map.keys . unVarBinding . _TotalVarBinding) wilds))
         forM
             [ ("?- X is 1 + 2 * 3.", "7")
             , ("?- X is (1 + 2) * 3.", "9")

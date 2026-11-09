@@ -21,16 +21,16 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
-runTransition :: RuntimeEnv -> Set.Set LogicVar -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
-runTransition env free_lvars = go where
+runTransition :: RuntimeEnv -> [Clause] -> Set.Set LogicVar -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
+runTransition env program free_lvars = go where
     failure :: ExceptT KernelErr (UniqueGenT IO) Stack
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueGenT IO) Stack
     success with = return [with]
-    search :: [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueGenT IO) Stack
+    search :: [Clause] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueGenT IO) Stack
     search facts level predicate args ctx cells = do
         call_id <- getNewUnique
-        fmap concat $ forM facts $ \fact -> do
+        fmap concat $ forM [ fact | Clause fact predicate' <- facts ++ program, maybe True (== predicate) predicate' ] $ \fact -> do
             ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
             case unfoldlNApp (rewrite HNF goal') of
                 (NCon predicate', args')
@@ -42,7 +42,7 @@ runTransition env free_lvars = go where
                             Nothing -> failure
                             Just (new_disagreements, HopuSol new_labeling subst) -> success
                                 ( Context
-                                    { _TotalVarBinding = zonkLVar subst (_TotalVarBinding ctx)
+                                    { _TotalVarBinding = extendBinding subst (_TotalVarBinding ctx)
                                     , _CurrentLabeling = new_labeling
                                     , _LeftConstraints = new_disagreements
                                     , _ContextThreadId = call_id
@@ -51,7 +51,7 @@ runTransition env free_lvars = go where
                                 , zonkLVar subst (mkCell new_facts new_level new_goal call_id : cells)
                                 )
                 _ -> failure
-    dispatch :: Context -> [Fact] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
+    dispatch :: Context -> [Clause] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     dispatch ctx facts level (NCon predicate, args) call_id cells stack
         | DC (DC_LO logical_operator) <- predicate
         = do

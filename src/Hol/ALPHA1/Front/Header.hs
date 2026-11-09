@@ -260,10 +260,12 @@ instance Show TypeConstructor where
         TC_Unique unique -> showsPrec 0 (unUnique unique)
 
 instance Read KindExpr where
-    readsPrec 0 str0 = [ (kin1 `KArr` kin2, str2) | (kin1, ' ' : '-' : '>' : ' ' : str1) <- readsPrec 1 str0, (kin2, str2) <- readsPrec 0 str1 ] ++ readsPrec 1 str0
-    readsPrec 1 ('*' : str0) = [(Star, str0)]
-    readsPrec 1 ('(' : str0) = [ (kin, str1) | (kin, ')' : str1) <- readsPrec 0 str0 ]
-    readList = undefined
+    readsPrec prec str0
+        | prec <= 0 = [ (kin1 `KArr` kin2, str2) | (kin1, ' ' : '-' : '>' : ' ' : str1) <- readsPrec 1 str0, (kin2, str2) <- readsPrec 0 str1 ] ++ readsPrec 1 str0
+        | otherwise = case str0 of
+            '*' : str1 -> [(Star, str1)]
+            '(' : str1 -> [ (kin, str2) | (kin, ')' : str2) <- readsPrec 0 str1 ]
+            _ -> []
 
 instance Outputable KindExpr where
     pprint 0 (kin1 `KArr` kin2) = pprint 1 kin1 . strstr " -> " . pprint 0 kin2

@@ -5,6 +5,7 @@ import Hol.ALPHA1.Back.Base.TermNode
 import Hol.ALPHA1.Back.Base.TermNode.Util
 import Hol.ALPHA1.Back.Converter.Scheme
 import Hol.ALPHA1.Back.Converter.Util
+import Hol.ALPHA1.Front.Desugarer.ForTerm (isWildCard)
 import Hol.ALPHA1.Front.Header
 import Hol.ALPHA1.Front.TypeChecker.Util
 import Control.Monad
@@ -35,3 +36,6 @@ convertQuery used_mtvs assumptions var_name_env query
             | (mtv, small_id) <- Map.toDescList used_mtvs
             ]
         convertWithoutChecking (foldr (uncurry Map.insert) var_name_env extra_env) [] "query" query
+
+mkQueryFreeVariableEnv :: Map.Map LargeId IVar -> FreeVariableEnv
+mkQueryFreeVariableEnv free_vars = Map.fromList [ (ivar, mkLVar (if isWildCard name then LV_Unique ivar else LV_Named name)) | (name, ivar) <- Map.toList free_vars ]

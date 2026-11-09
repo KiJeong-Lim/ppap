@@ -21,7 +21,7 @@ rewriteWithSusp (NIdx i) ol nl env option
     | i >= 1 = case env !! (i - 1) of
         Dummy l -> mkNIdx (nl - l)
         Binds t l -> rewriteWithSusp t 0 (nl - l) [] option
-    | otherwise = undefined
+    | otherwise = error ("`rewriteWithSusp\': the de Bruijn index " ++ shows i " is not positive.")
 rewriteWithSusp (NApp t1 t2) ol nl env option
     = case rewriteWithSusp t1 ol nl env WHNF of
         NAbs (Susp t1' ol1' nl1' (Dummy nl1 : env1'))

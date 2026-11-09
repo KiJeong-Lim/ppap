@@ -19,13 +19,18 @@ mksubst var rhs parameters labeling = catchE (Just . uncurry (flip HopuSol) <$> 
         | (lambda, rhs') <- viewNestedNAbs rhs
         , (LVar var', rhs_tail) <- unfoldlNApp rhs'
         , var == var'
+        , length rhs_tail /= length parameters + lambda
+        = lift (throwE BindFail)
+        | (lambda, rhs') <- viewNestedNAbs rhs
+        , (LVar var', rhs_tail) <- unfoldlNApp rhs'
+        , var == var'
         = do
             labeling <- get
             let isty = isTypeLVar var || isTypeLVar var'
                 n = length parameters + lambda
                 lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda, lambda - 1 .. 1] 
                 rhs_arguments = map (rewrite NF) rhs_tail
-                common_arguments = [ mkNIdx (n - i) | i <- [0, 1 .. n - 1], lhs_arguments !! i == rhs_arguments !! i ]
+                common_arguments = [ mkNIdx (n - i) | (i, (lhs_argument, rhs_argument)) <- zip [0, 1 .. n - 1] (zip lhs_arguments rhs_arguments), lhs_argument == rhs_argument ]
             if isPatternRespectTo var' rhs_arguments labeling
                 then do
                     common_head <- getNewLVar isty (lookupLabel var labeling)

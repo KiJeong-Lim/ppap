@@ -24,7 +24,7 @@ type FreeVariableEnv = Map.Map Unique TermNode
 
 convertVar :: FreeVariableEnv -> DeBruijnIndicesEnv -> IVar -> TermNode
 convertVar var_name_env env var = case var `List.elemIndex` env of
-    Nothing -> var_name_env Map.! var
+    Nothing -> maybe (error ("`convertVar\': the variable " ++ shows var " is neither bound nor a query variable.")) id (Map.lookup var var_name_env)
     Just idx -> mkNIdx (idx + 1)
 
 convertType :: FreeVariableEnv -> DeBruijnIndicesEnv -> MonoType Int -> TermNode
@@ -66,10 +66,10 @@ validateClauseForms expected_as = if expected_as == "fact" then clause False els
     atom :: GenUniqueM m => Bool -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m ()
     atom allow_variables term = case unFoldIApp (reduceHead term) of
         (DCon _ (DC_LO _, _), _) -> invalid term
+        (DCon (loc, _) (DC_Eq, _), _) -> throwE ("*** converting-error[" ++ pprint 0 loc "]:\n  ? the built-in predicate `=\' cannot be given a clause.")
         (DCon _ _, _) -> return ()
         (IVar _ _, _) | allow_variables -> return ()
         _ -> invalid term
-    -- Predicate arguments remain values; only control operands execute as goals.
     goal :: GenUniqueM m => TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m ()
     goal term = case unFoldIApp (reduceHead term) of
         (DCon _ (DC_LO LO_imply, _), [antecedent, consequent]) -> clause True antecedent >> goal consequent
@@ -79,182 +79,12 @@ validateClauseForms expected_as = if expected_as == "fact" then clause False els
             | logical_operator `elem` [LO_pi, LO_sigma] -> do
                 var <- getNewUnique
                 goal (IApp (loc, mkTyO) body (IVar (loc, typ) var))
+        (DCon (loc, _) (DC_LO logical_operator, _), _)
+            | isGoalOperator logical_operator -> return ()
+            | otherwise -> throwE ("*** converting-error[" ++ pprint 0 loc "]:\n  ? `" ++ shows logical_operator "\' cannot occur as a goal.")
         _ -> return ()
+    isGoalOperator :: LogicalOperator -> Bool
+    isGoalOperator (LO_Arith _) = True
+    isGoalOperator logical_operator = logical_operator `elem` [LO_true, LO_fail, LO_cut, LO_debug]
     invalid :: Monad m => TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m ()
     invalid term = throwE ("*** converting-error[" ++ pprint 0 (fst (getAnnot term)) "]:\n  ? invalid clause head: expected an atomic predicate, optionally preceded by pi or followed by :-.")
-
-convertWithChecking :: GenUniqueM m => FreeVariableEnv -> DeBruijnIndicesEnv -> ExpectedAs -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
-convertWithChecking var_name_env = go where
-    check :: GenUniqueM m => DeBruijnIndicesEnv -> ExpectedAs -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
-    check env expected_as term
-        = case expected_as of
-            "fact" -> case unFoldIApp term of
-                (DCon (loc, typ) (DC_LO LO_pi, tapps), args) -> case (tapps, args) of
-                    ([typ1], [term1]) -> do
-                        var <- getNewUnique
-                        term1' <- check (var : env) "fact" (reduceTermExpr (IApp (fst (getAnnot term1), mkTyO) term1 (IVar (fst (getAnnot term1), typ1) var)))
-                        let result = mkNApp (mkNCon LO_pi) (mkNAbs term1')
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_sigma, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_if, tapps), args) -> case args of
-                    [term1, term2] -> do
-                        term1' <- check env "fact" term1
-                        term2' <- check env "goal" term2
-                        let result = mkNApp (mkNApp (mkNCon LO_if) term1') term2'
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_and, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_or, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_imply, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_true, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_fail, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_cut, tapps), args) -> raise
-                (DCon (loc, typ) (con, tapps), args)
-                    | isPredicate typ -> do
-                        terms' <- mapM (check env "term") args
-                        let result = List.foldl' mkNApp (convertCon var_name_env env con tapps) terms'
-                        result `seq` return result
-                _ -> raise
-            "query" -> case unFoldIApp term of
-                (DCon (loc, typ) (DC_LO LO_pi, tapps), args) -> case (tapps, args) of
-                    ([typ1], [term1]) -> do
-                        var <- getNewUnique
-                        term1' <- check (var : env) "query" (reduceTermExpr (IApp (fst (getAnnot term1), mkTyO) term1 (IVar (fst (getAnnot term1), typ1) var)))
-                        let result = mkNApp (mkNCon LO_pi) (mkNAbs term1')
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_sigma, tapps), args) -> case args of
-                    [term1] -> do
-                        var <- getNewUnique
-                        term1' <- check (var : env) "query" (reduceTermExpr (IApp (fst (getAnnot term1), mkTyO) term1 (IVar (fst (getAnnot term1), typ) var)))
-                        let result = mkNApp (mkNCon LO_sigma) (mkNAbs term1')
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_if, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_and, tapps), args) -> case args of
-                    [term1, term2] -> do
-                        term1' <- check env "query" term1
-                        term2' <- check env "query" term2
-                        let result = mkNApp (mkNApp (mkNCon LO_and) term1') term2'
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_or, tapps), args) -> case args of
-                    [term1, term2] -> do
-                        term1' <- check env "query" term1
-                        term2' <- check env "query" term2
-                        let result = mkNApp (mkNApp (mkNCon LO_or) term1') term2'
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_imply, tapps), args) -> case args of
-                    [term1, term2] -> do
-                        term1' <- check env "fact" term1
-                        term2' <- check env "query" term2
-                        let result = mkNApp (mkNApp (mkNCon LO_imply) term1') term2'
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_true, tapps), args) -> case args of
-                    [] -> do
-                        let result = mkNCon LO_true
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_fail, tapps), args) -> case args of
-                    [] -> do
-                        let result = mkNCon LO_fail
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_cut, tapps), args) -> case args of
-                    [] -> do
-                        let result = mkNCon LO_cut
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (con, tapps), args)
-                    | isPredicate typ -> do
-                        terms' <- mapM (check env "term") args
-                        let result = List.foldl' mkNApp (convertCon var_name_env env con tapps) terms'
-                        result `seq` return result
-                _ -> raise
-            "goal" -> case unFoldIApp term of
-                (DCon (loc, typ) (DC_LO LO_pi, tapps), args) -> case (tapps, args) of
-                    ([typ1], [term1]) -> do
-                        var <- getNewUnique
-                        term1' <- check (var : env) "goal" (reduceTermExpr (IApp (fst (getAnnot term1), mkTyO) term1 (IVar (fst (getAnnot term1), typ1) var)))
-                        let result = mkNApp (mkNCon LO_pi) (mkNAbs term1')
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_sigma, tapps), args) -> case args of
-                    [term1] -> do
-                        var <- getNewUnique
-                        term1' <- check (var : env) "goal" (reduceTermExpr (IApp (fst (getAnnot term1), mkTyO) term1 (IVar (fst (getAnnot term1), typ) var)))
-                        let result = mkNApp (mkNCon LO_sigma) (mkNAbs term1')
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_if, tapps), args) -> raise
-                (DCon (loc, typ) (DC_LO LO_and, tapps), args) -> case args of
-                    [term1, term2] -> do
-                        term1' <- check env "goal" term1
-                        term2' <- check env "goal" term2
-                        let result = mkNApp (mkNApp (mkNCon LO_and) term1') term2'
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_or, tapps), args) -> case args of
-                    [term1, term2] -> do
-                        term1' <- check env "goal" term1
-                        term2' <- check env "goal" term2
-                        let result = mkNApp (mkNApp (mkNCon LO_or) term1') term2'
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_imply, tapps), args) -> case args of
-                    [term1, term2] -> do
-                        term1' <- check env "fact" term1
-                        term2' <- check env "goal" term2
-                        let result = mkNApp (mkNApp (mkNCon LO_imply) term1') term2'
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_true, tapps), args) -> case args of
-                    [] -> do
-                        let result = mkNCon LO_true
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_fail, tapps), args) -> case args of
-                    [] -> do
-                        let result = mkNCon LO_fail
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (DC_LO LO_cut, tapps), args) -> case args of
-                    [] -> do
-                        let result = mkNCon LO_cut
-                        result `seq` return result
-                    _ -> raise
-                (DCon (loc, typ) (con, tapps), args)
-                    | isPredicate typ -> do
-                        terms' <- mapM (check env "term") args
-                        let result = List.foldl' mkNApp (convertCon var_name_env env con tapps) terms'
-                        result `seq` return result
-                (IVar _ var, args) -> do
-                    terms' <- mapM (check env "term") args
-                    let result = List.foldl' mkNApp (convertVar var_name_env env var) terms'
-                    result `seq` return result
-                _ -> raise
-            "term" -> case viewIAbs term of
-                (vars', term')
-                    | mkTyO == snd (getAnnot term') -> do
-                        terms' <- (check (vars' ++ env) "goal" term')
-                        let result = foldr ($) terms' (replicate (length vars') mkNAbs)
-                        result `seq` return result
-                    | otherwise -> case unFoldIApp term' of
-                        (IVar _ var, args) -> do
-                            terms' <- mapM (check (vars' ++ env) "term") args
-                            let result = foldr ($) (List.foldl' mkNApp (convertVar var_name_env (vars' ++ env) var) terms') (replicate (length vars') mkNAbs)
-                            result `seq` return result
-                        (DCon typ (con, tapps), args) -> do
-                            terms' <- mapM (check (vars' ++ env) "term") args
-                            let result = foldr ($) (List.foldl' mkNApp (convertCon var_name_env (vars' ++ env) con tapps) terms') (replicate (length vars') mkNAbs)
-                            result `seq` return result
-                        _ -> raise
-            _ -> undefined
-        where
-            raise :: GenUniqueM m => ExceptT ErrMsg m TermNode
-            raise = throwE ("*** converting-error[" ++ pprint 0 (fst (getAnnot term)) ("]:\n  ? expected_as = " ++ expected_as ++ "."))
-    go :: GenUniqueM m => DeBruijnIndicesEnv -> ExpectedAs -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
-    go env expected_as = check env expected_as . reduceTermExpr

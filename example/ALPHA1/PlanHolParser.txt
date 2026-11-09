@@ -13,41 +13,41 @@
     terminals:
         "T_dot loc": $dot 0 none
         "T_arrow loc": $arrow 0 none
-        "T_lparen loc": $lparen 0 none
+        "T_lparen loc": $lparen 50 none
         "T_rparen loc": $rparen 0 none
-        "T_lbracket loc": $lbracket 0 none
+        "T_lbracket loc": $lbracket 50 none
         "T_rbracket loc": $rbracket 0 none
         "T_quest loc": $quest 0 none
-        "T_if loc": $if 0 none
-        "T_comma loc": $comma 0 none
-        "T_semicolon loc": $semicolon 0 none
-        "T_fatarrow loc": $fatarrow 0 none
-        "T_pi loc": $pi 0 none
-        "T_sigma loc": $sigma 0 none
-        "T_succ loc": $succ 0 none
-        "T_Eq loc": $eq 0 none
-        "T_arithmetic_predicate loc predicate": $arithmetic_predicate 0 none
-        "T_plus loc": $plus 0 none
-        "T_minus loc": $minus 0 none
-        "T_star loc": $star 0 none
-        "T_slash loc": $slash 0 none
-        "T_quotient loc": $quotient 0 none
-        "T_div loc": $div 0 none
-        "T_mod loc": $mod 0 none
-        "T_rem loc": $rem 0 none
-        "T_cut loc": $cut 0 none
-        "T_true loc": $true 0 none
-        "T_fail loc": $fail 0 none
-        "T_debug loc": $debug 0 none
+        "T_if loc": $if 50 none
+        "T_comma loc": $comma 50 none
+        "T_semicolon loc": $semicolon 50 none
+        "T_fatarrow loc": $fatarrow 50 none
+        "T_pi loc": $pi 50 none
+        "T_sigma loc": $sigma 50 none
+        "T_succ loc": $succ 50 none
+        "T_Eq loc": $eq 50 none
+        "T_arithmetic_predicate loc predicate": $arithmetic_predicate 50 none
+        "T_plus loc": $plus 50 none
+        "T_minus loc": $minus 50 none
+        "T_star loc": $star 50 none
+        "T_slash loc": $slash 50 none
+        "T_quotient loc": $quotient 50 none
+        "T_div loc": $div 50 none
+        "T_mod loc": $mod 50 none
+        "T_rem loc": $rem 50 none
+        "T_cut loc": $cut 50 none
+        "T_true loc": $true 50 none
+        "T_fail loc": $fail 50 none
+        "T_debug loc": $debug 50 none
         "T_bslash loc": $bslash 0 none
-        "T_cons loc": $cons 0 none
+        "T_cons loc": $cons 50 none
         "T_kind loc": $kind 0 none
         "T_type loc": $type 0 none
-        "T_smallid loc contents": $smallid 0 none
-        "T_largeid loc contents": $largeid 0 none
-        "T_nat_lit loc contents": $natlit 0 none
-        "T_chr_lit loc contents": $chrlit 0 none
-        "T_str_lit loc contents": $strlit 0 none
+        "T_smallid loc contents": $smallid 50 none
+        "T_largeid loc contents": $largeid 50 none
+        "T_nat_lit loc contents": $natlit 50 none
+        "T_chr_lit loc contents": $chrlit 50 none
+        "T_str_lit loc contents": $strlit 50 none
 }
 
 \define $Query : "TermRep" {
@@ -104,6 +104,8 @@
 \define $TermRep0 : "TermRep" {
     10 [$largeid, $bslash, $TermRep0]:
         RAbs ($1.loc <> getSLoc $3) $1.contents $3
+    10 [$smallid, $bslash, $TermRep0]:
+        RAbs ($1.loc <> getSLoc $3) $1.contents $3
     10 [$TermRep1, $if, $TermRep0]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc (DC_LO LO_if)) $1) $3
     10 [$TermRep1]:
@@ -139,10 +141,6 @@
 }
 
 \define $TermRep5 : "TermRep" {
-    35 [$pi, $TermRep5]:
-        RApp ($1.loc <> getSLoc $2) (RCon $1.loc (DC_LO LO_pi)) $2
-    35 [$sigma, $TermRep5]:
-        RApp ($1.loc <> getSLoc $2) (RCon $1.loc (DC_LO LO_sigma)) $2
     35 [$AdditiveTerm, $eq, $AdditiveTerm]:
         RApp (getSLoc $1 <> getSLoc $3) (RApp (getSLoc $1 <> $2.loc) (RCon $2.loc DC_Eq) $1) $3
     35 [$AdditiveTerm, $arithmetic_predicate, $AdditiveTerm]:
@@ -189,10 +187,12 @@
 \define $TermRep6 : "TermRep" {
     40 [$TermRep6, $TermRep7]:
         RApp (getSLoc $1 <> getSLoc $2) $1 $2
+    40 [$TermRep6, $largeid, $bslash, $TermRep0]:
+        RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs ($2.loc <> getSLoc $4) $2.contents $4)
+    40 [$TermRep6, $smallid, $bslash, $TermRep0]:
+        RApp (getSLoc $1 <> getSLoc $4) $1 (RAbs ($2.loc <> getSLoc $4) $2.contents $4)
     40 [$TermRep7]:
         $1
-    40 [$succ]:
-        RCon $1.loc DC_Succ
 }
 
 \define $TermRep7 : "TermRep" {
@@ -206,6 +206,12 @@
         RCon $1.loc (DC_LO LO_fail)
     45 [$debug]:
         RCon $1.loc (DC_LO LO_debug)
+    45 [$succ]:
+        RCon $1.loc DC_Succ
+    45 [$pi]:
+        RCon $1.loc (DC_LO LO_pi)
+    45 [$sigma]:
+        RCon $1.loc (DC_LO LO_sigma)
     45 [$smallid]:
         RCon $1.loc (DC_Named $1.contents)
     45 [$largeid]:

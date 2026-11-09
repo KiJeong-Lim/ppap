@@ -1,0 +1,806 @@
+================================================================================
+Hol ALPHA1 — Language and Runtime Specification
+================================================================================
+
+Status
+--------------------------------------------------------------------------------
+
+This document specifies the Hol ALPHA1 dialect shipped by `ppap` under the
+dispatcher command `ALPHA1`. ALPHA1 is the minimal member of the Hol family: a
+simply typed, higher-order logic-programming language in the lambda-Prolog
+tradition with hereditary Harrop goals, higher-order pattern unification under
+a scope-level discipline, Prolog-style cut, and natural-number arithmetic, and
+nothing beyond that. The dialect is kept deliberately small: features of the
+later dialects are not ported into it, only its defects are fixed, and this
+document describes the implementation in `src/Hol/ALPHA1/` as it behaves.
+
+Chapters 1 through 5 are normative for ALPHA1. Chapter 6 lists the observable
+differences from Hol BETA (`doc/HolBETA.txt`) and Chapter 7 maps the
+specification onto the Haskell modules; both are informative. The words MUST,
+MUST NOT, and MAY have their usual specification meanings. The regression
+suite named in Chapter 7 pins the behaviors that are intended.
+
+
+================================================================================
+Chapter 0. Vocabulary and Conventions
+================================================================================
+
+0.1 Programs, clauses, and goals
+--------------------------------------------------------------------------------
+
+A *program* is the contents of one `.hol` file: a sequence of declarations. A
+*clause* (also *fact*) is a declaration that is a term of type `o`. A *query*
+is a goal typed at the REPL prompt. A *goal* is a term of type `o` that the
+runtime proves; a *hypothesis* is a clause installed locally by `=>` for the
+duration of one goal. ALPHA1 runs exactly one program at a time: the built-in
+declarations plus at most one loaded file. There are no modules and no
+imports.
+
+0.2 Constants and variables
+--------------------------------------------------------------------------------
+
+An identifier bound by `\` is a lambda-bound variable, whatever its spelling.
+Otherwise an identifier beginning with a lower-case letter names a *constant*,
+which is a type constructor in a type and a declared data constructor or
+predicate in a term, and an identifier beginning with an upper-case letter or
+`_` is a *variable*: free in a clause, it is implicitly universally quantified
+over the clause and is freshened on every use of the clause, and free in a
+query, it is a *logic variable* whose binding the answer reports. A term is
+*rigid* when its head is a constant or a bound variable and *flexible* when
+its head is a logic variable.
+
+0.3 Levels
+--------------------------------------------------------------------------------
+
+Every logic variable and every constant introduced by `pi` carries a *level*,
+a natural number. A query starts at level 0; `pi X\ G` introduces its constant
+at the next deeper level and proves `G` there. Levels implement the scoping of
+universal quantification: a logic variable can never be instantiated with a
+constant introduced deeper than the variable itself (Section 4.2).
+
+0.4 Order convention
+--------------------------------------------------------------------------------
+
+"Source order" is top to bottom within a file and left to right within a
+term. Proof search is depth-first and left-to-right, and "first" means visited
+first by that search. Sequences in this document preserve source order.
+
+
+================================================================================
+Chapter 1. Lexical Structure
+================================================================================
+
+1.1 Characters and whitespace
+--------------------------------------------------------------------------------
+
+Outside comments and literals, source text consists of printable ASCII
+characters (U+0020 through U+007E) and the four whitespace characters space,
+horizontal tab, carriage return, and line feed. Whitespace separates tokens
+and has no other meaning. Positions in diagnostics are 1-based (row, column)
+pairs.
+
+Lexing uses maximal munch: at each position the longest match wins, and among
+rules matching the same text the rule listed first in Section 1.3 wins. Hence
+a reserved word is reserved only when it is not a proper prefix of a longer
+identifier: `s` is the successor constructor, `sx` is an identifier, and `is`
+followed by a letter is part of an identifier.
+
+1.2 Comments
+--------------------------------------------------------------------------------
+
+`%` begins a comment that extends to the end of the line. `(*` begins a block
+comment that extends to the first following `*)`; block comments do not nest.
+Comments may contain any character. A `(*` without a closing `*)` is not a
+comment: its characters are tokenized as `(` and `*`, which normally surfaces
+as a parse error.
+
+1.3 Tokens
+--------------------------------------------------------------------------------
+
+The tokens, in the order of the lexer's rule table, are:
+
+  punctuation   .  ->  =>  (  )  [  ]  ?-  ,  :-  =  is  =:=  =\=  <  =<  >
+                >=  +  -  *  /  //  div  mod  rem  s  pi  sigma  ;  !  true
+                fail  debug  \  ::  kind  type
+  small-id      [a-z] [A-Za-z0-9_]*
+  large-id      [A-Z_] [A-Za-z0-9_]*
+  nat-lit       [0-9]+
+  str-lit       '"' str-char* '"'
+  chr-lit       '\'' chr-char '\''
+
+The reserved words are `kind`, `type`, `pi`, `sigma`, `s`, `true`, `fail`,
+`debug`, `is`, `div`, `mod`, and `rem`. A reserved word is never a `small-id`.
+The spelling `_` alone is a `large-id` with the wildcard meaning of Section
+3.4; a `large-id` such as `_X` is an ordinary variable name.
+
+`str-char` is a printable ASCII character other than `\` and `"`, or an
+escape; `chr-char` is a printable ASCII character other than `\` and `'`, or
+an escape. The escapes are `\n`, `\t`, `\\`, `\"`, and `\'`. A natural literal
+is a non-negative decimal integer of unbounded magnitude.
+
+1.4 Lexical errors
+--------------------------------------------------------------------------------
+
+When no rule matches at some position, analysis stops with
+
+  *** lexing error at { row = R, col = C }.
+
+where (R, C) is the position of the offending character. Non-ASCII text
+outside comments is such an error.
+
+
+================================================================================
+Chapter 2. Grammar
+================================================================================
+
+2.1 Programs and queries
+--------------------------------------------------------------------------------
+
+  program     ::= declaration*
+  declaration ::= 'kind' small-id kind '.'
+                | 'type' small-id type '.'
+                | term '.'
+  query       ::= '?-' term '.'
+
+A file is read as a `program` and a REPL line as a `query`. The parser accepts
+either form from the same start symbol, so a declaration typed at the prompt
+is rejected with "it is not a query" and a file whose text is a query with
+"it is not a program". An empty file is a valid, empty program.
+
+2.2 Kinds and types
+--------------------------------------------------------------------------------
+
+  kind    ::= kind1 '->' kind
+            | kind1
+  kind1   ::= 'type'
+            | '(' kind ')'
+
+  type    ::= type1 '->' type
+            | type1
+  type1   ::= type1 type2
+            | type2
+  type2   ::= large-id
+            | small-id
+            | '(' type ')'
+
+`->` is right-associative in kinds and in types. Type application is
+left-associative and binds tighter than `->`. In a type, a `large-id` is a
+type variable and a `small-id` is a type constructor.
+
+2.3 Terms
+--------------------------------------------------------------------------------
+
+  term            ::= large-id '\' term
+                    | small-id '\' term
+                    | term1 ':-' term
+                    | term1
+  term1           ::= term1 ';' term2
+                    | term2
+  term2           ::= term3 '=>' term2
+                    | term3
+  term3           ::= term3 ',' term4
+                    | term4
+  term4           ::= term5 '::' term4
+                    | term5
+  term5           ::= additive '=' additive
+                    | additive compare additive
+                    | additive
+  compare         ::= 'is' | '=:=' | '=\=' | '<' | '=<' | '>' | '>='
+  additive        ::= additive '+' multiplicative
+                    | additive '-' multiplicative
+                    | multiplicative
+  multiplicative  ::= multiplicative mulop unary
+                    | unary
+  mulop           ::= '*' | '/' | '//' | 'div' | 'mod' | 'rem'
+  unary           ::= '+' unary
+                    | '-' unary
+                    | application
+  application     ::= application atom
+                    | application large-id '\' term
+                    | application small-id '\' term
+                    | atom
+  atom            ::= '(' term ')'
+                    | '!' | 'true' | 'fail' | 'debug' | 's' | 'pi' | 'sigma'
+                    | small-id | large-id | nat-lit | str-lit | chr-lit
+                    | '[' ']'
+                    | '[' elements ']'
+  elements        ::= term5
+                    | term5 ',' elements
+
+The forms, from loosest to tightest binding, are:
+
+  level     form                                 associativity
+  0         X\ t                                 body extends to the right
+  0         t :- t                               right
+  1         t ; t                                left
+  2         t => t                               right
+  3         t , t                                left
+  4         t :: t                               right
+  5         t = t, t is t, t =:= t, t =\= t,     none
+            t < t, t =< t, t > t, t >= t
+  6         t + t, t - t                         left
+  7         t * t, t / t, t // t, t div t,       left
+            t mod t, t rem t
+  8         + t, - t                             prefix
+  9         t t, t X\ t                          left
+  10        atoms, ( t ), [ ... ]
+
+`X\ t` binds the identifier `X`, a `large-id` or a `small-id`, in `t`. The
+body is a full `term` and extends as far to the right as the enclosing
+parentheses, brackets, or terminating `.` allow; it swallows every binary
+operator, including `,`, `=>`, `;`, and `:-`. Thus `pi X\ p X, q X` is
+`pi (X\ (p X, q X))`, and `?- pi X\ true, Y = X.` fails because `Y = X` lies
+inside the scope of `X` (Section 4.2); write `(pi X\ true), Y = X` to keep it
+outside.
+
+An abstraction appears without parentheses only as a whole `term` (the body
+of a query or clause, the inside of parentheses, the body of another
+abstraction, or the right operand of `:-`) or as the last argument of an
+application: `f a X\ t` is `f a (X\ t)`. As the operand of any other operator
+it MUST be parenthesized: `F = X\ X` is a parse error and must be written
+`F = (X\ X)`, and `(X\ t) a` applies an abstraction. A reserved word such as
+`s` cannot be a binder.
+
+`:-` is right-associative and the loosest binary operator. Its left operand is
+a `term1`, so a head that contains `:-` or an abstraction must be
+parenthesized. `;` and `,` are left-associative; `=>` and `::` are
+right-associative.
+
+`=`, `is`, and the comparisons are non-associative, so `1 = 1 = 1` is a parse
+error, and they bind tighter than `::`: `X = 1 :: []` parses as
+`(X = 1) :: []`, which is ill-typed, and must be written `X = (1 :: [])`.
+
+Application is left-associative. `pi`, `sigma`, `s`, `true`, `fail`, `!`, and
+`debug` are atoms, so `pi X\ G` is the constant `pi` applied to the
+abstraction `X\ G`, and `s 2` is an application.
+
+`[]` is the empty list and `[t1, ..., tn]` abbreviates `t1 :: ... :: tn :: []`.
+A list element is a `term5`, so an element that contains `::`, `,`, `=>`, `;`,
+`:-`, or an abstraction MUST be parenthesized. A string literal `"abc"`
+abbreviates `'a' :: 'b' :: 'c' :: []`. Parentheses only group.
+
+2.4 Parse errors
+--------------------------------------------------------------------------------
+
+A syntax error is reported as one of
+
+  *** parsing error at { row = R, col = C }.
+  *** parsing error at EOF.
+
+where (R, C) is the position of the token that the LALR(1) parser cannot
+accept.
+
+
+================================================================================
+Chapter 3. Static Semantics
+================================================================================
+
+3.1 Processing order and the initial environment
+--------------------------------------------------------------------------------
+
+Loading a file processes its `kind` declarations in source order, then its
+`type` declarations in source order, and then its clauses in source order.
+Textual order between these classes is therefore not a visibility rule: a
+`type` declaration may mention a type constructor whose `kind` declaration
+comes later, and a clause may use a constant declared below it. All clauses
+are type checked in source order before any of them is converted to clause
+form (Sections 3.6 and 3.7); the first error in either pass aborts the load.
+
+The initial kind environment is:
+
+  o       : type
+  nat     : type
+  char    : type
+  list    : type -> type
+  string  : type            reserved; `string` abbreviates `list char`
+
+The function type constructor `->` has kind `type -> type -> type` and is
+written infix. None of these names can be redeclared. The initial constants
+and their type schemes are:
+
+  true, fail, !                         : o
+  (,), (;), (=>), (:-)                  : o -> o -> o
+  pi, sigma                             : (A -> o) -> o
+  =                                     : A -> A -> o
+  is, =:=, =\=, <, =<, >, >=            : nat -> nat -> o
+  +, -, *, /, //, div, mod, rem         : nat -> nat -> nat
+  unary +, unary -                      : nat -> nat
+  s                                     : nat -> nat
+  []                                    : list A
+  ::                                    : A -> list A -> list A
+  debug                                 : string -> o
+  natural literal                       : nat
+  character literal                     : char
+  string literal                        : string
+
+The initial program consists of the single clause `X = X.`, which defines
+equality at every type (Section 4.3).
+
+3.2 Kind declarations
+--------------------------------------------------------------------------------
+
+`kind c K.` declares the type constructor `c` with kind `K`. `K` MUST be
+first-order: `type`, or `type -> K'` with `K'` first-order. A kind with an
+arrow in argument position, such as `(type -> type) -> type`, is rejected. A
+type constructor, including a built-in one, MUST NOT be declared twice.
+
+3.3 Type declarations
+--------------------------------------------------------------------------------
+
+`type c T.` declares the constant `c` with the type scheme obtained by
+generalizing `T` over all of its type variables. `T` MUST be well-kinded with
+kind `type`: every type constructor in it must be declared (the kind
+environment is complete by then), the argument of an application must have
+the kind the constructor expects, and a type variable has kind `type`. `string`
+in `T` is replaced by `list char` before kind checking.
+
+The result type of `T`, the type remaining after stripping every top-level
+`->`, MUST be headed by a declared type constructor other than `nat`, `char`,
+and `list` (hence not `string`); a result headed by a type variable is
+rejected as well. Consequently user constants construct user-declared types or
+predicates over `o`, while `nat`, `char`, and lists are populated only by
+literals, `s`, `[]`, and `::`. A constant MUST NOT be declared twice.
+
+3.4 Variables, wildcards, and desugaring
+--------------------------------------------------------------------------------
+
+Within one declaration or one query, every free occurrence of the same
+`large-id` other than `_` denotes the same variable; the scope of a free
+variable is the whole declaration or query. Each occurrence of `_` denotes a
+distinct anonymous variable. Anonymous variables of a query are never
+displayed in an answer; a variable such as `_X` is an ordinary named variable
+and is displayed.
+
+`X\ t` binds `X` in `t`; an inner binder shadows an outer binder and free
+occurrences of the same name. A `small-id` binder shadows the constant of
+that name within its body: in `pi p\ p a`, `p` is the bound variable even
+when a predicate `p` is declared, and outside the body `p` is the constant
+again. (`_` as a binder name is accepted but, since every `_` in the body is
+a fresh anonymous variable, it binds nothing.)
+
+Desugaring also expands string literals into lists of characters and, after
+type checking, beta-reduces the term completely: a redex such as `(X\ p X) a`
+written in the source is reduced at compile time, so the clause `(X\ p X) a.`
+is the clause `p a.`.
+
+3.5 Type inference
+--------------------------------------------------------------------------------
+
+Types are inferred by unification. A constant is instantiated afresh from its
+scheme at every occurrence; a natural literal has type `nat` and a character
+literal type `char`; each variable has one monomorphic type throughout its
+scope, and the occurrences of a free variable are unified with each other; an
+application `t u` requires `t : A -> B` and `u : A` and has type `B`; an
+abstraction `X\ t` has type `A -> B` when `X : A` and `t : B`. A clause and a
+query MUST have type `o`.
+
+Type variables that remain undetermined in a clause are generalized: the
+clause is polymorphic, and its type parameters are instantiated afresh on
+every use (Section 4.4). Type variables that remain undetermined in a query
+become type-level logic variables, which unification may instantiate; types
+are never displayed.
+
+A failure is reported as
+
+  *** typechecking-error[R1:C1-R2:C2]:
+    ? expected_typ = `...', actual_typ = `...'.
+    ? couldn't solve the equation `...' ~ `...',
+    ? because ...
+
+naming the expected and actual types of the offending subterm and the
+equation that failed (a mismatch, a kind mismatch, or an occurs-check
+failure). Undetermined type variables are shown as `A_0`, `A_1`, and so on.
+
+3.6 Clause and goal forms
+--------------------------------------------------------------------------------
+
+After type checking, every clause and every query MUST have one of the forms
+
+  clause    ::= 'pi' X\ clause
+              | atom ':-' goal
+              | atom
+  atom      ::= c t1 ... tn           c a declared constant, n >= 0
+              | X t1 ... tn           only inside the antecedent of `=>`
+  goal      ::= 'true' | 'fail' | '!' | 'debug' t
+              | goal ',' goal
+              | goal ';' goal
+              | clause '=>' goal
+              | 'pi' X\ goal
+              | 'sigma' X\ goal
+              | t '=' t
+              | t 'is' t | t compare t
+              | t                     any other term of type `o`
+
+where heads are examined after beta-reduction. The rules are:
+
+  * A clause head is an application of a declared constant. A logical
+    operator cannot be a head (`true :- q.` and `(p, q) :- r.` are rejected
+    as invalid clause heads), and `=` cannot be given a clause (`1 = 1.` is
+    rejected).
+  * A variable head is allowed only in a hypothesis, the antecedent of `=>`:
+    `pi (P\ P => P)` is valid; a program clause `pi X\ X a.` is not.
+  * A clause body is a goal. `:-` MUST NOT occur as a goal: `p :- (q :- r).`
+    is rejected.
+  * The antecedent of `=>` is a single clause. A logical operator or a
+    conjunction of clauses as antecedent is rejected as an invalid clause
+    head; write `D1 => D2 => G`.
+  * Only the operands of control operators are examined as goals. The
+    arguments of an atom are values: `store (true => true).` is a valid
+    clause whose argument happens to be a term of type `o`.
+  * A goal headed by a variable (for example the body of `call G :- G.`) and
+    `pi F` or `sigma F` with a variable `F` are accepted statically; Section
+    4.8 says what happens when such a goal is selected while still unbound.
+
+Violations are reported as `*** converting-error[loc]:` followed by one of
+
+    ? invalid clause head: expected an atomic predicate, optionally preceded
+      by pi or followed by :-.
+    ? the built-in predicate `=' cannot be given a clause.
+    ? `:-' cannot occur as a goal.
+
+3.7 Elaboration
+--------------------------------------------------------------------------------
+
+A clause is closed before it enters the program: its free term variables are
+universally quantified in front of it, and its remaining type variables are
+quantified outside those, so a clause with free variables `X1`, ..., `Xn`
+behaves as `pi X1\ ... pi Xn\ clause`. The quantifiers are instantiated with
+fresh logic variables every time the clause is used (Section 4.4). The
+built-in clause `X = X.` is closed the same way.
+
+A query is elaborated into a goal whose named free variables are logic
+variables of level 0 and whose anonymous variables are logic variables that
+the answer never shows.
+
+
+================================================================================
+Chapter 4. Dynamic Semantics
+================================================================================
+
+4.1 Terms and equality
+--------------------------------------------------------------------------------
+
+The runtime works with beta-normal lambda terms over constants, logic
+variables, and bound variables. Two terms are equal when their beta-normal
+forms coincide up to the names of bound variables; eta is not applied. The
+user's variable and binder names are not part of a term, which is why printed
+terms use generated binder names (Section 5.4).
+
+Natural numbers are unary numerals: a literal `n+1` and the term `s n` are
+the same term. Hence `3 = s 2` succeeds, `X = s Y, X = 3` binds `Y := 2`, and
+the clause `add (s M) N (s P) :- add M N P.` resolves the goal `add 2 3 N`.
+Arithmetic expressions are ordinary terms until `is` or a comparison
+evaluates them (Section 4.7): `1 + 2 = 3` fails.
+
+Polymorphic constants carry their type instances as hidden arguments. These
+take part in unification like any other argument and are erased from every
+display.
+
+4.2 Levels
+--------------------------------------------------------------------------------
+
+The query's logic variables and every declared constant have level 0, and the
+query is proved at level 0. Proving `pi X\ G` at level l creates a fresh
+constant c of level l+1 and proves `G[c/X]` at level l+1. `sigma X\ G` at
+level l creates a fresh logic variable of level l. The variables created when
+a clause is used for a goal at level l have level l.
+
+A logic variable of level l MUST only be bound to terms whose constants have
+level at most l, except that a deeper constant MAY occur where it is one of
+the variable's own arguments (Section 4.3). When a variable of level l is
+bound, every logic variable occurring in the bound term gets level
+min(its own level, l), so visibility restrictions propagate through bindings.
+This is what makes
+
+  ?- pi X\ Y = X.                 fail: Y has level 0, X has level 1
+  ?- pi X\ sigma Y\ Y = X.        succeed: Y is created at level 1
+  ?- pi X\ true, Y = X.           fail: Y = X is inside the scope of X
+
+4.3 Unification
+--------------------------------------------------------------------------------
+
+`T = U` and clause selection use higher-order pattern unification over
+beta-normal terms, extended with the level discipline of Section 4.2. A
+*pattern* is a flexible term `F x1 ... xn` whose arguments are distinct
+bound variables or distinct constants of a level deeper than `F`. The rules,
+applied to the current set of disagreements until none is left, are:
+
+  * rigid-rigid: two terms with the same head and the same number of
+    arguments are decomposed into their argument pairs; otherwise the branch
+    fails. Two numerals agree exactly when they are equal.
+  * abstraction against abstraction: the bodies are unified. Abstraction
+    against a rigid term: the rigid term is eta-expanded first.
+  * pattern against a term: the variable is bound. The arguments of the
+    pattern are abstracted over; a constant of a deeper level that is not an
+    argument makes the branch fail; a logic variable occurring in the term is
+    pruned to what both sides may see; and an occurrence of the variable
+    itself in the term (occurs check) makes the branch fail.
+  * pattern against pattern, with the same variable or with different
+    variables: solved with a fresh variable applied to the common arguments.
+  * A flexible subterm of the bound term that is not a pattern is kept as it
+    is, with its arguments expressed through the pattern's arguments, so that
+    `?- X = g (F a).` binds `X := g (F a)` and `?- F = (x\ G x x).` binds
+    `F := W_1\ G W_1 W_1`. When its arguments cannot be expressed that way,
+    for instance because they mention a constant the bound variable cannot
+    see, or the bound variable itself, the whole disagreement is deferred
+    instead.
+  * A disagreement whose flexible side is not a pattern is deferred. It is
+    kept as a *residual disagreement* of the branch, is re-examined after
+    every later binding in the branch, and is reported with the answer when
+    it is still open at the end. Deferral alone never fails a branch.
+
+For example `?- F a = b.` and `?- F X = a.` succeed with the residual
+disagreements `F a =?= b` and `F X =?= a` respectively, because `a` is a
+level-0 constant visible to `F` and `X` is a logic variable, so neither
+application is a pattern.
+
+4.4 Proof search
+--------------------------------------------------------------------------------
+
+The runtime state is a stack of alternatives. An alternative is a branch:
+the bindings made so far, the levels of its variables and constants, its
+residual disagreements, and a list of pending goals, each carrying the
+hypotheses installed for it and the level at which it is proved. Search is
+depth-first and left-to-right: the first pending goal of the top alternative
+is selected, and failure pops the top alternative and continues with the next
+one. When an alternative runs out of goals, it is an answer (Section 4.9);
+when the stack is empty, the query has no further answers.
+
+A goal headed by a logical operator is handled as in Section 4.5. A goal
+`p t1 ... tn` headed by any other constant is resolved against the clauses
+about `p`, in this order: the hypotheses of the goal, most recently installed
+first, and then the clauses of the program in source order, the built-in
+`X = X.` being the first of them. A hypothesis whose head is a variable is
+considered for every goal but matches only when that variable is bound to an
+application of `p`. Resolution of a clause instantiates its quantifiers with
+fresh variables of the goal's level, unifies its head with the goal together
+with the branch's residual disagreements, and, on success, pushes an
+alternative whose pending goals are the clause body followed by the remaining
+goals. The alternatives for one goal are pushed so that the first clause is
+explored first. A resolution is identified by a fresh *call id*, which the
+body goals carry for the purposes of cut.
+
+4.5 Goal forms
+--------------------------------------------------------------------------------
+
+  true            succeed
+  fail            fail the branch
+  G1 , G2         prove G1, then G2 in the resulting state
+  G1 ; G2         prove G1; on backtracking, prove G2 instead
+  D => G          install the clause D as a hypothesis and prove G; D is tried
+                  before every other clause while G is being proved
+  sigma X\ G      prove G with a fresh logic variable in place of X
+  pi X\ G         prove G with a fresh constant one level deeper in place of X
+  !               commit as in Section 4.6, then succeed
+  T = U           unify T with U (Section 4.3)
+  L is R          evaluate R and unify L with the result (Section 4.7)
+  comparisons     evaluate both sides and compare them (Section 4.7)
+  debug S         print `*** debugger called with S` and switch step debugging
+                  on for the rest of the query (Section 5.3)
+  p t1 ... tn     resolve against the clauses about p (Section 4.4)
+
+The scope of a hypothesis is the proof of `G`: it is visible to every goal
+proved while proving `G`, including the bodies of clauses resolved for them,
+and it disappears once `G` has been proved. Hypotheses installed by an inner
+`=>` come before those of an outer one, and all hypotheses come before the
+program.
+
+4.6 Cut
+--------------------------------------------------------------------------------
+
+`!` discards every alternative that was created at or after the selection of
+the clause whose body contains the cut: the remaining clauses for that goal,
+the choice points created by goals to the left of the cut in the same body
+(including those of `;` and of nested calls), and the corresponding
+alternatives of hypotheses. Alternatives created before that selection, by
+the callers, survive. A cut is transparent to `,`, `;`, `=>`, `pi`, and
+`sigma` within the body. In a query, a cut discards every alternative of the
+query, including the right branch of an enclosing `;`:
+
+  ?- p X, !, fail ; true.         fails
+
+With `t X :- r X, !.`, `t 3.`, `r 1.`, and `r 2.`, the query `?- t X.`
+answers `X := 1` and nothing else.
+
+4.7 Arithmetic
+--------------------------------------------------------------------------------
+
+`L is R`, `=:=`, `=\=`, `<`, `=<`, `>`, and `>=` evaluate their operands
+immediately, when the goal is selected. Evaluation maps a term to a natural
+number: a literal to its value, `s t` to the value of `t` plus one, `+ t` to
+the value of `t`, `- t` to its negation (an error unless the value is zero),
+and `t1 op t2` to the operation on the values, where `/` is exact division,
+`//` and `div` are integer division, and `mod` and `rem` are the remainder
+(on naturals the members of each pair coincide). Evaluation is an error, not
+a failure, in these cases:
+
+  instantiation_error                     an operand is an unbound variable
+  type_error(evaluable, T)                T is not an arithmetic term
+  domain_error(not_less_than_zero, N)     a subtraction or negation yields N < 0
+  domain_error(nat, A / B)                A is not a multiple of B
+  evaluation_error(zero_divisor)          division or remainder by zero
+
+`L is R` evaluates `R` and unifies `L` with the resulting numeral, so
+`X is 1 + 2` binds `X := 3`, `3 is 1 + 2` succeeds, and `1 + 2 is 3` fails
+because `1 + 2` is not a numeral. A comparison evaluates both sides and
+succeeds or fails. Arithmetic is never delayed: `?- X is Y + 1.` is an
+instantiation error even though a later goal might have bound `Y`.
+
+4.8 Runtime errors
+--------------------------------------------------------------------------------
+
+A runtime error abandons the whole query: every alternative is discarded, no
+answer is printed, and the REPL prints one of
+
+  *** runtime-error: bad goal given!
+  *** runtime-error: bad fact given!
+  *** runtime-error: <arithmetic error>
+
+"bad goal given" arises when the selected goal is not headed by a constant,
+typically a variable goal that is still unbound (`?- call X.` with
+`call G :- G.`). "bad fact given" arises when a hypothesis selected for
+resolution is not a clause, for example a variable hypothesis that has been
+bound to `true` or to a conjunction. The arithmetic errors are those of
+Section 4.7.
+
+4.9 Answers
+--------------------------------------------------------------------------------
+
+When an alternative has no pending goals, it is an answer. The answer is
+projected onto the query's named variables: for each named variable `X` that
+is bound, the line `X := t.` is printed with `t` fully substituted, except
+that a binding of `X` to itself or to an internal variable that merely stands
+for `X` is dropped; such an internal variable is renamed to `X` wherever it
+occurs in the displayed answer, so `?- X = Y.` answers `Y := X.`. Anonymous
+and internal variables are never listed. The residual disagreements of the
+branch are printed after the bindings. The REPL shows
+
+  The answer substitution is:
+  X := t.
+  ...
+  The remaining disagreements are:
+  T =?= U.
+  ...
+  Find more solutions? [Y/n]
+
+omitting each block that is empty. An answer of `y`, `yes`, or `yes.` in any
+letter case continues the search with the next alternative; an empty answer
+repeats the question; any other answer stops the search, and the REPL prints
+`yes.`. When nothing would be displayed at all, that is, when the query has no
+named variables or all of their bindings are trivial and no residual
+disagreement remains, the REPL prints `yes.` at once without offering further
+solutions. When the search runs out of alternatives, the REPL prints `no.`.
+
+
+================================================================================
+Chapter 5. REPL and Module Loading
+================================================================================
+
+5.1 Starting and loading
+--------------------------------------------------------------------------------
+
+`ppap` dispatches to ALPHA1 when `ALPHA1` is entered at its prompt. ALPHA1
+then prompts `hol =<< ` for a module path. An empty line answers
+`hol> Ok, no module loaded.` and starts the REPL with the initial program
+only, under the prompt `hol>`. Otherwise the path MUST have no extension or
+the extension `.hol`; `.hol` is appended when missing.
+Another extension is reported with `*** loading-error: ... is not the
+extension of a hol module; expected `.hol'.`, an unreadable file with
+`*** loading-error: couldn't read the file ...`, and the path is asked for
+again. Loading prints
+
+  hol> Compiling <module> ( <absolute path>, interpreted )
+
+and then either an error (Chapters 1 through 3) followed by a new prompt for a
+path, or `<module>> Ok, one module loaded.` followed by the REPL under the
+prompt `<module>>`. The module name is the path of the file relative to the
+working directory, without extension and with `.` for the directory
+separator (`example.einstein`); a file outside the working directory is named
+by its base name. Only one module is loaded at a time, and the program is the
+initial program plus the file's declarations.
+
+5.2 The query prompt
+--------------------------------------------------------------------------------
+
+At the prompt, an empty line is ignored and the following inputs are special:
+
+  :q          quit ALPHA1
+  :d          toggle step debugging for the following queries (the REPL
+              answers `Debugging mode on.` or `Debugging mode off.`)
+
+Any other line MUST be a query `?- G.`; a declaration is rejected with
+`*** parsing-error: it is not a query.`, and lexical, syntactic, type, and
+clause-form errors are printed as in the loader. A query is elaborated and
+proved as in Chapter 4, and the session continues after `yes.`, `no.`, or a
+runtime error. End of input quits.
+
+5.3 Step debugging
+--------------------------------------------------------------------------------
+
+Step debugging is on for a query when the REPL flag was on at its start or
+when the query executes `debug S`. While it is on, the runtime prints, before
+each step, the current alternative and the rest of the stack: the pending
+goals with their call ids, the levels of the visible constants and variables,
+the bindings of the query variables, the residual disagreements, and the
+branch's thread id. It then asks
+
+  Press the enter key to go to next state:
+
+An empty line performs the step. `:d` turns stepping off for the rest of the
+query (`Debugging mode off for the rest of this query.`), and `:q` quits
+ALPHA1. Neither `debug` nor `:d` at this prompt changes the REPL flag.
+
+5.4 Printed terms
+--------------------------------------------------------------------------------
+
+Terms are printed in the grammar of Chapter 2 with the precedences of Section
+2.3, parenthesized where needed, after beta-normalization. Numerals are
+printed in decimal, lists as `[t1, ..., tn]`, lists of characters as string
+literals, and characters as character literals. Type arguments are erased.
+Bound variables are printed as `W_1`, `W_2`, ..., counting from the outside
+and skipping names that clash with the logic variables of the term; an
+abstraction that is the last argument of an application is printed without
+parentheses, as in `pi W_1\ p W_1`. Named logic variables are printed by
+their names, anonymous and internally generated logic variables as `?V_n`,
+constants introduced by `pi` as `?c_n`, and type variables as `?TV_n`; none
+of these spellings is an identifier of the source language.
+
+
+================================================================================
+Chapter 6. Differences from Hol BETA (Informative)
+================================================================================
+
+ALPHA1 is not a subset of BETA in every respect. A BETA reader should note:
+
+  * No modules, module headers, or imports; one file is the whole program.
+  * No fixity, abbreviation, or notation declarations; no `&`; no multi-head
+    clauses; no `print`, `read`, or `presburger`; no `:reload`, snapshots,
+    `:show`, `:assign`, `:short`, or `:verbose`.
+  * Hypotheses installed by `=>` are tried before the program's clauses
+    (BETA tries global clauses first).
+  * `=` has only the built-in clause: equalities and comparisons cannot be
+    hypotheses, and `=` cannot be given a clause.
+  * Arithmetic is immediate: `is` and the comparisons evaluate when selected,
+    and an evaluation error aborts the query instead of becoming a residual
+    constraint or a failure.
+  * There are no quoted or symbolic identifiers, and `s`, `pi`, `sigma`,
+    `is`, `div`, `mod`, and `rem` are reserved words, so none of them can be
+    a lambda binder.
+  * An abstraction is unparenthesized only as a whole term or as the last
+    argument of an application, and its body extends as far right as the
+    enclosing delimiters allow.
+  * A conjunction cannot be the antecedent of `=>`.
+  * Residual disagreements are printed as they are, under
+    `The remaining disagreements are:`; there is no existential projection.
+  * A runtime error discards every alternative of the query.
+
+
+================================================================================
+Chapter 7. Implementation Map (Informative)
+================================================================================
+
+  src/Hol/ALPHA1/Main.hs              dispatcher entry, built-in environment,
+                                      module loading (Section 5.1)
+  src/Hol/ALPHA1/Front/Analyzer/      lexer and parser, generated by LGS and
+                                      PGS from example/ALPHA1/PlanHolLexer.txt
+                                      and PlanHolParser.txt (Chapters 1, 2)
+  src/Hol/ALPHA1/Front/Desugarer/     kind and type environments, variables
+                                      and wildcards (Sections 3.1 to 3.4)
+  src/Hol/ALPHA1/Front/TypeChecker/   type inference (Section 3.5)
+  src/Hol/ALPHA1/Back/Converter/      clause-form validation and elaboration
+                                      into kernel terms (Sections 3.6, 3.7)
+  src/Hol/ALPHA1/Back/Base/           kernel terms, normalization, bindings,
+                                      levels, printing (Sections 4.1, 4.2, 5.4)
+  src/Hol/ALPHA1/Back/HOPU/           pattern unification (Section 4.3)
+  src/Hol/ALPHA1/Back/Runtime/        proof search, goal forms, cut, and
+                                      arithmetic (Sections 4.4 to 4.8)
+  src/Hol/ALPHA1/Back/BackEnd.hs      REPL, answers, and debugger prompts
+                                      (Sections 4.9, 5.2, 5.3)
+
+The generated lexer and parser MUST NOT be edited by hand: the `.txt`
+specifications are changed and regenerated with LGS and PGS, and
+`test/typecheck/generated_sources.sh` checks that the checked-in sources
+match. The behaviors this document intends are pinned by
+`test/alpha1/legacy.sh` together with `test/alpha1/LegacyRegression.hs` and
+the transcript `test/alpha1/legacy.input.txt` / `legacy.expected.txt`, which
+`test/smoke.sh` runs as well.

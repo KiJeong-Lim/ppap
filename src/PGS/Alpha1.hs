@@ -508,32 +508,25 @@ makeCollectionAndLALR1Parser (CFGrammar start terminals productions) = theResult
         takenAction :: Resolution -> Maybe Action
         takenAction (TakeAction action) = Just action
         takenAction (SyntaxError) = Nothing
-        weigh :: TSym -> Action -> Maybe (Precedence, Action)
-        weigh t (Shift p) = fmap (\(_, prec) -> (prec, Shift p)) (Map.lookup t terminals')
-        weigh _ (Reduce production) = fmap (\prec -> (prec, Reduce production)) (Map.lookup production productions')
-        weigh _ (Accept) = Just (maxPrec, Accept)
         resolveCell :: (ParserS, TSym) -> [Action] -> Either Conflict Resolution
-        resolveCell (q, t) actions
-            | Accept `elem` actions = Right (TakeAction Accept)
-            | otherwise = case actions of
-                [] -> Right SyntaxError
-                [action] -> Right (TakeAction action)
-                _ -> case traverse (weigh t) actions of
-                    Nothing -> Left (conflictAmong actions)
-                    Just candidates -> arbitrate [ action | (prec, action) <- candidates, prec == maximum (map fst candidates) ]
+        resolveCell (q, t) actions = case (List.sort [ p | Shift p <- actions ], [ production | Reduce production <- actions ], [ () | Accept <- actions ]) of
+            ([], [], []) -> Right SyntaxError
+            ([p], [], []) -> Right (TakeAction (Shift p))
+            ([], [production], []) -> Right (TakeAction (Reduce production))
+            ([], [], [()]) -> Right (TakeAction Accept)
+            ([p], [production], []) -> case (Map.lookup t terminals', Map.lookup production productions') of
+                (Just (assoc, terminal_prec), Just production_prec)
+                    | terminal_prec > production_prec -> Right (TakeAction (Shift p))
+                    | terminal_prec < production_prec -> Right (TakeAction (Reduce production))
+                    | otherwise -> case assoc of
+                        ALeft -> Right (TakeAction (Reduce production))
+                        ARight -> Right (TakeAction (Shift p))
+                        ANone -> Right SyntaxError
+                _ -> Left (conflictAmong actions)
+            _ -> Left (conflictAmong actions)
             where
                 conflictAmong :: [Action] -> Conflict
                 conflictAmong culprits = Conflict { because = culprits, whereIs = (q, t), withEnv = getCannonical0 }
-                arbitrate :: [Action] -> Either Conflict Resolution
-                arbitrate tops = case ([ p | Shift p <- tops ], [ production | Reduce production <- tops ]) of
-                    ([p], []) -> Right (TakeAction (Shift p))
-                    ([], [production]) -> Right (TakeAction (Reduce production))
-                    ([p], [production]) -> case Map.lookup t terminals' of
-                        Just (ALeft, _) -> Right (TakeAction (Reduce production))
-                        Just (ARight, _) -> Right (TakeAction (Shift p))
-                        Just (ANone, _) -> Right SyntaxError
-                        Nothing -> Left (conflictAmong tops)
-                    _ -> Left (conflictAmong tops)
     undefinedNSyms :: Set.Set NSym
     undefinedNSyms
         = Set.fromList

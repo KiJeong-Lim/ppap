@@ -1,7 +1,9 @@
 module Hol.ALPHA1.Back.Runtime.Util where
 
+import Hol.ALPHA1.Back.Base.Constant
 import Hol.ALPHA1.Back.Base.Labeling
 import Hol.ALPHA1.Back.Base.TermNode
+import Hol.ALPHA1.Back.Base.TermNode.Util
 import Hol.ALPHA1.Back.Base.VarBinding
 import Hol.ALPHA1.Back.HOPU.Util
 import Hol.ALPHA1.Back.Runtime.Arith
@@ -35,9 +37,16 @@ data KernelErr
     | QuitRequested
     deriving ()
 
+data Clause
+    = Clause
+        { _ClauseBody :: Fact
+        , _ClauseHead :: Maybe Constant
+        }
+    deriving ()
+
 data Cell
     = Cell
-        { _GivenFacts :: [Fact]
+        { _LocalFacts :: [Clause]
         , _ScopeLevel :: ScopeLevel
         , _WantedGoal :: Goal
         , _CellCallId :: CallId
@@ -61,18 +70,38 @@ data RuntimeEnv
         }
     deriving ()
 
-instance ZonkLVar Cell where
-    zonkLVar theta (Cell facts level goal call_id) = Cell (applyBinding theta facts) level (applyBinding theta goal) call_id
+instance ZonkLVar Clause where
+    zonkLVar theta (Clause fact predicate) = Clause (applyBinding theta fact) predicate
 
-mkCell :: [Fact] -> ScopeLevel -> Goal -> CallId -> Cell
-mkCell facts level goal call_id = goal `seq` Cell { _GivenFacts = facts, _ScopeLevel = level, _WantedGoal = goal, _CellCallId = call_id }
+instance ZonkLVar Cell where
+    zonkLVar theta (Cell facts level goal call_id) = Cell (zonkLVar theta facts) level (applyBinding theta goal) call_id
+
+mkClause :: Fact -> Clause
+mkClause fact = Clause { _ClauseBody = fact, _ClauseHead = headPredicate fact }
+
+headPredicate :: Fact -> Maybe Constant
+headPredicate fact = case unfoldlNApp (rewrite HNF fact) of
+    (NCon (DC (DC_LO LO_ty_pi)), [body]) -> under body
+    (NCon (DC (DC_LO LO_pi)), [body]) -> under body
+    (NCon (DC (DC_LO LO_if)), [conclusion, premise]) -> headPredicate conclusion
+    (NCon (DC (DC_LO logical_operator)), args) -> Nothing
+    (NCon predicate, args) -> Just predicate
+    _ -> Nothing
+    where
+        under :: TermNode -> Maybe Constant
+        under body = case rewrite HNF body of
+            NAbs body' -> headPredicate body'
+            _ -> Nothing
+
+mkCell :: [Clause] -> ScopeLevel -> Goal -> CallId -> Cell
+mkCell facts level goal call_id = goal `seq` Cell { _LocalFacts = facts, _ScopeLevel = level, _WantedGoal = goal, _CellCallId = call_id }
 
 showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> ShowS
 showStackItem fvs space (ctx, cells) = strcat
     [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- " . shows goal . strstr " # call_id = " . shows call_id | Cell facts level goal call_id <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_scope_env = " . plist (space + 8) ([ shows (mkNCon c) . strstr " *--- " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ shows (mkLVar v) . strstr " *--- " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
-    , pindent (space + 4) . strstr ", " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " |--> " . shows t | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
+    , pindent (space + 4) . strstr ", " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " |--> " . shows (resolveBinding (_TotalVarBinding ctx) t) | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_constraints = " . plist (space + 8) [ shows constraint | constraint <- _LeftConstraints ctx ] . nl
     , pindent (space + 4) . strstr ", " . strstr "_thread_id = " . shows (_ContextThreadId ctx) . nl
     , pindent (space + 4) . strstr "}" . nl

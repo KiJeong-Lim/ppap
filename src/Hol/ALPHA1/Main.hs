@@ -1,4 +1,4 @@
-module Hol.ALPHA1.Main (main) where
+module Hol.ALPHA1.Main (main, theInitialFactDecls, theInitialKindDecls, theInitialTypeDecls) where
 
 import Hol.ALPHA1.Back.BackEnd
 import Hol.ALPHA1.Back.Base.Constant
@@ -15,22 +15,16 @@ import Hol.ALPHA1.Front.Desugarer.Main
 import Hol.ALPHA1.Front.Header
 import Hol.ALPHA1.Front.TypeChecker.Main
 import Control.Exception (IOException, catch)
-import Control.Monad
 import Control.Monad.Trans.Class
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.State.Strict
-import Data.IORef
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
-import Data.Maybe
-import qualified Data.Set as Set
-import System.Exit
-import System.IO
+import System.Directory (canonicalizePath, makeRelativeToCurrentDirectory)
+import System.FilePath (dropExtension, isRelative, splitDirectories, takeBaseName)
 import System.IO.Error (isEOFError)
 import Z.System.File (readFileNow)
 import Z.System.Path
 import Z.System.Shelly
-import Z.Utils hiding (ErrMsg, Unique, unUnique, UniqueT, runUniqueT, HasAnnot, getAnnot, setAnnot)
 
 theInitialKindDecls :: KindEnv
 theInitialKindDecls = Map.fromList
@@ -83,61 +77,58 @@ theInitialFactDecls = [eqFact] where
     eqFact = mkNApp (mkNCon LO_ty_pi) (mkNAbs (mkNApp (mkNCon LO_pi) (mkNAbs (mkNApp (mkNApp (mkNApp (mkNCon DC_Eq) (mkNIdx 2)) (mkNIdx 1)) (mkNIdx 1)))))
 
 theDefaultModuleName :: String
-theDefaultModuleName = "Aladdin"
+theDefaultModuleName = "hol"
 
 runAlpha1 :: UniqueGenT IO ()
 runAlpha1 = do
-    consistency_ptr <- lift $ newIORef ""
-    file_dir <- lift $ shelly "Aladdin =<< "
-    maybe_file_name <- case matchFileDirWithExtension file_dir of
-        ("", "") -> return Nothing
-        (file_name, ".hol") -> return (Just file_name)
-        (file_name, "") -> return (Just file_name)
-        (file_name, '.' : wrong_extension) -> do
-            lift $ writeIORef consistency_ptr (theDefaultModuleName ++ "> " ++ shows wrong_extension " is a non-executable file extension.")
-            return Nothing
-    consistency <- lift $ readIORef consistency_ptr
-    case consistency of
-        "" -> case maybe_file_name of
-            Nothing -> do
-                lift $ shelly (theDefaultModuleName ++ "> Ok, no module loaded.")
-                runREPL (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
-            Just file_name -> do
-                let my_file_dir = file_name ++ ".hol"
-                    myModuleName = modifySep '/' (const ".") id file_name
-                maybe_src <- lift $ readFileNow my_file_dir
-                case maybe_src of
-                    Nothing -> do
-                        lift $ putStrLn ("*** loading-error: couldn't read the file `" ++ my_file_dir ++ "'.")
-                        runAlpha1
-                    Just src -> do
-                        file_abs_dir <- fmap (fromMaybe my_file_dir) (lift $ makePathAbsolutely my_file_dir)
-                        lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
-                        case runAnalyzer src of
-                            Left err_msg -> do
-                                lift $ putStrLn err_msg
-                                runAlpha1
-                            Right output -> case output of
-                                Left query1 -> do
-                                    lift $ putStrLn "*** parsing-error: it is not a program."
+    file_dir <- lift $ shelly "hol =<< "
+    case matchFileDirWithExtension file_dir of
+        ("", "") -> do
+            lift $ shelly (theDefaultModuleName ++ "> Ok, no module loaded.")
+            runREPL (Program { _KindDecls = theInitialKindDecls, _TypeDecls = theInitialTypeDecls, _FactDecls = theInitialFactDecls, moduleName = theDefaultModuleName })
+        (file_name, extension)
+            | extension `elem` ["", ".hol"] -> loadModule file_name
+            | otherwise -> do
+                lift $ putStrLn ("*** loading-error: `" ++ extension ++ "\' is not the extension of a hol module; expected `.hol\'.")
+                runAlpha1
+    where
+        loadModule :: String -> UniqueGenT IO ()
+        loadModule file_name = do
+            let my_file_dir = file_name ++ ".hol"
+            maybe_src <- lift $ readFileNow my_file_dir
+            case maybe_src of
+                Nothing -> do
+                    lift $ putStrLn ("*** loading-error: couldn't read the file `" ++ my_file_dir ++ "\'.")
+                    runAlpha1
+                Just src -> do
+                    file_abs_dir <- lift (canonicalizePath my_file_dir)
+                    myModuleName <- lift $ moduleNameOf file_abs_dir
+                    lift $ shelly (theDefaultModuleName ++ "> Compiling " ++ myModuleName ++ " ( " ++ file_abs_dir ++ ", interpreted )")
+                    case runAnalyzer src of
+                        Left err_msg -> do
+                            lift $ putStrLn err_msg
+                            runAlpha1
+                        Right (Left _) -> do
+                            lift $ putStrLn "*** parsing-error: it is not a program."
+                            runAlpha1
+                        Right (Right program1) -> do
+                            result <- runExceptT $ do
+                                module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
+                                facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
+                                facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
+                                return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = myModuleName })
+                            case result of
+                                Left err_msg -> do
+                                    lift $ putStrLn err_msg
                                     runAlpha1
-                                Right program1 -> do
-                                    result <- runExceptT $ do
-                                        module1 <- desugarProgram theInitialKindDecls theInitialTypeDecls theDefaultModuleName program1
-                                        facts2 <- sequence [ checkType (_TypeDecls module1) fact mkTyO | fact <- _FactDecls module1 ]
-                                        facts3 <- sequence [ convertProgram used_mtvs assumptions fact | (fact, (used_mtvs, assumptions)) <- facts2 ]
-                                        return (Program { _KindDecls = _KindDecls module1, _TypeDecls = _TypeDecls module1, _FactDecls = theInitialFactDecls ++ facts3, moduleName = myModuleName })
-                                    case result of
-                                        Left err_msg -> do
-                                            lift $ putStrLn err_msg
-                                            runAlpha1
-                                        Right program2 -> do
-                                            lift $ shelly (myModuleName ++ "> Ok, one module loaded.")
-                                            runREPL program2
-        inconsistent_proof -> do
-            lift $ shelly inconsistent_proof
-            lift $ shelly ("Aladdin >>= quit")
-            return ()
+                                Right program2 -> do
+                                    lift $ shelly (myModuleName ++ "> Ok, one module loaded.")
+                                    runREPL program2
+        moduleNameOf :: FilePath -> IO String
+        moduleNameOf path = do
+            relative_path <- makeRelativeToCurrentDirectory path
+            let components = splitDirectories (dropExtension relative_path)
+            return (if isRelative relative_path && ".." `notElem` components then List.intercalate "." components else takeBaseName path)
 
 main :: IO ()
 main = runUniqueGenT runAlpha1 `catch` endOfInput where

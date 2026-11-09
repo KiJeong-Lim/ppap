@@ -8,12 +8,16 @@ import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Y.Base
 
+theWildCardPrefix :: LargeId
+theWildCardPrefix = "$wild_"
+
+isWildCard :: LargeId -> Bool
+isWildCard = List.isPrefixOf theWildCardPrefix
+
 desugarTerm :: GenUniqueM m => TermRep -> StateT (Map.Map LargeId IVar) m (TermExpr DataConstructor SLoc)
 desugarTerm (RVar loc1 "_") = do
     var <- getNewUnique
-    u <- getNewUnique
-    let var_rep = "__WILD_CARD_" ++ shows u ""
-    modify (Map.insert var_rep var)
+    modify (Map.insert (theWildCardPrefix ++ shows (unUnique var) "") var)
     return (IVar loc1 var)
 desugarTerm (RVar loc1 var_rep) = do
     env <- get
@@ -22,6 +26,11 @@ desugarTerm (RVar loc1 var_rep) = do
             var <- getNewUnique
             put (Map.insert var_rep var env)
             return (IVar loc1 var)
+        Just var -> return (IVar loc1 var)
+desugarTerm (RCon loc1 (DC_Named name)) = do
+    env <- get
+    case Map.lookup name env of
+        Nothing -> return (DCon loc1 (DC_Named name))
         Just var -> return (IVar loc1 var)
 desugarTerm (RCon loc1 con) = return (DCon loc1 con)
 desugarTerm (RApp loc1 term_rep_1 term_rep_2) = do

@@ -164,6 +164,7 @@ lhs ->> rhs
             | tcon1 == tcon2 = return mempty
         go (TyMTV mtv) typ 
             | TyMTV mtv == typ = return mempty
+            | mtv `Set.member` getFMTVs typ = Left (OccursCheckFailed mtv typ)
             | getKind (TyMTV mtv) == getKind typ = return (TypeSubst (Map.singleton mtv typ))
             | otherwise = Left (KindsAreMismatched (TyMTV mtv, getKind (TyMTV mtv)) (typ, getKind typ))
         go (TyApp typ1 typ2) (TyApp typ1' typ2') = do

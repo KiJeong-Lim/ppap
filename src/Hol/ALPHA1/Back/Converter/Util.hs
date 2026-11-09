@@ -13,22 +13,11 @@ import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 
-viewIAbs :: TermExpr dcon annot -> ([IVar], TermExpr dcon annot)
-viewIAbs = go [] where
-    go :: [IVar] -> TermExpr dcon annot -> ([IVar], TermExpr dcon annot)
-    go vars (IAbs annot var term) = go (var : vars) term
-    go vars term = (vars, term)
-
 unFoldIApp :: TermExpr dcon annot -> (TermExpr dcon annot, [TermExpr dcon annot])
 unFoldIApp = flip go [] where
     go :: TermExpr dcon annot -> [TermExpr dcon annot] -> (TermExpr dcon annot, [TermExpr dcon annot])
     go (IApp annot term1 term2) terms = go term1 (term2 : terms)
     go term terms = (term, terms)
-
-isPredicate :: MonoType Int -> Bool
-isPredicate (TyCon (TCon (TC_Named "o") _)) = True
-isPredicate (TyApp (TyApp (TyCon (TCon TC_Arrow _)) typ1) typ2) = isPredicate typ2
-isPredicate _ = False
 
 reduceTermExpr :: TermExpr dcon annot -> TermExpr dcon annot
 reduceTermExpr = go Map.empty where

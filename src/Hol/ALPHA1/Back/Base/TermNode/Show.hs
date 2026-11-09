@@ -50,6 +50,7 @@ instance Outputable ViewNode where
         go (ViewIVar var) = strstr "W_" . showsPrec 0 var
         go (ViewLVar var) = strstr var
         go (ViewDCon con) = strstr con
+        go (ViewIApp viewer1 viewer2@(ViewIAbs _ _)) = parenthesize 0 (pprint 9 viewer1 . strstr " " . pprint 0 viewer2)
         go (ViewIApp viewer1 viewer2) = parenthesize 9 (pprint 9 viewer1 . strstr " " . pprint 10 viewer2)
         go (ViewIAbs var viewer1) = parenthesize 0 (strstr "W_" . showsPrec 0 var . strstr "\\ " . pprint 0 viewer1)
         go (ViewTVar var) = strstr var
@@ -90,14 +91,14 @@ constructViewer term = fst (runIdentity (uncurry (runStateT . formatView . erase
     isType _ = False
     makeView :: [Int] -> TermNode -> StateT Int Identity ViewNode
     makeView vars (LVar var) = case var of
-        LV_ty_var v -> return (ViewTVar ("TV_" ++ show v))
-        LV_Unique v -> return (ViewLVar ("V_" ++ show v))
+        LV_ty_var v -> return (ViewTVar ("?TV_" ++ show v))
+        LV_Unique v -> return (ViewLVar ("?V_" ++ show v))
         LV_Named v -> return (ViewLVar v)
     makeView vars (NCon con) = case con of
         DC data_constructor -> case data_constructor of
             DC_LO logical_operator -> return (ViewDCon (show logical_operator))
             DC_Named name -> return (ViewDCon ("__" ++ name))
-            DC_Unique uni -> return (ViewDCon ("c_" ++ show uni))
+            DC_Unique uni -> return (ViewDCon ("?c_" ++ show uni))
             DC_Nil -> return (ViewDCon "[]")
             DC_Cons -> return (ViewDCon "::")
             DC_ChrL chr -> return (ViewChrL chr)
@@ -109,9 +110,11 @@ constructViewer term = fst (runIdentity (uncurry (runStateT . formatView . erase
             DC_Arith operator -> return (ViewDCon (show operator))
         TC type_constructor -> case type_constructor of
             TC_Arrow -> return (ViewTCon "->")
-            TC_Unique uni -> return (ViewTCon ("tc_" ++ show uni))
+            TC_Unique uni -> return (ViewTCon ("?tc_" ++ show uni))
             TC_Named name -> return (ViewTCon ("__" ++ name))
-    makeView vars (NIdx idx) = return (ViewIVar (vars !! (idx - 1)))
+    makeView vars (NIdx idx)
+        | idx <= length vars = return (ViewIVar (vars !! (idx - 1)))
+        | otherwise = return (ViewLVar ("?#" ++ show (idx - length vars)))
     makeView vars (NApp t1 t2) = do
         t1_rep <- makeView vars t1
         t2_rep <- makeView vars t2
@@ -140,8 +143,6 @@ constructViewer term = fst (runIdentity (uncurry (runStateT . formatView . erase
     checkOper ";" = Just (InfixL () "; " (), 1)
     checkOper "," = Just (InfixL () ", " (), 3)
     checkOper "=>" = Just (InfixR () " => " (), 2)
-    checkOper "pi" = Just (Prefix "pi " (), 5)
-    checkOper "sigma" = Just (Prefix "sigma " (), 5)
     checkOper "=" = Just (InfixN () " = " (), 5)
     checkOper "is" = Just (InfixN () " is " (), 5)
     checkOper "=:=" = Just (InfixN () " =:= " (), 5)

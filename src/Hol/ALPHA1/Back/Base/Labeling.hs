@@ -36,28 +36,13 @@ instance Labelable LogicVar where
     lookupLabel atom = maybe maxBound id . Map.lookup atom . _VarLabel
 
 instance ZonkLVar Labeling where
-    zonkLVar subst labeling
-        = labeling
-            { _VarLabel = Map.fromAscList
-                [ mkstrict
-                    ( v
-                    , foldr min (lookupLabel v labeling)
-                        [ level'
-                        | (v', t') <- Map.toList mapsto
-                        , v `Set.member` getFreeLVs t'
-                        , level' <- toList (Map.lookup v' varlabel)
-                        ]
-                    )
-                | v <- Set.toAscList (Map.keysSet mapsto `Set.union` Map.keysSet varlabel)
-                ]
-            }
-        where
-            mapsto :: Map.Map LogicVar TermNode
-            mapsto = unVarBinding subst
-            varlabel :: Map.Map LogicVar ScopeLevel
-            varlabel = _VarLabel labeling
-            mkstrict :: (LogicVar, ScopeLevel) -> (LogicVar, ScopeLevel)
-            mkstrict pair = snd pair `seq` pair
+    zonkLVar subst labeling = labeling { _VarLabel = Map.foldlWithKey' lower varlabel (unVarBinding subst) } where
+        varlabel :: Map.Map LogicVar ScopeLevel
+        varlabel = _VarLabel labeling
+        lower :: Map.Map LogicVar ScopeLevel -> LogicVar -> TermNode -> Map.Map LogicVar ScopeLevel
+        lower acc v' t' = case Map.lookup v' varlabel of
+            Nothing -> acc
+            Just level' -> foldl' (\acc' v -> Map.adjust (min level') v acc') acc (Set.toList (getFreeLVs t'))
 
 theDefaultLevel :: DataConstructor -> ScopeLevel
 theDefaultLevel (DC_Unique uni) = maxBound

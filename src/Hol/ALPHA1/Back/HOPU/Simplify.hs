@@ -19,11 +19,20 @@ import qualified Data.Set as Set
 
 type HasChanged = Bool
 
+type Pending = (Int, Int, Bool, Disagreement)
+
 simplify :: GenUniqueM m => [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
-simplify = flip loop mempty . zip (repeat 0) where
-    loop :: GenUniqueM m => [(Int, Disagreement)] -> LVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
+simplify = flip loop mempty . map (\disagreement -> (0, 0, False, disagreement)) where
+    loop :: GenUniqueM m => [Pending] -> LVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
     loop [] subst labeling = return ([], HopuSol labeling subst)
-    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
+    loop ((l, version, is_normal, lhs0 :=?=: rhs0) : disagreements) subst labeling = dispatch l (prepare lhs0) (prepare rhs0) where
+        version' :: Int
+        version' = Map.size (unVarBinding subst)
+        prepare :: TermNode -> TermNode
+        prepare
+            | version < version' = rewrite NF . applyBinding subst
+            | is_normal = id
+            | otherwise = rewrite NF
         dispatch :: GenUniqueM m => Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
         dispatch _ (NCon (DC (DC_NatL lhs))) (NCon (DC (DC_NatL rhs)))
             | lhs == rhs = loop disagreements subst labeling
@@ -36,16 +45,16 @@ simplify = flip loop mempty . zip (repeat 0) where
             | (lambda1, lhs') <- viewNestedNAbs lhs
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , lambda1 > 0 && isRigid rhs_head
-            = dispatch (l + lambda1) lhs' (foldlNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1, lambda1 - 1 .. 1]))
+            = dispatch (l + lambda1) lhs' (foldlNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ rewriteWithSusp rhs_tail_element 0 lambda1 [] NF | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1, lambda1 - 1 .. 1]))
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
             , (lambda2, rhs') <- viewNestedNAbs rhs
             , isRigid lhs_head && lambda2 > 0
-            = dispatch (l + lambda2) (foldlNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2, lambda2 - 1 .. 1])) rhs'
+            = dispatch (l + lambda2) (foldlNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ rewriteWithSusp lhs_tail_element 0 lambda2 [] NF | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2, lambda2 - 1 .. 1])) rhs'
             | (lhs_head, lhs_tail) <- unfoldlNApp lhs
             , (rhs_head, rhs_tail) <- unfoldlNApp rhs
             , isRigid lhs_head && isRigid rhs_head
             = if lhs_head == rhs_head && length lhs_tail == length rhs_tail
-                then loop ([ (l, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tail rhs_tail ] ++ disagreements) subst labeling
+                then loop ([ (l, version', True, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tail rhs_tail ] ++ disagreements) subst labeling
                 else lift (throwE RigidRigidFail)
             | (LVar var, parameters) <- unfoldlNApp lhs
             , isPatternRespectTo var parameters labeling
@@ -55,7 +64,7 @@ simplify = flip loop mempty . zip (repeat 0) where
                     Nothing -> solveNext
                     Just (HopuSol labeling' subst') -> do
                         put True
-                        loop (applyBinding subst' disagreements) (subst' <> subst) labeling'
+                        loop disagreements (subst' <> subst) labeling'
             | (LVar var, parameters) <- unfoldlNApp rhs
             , isPatternRespectTo var parameters labeling
             = do
@@ -64,10 +73,10 @@ simplify = flip loop mempty . zip (repeat 0) where
                     Nothing -> solveNext
                     Just (HopuSol labeling' subst') -> do
                         put True
-                        loop (applyBinding subst' disagreements) (subst' <> subst) labeling'
+                        loop disagreements (subst' <> subst) labeling'
             | otherwise
             = solveNext
         solveNext :: GenUniqueM m => StateT HasChanged (ExceptT HopuFail m) ([Disagreement], HopuSol)
         solveNext = do
-            (disagreements', HopuSol labeling' subst') <- loop disagreements mempty labeling
-            return (applyBinding subst' (makeNestedNAbs l lhs :=?=: makeNestedNAbs l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
+            (disagreements', HopuSol labeling' subst') <- loop disagreements subst labeling
+            return (applyBinding subst' (makeNestedNAbs l lhs0 :=?=: makeNestedNAbs l rhs0) : disagreements', HopuSol labeling' subst')

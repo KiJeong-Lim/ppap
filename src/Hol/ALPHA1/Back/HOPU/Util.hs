@@ -55,7 +55,7 @@ makeNestedNAbs :: Int -> TermNode -> TermNode
 makeNestedNAbs n
     | n == 0 = id
     | n > 0 = makeNestedNAbs (n - 1) . NAbs
-    | otherwise = undefined
+    | otherwise = error "`makeNestedNAbs\': a negative number of abstractions."
 
 getNewLVar :: GenUniqueM m => Bool -> ScopeLevel -> StateT Labeling m TermNode
 getNewLVar isty label = do

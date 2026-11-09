@@ -62,8 +62,6 @@ data NFA
         { getInitialQOfNFA :: !(ParserS)
         , getFinalQsOfNFA :: !(Map.Map ParserS ExitNumber)
         , getTransitionsOfNFA :: !(Map.Map (ParserS, Maybe DFAChar) (Set.Set ParserS))
-        , getMarkedQsOfNFA :: !(Map.Map ParserS (Bool, ParserS))
-        , getPseudoFinalsOfNFA :: !(Map.Map ExitNumber ParserS)
         }
     deriving (Eq)
 
@@ -72,16 +70,12 @@ data DFA
         { getInitialQOfDFA :: !(ParserS)
         , getFinalQsOfDFA :: !(Map.Map ParserS ExitNumber)
         , getTransitionsOfDFA :: !(Map.Map (ParserS, DFAChar) ParserS)
-        , getMarkedQsOfDFA :: !(Map.Map ParserS (Bool, Set.Set ParserS))
-        , getPseudoFinalsOfDFA :: !(Set.Set ParserS)
         }
     deriving (Eq)
 
 data RightContext
     = NilRCtx
-    | PosRCtx RegEx
-    | OddRCtx RegEx
-    | NegRCtx RegEx
+    | TrailingRCtx RegEx
     deriving (Eq, Show)
 
 data XBlock
@@ -217,11 +211,8 @@ readBlock = mconcat
         regex <- readRegEx
         right_ctx <- mconcat
             [ do
-                consumePC " +/ "
-                PosRCtx <$> readRegEx
-            , do
                 consumePC " / "
-                OddRCtx <$> readRegEx
+                TrailingRCtx <$> readRegEx
             , return NilRCtx
             ]
         skipWhite
@@ -264,9 +255,7 @@ computeAlphabet xmatch_defns = Set.unions (concatMap collectPair xmatch_defns) w
     collectPair :: (RegEx, RightContext) -> [Set.Set Char]
     collectPair (regex1, right_ctx) = collectRE regex1 : case right_ctx of
         NilRCtx -> []
-        PosRCtx regex2 -> [collectRE regex2]
-        OddRCtx regex2 -> [collectRE regex2]
-        NegRCtx regex2 -> [collectRE regex2]
+        TrailingRCtx regex2 -> [collectRE regex2]
     collectRE :: RegEx -> Set.Set Char
     collectRE (ReVar _) = Set.empty
     collectRE (ReZero) = Set.empty
@@ -369,56 +358,28 @@ getUnitedNFAfromREs alphabet = runIdentity . go where
     go xmatch_defns = do
         let q0 = 0
             n = length xmatch_defns
-        (pragments, (numberOfQs, deltas)) <- flip runStateT (n + 1, Map.empty) $ sequence
-            [ case right_ctx of
-                NilRCtx -> do
-                    let qf = label
-                    (qi1, qf1) <- loop regex1
-                    drawTransition ((q0, Nothing), qi1)
-                    drawTransition ((qf1, Nothing), qf)
-                    return ((qf, label), (Nothing, Nothing))
-                PosRCtx regex2 -> do
-                    let qf = label
-                    (qi1, qf1) <- loop regex1
-                    (qi2, qf2) <- loop regex2
-                    qw <- getNewQ
-                    drawTransition ((q0, Nothing), qi1)
-                    drawTransition ((qf1, Nothing), qw)
-                    drawTransition ((qw, Nothing), qi2)
-                    drawTransition ((qf2, Nothing), qf)
-                    return ((qf, label), (Nothing, Just (label, (True, qw))))
-                OddRCtx regex2 -> do
-                    let qf = label
-                    (qi1, qf1) <- loop regex1
-                    (qi2, qf2) <- loop regex2
-                    qw <- getNewQ
-                    drawTransition ((q0, Nothing), qi1)
-                    drawTransition ((qf1, Nothing), qw)
-                    drawTransition ((qw, Nothing), qi2)
-                    drawTransition ((qf2, Nothing), qf)
-                    return ((qf, label), (Nothing, Just (label, (False, qw))))
-                NegRCtx regex2 -> do
-                    let qf = label
-                    (qi1, qf1) <- loop regex1
-                    (qi2, qf2) <- loop regex2
-                    qw <- getNewQ
-                    drawTransition ((q0, Nothing), qi1)
-                    drawTransition ((qf1, Nothing), qf)
-                    drawTransition ((qf, Nothing), qi2)
-                    drawTransition ((qf2, Nothing), qw)
-                    return ((qf, label), (Just (label, qw), Nothing))
+        (qfs, (numberOfQs, deltas)) <- flip runStateT (n + 1, Map.empty) $ sequence
+            [ do
+                let qf = label
+                (qi1, qf1) <- loop regex1
+                drawTransition ((q0, Nothing), qi1)
+                case right_ctx of
+                    NilRCtx -> drawTransition ((qf1, Nothing), qf)
+                    TrailingRCtx regex2 -> do
+                        (qi2, qf2) <- loop regex2
+                        drawTransition ((qf1, Nothing), qi2)
+                        drawTransition ((qf2, Nothing), qf)
+                return (qf, label)
             | (label, (regex1, right_ctx)) <- zip [1, 2 .. n] xmatch_defns
             ]
         return $ NFA
             { getInitialQOfNFA = q0
-            , getFinalQsOfNFA = Map.fromList (map fst pragments)
+            , getFinalQsOfNFA = Map.fromList qfs
             , getTransitionsOfNFA = deltas
-            , getMarkedQsOfNFA = Map.fromList [ my_item | Just my_item <- map (snd . snd) pragments ]
-            , getPseudoFinalsOfNFA = Map.fromList [ my_item | Just my_item <- map (fst . snd) pragments ]
             }
 
 makeDFAfromNFA :: Set.Set Char -> NFA -> DFA
-makeDFAfromNFA alphabet (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result where
+makeDFAfromNFA alphabet (NFA q0 qfs deltas) = runIdentity result where
     theSymAlphabet :: Set.Set DFAChar
     theSymAlphabet = Set.insert AnyChar (Set.map LitChar alphabet)
     eClosure :: Set.Set ParserS -> Set.Set ParserS
@@ -450,73 +411,43 @@ makeDFAfromNFA alphabet (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity 
             Just p' -> do
                 put (Map.insert (q', sym) p' deltas')
                 drawGraph mapOldToNew triples
-    loop :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, DFAChar) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
+    loop :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, DFAChar) ParserS) Identity (Map.Map ParserS ExitNumber)
     loop mapOldToNew = do
         mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theSymAlphabet)
-        let addItem (qf, label) = if and [ maybe True (\q -> not (q `Set.member` qs)) (Map.lookup label pseudo_finals) | (qs, p) <- Map.toList mapOldToNew', p == qf ] then Map.alter (Just . maybe label (min label)) qf else id
         if mapOldToNew == mapOldToNew' then
-            return
-                ( foldr addItem Map.empty
-                    [ (p, label)
-                    | (q, label) <- Map.toList qfs
-                    , (qs, p) <- Map.toList mapOldToNew'
-                    , q `Set.member` qs
-                    ]
-                , mapOldToNew'
-                )
+            return $ foldr (\(qf, label) -> Map.alter (Just . maybe label (min label)) qf) Map.empty
+                [ (p, label)
+                | (q, label) <- Map.toList qfs
+                , (qs, p) <- Map.toList mapOldToNew'
+                , q `Set.member` qs
+                ]
         else
             loop mapOldToNew'
     result :: Identity DFA
     result = do
         let new_q0 = 0
-        ((new_qfs, wanted_map), new_deltas) <- runStateT (loop (Map.singleton (eClosure (Set.singleton q0)) new_q0)) Map.empty
+        (new_qfs, new_deltas) <- runStateT (loop (Map.singleton (eClosure (Set.singleton q0)) new_q0)) Map.empty
         return $ DFA
             { getInitialQOfDFA = new_q0
             , getFinalQsOfDFA = new_qfs
             , getTransitionsOfDFA = new_deltas
-            , getMarkedQsOfDFA = Map.fromAscList
-                [ mkstrict
-                    ( i
-                    , mkstrict
-                        ( b
-                        , Set.fromList
-                            [ p
-                            | (qs, p) <- Map.toList wanted_map
-                            , q `Set.member` qs
-                            ]
-                        )
-                    )
-                | (i, (b, q)) <- Map.toAscList markeds
-                ]
-            , getPseudoFinalsOfDFA = Set.fromList
-                [ p
-                | (label, q) <- Map.toList pseudo_finals
-                , not (q `Set.member` Map.keysSet new_qfs)
-                , (qs, p) <- Map.toList wanted_map
-                , q `Set.member` qs
-                ]
             }
 
 makeMinimalDFA :: DFA -> DFA
-makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
+makeMinimalDFA (DFA q0 qfs deltas) = result where
     theSetOfAllStates :: Set.Set ParserS
     theSetOfAllStates = Set.unions
         [ Set.singleton q0
         , Map.keysSet qfs
         , Set.map fst (Map.keysSet deltas)
         , Set.fromList (Map.elems deltas)
-        , Set.unions (map snd (Map.elems markeds))
-        , pseudo_finals
         ]
     theSymSet :: Set.Set DFAChar
     theSymSet = Set.map snd (Map.keysSet deltas)
     initialKlasses :: [Set.Set ParserS]
     initialKlasses = filter (not . Set.null) theList where
         theList :: [Set.Set ParserS]
-        theList = concat
-            [ [theSetOfAllStates `Set.difference` (pseudo_finals `Set.union` Map.keysSet qfs), pseudo_finals]
-            , Map.elems (foldr loop1 Map.empty (Map.toList qfs))
-            ]
+        theList = (theSetOfAllStates `Set.difference` Map.keysSet qfs) : Map.elems (foldr loop1 Map.empty (Map.toList qfs))
         loop1 :: (ParserS, ExitNumber) -> Map.Map ExitNumber (Set.Set ParserS) -> Map.Map ExitNumber (Set.Set ParserS)
         loop1 (qf, label) = Map.alter (Just . maybe (Set.singleton qf) (Set.insert qf)) label
     finalKlasses :: [Set.Set ParserS]
@@ -561,18 +492,16 @@ makeMinimalDFA (DFA q0 qfs deltas markeds pseudo_finals) = result where
             [ ((convert q, sym), convert p)
             | ((q, sym), p) <- Map.toList deltas
             ]
-        , getMarkedQsOfDFA = Map.map (fmap (Set.map convert)) markeds
-        , getPseudoFinalsOfDFA = Set.map convert pseudo_finals
         }
 
 deleteDeadStates :: DFA -> DFA
-deleteDeadStates (DFA q0 qfs deltas markeds pseudo_finals) = result where
+deleteDeadStates (DFA q0 qfs deltas) = result where
     edges :: Map.Map ParserS (Set.Set ParserS)
     edges = foldr go Map.empty [ (p, q) | ((q, sym), p) <- Map.toList deltas ] where
         go :: (ParserS, ParserS) -> Map.Map ParserS (Set.Set ParserS) -> Map.Map ParserS (Set.Set ParserS)
         go (p, q) = Map.alter (Just . maybe (Set.singleton q) (Set.insert q)) p
     winners :: Set.Set ParserS
-    winners = go (Set.toAscList (pseudo_finals `Set.union` Map.keysSet qfs)) Set.empty where
+    winners = go (Set.toAscList (Map.keysSet qfs)) Set.empty where
         go :: [ParserS] -> Set.Set ParserS -> Set.Set ParserS
         go [] ps = ps
         go (q : qs) ps = if q `Set.member` ps then go qs ps else go (maybe [] Set.toAscList (Map.lookup q edges) ++ qs) (Set.insert q ps)
@@ -586,8 +515,6 @@ deleteDeadStates (DFA q0 qfs deltas markeds pseudo_finals) = result where
             , q `Set.member` winners
             , p `Set.member` winners
             ]
-        , getMarkedQsOfDFA = Map.map (fmap (Set.filter (\q -> q `Set.member` winners))) markeds
-        , getPseudoFinalsOfDFA = Set.filter (\q -> q `Set.member` winners) pseudo_finals
         }
 
 makeDFAfromREs :: Set.Set Char -> [(RegEx, RightContext)] -> DFA
@@ -717,33 +644,25 @@ genLexer xblocks = do
         | ReVDef var re <- xblocks
         ]
     xmatch_res <- sequence
-        [ case right_ctx of
-            NilRCtx -> do
-                regex1' <- substituteRE re_env regex1
-                regex1'' <- modifyCSinRE (substituteCS chs_env) regex1'
-                return (regex1'', NilRCtx)
-            PosRCtx regex2 -> do
-                regex1' <- substituteRE re_env regex1
-                regex1'' <- modifyCSinRE (substituteCS chs_env) regex1'
-                regex2' <- substituteRE re_env regex2
-                regex2'' <- modifyCSinRE (substituteCS chs_env) regex2'
-                return (regex1'', PosRCtx regex2'')
-            OddRCtx regex2 -> do
-                regex1' <- substituteRE re_env regex1
-                regex1'' <- modifyCSinRE (substituteCS chs_env) regex1'
-                regex2' <- substituteRE re_env regex2
-                regex2'' <- modifyCSinRE (substituteCS chs_env) regex2'
-                return (regex1'', OddRCtx regex2'')
-            NegRCtx regex2 -> do
-                regex1' <- substituteRE re_env regex1
-                regex1'' <- modifyCSinRE (substituteCS chs_env) regex1'
-                regex2' <- substituteRE re_env regex2
-                regex2'' <- modifyCSinRE (substituteCS chs_env) regex2'
-                return (regex1'', NegRCtx regex2'')
+        [ do
+            regex1' <- substituteRE re_env regex1
+            regex1'' <- modifyCSinRE (substituteCS chs_env) regex1'
+            right_ctx' <- case right_ctx of
+                NilRCtx -> return NilRCtx
+                TrailingRCtx regex2 -> do
+                    regex2' <- substituteRE re_env regex2
+                    regex2'' <- modifyCSinRE (substituteCS chs_env) regex2'
+                    return (TrailingRCtx regex2'')
+            return (regex1'', right_ctx')
         | XMatch (regex1, right_ctx) _ <- xblocks
         ]
     let theAlphabet = computeAlphabet xmatch_res
         theDFA = makeDFAfromREs theAlphabet xmatch_res
+        theTrailingDFAs = [ (label, makeDFAfromREs theAlphabet [(regex1, NilRCtx)], makeDFAfromREs theAlphabet [(regex2, NilRCtx)]) | (label, (regex1, TrailingRCtx regex2)) <- zip [1, 2 .. length xmatch_res] xmatch_res ]
+    sequence
+        [ when (getInitialQOfDFA dfa1 `Set.member` Map.keysSet (getFinalQsOfDFA dfa1)) $ throwE ("The pattern before `/' in the xmatch rule #" ++ shows label " accepts the empty string; a trailing context needs a non-empty token.")
+        | (label, dfa1, _) <- theTrailingDFAs
+        ]
     (token_type, lexer_name) <- case [ (token_type, lexer_name) | Target token_type lexer_name <- xblocks ] of
         [pair] -> return pair
         _ -> throwE "A target must exist unique."
@@ -789,6 +708,23 @@ genLexer xblocks = do
         tellLine (strstr "        }")
         tellLine (strstr "    theAlphabet :: XSet.Set Char")
         tellLine (strstr "    theAlphabet = XSet.fromAscList " . shows (Set.toAscList theAlphabet))
+        let showDFA dfa = strstr "DFA " . shows (getInitialQOfDFA dfa) . strstr " (XMap.fromAscList " . shows (Map.toAscList (getFinalQsOfDFA dfa)) . strstr ") (XMap.fromList " . shows [ ((q, symToMaybeChar sym), p) | ((q, sym), p) <- Map.toAscList (getTransitionsOfDFA dfa) ] . strstr ")"
+        unless (null theTrailingDFAs) $ do
+            tellLine (strstr "    theTrailingDFAs :: XMap.Map Int (DFA, DFA)")
+            tellLine (strstr "    theTrailingDFAs = XMap.fromList" . plist 8 [ strstr "(" . shows label . strstr ", (" . showDFA dfa1 . strstr ", " . showDFA dfa2 . strstr "))" | (label, dfa1, dfa2) <- theTrailingDFAs ])
+            tellLine (strstr "    acceptsDFA :: DFA -> [((Int, Int), Char)] -> Bool")
+            tellLine (strstr "    acceptsDFA (DFA q0 qfs deltas) = go q0 where")
+            tellLine (strstr "        classify :: Char -> Maybe Char")
+            tellLine (strstr "        classify ch = if ch `XSet.member` theAlphabet then Just ch else Nothing")
+            tellLine (strstr "        go :: Int -> [((Int, Int), Char)] -> Bool")
+            tellLine (strstr "        go q [] = q `XMap.member` qfs")
+            tellLine (strstr "        go q (ch : str) = maybe False (\\p -> go p str) (XMap.lookup (q, classify (snd ch)) deltas)")
+            tellLine (strstr "    splitTrailing :: Int -> [((Int, Int), Char)] -> Maybe ([((Int, Int), Char)], [((Int, Int), Char)])")
+            tellLine (strstr "    splitTrailing label accepted = case XMap.lookup label theTrailingDFAs of")
+            tellLine (strstr "        Nothing -> Just (accepted, [])")
+            tellLine (strstr "        Just (dfa1, dfa2) -> case [ n | n <- [length accepted, length accepted - 1 .. 1], acceptsDFA dfa1 (take n accepted), acceptsDFA dfa2 (drop n accepted) ] of")
+            tellLine (strstr "            n : _ -> Just (splitAt n accepted)")
+            tellLine (strstr "            [] -> Nothing")
         tellLine (strstr "    runDFA :: DFA -> [((Int, Int), Char)] -> Either (Int, Int) ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
         tellLine (strstr "    runDFA (DFA q0 qfs deltas) = Right . XIdentity.runIdentity . runFast where")
         tellLine (strstr "        classify :: Char -> Maybe Char")
@@ -818,7 +754,12 @@ genLexer xblocks = do
         tellLine (strstr "        dfa_output <- runDFA theDFA str0")
         tellLine (strstr "        (str1, piece) <- case dfa_output of")
         tellLine (strstr "            ((_, []), _) -> Left (fst (head str0))")
-        tellLine (strstr "            ((Just label, accepted), rest) -> return (rest, ((label, map snd accepted), (fst (head accepted), fst (head (reverse accepted)))))")
+        if null theTrailingDFAs
+            then tellLine (strstr "            ((Just label, accepted), rest) -> return (rest, ((label, map snd accepted), (fst (head accepted), fst (head (reverse accepted)))))")
+            else do
+                tellLine (strstr "            ((Just label, accepted), rest) -> case splitTrailing label accepted of")
+                tellLine (strstr "                Just (token, pushback) -> return (pushback ++ rest, ((label, map snd token), (fst (head token), fst (head (reverse token)))))")
+                tellLine (strstr "                Nothing -> Left (fst (head str0))")
         tellLine (strstr "            _ -> Left (fst (head str0))")
         tellLine (strstr "        tokens1 <- case piece of")
         let destructors = [ destructor | XMatch _ destructor <- xblocks ]

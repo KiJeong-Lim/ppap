@@ -209,7 +209,10 @@ replaceLASet :: (HasCallStack, Ord terminal, Ord nonterminal) => Int -> CFG term
 -- reconstruct lookahead sets with given length `m`
 -- if the new length is equal to the previous one, nothing practically changes
 -- this function can generate LALR automata if the new length is longer
-replaceLASet m cfg first_set automaton = fixpointWithInit go automaton where
+replaceLASet m cfg first_set automaton = fixpointWithInit go automaton0 where
+    -- The LR(j) phase truncated every lookahead string to length j; with j = 0 that leaves `[]`, which
+    -- would otherwise be read as end-of-input. Start again from the genesis items of the initial state.
+    automaton0 = IntMap.mapWithKey (\i s -> s { kernel = Map.map (const (if i == 0 then Set.singleton [] else Set.empty)) (kernel s) }) automaton
     ts = IntMap.map transition automaton
     shiftOne (i, k) = [ (ts IntMap.! i Map.! symbol, shift cfg symbol items) | symbol <- Set.toList (shiftableSymbols cfg items) ] where
         items = close m cfg first_set k

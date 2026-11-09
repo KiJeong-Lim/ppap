@@ -14,12 +14,12 @@
 \define $big_letter = 'A'-'Z'
 \define $digit = '0'-'9'
 \define $printable = ' '-'~'
-\define $comment_char = '\n' $printable
+\define $comment_char = .
 \define $Escape = "\\n" + "\\\\" + "\\\"" + "\\\'" + "\\t"
 \define $StringChar = [$printable \ '\\' \ '\"'] + $Escape
 \define $CharChar = [$printable \ '\\' \ '\''] + $Escape
 \define $SmallId = [$small_letter] [$small_letter $digit '_' $big_letter]*
-\define $LargeId = [$big_letter] [$small_letter $digit '_' $big_letter]* + "_"
+\define $LargeId = [$big_letter '_'] [$small_letter $digit '_' $big_letter]*
 
 \xmatch ".":
     Right (T_dot (SLoc (row1, col1) (row2, col2)))
@@ -39,8 +39,6 @@
     Right (T_quest (SLoc (row1, col1) (row2, col2)))
 \xmatch ",":
     Right (T_comma (SLoc (row1, col1) (row2, col2)))
-\xmatch "=>":
-    Right (T_fatarrow (SLoc (row1, col1) (row2, col2)))
 \xmatch ":-":
     Right (T_if (SLoc (row1, col1) (row2, col2)))
 \xmatch "=":
@@ -109,7 +107,7 @@
     readLiteralToken (row1, col1) (T_str_lit (SLoc (row1, col1) (row2, col2))) this
 \xmatch "\'" $CharChar "\'":
     readLiteralToken (row1, col1) (T_chr_lit (SLoc (row1, col1) (row2, col2))) this
-\xmatch [' ' '\n']+: skip
+\xmatch [' ' '\t' '\r' '\n']+: skip
 \xmatch "%" [$comment_char \ '\n']*: skip
 \xmatch "(*" ([$comment_char \ '*'] + "*"+ [$comment_char \ '*' \ ')'])* "*"+ ")": skip
 
