@@ -1,0 +1,396 @@
+{
+  "description": "Diagnostics and differential validation for clause-head environment optimization. Use environment-results.json for the interleaved end-to-end Teyjus comparison.",
+  "baseline_revision": "06dd8ce",
+  "native_search": {
+    "method": "C-only diagnostic: load wordcode once; each iteration create VM, enumerate all answers and exhaustion, destroy; CLOCK_MONOTONIC search wall time reported separately; interleaved groups, no warmup",
+    "compiler": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "flags": "-O3 -std=c11",
+    "cpu_affinity": [
+      2
+    ],
+    "cpu": "Intel(R) Core(TM) Ultra 9 275HX",
+    "iterations_per_group": 30,
+    "samples": [
+      {
+        "variant": "baseline",
+        "sample": 0,
+        "output": "iterations=30 create_us=2.837 search_us=8937.848 destroy_us=0.485"
+      },
+      {
+        "variant": "head-env",
+        "sample": 0,
+        "output": "iterations=30 create_us=2.329 search_us=4552.076 destroy_us=0.347"
+      },
+      {
+        "variant": "baseline",
+        "sample": 1,
+        "output": "iterations=30 create_us=2.711 search_us=8897.159 destroy_us=0.460"
+      },
+      {
+        "variant": "head-env",
+        "sample": 1,
+        "output": "iterations=30 create_us=2.435 search_us=4561.110 destroy_us=0.449"
+      },
+      {
+        "variant": "baseline",
+        "sample": 2,
+        "output": "iterations=30 create_us=2.807 search_us=8990.871 destroy_us=0.525"
+      },
+      {
+        "variant": "head-env",
+        "sample": 2,
+        "output": "iterations=30 create_us=2.641 search_us=4695.401 destroy_us=0.463"
+      }
+    ],
+    "wordcode_sha256": "f6d46c1243932d76ab3644cca6b679ae5994ad11145e15a13348440fa845a078",
+    "baseline_source_sha256": "b31068e1cb502b225d576c88c93d8a5887166240dc3eabf071c41286c0e38380",
+    "candidate_source_sha256": "4b82b1b4c44b1222d50b17a7534ac984690191fb651855eb9a813f3f8f8bf87c",
+    "einstein_answer_check": "one answer and exhaustion; full prefix-tree constants and sharing alpha-equivalent; initial query variable ids preserved"
+  },
+  "host_overhead": {
+    "description": "Host-side profile of baseline 06dd8ce Einstein sigma-P bytecode replay; measured before the lazy clause-environment optimization, using a captured baseline C source.",
+    "baseline_revision": "06dd8ce42ae06b563e660635b7a9fe42766338ba",
+    "compiler": "GHC 9.6.7",
+    "cpu_affinity": [
+      0
+    ],
+    "units": "All phase timings are milliseconds; answer_words is a count.",
+    "build_flags": [
+      "-O2",
+      "-optc-O3",
+      "-w",
+      "-rtsopts",
+      "-with-rtsopts=-V0.001",
+      "-isrc",
+      "-Isrc/X"
+    ],
+    "build_commands": {
+      "phases": "cabal exec -- ghc -O2 -optc-O3 -w -rtsopts -with-rtsopts=-V0.001 -isrc /tmp/ppap-speed3/HostProfile.hs /tmp/ppap-speed3/machine-baseline.c -Isrc/X -odir /tmp/ppap-speed3/host-obj -hidir /tmp/ppap-speed3/host-obj -o /tmp/ppap-speed3/host-profile > /tmp/ppap-speed3/host-profile-build.log 2>&1",
+      "presentation": "cabal exec -- ghc -O2 -optc-O3 -w -rtsopts -with-rtsopts=-V0.001 -isrc /tmp/ppap-speed3/HostPresentation.hs /tmp/ppap-speed3/machine-baseline.c src/X/higher_machine.c src/X/term.c -Isrc/X -odir /tmp/ppap-speed3/presentation-obj -hidir /tmp/ppap-speed3/presentation-obj -o /tmp/ppap-speed3/host-presentation > /tmp/ppap-speed3/host-presentation-build.log 2>&1"
+    },
+    "run_commands": {
+      "phases": "taskset -c 0 /tmp/ppap-speed3/host-profile /tmp/ppap-speed/auto.hbc > /tmp/ppap-speed3/host-profile.log",
+      "presentation": "taskset -c 0 /tmp/ppap-speed3/host-presentation /tmp/ppap-speed3/automatic.hbc > /tmp/ppap-speed3/host-presentation.out 2> /tmp/ppap-speed3/host-presentation.log"
+    },
+    "artifact": {
+      "query": "sigma P\\ P = answer, P Houses.",
+      "sha256": "eabf545c53a8820ca93087a84a5a925132fc2aa3daa8b8b599895d4e1fd3d040",
+      "earlier_artifact_sha256": "eabf545c53a8820ca93087a84a5a925132fc2aa3daa8b8b599895d4e1fd3d040",
+      "bytes": 3780,
+      "note": "Earlier auto.hbc and freshly emitted automatic.hbc are byte-for-byte identical. Houses is visible; only P is existentially bound."
+    },
+    "sources_sha256": {
+      "/tmp/ppap-speed3/machine-baseline.c": "b31068e1cb502b225d576c88c93d8a5887166240dc3eabf071c41286c0e38380",
+      "src/Hol/V1/Bytecode.hs": "647296b2c43c349fbdaa5b3c06320d60b9d24d1380dbaf2bbfa7a531d5c3a1af",
+      "src/Hol/V1/Main.hs": "165d203e729e677c296f82c670927f215cf3087c69f38c6311cab8e063ae4da5",
+      "src/Hol/V1/Runtime.hs": "4c7ab09203faa6f47a1c60e759a03b77e9e3c28488bb6db0101af4eb9deab425",
+      "src/X/Machine.hs": "d199671c76af8626d17a472a257c52dc8d0b0aa7266c13d1ee5797600d6da574"
+    },
+    "method": {
+      "timer": "GHC.Clock.getMonotonicTimeNSec",
+      "samples": "12 iterations in one process per profiler; median includes first iteration, no outlier removal.",
+      "phases": "Read via actual readFileNow, attempt deserializeFullBytecode, deserializeBytecode including full validation, second validateBytecode, native machine construction, first answer, exhaustive next answer, explicit machine close.",
+      "presentation": "Freshly read/deserialized artifact and fresh baseline native machine each iteration; measure actual Runtime.decodeAnswer and Main.printBytecodeAnswer, with explicit stdout flush to a regular file. Stops after the first native answer.",
+      "presentation_laziness": "decodeAnswer timing forces Either to obtain the binding; rendering forces remaining lazy binding/term work, so the two presentation phases should be considered together.",
+      "limitations": [
+        "These diagnostic profilers exclude process startup/termination and the ppap shell. They are not whole-process benchmark replacements.",
+        "Warm repeated iterations may differ from first-process initialization; first rows are retained explicitly.",
+        "Separate profiler medians should not be added as an exact decomposition of separately measured process medians.",
+        "No tracked source was modified; public API validation and both loader/runtime validation calls remain unchanged."
+      ]
+    },
+    "phases": {
+      "raw_rows": [
+        {
+          "read": 0.134526,
+          "full_probe": 0.016623,
+          "decode_validate": 0.847695,
+          "revalidate": 0.145865,
+          "create": 0.018112,
+          "first": 4.64748,
+          "exhaust": 4.470505,
+          "close": 0.00911,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.09521,
+          "full_probe": 0.004369,
+          "decode_validate": 0.846679,
+          "revalidate": 0.084952,
+          "create": 0.012135,
+          "first": 4.775789,
+          "exhaust": 4.502928,
+          "close": 0.001615,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.071407,
+          "full_probe": 0.0025,
+          "decode_validate": 0.384906,
+          "revalidate": 0.077749,
+          "create": 0.010654,
+          "first": 4.546361,
+          "exhaust": 4.609794,
+          "close": 0.001916,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.054749,
+          "full_probe": 0.003139,
+          "decode_validate": 0.758798,
+          "revalidate": 0.077546,
+          "create": 0.007575,
+          "first": 4.902333,
+          "exhaust": 4.484222,
+          "close": 0.002078,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.052702,
+          "full_probe": 0.002825,
+          "decode_validate": 0.427755,
+          "revalidate": 0.077587,
+          "create": 0.008998,
+          "first": 4.627523,
+          "exhaust": 4.592806,
+          "close": 0.001457,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.037782,
+          "full_probe": 0.00201,
+          "decode_validate": 0.382589,
+          "revalidate": 0.117469,
+          "create": 0.010338,
+          "first": 4.603598,
+          "exhaust": 4.481641,
+          "close": 0.000942,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.042693,
+          "full_probe": 0.001843,
+          "decode_validate": 0.387471,
+          "revalidate": 0.079285,
+          "create": 0.007318,
+          "first": 4.767697,
+          "exhaust": 4.667412,
+          "close": 0.00166,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.03811,
+          "full_probe": 0.001919,
+          "decode_validate": 0.286915,
+          "revalidate": 0.09981,
+          "create": 0.006809,
+          "first": 4.618682,
+          "exhaust": 4.667612,
+          "close": 0.001518,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.035326,
+          "full_probe": 0.001911,
+          "decode_validate": 0.308205,
+          "revalidate": 0.054893,
+          "create": 0.007173,
+          "first": 4.686845,
+          "exhaust": 4.572421,
+          "close": 0.001064,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.033023,
+          "full_probe": 0.003427,
+          "decode_validate": 0.317621,
+          "revalidate": 0.058187,
+          "create": 0.006856,
+          "first": 4.637861,
+          "exhaust": 4.530888,
+          "close": 0.000924,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.029607,
+          "full_probe": 0.001377,
+          "decode_validate": 0.247832,
+          "revalidate": 0.050229,
+          "create": 0.007375,
+          "first": 4.608526,
+          "exhaust": 4.622657,
+          "close": 0.002036,
+          "answer_words": 127.0
+        },
+        {
+          "read": 0.038179,
+          "full_probe": 0.002173,
+          "decode_validate": 0.335635,
+          "revalidate": 0.055774,
+          "create": 0.006899,
+          "first": 4.574163,
+          "exhaust": 4.56846,
+          "close": 0.001021,
+          "answer_words": 127.0
+        }
+      ],
+      "median_ms": {
+        "read": 0.040436,
+        "full_probe": 0.0023365,
+        "decode_validate": 0.3837475,
+        "revalidate": 0.077668,
+        "create": 0.007475,
+        "first": 4.6326920000000005,
+        "exhaust": 4.5704405,
+        "close": 0.0015665
+      },
+      "first_row": {
+        "read": 0.134526,
+        "full_probe": 0.016623,
+        "decode_validate": 0.847695,
+        "revalidate": 0.145865,
+        "create": 0.018112,
+        "first": 4.64748,
+        "exhaust": 4.470505,
+        "close": 0.00911,
+        "answer_words": 127.0
+      }
+    },
+    "presentation": {
+      "raw_rows": [
+        {
+          "decode_answer": 0.085533,
+          "render_and_flush": 0.148829
+        },
+        {
+          "decode_answer": 0.032204,
+          "render_and_flush": 0.056603
+        },
+        {
+          "decode_answer": 0.033161,
+          "render_and_flush": 0.063235
+        },
+        {
+          "decode_answer": 0.03578,
+          "render_and_flush": 0.058393
+        },
+        {
+          "decode_answer": 0.03914,
+          "render_and_flush": 0.083066
+        },
+        {
+          "decode_answer": 0.042144,
+          "render_and_flush": 0.077525
+        },
+        {
+          "decode_answer": 0.033742,
+          "render_and_flush": 0.056562
+        },
+        {
+          "decode_answer": 0.03419,
+          "render_and_flush": 0.0439
+        },
+        {
+          "decode_answer": 0.035749,
+          "render_and_flush": 0.061462
+        },
+        {
+          "decode_answer": 0.032781,
+          "render_and_flush": 0.045976
+        },
+        {
+          "decode_answer": 0.07777,
+          "render_and_flush": 0.058445
+        },
+        {
+          "decode_answer": 0.038011,
+          "render_and_flush": 0.076341
+        }
+      ],
+      "median_ms": {
+        "decode_answer": 0.035764500000000005,
+        "render_and_flush": 0.0599535
+      },
+      "first_row": {
+        "decode_answer": 0.085533,
+        "render_and_flush": 0.148829
+      }
+    },
+    "prior_empty_process_evidence": {
+      "source": "example/teyjus/runtime-profile.json:final_empty_process",
+      "method": "Final optimized GHC9.6.7 executable, default embedded RTS flags, CPU0, two warmups then nine fresh empty-REPL processes.",
+      "wall_median_ms": 1.543018,
+      "cpu_median_ms": 0.7670000000000003,
+      "note": "Existing measurement from the preceding optimization turn; not remeasured in this diagnostic window."
+    },
+    "decision": "No Haskell host change: duplicate validation costs a median 0.077668 ms and wrong-format probing 0.0023365 ms. The existing public API checks are retained; parser, FFI preparation and answer presentation are small relative to roughly 9.2 ms baseline native search.",
+    "profile_sources": {
+      "HostProfile.hs": "module Main where\n\nimport Control.Exception (evaluate)\nimport Control.Monad (replicateM_)\nimport Data.Either (isLeft)\nimport GHC.Clock (getMonotonicTimeNSec)\nimport Hol.V1.Bytecode\nimport Hol.V1.FullBytecode\nimport qualified X.Machine as Native\nimport System.Environment (getArgs)\nimport Text.Printf (printf)\nimport Z.System.File (readFileNow)\n\ntimed :: IO a -> IO (a, Double)\ntimed action = do\n    begin <- getMonotonicTimeNSec\n    value <- action\n    end <- getMonotonicTimeNSec\n    return (value, fromIntegral (end - begin) / 1000000)\n\nmain :: IO ()\nmain = do\n    [path] <- getArgs\n    replicateM_ 12 $ do\n        (input, reading) <- timed (readFileNow path)\n        source <- maybe (ioError (userError \"read failed\")) return input\n        (notFull, fullProbe) <- timed (evaluate (isLeft (deserializeFullBytecode source)))\n        (program, decoding) <- timed (either (ioError . userError) return (deserializeBytecode source))\n        (_, revalidating) <- timed (either (ioError . userError) return (validateBytecode program))\n        (machine, creating) <- timed (Native.createMachine (bytecodeWords program))\n        (answer, first) <- timed (Native.nextAnswer machine)\n        (rest, exhaust) <- timed (Native.nextAnswer machine)\n        (_, closing) <- timed (Native.closeMachine machine)\n        case (notFull, answer, rest) of\n            (True, Right (Just encoded), Right Nothing) -> printf \"read=%.6f full_probe=%.6f decode_validate=%.6f revalidate=%.6f create=%.6f first=%.6f exhaust=%.6f close=%.6f answer_words=%d\\n\" reading fullProbe decoding revalidating creating first exhaust closing (length encoded)\n            other -> print other\n",
+      "HostPresentation.hs": "module Main where\n\nimport Control.Monad (replicateM_)\nimport GHC.Clock (getMonotonicTimeNSec)\nimport Hol.V1.Bytecode\nimport qualified Hol.V1.Main as V1\nimport qualified Hol.V1.Runtime as Runtime\nimport qualified X.Machine as Native\nimport System.Environment (getArgs)\nimport System.IO (hFlush, stderr, stdout)\nimport Text.Printf (hPrintf)\nimport Z.System.File (readFileNow)\nimport Z.Utils (execUniqueT)\n\ntimed :: IO a -> IO (a, Double)\ntimed action = do\n    begin <- getMonotonicTimeNSec\n    value <- action\n    end <- getMonotonicTimeNSec\n    return (value, fromIntegral (end - begin) / 1000000)\n\nmain :: IO ()\nmain = do\n    [path] <- getArgs\n    replicateM_ 12 $ do\n        source <- readFileNow path >>= maybe (ioError (userError \"read failed\")) return\n        program <- either (ioError . userError) return (deserializeBytecode source)\n        Native.withMachine (bytecodeWords program) $ \\machine -> do\n            answer <- Native.nextAnswer machine\n            case answer of\n                Right (Just encoded) -> do\n                    (binding, decoding) <- timed (execUniqueT (Runtime.decodeAnswer program encoded) >>= either (ioError . userError) return)\n                    (_, printing) <- timed (V1.printBytecodeAnswer 1 binding >> hFlush stdout)\n                    hPrintf stderr \"decode_answer=%.6f render_and_flush=%.6f\\n\" decoding printing\n                other -> ioError (userError (show other))\n"
+    }
+  },
+  "differential_validation": {
+    "seed_start": 20261110,
+    "seed_count": 5000,
+    "generated_wordcode_sha256": "49c1f9c98e12a5a3f827458b7804fbf7436d0f6c6752ed475d8cb5296a007c66",
+    "statistics": {
+      "cases": 5000,
+      "answers": 39957,
+      "nonempty_cases": 4064,
+      "multiple_answers_cases": 3128,
+      "residual_answers": 30239,
+      "structured_answers": 13770,
+      "empty_cases": 936
+    },
+    "baseline_library_sha256": "a1ff7bcd205c7c0f7decd659e0b1b0b7c2032b02fb315ffb1ed22e269741d592",
+    "candidate_library_sha256": "3c27c43b784ae6688dafb8f7208435028a000dc4a00e6d1acf0957c984f0a751",
+    "normalization": "Preserve query IDs < query_slots exactly; alpha-rename fresh IDs per answer by first occurrence; compare every slot and binding membership in ordered full answer sequences.",
+    "description": "Independent deterministic bounded first-order wordcode differential correctness check; not a timing benchmark.",
+    "baseline_revision": "06dd8ce42ae06b563e660635b7a9fe42766338ba",
+    "working_directory": "/home/lim/portfolio/ppap",
+    "compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+    "compiler_flags": [
+      "-O2",
+      "-std=c11",
+      "-shared",
+      "-fPIC",
+      "-Isrc/X"
+    ],
+    "cpu_affinity": [
+      2
+    ],
+    "source_sha256": {
+      "baseline": "b31068e1cb502b225d576c88c93d8a5887166240dc3eabf071c41286c0e38380",
+      "tested_candidate": "64b3979b0166c06dcfbbae1c97bfc820c7d7645dfd891a14ae9f579c7265df6f",
+      "tracked_candidate": "4b82b1b4c44b1222d50b17a7534ac984690191fb651855eb9a813f3f8f8bf87c",
+      "generator": "9ef4aa889bd417ac91fc94805cbd0d548f396526bcc603a75535c757f0f82df1",
+      "fixture_builder_module": "69a85a255576f1cbed7309396063af7e911680d198fc9e1881437eba5e91e30d"
+    },
+    "candidate_source_equivalence": "The tested candidate is /tmp/ppap-speed3/machine-head-env.c. Current src/X/machine.c differs only by two explanatory comments: initial-query fresh representatives and completion of body slots before entry. Token sequences after stripping C block comments match exactly.",
+    "build_commands": [
+      "cc -O2 -std=c11 -shared -fPIC -Isrc/X /tmp/ppap-speed3/machine-baseline.c -o /tmp/ppap-speed3/diff-baseline.so",
+      "cc -O2 -std=c11 -shared -fPIC -Isrc/X /tmp/ppap-speed3/machine-head-env.c -o /tmp/ppap-speed3/diff-candidate.so"
+    ],
+    "run_command": "taskset -c 2 python3 /tmp/ppap-speed3/differential.py /tmp/ppap-speed3/diff-baseline.so /tmp/ppap-speed3/diff-candidate.so --count 5000",
+    "method": {
+      "generator": "Python random.Random(seed), 5000 consecutive deterministic seeds; Builder extracted using ast from test/v1/native_fixtures.py.",
+      "programs": "Query has 1\u20133 slots; predicates p/2 and q/1 each have 2\u20134 clauses. Structured/repeated head variables, body-only variables, depth-bounded terms and bodies, CHOICE/UNIFY/CUT/FAIL and finite p-to-q calls; q cannot recurse.",
+      "lifetime_stress": "Every third seed forces the first p clause to bind the same body-only variable in both arms of a body CHOICE. Other cases exercise head subtree materialization and repeated-variable sharing.",
+      "execution": "Load baseline and candidate as separate shared libraries via ctypes. Create one machine per program, enumerate through complete exhaustion, verify stable exhaustion, always destroy in finally.",
+      "comparison": "Compare complete ordered sequences, including answer count, constant/term structure, variable sharing, all query slot identities and binding membership. Only fresh IDs at or above query_slots are alpha-normalized by first appearance separately per answer.",
+      "bounds": "Native result bound 10000 per case; generated programs have no recursion. Assertion failures save seed, full wordcode, and observed answers.",
+      "scope": "Correctness differential against previous VM implementation, not an independent declarative semantics oracle and not exhaustive over all valid wordcode."
+    }
+  },
+  "differential_probe_source": "#!/usr/bin/env python3\n\"\"\"Bounded generated wordcode differential checks for native VM changes.\"\"\"\n\nimport argparse\nimport ast\nimport ctypes\nimport hashlib\nimport json\nimport random\nfrom collections import Counter\nfrom pathlib import Path\n\n\nroot = Path('/home/lim/portfolio/ppap')\nmodule = ast.parse((root / 'test/v1/native_fixtures.py').read_text())\nbuilder = next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == 'Builder')\nexec(compile(ast.Module(body=[builder], type_ignores=[]), '<fixture Builder>', 'exec'))\n\n\nclass Native:\n    def __init__(self, path):\n        self.library = ctypes.CDLL(str(Path(path).resolve()))\n        for name, arguments, result in [\n            ('create', [ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t], ctypes.c_void_p),\n            ('next', [ctypes.c_void_p], ctypes.c_int),\n            ('answer_size', [ctypes.c_void_p], ctypes.c_size_t),\n            ('answer', [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int64), ctypes.c_size_t], ctypes.c_int),\n            ('error', [ctypes.c_void_p], ctypes.c_char_p),\n            ('destroy', [ctypes.c_void_p], None),\n        ]:\n            function = getattr(self.library, 'hol_v1_' + name)\n            function.argtypes = arguments\n            function.restype = result\n            setattr(self, name, function)\n\n    def answers(self, words):\n        code = (ctypes.c_int64 * len(words))(*words)\n        machine = self.create(code, len(words))\n        assert machine, 'machine allocation failed'\n        result = []\n        try:\n            for _ in range(10001):\n                status = self.next(machine)\n                if status == 0:\n                    assert self.next(machine) == 0, 'exhaustion must remain stable'\n                    return result\n                assert status > 0, self.error(machine).decode()\n                if status == 2:\n                    continue\n                count = self.answer_size(machine)\n                output = (ctypes.c_int64 * count)()\n                assert self.answer(machine, output, count) == 1\n                result.append(normalize(list(output), words[5]))\n            raise AssertionError('bounded program exceeded 10000 native results')\n        finally:\n            self.destroy(machine)\n\n\ndef normalize(words, query_slots):\n    offset = 0\n    fresh = {}\n\n    def term():\n        nonlocal offset\n        tag = words[offset]\n        offset += 1\n        if tag == 2:\n            return ('app', term(), term())\n        value = words[offset]\n        offset += 1\n        if tag == 1:\n            return ('const', value)\n        assert tag == 0 and value >= 0\n        if value < query_slots:\n            return ('query', value)\n        return ('fresh', fresh.setdefault(value, len(fresh)))\n\n    terms = tuple(term() for _ in range(query_slots))\n    assert offset == len(words)\n    # Initial variable identity is intentionally retained, including whether\n    # a visible query slot has a binding rather than mapping to itself.\n    membership = tuple(value != ('query', index) for index, value in enumerate(terms))\n    return terms, membership\n\n\ndef generate(seed):\n    rng = random.Random(seed)\n    b = Builder(rng.randint(1, 3))\n    constants = [b.c(index) for index in range(8)]\n    variables = [b.v(index) for index in range(7)]\n    ret, failure = b.i(0), b.i(1)\n\n    def term(slots, depth=2):\n        pick = rng.random()\n        if slots and pick < 0.60:\n            return variables[rng.randrange(slots)]\n        if depth and pick < 0.84:\n            constructor = constants[rng.choice([2, 3])]\n            arguments = [term(slots, depth - 1) for _ in range(rng.randint(1, 2))]\n            return b.apps(constructor, *arguments)\n        return constants[rng.randrange(4, 8)]\n\n    def body(slots, depth, next_pc=ret, calls=True):\n        if not depth:\n            return next_pc\n        pick = rng.random()\n        if pick < 0.23:\n            return b.i(4, body(slots, depth - 1, next_pc, calls), body(slots, depth - 1, next_pc, calls))\n        continuation = body(slots, depth - 1, next_pc, calls)\n        if pick < 0.35:\n            return b.i(5, continuation)\n        if pick < 0.42:\n            return failure\n        if calls and pick < 0.65:\n            return b.i(2, b.app(constants[1], term(slots)), continuation)\n        if pick < 0.85:\n            return b.i(3, variables[rng.randrange(slots)], term(slots), continuation)\n        return continuation\n\n    for index in range(rng.randint(2, 4)):\n        slots = rng.randint(2, 6)\n        if index == 0:\n            # Frequently exercise repeated variables and deferred structure\n            # construction; reserve the final slot for body-only variables.\n            head_arguments = rng.choice([\n                [variables[0], variables[0]],\n                [variables[0], variables[1]],\n                [b.app(constants[2], variables[0]), variables[0]],\n                [variables[0], b.app(constants[2], variables[0])],\n            ])\n        else:\n            head_arguments = [term(slots - 1), term(slots - 1)]\n        entry = body(slots, rng.randint(1, 3))\n        if seed % 3 == 0 and index == 0:\n            # The same body-only cell is instantiated on both sides of a\n            # choice. Restoring a stale lazy cell would lose its heap node.\n            hidden = variables[slots - 1]\n            entry = b.i(4, b.i(3, hidden, constants[4], entry), b.i(3, hidden, constants[5], entry))\n        b.cs.append((0, slots, b.apps(constants[0], *head_arguments), entry))\n\n    for index in range(rng.randint(2, 4)):\n        slots = rng.randint(1, 3)\n        argument = variables[0] if index == 0 else term(slots)\n        b.cs.append((1, slots, b.app(constants[1], argument), body(slots, rng.randint(0, 2), calls=False)))\n\n    args = [variables[0], variables[min(1, b.q - 1)]] if seed % 2 else [term(b.q), term(b.q)]\n    continuation = body(b.q, rng.randint(0, 2))\n    entry = b.i(2, b.apps(constants[0], *args), continuation)\n    if seed % 4 == 0:\n        entry = b.i(4, entry, b.i(2, b.apps(constants[0], term(b.q), term(b.q)), ret))\n    return b.code(entry)\n\n\ndef main():\n    parser = argparse.ArgumentParser()\n    parser.add_argument('baseline')\n    parser.add_argument('candidate')\n    parser.add_argument('--count', type=int, default=5000)\n    parser.add_argument('--seed', type=int, default=20261110)\n    parser.add_argument('--output', default='/tmp/ppap-speed3/differential-results.json')\n    args = parser.parse_args()\n    baseline, candidate = Native(args.baseline), Native(args.candidate)\n    statistics = Counter()\n    digest = hashlib.sha256()\n    for case in range(args.count):\n        seed = args.seed + case\n        words = generate(seed)\n        digest.update(json.dumps(words).encode())\n        try:\n            before = baseline.answers(words)\n            after = candidate.answers(words)\n            assert before == after, 'complete alpha-normalized answer sequences differ'\n        except Exception as error:\n            failure = dict(seed=seed, words=words, error=str(error), before=locals().get('before'), after=locals().get('after'))\n            Path(args.output).with_suffix('.failure.json').write_text(json.dumps(failure, indent=4))\n            raise\n        statistics['cases'] += 1\n        statistics['answers'] += len(before)\n        statistics['nonempty_cases' if before else 'empty_cases'] += 1\n        statistics['multiple_answers_cases'] += len(before) > 1\n        statistics['residual_answers'] += sum('fresh' in repr(answer) for answer in before)\n        statistics['structured_answers'] += sum('app' in repr(answer) for answer in before)\n    summary = dict(seed_start=args.seed, seed_count=args.count, generated_wordcode_sha256=digest.hexdigest(), statistics=statistics,\n        baseline_library_sha256=hashlib.sha256(Path(args.baseline).read_bytes()).hexdigest(),\n        candidate_library_sha256=hashlib.sha256(Path(args.candidate).read_bytes()).hexdigest(),\n        normalization='Preserve query IDs < query_slots exactly; alpha-rename fresh IDs per answer by first occurrence; compare every slot and binding membership in ordered full answer sequences.')\n    Path(args.output).write_text(json.dumps(summary, indent=4) + '\\n')\n    print(json.dumps(summary, indent=4))\n\n\nif __name__ == '__main__':\n    main()\n",
+  "regression_validation": {
+    "cabal_ghc": "9.6.7 optimized build passed",
+    "stack_ghc": "9.10.3 optimized build passed",
+    "smoke": {
+      "passed": 164,
+      "failed": 0,
+      "missing": 0
+    },
+    "native": "ASan/UBSan/leak detection and102 allocation-failure points passed. New fixtures also pass on baseline code."
+  }
+}

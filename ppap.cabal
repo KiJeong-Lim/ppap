@@ -12,6 +12,7 @@ build-type: Simple
 cabal-version: 2.0
 extra-source-files:
   doc/HolBETA.txt
+  doc/HolV1.txt
   test/SmokeMain.hs
   test/smoke.sh
   test/alpha1/*.hol
@@ -72,12 +73,26 @@ extra-source-files:
   test/typecheck/*.expected.txt
   test/typecheck/*.hs
   test/typecheck/*.sh
+  test/v1/*.hs
+  test/v1/*.sh
+  test/v1/native_fixtures.py
+  test/v1/higher_native_fixtures.py
+  test/v1/ho_compare.py
+  src/X/machine_test.c
+  src/X/machine.h
+  src/X/higher_machine.h
+  src/X/term.h
+  src/X/higher_machine_test.c
+  src/X/term_test.c
+  src/X/term_compare.c
 
 executable ppap
   hs-source-dirs: src
   default-language: Haskell2010
   main-is: Main.hs
   ghc-options: -O2 -funbox-strict-fields -fspec-constr -fexpose-all-unfoldings -fspecialise-aggressively
+  if os(linux) && impl(ghc < 9.8)
+    ghc-options: -with-rtsopts=-V0.001
   build-depends: base >= 4.7 && < 5, array >= 0.5, containers >= 0.6, transformers >= 0.5, pretty-terminal >= 0.1, QuickCheck >= 2.13, checkers >= 0.5, directory >= 1.3, vector >= 0.12, math-functions >= 0.3, extra >= 1.7, filepath >= 1.5, process >= 1.0, random >= 1.0
   other-modules:
     Hol.ALPHA1.Back.BackEnd
@@ -146,6 +161,7 @@ executable ppap
     Hol.BETA.Header
     Hol.BETA.HOPU
     Hol.BETA.Main
+    Hol.BETA.Answer
     Hol.BETA.ModuleLoader
     Hol.BETA.Notation
     Hol.BETA.PlanHolLexer
@@ -154,6 +170,13 @@ executable ppap
     Hol.BETA.TermNode
     Hol.BETA.TypeChecker
     Hol.V1.Main
+    Hol.V1.Bytecode
+    Hol.V1.Compiler
+    Hol.V1.Runtime
+    Hol.V1.FullBytecode
+    Hol.V1.FullCompiler
+    Hol.V1.Services
+    Hol.V1.FullRuntime
     Hol.Main
     IsabelleHol.Dependecies
     Json.JsonAst
@@ -169,6 +192,7 @@ executable ppap
     PGS.Main
     TEST.Main
     X.Machine
+    X.HigherMachine
     Y.Text.Ppr.Viewer
     Y.Text.Ppr
     Y.Base
@@ -201,8 +225,13 @@ executable ppap
     src/X
   includes:
     machine.h
+    higher_machine.h
+    term.h
   c-sources:
     src/X/machine.c
+    src/X/higher_machine.c
+    src/X/term.c
+  cc-options: -O3 -std=c11 -Wall -Wextra
 
 test-suite hol-beta-smoke
   type: exitcode-stdio-1.0

@@ -1,0 +1,602 @@
+{
+  "description": "Diagnostic breakdown for the 2026-11-10 Hol V1 runtime optimization. These isolated probes are distinct from the interleaved full-process comparison in runtime-results.json.",
+  "baseline_revision": "765d284",
+  "units": "Seconds unless explicitly labelled ms/us/bytes.",
+  "initial_process_breakdown": {
+    "method": "GHC 9.6.7 original optimized binary, Linux CPU 0, nine recorded fresh processes after two warmups per case. Wall clock includes process startup, complete execution and exit. CPU is child user+system. Empty REPL input is a newline.",
+    "measurements": {
+      "exit": {
+        "wall_median": 0.010717258999648038,
+        "cpu_median": 0.000925,
+        "samples": [
+          [
+            0.010746986001322512,
+            0.000925
+          ],
+          [
+            0.010790970000016387,
+            0.0009620000000000002
+          ],
+          [
+            0.010847487999853911,
+            0.0010599999999999997
+          ],
+          [
+            0.010716856000726693,
+            0.0009499999999999999
+          ],
+          [
+            0.010584531000858988,
+            0.0007770000000000003
+          ],
+          [
+            0.010717258999648038,
+            0.0008779999999999994
+          ],
+          [
+            0.010725821999585605,
+            0.0009680000000000001
+          ],
+          [
+            0.010570264001216856,
+            0.0007719999999999997
+          ],
+          [
+            0.010538161999647855,
+            0.0007439999999999999
+          ]
+        ]
+      },
+      "true_replay": {
+        "wall_median": 0.01069554100104142,
+        "cpu_median": 0.0010570000000000002,
+        "samples": [
+          [
+            0.010703340998588828,
+            0.0010570000000000002
+          ],
+          [
+            0.010742954000306781,
+            0.0011799999999999983
+          ],
+          [
+            0.01069554100104142,
+            0.0011149999999999992
+          ],
+          [
+            0.010590685998977278,
+            0.0009749999999999997
+          ],
+          [
+            0.010596022999379784,
+            0.0009880000000000006
+          ],
+          [
+            0.010544407001361833,
+            0.0009989999999999995
+          ],
+          [
+            0.01060471900018456,
+            0.0009309999999999991
+          ],
+          [
+            0.010732697999628726,
+            0.0011040000000000004
+          ],
+          [
+            0.010712851999414852,
+            0.0011709999999999997
+          ]
+        ]
+      },
+      "einstein_replay": {
+        "wall_median": 0.02078060399981041,
+        "cpu_median": 0.016518000000000005,
+        "samples": [
+          [
+            0.020686355001089396,
+            0.016029999999999992
+          ],
+          [
+            0.020743505998325418,
+            0.016210999999999996
+          ],
+          [
+            0.020904106999296346,
+            0.01677300000000001
+          ],
+          [
+            0.020961538000847213,
+            0.016957999999999994
+          ],
+          [
+            0.02082774900009099,
+            0.016518000000000005
+          ],
+          [
+            0.0207101470005,
+            0.016039999999999985
+          ],
+          [
+            0.020686121999460738,
+            0.016105000000000008
+          ],
+          [
+            0.020787842999197892,
+            0.017227999999999993
+          ],
+          [
+            0.02078060399981041,
+            0.017639000000000016
+          ]
+        ]
+      },
+      "einstein_source": {
+        "wall_median": 0.020888625000225147,
+        "cpu_median": 0.01907500000000001,
+        "samples": [
+          [
+            0.020839017000980675,
+            0.019316
+          ],
+          [
+            0.02078783800061501,
+            0.018812999999999996
+          ],
+          [
+            0.020806271999390447,
+            0.01864100000000002
+          ],
+          [
+            0.020826287000090815,
+            0.01907500000000001
+          ],
+          [
+            0.020888625000225147,
+            0.01882199999999995
+          ],
+          [
+            0.02093036999940523,
+            0.019838000000000022
+          ],
+          [
+            0.02099582699884195,
+            0.019964000000000023
+          ],
+          [
+            0.020922720001181006,
+            0.019009000000000005
+          ],
+          [
+            0.020958283999789273,
+            0.02014999999999998
+          ]
+        ]
+      }
+    }
+  },
+  "ticker_experiment": {
+    "method": "Same pre-optimization sources and GHC 9.6.7 compiler flags, relinked with -rtsopts to compare the default tick and +RTS -V0.001. CPU 0, nine recorded fresh processes after two warmups. No timer disabling.",
+    "measurements": {
+      "exit_default": {
+        "median": 0.010713663999922574,
+        "samples": [
+          0.010654374998921412,
+          0.010713663999922574,
+          0.010664268000255106,
+          0.010626668999975664,
+          0.01061980099984794,
+          0.01076868500058481,
+          0.010784957999931066,
+          0.010854341999220196,
+          0.010820288000104483
+        ]
+      },
+      "exit_tick1ms": {
+        "median": 0.0016339150006388081,
+        "samples": [
+          0.0018477049998182338,
+          0.0017279950006923173,
+          0.0015872610001679277,
+          0.0015418950006278465,
+          0.0016174129996215925,
+          0.0015892249994067242,
+          0.001958032999027637,
+          0.0018111169993062504,
+          0.0016339150006388081
+        ]
+      },
+      "einstein_default": {
+        "median": 0.021090951999212848,
+        "samples": [
+          0.021141965999049717,
+          0.021071225000923732,
+          0.021124388998941868,
+          0.021010157001001062,
+          0.021210454000538448,
+          0.02099159599856648,
+          0.021090951999212848,
+          0.021099069999763742,
+          0.02109058499991079
+        ]
+      },
+      "einstein_tick1ms": {
+        "median": 0.017048374000296462,
+        "samples": [
+          0.01716918199963402,
+          0.01703229800114059,
+          0.01723811199917691,
+          0.017048374000296462,
+          0.01910966299874417,
+          0.017027338000843883,
+          0.017175482000311604,
+          0.016977875000520726,
+          0.015990087000318454
+        ]
+      }
+    },
+    "references": [
+      "https://github.com/ghc/ghc/blob/ghc-9.6.7-release/rts/posix/ticker/Pthread.c",
+      "https://github.com/ghc/ghc/blob/ghc-9.8.1-release/rts/posix/ticker/TimerFd.c"
+    ]
+  },
+  "native_search": {
+    "method": "Diagnostic C-only measurements. Read wordcode once; each timed iteration creates one VM, enumerates its single answer through exhaustion, then destroys it. Search times exclude create/destroy/file I/O and printing. Repetitions are interleaved process groups, each value is the mean of that process group. These groups were measured separately; use root final CLI measurements for end-to-end comparisons.",
+    "cpu_affinity": [
+      2
+    ],
+    "compiler": "13.3.0",
+    "flags": "-O3 -std=c11",
+    "wordcode_sha256": "f6d46c1243932d76ab3644cca6b679ae5994ad11145e15a13348440fa845a078",
+    "head_matching_experiment": {
+      "iterations_per_group": 20,
+      "baseline_search_us": [
+        13004.307,
+        12846.584,
+        13154.626
+      ],
+      "direct_match_and_constant_search_us": [
+        11906.289,
+        10564.908,
+        10566.71
+      ],
+      "baseline_source_sha256": "5487bc800e4e879e282d0b33f27463846f6bb6c2ee6c84367119ade05f63a0f0",
+      "direct_match_source_sha256": "2d2b2090d72bb0fd6c1be1760f2d60efe4989f632bd29e42db9494f79a3e4427"
+    },
+    "protected_variable_link_experiment": {
+      "iterations_per_group": 30,
+      "direct_match_search_us": [
+        10091.274,
+        9874.366,
+        9877.413
+      ],
+      "protected_link_search_us": [
+        8983.52,
+        9004.741,
+        8911.126
+      ],
+      "variant_source_sha256": "2f332803efe7db3c4d05c17c85cd20924ac9c2eb513ece804ff0a52c325871f7",
+      "protection": "Fresh common variable remains required whenever either dereferenced variable is an initial query slot. Only two internal unbound variables link newer to older."
+    },
+    "gprof_baseline": {
+      "iterations": 100,
+      "flags": "-O3 -pg -std=c11",
+      "unify_including_inlined_helpers_percent": 61.26,
+      "instantiate_percent": 25.23,
+      "new_environment_percent": 5.41,
+      "try_clauses_percent": 5.41,
+      "note": "Sampling profile is approximate and profiling adds overhead; do not substitute profile elapsed time for uninstrumented timing."
+    }
+  },
+  "artifact_decoder": {
+    "description": "HOL V1 textual artifact decode and validation microbenchmark, before and after bounded decimal word-table parsing",
+    "compiler": "The Glorious Glasgow Haskell Compilation System, version 9.6.7",
+    "cpu_affinity": [
+      0
+    ],
+    "working_directory": "/home/lim/portfolio/ppap",
+    "build_flags": [
+      "-O2",
+      "-w",
+      "-rtsopts"
+    ],
+    "build_commands": {
+      "baseline_source": "git show HEAD:src/Hol/V1/Bytecode.hs > /tmp/ppap-speed/before/Hol/V1/Bytecode.hs",
+      "before": "cabal exec -- ghc -O2 -w -rtsopts -i/tmp/ppap-speed/before -isrc /tmp/ppap-speed/DecodeProfile.hs -odir /tmp/ppap-speed/decode-before-obj -hidir /tmp/ppap-speed/decode-before-obj -o /tmp/ppap-speed/decode-before > /tmp/ppap-speed/decode-before-build.log 2>&1",
+      "after": "cabal exec -- ghc -O2 -w -rtsopts -isrc /tmp/ppap-speed/DecodeProfile.hs -odir /tmp/ppap-speed/decode-after-obj -hidir /tmp/ppap-speed/decode-after-obj -o /tmp/ppap-speed/decode-after > /tmp/ppap-speed/decode-after-build.log 2>&1"
+    },
+    "baseline_revision": "765d284615a7b552234630ae4f50bae5d1bdaded",
+    "loader_sha256": {
+      "before": "7f06d1c3e7659d04e096c988aa5e4d4b9e2a4a02a46417ccb4f66c154179157a",
+      "after": "647296b2c43c349fbdaa5b3c06320d60b9d24d1380dbaf2bbfa7a531d5c3a1af"
+    },
+    "artifact": {
+      "path": "/tmp/ppap-speed/auto.hbc",
+      "bytes": 3780,
+      "sha256": "eabf545c53a8820ca93087a84a5a925132fc2aa3daa8b8b599895d4e1fd3d040",
+      "word_count": 1104
+    },
+    "method": {
+      "samples_per_process": 16,
+      "processes_per_variant": 1,
+      "measurement_order": [
+        "before",
+        "after"
+      ],
+      "timer": "GHC.Clock.getMonotonicTimeNSec",
+      "timed_expression": "evaluate (either error (length . bytecodeWords) (deserializeBytecode source))",
+      "input_preparation": "Each iteration freshly reads the same artifact and forces the complete input String before measurement; the result forces parsing and existing validateBytecode validation.",
+      "garbage_collection": "performGC immediately before the starting RTS stats snapshot and after the timed expression, before the ending RTS stats snapshot.",
+      "allocation_measurement": "Difference of GHC.Stats.allocated_bytes with +RTS -T; includes the timed action and minor timing/stats harness allocation, but excludes artifact reading and the preceding GC.",
+      "excluded_from_time": [
+        "artifact file I/O",
+        "forcing input String",
+        "explicit pre/post garbage collection",
+        "RTS statistics snapshots",
+        "printing",
+        "native machine creation",
+        "query execution",
+        "process startup"
+      ],
+      "aggregation": "Median of all 16 samples, including the first sample; no outlier removal.",
+      "limitations": [
+        "Single sequential before/after process pair; not a randomized full-process comparison.",
+        "Measures one 1104-word Einstein artifact; result is not a general parser throughput claim.",
+        "Other agents could compile or run work on other cores; the measurement processes were pinned to CPU 0."
+      ]
+    },
+    "before": {
+      "command": "taskset -c 0 /tmp/ppap-speed/decode-before /tmp/ppap-speed/auto.hbc +RTS -T -RTS > /tmp/ppap-speed/decode-before.log",
+      "raw_rows": [
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 2.267563,
+          "allocated_bytes": 8571960
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.784579,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.777251,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.821258,
+          "allocated_bytes": 8538336
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.877235,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.753075,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.85555,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.86632,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 1.046208,
+          "allocated_bytes": 8536688
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.755243,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.741771,
+          "allocated_bytes": 8538400
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.805868,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.744141,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.7694,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.744893,
+          "allocated_bytes": 8534320
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.789482,
+          "allocated_bytes": 8534320
+        }
+      ],
+      "median_decode_validate_ms": 0.7870305,
+      "median_allocated_bytes": 8534320.0
+    },
+    "after": {
+      "command": "taskset -c 0 /tmp/ppap-speed/decode-after /tmp/ppap-speed/auto.hbc +RTS -T -RTS > /tmp/ppap-speed/decode-after.log",
+      "raw_rows": [
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.709048,
+          "allocated_bytes": 2062600
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.188069,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.180344,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.212167,
+          "allocated_bytes": 2027784
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.18718,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.204253,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.180275,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.179568,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.177103,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.179047,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.177582,
+          "allocated_bytes": 2027848
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.175776,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.179209,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.17588,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.175716,
+          "allocated_bytes": 2023768
+        },
+        {
+          "word_count": 1104,
+          "decode_validate_ms": 0.175226,
+          "allocated_bytes": 2023768
+        }
+      ],
+      "median_decode_validate_ms": 0.1793885,
+      "median_allocated_bytes": 2023768.0
+    },
+    "improvement": {
+      "median_decode_time_reduction_percent": 77.20691891864419,
+      "median_allocation_reduction_percent": 76.28671059908699,
+      "median_decode_speedup": 4.387296287108705
+    },
+    "profile_source": "module Main where\n\nimport Control.Exception (evaluate)\nimport Control.Monad (replicateM_)\nimport GHC.Clock (getMonotonicTimeNSec)\nimport GHC.Stats (allocated_bytes, getRTSStats)\nimport Hol.V1.Bytecode\nimport System.Environment (getArgs)\nimport System.Mem (performGC)\nimport Text.Printf (printf)\n\nmain :: IO ()\nmain = do\n    [path] <- getArgs\n    replicateM_ 16 $ do\n        source <- readFile path\n        _ <- evaluate (length source)\n        performGC\n        before <- getRTSStats\n        start <- getMonotonicTimeNSec\n        words <- evaluate (either error (length . bytecodeWords) (deserializeBytecode source))\n        end <- getMonotonicTimeNSec\n        performGC\n        after <- getRTSStats\n        printf \"%d %.6f %d\\n\" words (fromIntegral (end - start) / 1000000 :: Double) (allocated_bytes after - allocated_bytes before)\n"
+  },
+  "optimized_cancellation": {
+    "method": "Final optimized real executables, first-order automatic and forced general engines. Module: type loop o. loop :- loop. A fresh process receives SIGINT after 200ms. Every case must terminate within2s. Concurrent test compilation may affect latency; this is a correctness probe, not a throughput benchmark.",
+    "preexisting_failure": "The prior optimized GHC9.6.7 executable and current optimized wrappers before the yield fix both exceeded a1s post-SIGINT watchdog. An isolated -O2 System.Timeout100ms probe exceeded1s without yield, and completed in111ms with yield.",
+    "results": [
+      {
+        "binary": "dist-newstyle/build/x86_64-linux/ghc-9.6.7/ppap-1.0.0/x/ppap/opt/build/ppap/ppap",
+        "command": "V1 --test",
+        "seconds_after_sigint": 0.014115351999862469,
+        "returncode": -2
+      },
+      {
+        "binary": "dist-newstyle/build/x86_64-linux/ghc-9.6.7/ppap-1.0.0/x/ppap/opt/build/ppap/ppap",
+        "command": "V1 --test --general",
+        "seconds_after_sigint": 0.009922917999574565,
+        "returncode": -2
+      },
+      {
+        "binary": ".stack-work/dist/x86_64-linux/ghc-9.10.3/build/ppap/ppap",
+        "command": "V1 --test",
+        "seconds_after_sigint": 0.012115453999285819,
+        "returncode": -2
+      },
+      {
+        "binary": ".stack-work/dist/x86_64-linux/ghc-9.10.3/build/ppap/ppap",
+        "command": "V1 --test --general",
+        "seconds_after_sigint": 0.009194125999783864,
+        "returncode": -2
+      }
+    ]
+  },
+  "final_empty_process": {
+    "method": "Final optimized GHC9.6.7 executable, default embedded RTS flags, CPU0, two warmups then nine fresh empty-REPL processes.",
+    "samples": [
+      {
+        "wall_seconds": 0.001539534,
+        "cpu_seconds": 0.0007350000000000001
+      },
+      {
+        "wall_seconds": 0.001611881,
+        "cpu_seconds": 0.0008240000000000002
+      },
+      {
+        "wall_seconds": 0.001605774,
+        "cpu_seconds": 0.0007909999999999992
+      },
+      {
+        "wall_seconds": 0.001551826,
+        "cpu_seconds": 0.000774
+      },
+      {
+        "wall_seconds": 0.001543018,
+        "cpu_seconds": 0.0007670000000000003
+      },
+      {
+        "wall_seconds": 0.001519319,
+        "cpu_seconds": 0.0007299999999999997
+      },
+      {
+        "wall_seconds": 0.001535682,
+        "cpu_seconds": 0.0007369999999999998
+      },
+      {
+        "wall_seconds": 0.001596428,
+        "cpu_seconds": 0.0007989999999999994
+      },
+      {
+        "wall_seconds": 0.001530231,
+        "cpu_seconds": 0.0007179999999999995
+      }
+    ],
+    "wall_median": 0.001543018,
+    "cpu_median": 0.0007670000000000003
+  }
+}

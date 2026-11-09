@@ -53,10 +53,13 @@
       - (대기 중) 현재의 산술 제약 처리 로직에서 생길 수 있는 문제점 생각하기.
       - (대기 중) 프로젝트 완료 후, 코딩 가이드라인(`claude.md`의 부록 A)에 따라 `Hol BETA`를 리팩토링할 것. 하스켈 코드 포맷팅이 내 마음에 들지 않음.
 
-1. `Hol V1` (승인 대기 중):
+1. `Hol V1` (바이트코드 실행 및 기존 기능 이식 완료):
    Hol 프로젝트의 첫 번째 정식 넘버링 (v1.0.0).
-   - 인터프리터 외에도, 성능을 높이기 위해 (하스켈로 짜여진) bytecode를 생성하는 컴파일러 및 그 실행머신({`src/X/machine.h`, `src/X/machine.c`})을 만드는 것은 어떨까? 현재 기능을 유지한 채로 [`Teyjus 2`](https://github.com/teyjus/teyjus)와 비슷한 성능을 내고 싶다 (`einstein.sh` 실행 시 real이 1초 미만이 되게끔).
-   - `LoL ALPHA1`의 인터프리터를 만들 수 있는 하스켈 API도 제공해야 한다.
+   - `doc/HolV1.txt` 참고. Haskell 바이트코드 컴파일러와 C 실행기를 구현했다. 고차 통일, pi/sigma, 동적 가정, 백트래킹과 cut은 C에서 실행하며 BETA 인터프리터로 넘기는 경로는 없다. 산술·Presburger·입출력·디버거 UI는 Haskell 서비스를 재사용한다.
+   - 바이트코드 생성 시 확정된 술어 별칭을 정적 CALL로 바꾸고, 도달 가능한 절이 1차 범위이면 자동으로 1차 전용 실행기를 선택한다. `--general`로 일반 실행기를 강제할 수 있다.
+   - `example/einstein-v1.sh`는 최적화 빌드 후 V1을 실행한다. `example/einstein-teyjus.sh`로 Teyjus v2.1.1과 비교했다. 절 머리 변수의 첫 등장에서는 기존 인자를 직접 참조하고, 남은 변수는 본문 진입 전에 준비하도록 개선했다. 같은 Einstein sigma 쿼리의 사전 컴파일·전체 탐색 중앙값은 Hol 자동 선택 0.00884초(직전 실행 파일 0.01377초), Teyjus 0.01151초다. 이 비교에서는 Hol의 실행 시간이 약 23% 짧다. 일반 경로 강제 실행은 여전히 2.138초로 별도 최적화가 필요하다. 조건과 측정값은 `doc/HolV1.txt`, `example/teyjus/environment-results.json`, `example/teyjus/environment-profile.json` 참고. 기존 result/profile JSON들은 이전 측정 기록으로 보존한다.
+   - 최적화된 native 배치 루프에서도 시간 제한과 Ctrl-C가 처리되도록 FFI가 배치 사이에 Haskell 스케줄러로 제어를 넘긴다. 1차·고차 취소 회귀 검사를 `-O2`로 실행한다.
+   - `LoL ALPHA1`을 위한 Haskell 세션 API는 `Hol.V1.FullRuntime`: 답 열거, 스냅샷 저장/복원, 대화형 할당과 실행 자원 제한을 제공한다. BETA의 내부 Stack 표현 대신 native Snapshot을 사용한다.
 
 1. `LoL ALPHA1` (승인 대기 중):
    CIC 기반의 증명 스크립트 언어.

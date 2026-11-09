@@ -1,0 +1,440 @@
+{
+    "recorded_at": "2026-11-09T18:25:08.829156+00:00",
+    "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "cpu_affinity": [
+        0
+    ],
+    "lscpu": "Architecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        42 bits physical, 48 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               24\nOn-line CPU(s) list:                  0-23\nVendor ID:                            GenuineIntel\nModel name:                           Intel(R) Core(TM) Ultra 9 275HX\nCPU family:                           6\nModel:                                198\nThread(s) per core:                   1\nCore(s) per socket:                   24\nSocket(s):                            1\nStepping:                             2\nBogoMIPS:                             6144.00\nFlags:                                fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves avx_vnni vnmi umip waitpkg gfni vaes vpclmulqdq rdpid movdiri movdir64b fsrm md_clear serialize flush_l1d arch_capabilities\nVirtualization:                       VT-x\nHypervisor vendor:                    Microsoft\nVirtualization type:                  full\nL1d cache:                            1.1 MiB (24 instances)\nL1i cache:                            1.5 MiB (24 instances)\nL2 cache:                             72 MiB (24 instances)\nL3 cache:                             36 MiB (1 instance)\nNUMA node(s):                         1\nNUMA node0 CPU(s):                    0-23\nVulnerability Gather data sampling:   Not affected\nVulnerability Itlb multihit:          Not affected\nVulnerability L1tf:                   Not affected\nVulnerability Mds:                    Not affected\nVulnerability Meltdown:               Not affected\nVulnerability Mmio stale data:        Not affected\nVulnerability Reg file data sampling: Not affected\nVulnerability Retbleed:               Mitigation; Enhanced IBRS\nVulnerability Spec rstack overflow:   Not affected\nVulnerability Spec store bypass:      Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:             Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:             Mitigation; Enhanced / Automatic IBRS; IBPB conditional; RSB filling; PBRSB-eIBRS SW sequence; BHI Not affected\nVulnerability Srbds:                  Not affected\nVulnerability Tsx async abort:        Not affected\n",
+    "hol_commit": "a29f1f896e3996a84d8fd7ba67f15d871fa9df92",
+    "hol_build": "GHC -O2 -funbox-strict-fields -fspec-constr -fexpose-all-unfoldings -fspecialise-aggressively; C -O3",
+    "teyjus_version": "Teyjus version 2.1.1",
+    "teyjus_build": "dune build @install --profile release; OCaml 4.14.1; GCC 13.3.0 C -O2 -fno-strict-aliasing -fwrapv -pthread -fPIC",
+    "ghc_version": "9.6.7",
+    "benchmark_sha256": "a45340d524e57e8947f16f6ca520625b88fc620707628cbd2b35983db584ab52",
+    "binary_sha256": {
+        "ppap": "e5fdbcf3237b073995279f1fc9e0fb00c04b05654b987584ce58f6c1624817c8",
+        "tjcc": "b07a43c8729724e823016a3a741672450dd01956a82a0dbfe1809d02390d60c6",
+        "tjlink": "59452edc5ab401408608e1d5e567906b23e23139621a0404e0a3e93d8f68572e",
+        "tjsim": "c5e5a405a5e168e1df2a2c77df8e4a841da0900f9f209a9b11c0142cb75b3676"
+    },
+    "source_sha256": {
+        "example/einstein.hol": "1999ea9124bf4bead2195b74144df10cd4e29af1312730b514d902cdd3a7d9df",
+        "example/teyjus/einstein.sig": "6062a7f2fcf38fb24e5bcb61b53518c9e009ce03d7b3ec1d51280543e1e93c1b",
+        "example/teyjus/einstein.mod": "c0de47fe103b4741e4fd9f0f2e8d4ce3ff3a4eadc00f376577b72fe57ba75cc3"
+    },
+    "queries": {
+        "direct": "answer Houses.",
+        "general": "sigma P\\ P = answer, P Houses."
+    },
+    "method": "Fresh processes, all answers through exhaustion, stdout captured, fixed CPU, warm files, shuffled interleaving. Build/compilation excluded from replay timings.",
+    "runs": 9,
+    "warmups": 2,
+    "cases": {
+        "hol_source_direct": {
+            "command": [
+                "/home/lim/portfolio/ppap/dist-newstyle/build/x86_64-linux/ghc-9.6.7/ppap-1.0.0/x/ppap/opt/build/ppap/ppap"
+            ],
+            "stdin": "V1 --test --strict\nexample/einstein.hol\n?- answer Houses.\ny\n:q\n",
+            "cwd": "/home/lim/portfolio/ppap",
+            "samples": [
+                {
+                    "wall_seconds": 0.03276015,
+                    "user_seconds": 0.019843999999999085,
+                    "system_seconds": 0.003968999999999889
+                },
+                {
+                    "wall_seconds": 0.033449161,
+                    "user_seconds": 0.02084999999999937,
+                    "system_seconds": 0.004170000000000007
+                },
+                {
+                    "wall_seconds": 0.033326515,
+                    "user_seconds": 0.019935999999997733,
+                    "system_seconds": 0.007975000000000065
+                },
+                {
+                    "wall_seconds": 0.032996995,
+                    "user_seconds": 0.0173400000000008,
+                    "system_seconds": 0.008669999999999956
+                },
+                {
+                    "wall_seconds": 0.022569466,
+                    "user_seconds": 0.01732099999999548,
+                    "system_seconds": 0.004329999999999945
+                },
+                {
+                    "wall_seconds": 0.022408754,
+                    "user_seconds": 0.021194000000001267,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.022382764,
+                    "user_seconds": 0.017009000000001606,
+                    "system_seconds": 0.004251999999999256
+                },
+                {
+                    "wall_seconds": 0.023009869,
+                    "user_seconds": 0.011327999999998895,
+                    "system_seconds": 0.01132800000000067
+                },
+                {
+                    "wall_seconds": 0.032859331,
+                    "user_seconds": 0.02786599999999595,
+                    "system_seconds": 0.0046439999999998705
+                }
+            ],
+            "representative_output": "ppap> Copyright (c) 2021-2026, Kijeong Lim\nppap> All rights reserved\nppap =<< \nppap >>= exec (V1.main \"test\" \"strict\")\nHol =<< \nHol> Compiling example.einstein ( example/einstein.hol, V1 bytecode (strict) )\nexample.einstein> Ok, one module loaded.\nexample.einstein> \nexample.einstein> The answer substitution is:\nexample.einstein> exists E_1.\nexample.einstein> Houses := [house norway water dunhill cat yellow, house denmark tea blend horse blue, house england milk pallmall bird red, house german coffee prince E_1 green, house sweden beer bluemaster dog white].\nexample.einstein> Find more solutions? [Y/n] \nexample.einstein> no.\nexample.einstein> \nHol >>= quit\n",
+            "median_seconds": 0.03276015,
+            "min_seconds": 0.022382764,
+            "max_seconds": 0.033449161
+        },
+        "hol_bytecode_direct": {
+            "command": [
+                "/home/lim/portfolio/ppap/dist-newstyle/build/x86_64-linux/ghc-9.6.7/ppap-1.0.0/x/ppap/opt/build/ppap/ppap"
+            ],
+            "stdin": "V1 --test --run-bytecode=/tmp/ppap-teyjus-7q3uvdvd/direct.hbc\n",
+            "cwd": "/home/lim/portfolio/ppap",
+            "samples": [
+                {
+                    "wall_seconds": 0.022409549,
+                    "user_seconds": 0.017074000000000922,
+                    "system_seconds": 0.0042679999999999385
+                },
+                {
+                    "wall_seconds": 0.022756808,
+                    "user_seconds": 0.011193999999999704,
+                    "system_seconds": 0.011193999999999926
+                },
+                {
+                    "wall_seconds": 0.022258453,
+                    "user_seconds": 0.018060000000001963,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.02261591,
+                    "user_seconds": 0.014462000000001751,
+                    "system_seconds": 0.0072309999999999874
+                },
+                {
+                    "wall_seconds": 0.022566789,
+                    "user_seconds": 0.014909000000002948,
+                    "system_seconds": 0.003727000000000036
+                },
+                {
+                    "wall_seconds": 0.022268539,
+                    "user_seconds": 0.013823999999999614,
+                    "system_seconds": 0.0046080000000001675
+                },
+                {
+                    "wall_seconds": 0.022149597,
+                    "user_seconds": 0.02242999999999995,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.022650885,
+                    "user_seconds": 0.018936000000003617,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.032842427,
+                    "user_seconds": 0.02477100000000121,
+                    "system_seconds": 0.0
+                }
+            ],
+            "representative_output": "ppap> Copyright (c) 2021-2026, Kijeong Lim\nppap> All rights reserved\nppap =<< \nppap >>= exec (V1.main \"test\" \"run-bytecode=/tmp/ppap-teyjus-7q3uvdvd/direct.hbc\")\nHolV1> Answer 1.\nHolV1> exists E_1.\nHolV1> Houses := [house norway water dunhill cat yellow, house denmark tea blend horse blue, house england milk pallmall bird red, house german coffee prince E_1 green, house sweden beer bluemaster dog white].\nHolV1> no.\n",
+            "median_seconds": 0.022566789,
+            "min_seconds": 0.022149597,
+            "max_seconds": 0.032842427
+        },
+        "teyjus_bytecode_direct": {
+            "command": [
+                "/tmp/ppap-teyjus-v2.1.1/_build/default/source/front/simulatorfront.exe",
+                "-b",
+                "-e",
+                "1",
+                "-s",
+                "answer Houses.",
+                "einstein"
+            ],
+            "stdin": "",
+            "cwd": "/tmp/ppap-teyjus-7q3uvdvd",
+            "samples": [
+                {
+                    "wall_seconds": 0.012561069,
+                    "user_seconds": 0.01224000000000025,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.017145996,
+                    "user_seconds": 0.012364000000001596,
+                    "system_seconds": 0.004121000000000041
+                },
+                {
+                    "wall_seconds": 0.0146721,
+                    "user_seconds": 0.013270999999999589,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.015822961,
+                    "user_seconds": 0.01563499999999962,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.011228816,
+                    "user_seconds": 0.010919000000001233,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.014288403,
+                    "user_seconds": 0.014084000000003982,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.011341594,
+                    "user_seconds": 0.010902000000001522,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.011116908,
+                    "user_seconds": 0.010829000000001088,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.011242101,
+                    "user_seconds": 0.011006999999999323,
+                    "system_seconds": 0.0
+                }
+            ],
+            "representative_output": "\nThe answer substitution:\nHouses = house norway water dunhill cat yellow :: house denmark tea blend horse blue :: house england milk pallmall bird red :: house german coffee prince _T1 green :: house sweden beer bluemaster dog white :: nil\n",
+            "median_seconds": 0.012561069,
+            "min_seconds": 0.011116908,
+            "max_seconds": 0.017145996
+        },
+        "hol_source_general": {
+            "command": [
+                "/home/lim/portfolio/ppap/dist-newstyle/build/x86_64-linux/ghc-9.6.7/ppap-1.0.0/x/ppap/opt/build/ppap/ppap"
+            ],
+            "stdin": "V1 --test --strict\nexample/einstein.hol\n?- sigma P\\ P = answer, P Houses.\ny\n:q\n",
+            "cwd": "/home/lim/portfolio/ppap",
+            "samples": [
+                {
+                    "wall_seconds": 2.36499872,
+                    "user_seconds": 2.387856000000001,
+                    "system_seconds": 0.20744800000000008
+                },
+                {
+                    "wall_seconds": 2.578209298,
+                    "user_seconds": 2.6289949999999997,
+                    "system_seconds": 0.19816499999999992
+                },
+                {
+                    "wall_seconds": 2.857286626,
+                    "user_seconds": 2.6293089999999992,
+                    "system_seconds": 0.25602199999999975
+                },
+                {
+                    "wall_seconds": 2.764009104,
+                    "user_seconds": 2.7431759999999983,
+                    "system_seconds": 0.28593400000000013
+                },
+                {
+                    "wall_seconds": 2.327722534,
+                    "user_seconds": 2.3622529999999955,
+                    "system_seconds": 0.1861440000000001
+                },
+                {
+                    "wall_seconds": 2.227290605,
+                    "user_seconds": 2.235732999999996,
+                    "system_seconds": 0.1984379999999999
+                },
+                {
+                    "wall_seconds": 2.305665648,
+                    "user_seconds": 2.3431189999999944,
+                    "system_seconds": 0.17650699999999997
+                },
+                {
+                    "wall_seconds": 2.266198827,
+                    "user_seconds": 2.2776720000000026,
+                    "system_seconds": 0.20666099999999954
+                },
+                {
+                    "wall_seconds": 2.299459476,
+                    "user_seconds": 2.309080999999999,
+                    "system_seconds": 0.20231900000000014
+                }
+            ],
+            "representative_output": "ppap> Copyright (c) 2021-2026, Kijeong Lim\nppap> All rights reserved\nppap =<< \nppap >>= exec (V1.main \"test\" \"strict\")\nHol =<< \nHol> Compiling example.einstein ( example/einstein.hol, V1 bytecode (strict) )\nexample.einstein> Ok, one module loaded.\nexample.einstein> \nexample.einstein> The answer substitution is:\nexample.einstein> exists E_1.\nexample.einstein> Houses := [house norway water dunhill cat yellow, house denmark tea blend horse blue, house england milk pallmall bird red, house german coffee prince E_1 green, house sweden beer bluemaster dog white].\nexample.einstein> Find more solutions? [Y/n] \nexample.einstein> no.\nexample.einstein> \nHol >>= quit\n",
+            "median_seconds": 2.327722534,
+            "min_seconds": 2.227290605,
+            "max_seconds": 2.857286626
+        },
+        "hol_bytecode_general": {
+            "command": [
+                "/home/lim/portfolio/ppap/dist-newstyle/build/x86_64-linux/ghc-9.6.7/ppap-1.0.0/x/ppap/opt/build/ppap/ppap"
+            ],
+            "stdin": "V1 --test --run-bytecode=/tmp/ppap-teyjus-7q3uvdvd/general.hbc\n",
+            "cwd": "/home/lim/portfolio/ppap",
+            "samples": [
+                {
+                    "wall_seconds": 2.25673063,
+                    "user_seconds": 2.266644000000003,
+                    "system_seconds": 0.20206499999999994
+                },
+                {
+                    "wall_seconds": 2.857188297,
+                    "user_seconds": 2.8536409999999997,
+                    "system_seconds": 0.274041
+                },
+                {
+                    "wall_seconds": 2.515423327,
+                    "user_seconds": 2.331271000000001,
+                    "system_seconds": 0.21563299999999996
+                },
+                {
+                    "wall_seconds": 2.237259393,
+                    "user_seconds": 2.2074830000000034,
+                    "system_seconds": 0.24723799999999985
+                },
+                {
+                    "wall_seconds": 2.148018907,
+                    "user_seconds": 2.1560950000000005,
+                    "system_seconds": 0.20199699999999998
+                },
+                {
+                    "wall_seconds": 2.237138644,
+                    "user_seconds": 2.271556000000004,
+                    "system_seconds": 0.181902
+                },
+                {
+                    "wall_seconds": 2.267785928,
+                    "user_seconds": 2.308107999999997,
+                    "system_seconds": 0.17585500000000032
+                },
+                {
+                    "wall_seconds": 2.320505576,
+                    "user_seconds": 2.337348999999996,
+                    "system_seconds": 0.2092489999999998
+                },
+                {
+                    "wall_seconds": 2.327875194,
+                    "user_seconds": 2.3320229999999995,
+                    "system_seconds": 0.22000300000000017
+                }
+            ],
+            "representative_output": "ppap> Copyright (c) 2021-2026, Kijeong Lim\nppap> All rights reserved\nppap =<< \nppap >>= exec (V1.main \"test\" \"run-bytecode=/tmp/ppap-teyjus-7q3uvdvd/general.hbc\")\nHolV1> Answer 1.\nHolV1> The answer substitution is:\nHolV1> exists E_1.\nHolV1> Houses := [house norway water dunhill cat yellow, house denmark tea blend horse blue, house england milk pallmall bird red, house german coffee prince E_1 green, house sweden beer bluemaster dog white].\nHolV1> no.\n",
+            "median_seconds": 2.267785928,
+            "min_seconds": 2.148018907,
+            "max_seconds": 2.857188297
+        },
+        "teyjus_bytecode_general": {
+            "command": [
+                "/tmp/ppap-teyjus-v2.1.1/_build/default/source/front/simulatorfront.exe",
+                "-b",
+                "-e",
+                "1",
+                "-s",
+                "sigma P\\ P = answer, P Houses.",
+                "einstein"
+            ],
+            "stdin": "",
+            "cwd": "/tmp/ppap-teyjus-7q3uvdvd",
+            "samples": [
+                {
+                    "wall_seconds": 0.011855093,
+                    "user_seconds": 0.011492999999997977,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.016518052,
+                    "user_seconds": 0.012404000000000082,
+                    "system_seconds": 0.004135000000000222
+                },
+                {
+                    "wall_seconds": 0.012936162,
+                    "user_seconds": 0.008537000000000461,
+                    "system_seconds": 0.0042680000000001606
+                },
+                {
+                    "wall_seconds": 0.013496249,
+                    "user_seconds": 0.013182999999997946,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.011819606,
+                    "user_seconds": 0.007668999999999926,
+                    "system_seconds": 0.003835000000000033
+                },
+                {
+                    "wall_seconds": 0.011575516,
+                    "user_seconds": 0.01125499999999846,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.011423185,
+                    "user_seconds": 0.011177000000003545,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.012702958,
+                    "user_seconds": 0.012405999999998585,
+                    "system_seconds": 0.0
+                },
+                {
+                    "wall_seconds": 0.01548694,
+                    "user_seconds": 0.011679000000000883,
+                    "system_seconds": 0.0038930000000005904
+                }
+            ],
+            "representative_output": "\nThe answer substitution:\nHouses = house norway water dunhill cat yellow :: house denmark tea blend horse blue :: house england milk pallmall bird red :: house german coffee prince _T1 green :: house sweden beer bluemaster dog white :: nil\n",
+            "median_seconds": 0.012702958,
+            "min_seconds": 0.011423185,
+            "max_seconds": 0.016518052
+        }
+    },
+    "teyjus_commit": "5cb51538beee8b1ad6dbc47ee14d7491fefa6021",
+    "teyjus_source_changes": "",
+    "teyjus_compile_once": {
+        "wall_seconds": 0.003152794,
+        "user_seconds": 0.0030699999999999963,
+        "system_seconds": 0.0
+    },
+    "teyjus_link_once": {
+        "wall_seconds": 0.001449182,
+        "user_seconds": 0.0013840000000000033,
+        "system_seconds": 0.0
+    },
+    "canonical_answers": [
+        [
+            "house",
+            "norway",
+            "water",
+            "dunhill",
+            "cat",
+            "yellow",
+            "house",
+            "denmark",
+            "tea",
+            "blend",
+            "horse",
+            "blue",
+            "house",
+            "england",
+            "milk",
+            "pallmall",
+            "bird",
+            "red",
+            "house",
+            "german",
+            "coffee",
+            "prince",
+            "V0",
+            "green",
+            "house",
+            "sweden",
+            "beer",
+            "bluemaster",
+            "dog",
+            "white"
+        ]
+    ]
+}

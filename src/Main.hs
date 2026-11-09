@@ -3,6 +3,7 @@ module Main (main) where
 import qualified Hol.ALPHA1.Main as ALPHA1
 import qualified Calc.Main as Calc
 import qualified Hol.Main as Hol
+import qualified Hol.V1.Main as V1
 import qualified LGS.Main as LGS
 import qualified PGS.Main as PGS
 import qualified TEST.Main as TEST
@@ -26,7 +27,7 @@ extractArgs args_rep
 matchCommand :: String -> Maybe (String, [String])
 matchCommand str
     | null str = return ("", [])
-    | otherwise = takeFirstOf matchPrefix ["Hol", "ALPHA1", "Calc", "LGS", "PGS", "TEST"]
+    | otherwise = takeFirstOf matchPrefix ["Hol", "V1", "ALPHA1", "Calc", "LGS", "PGS", "TEST"]
     where
         matchPrefix :: String -> Maybe (String, [String])
         matchPrefix cmd = go (splitAt (length cmd) str) where
@@ -44,9 +45,13 @@ ppap = do
             ppap
         Just ("", []) -> return ()
         Just ("Hol", args)
-            | args `elem` [[], ["pretty"], ["test"]] -> do
+            | Hol.validArgs args -> do
                 shellyM ("ppap >>= exec (Hol.main" ++ shownArgs args ++ ")")
                 Hol.mainWithArgsM args
+        Just ("V1", args)
+            | V1.validArgs args -> do
+                shellyM ("ppap >>= exec (V1.main" ++ shownArgs args ++ ")")
+                V1.mainWithArgsM args
         Just ("ALPHA1", args)
             | null args -> do
                 shellyM ("ppap >>= exec (ALPHA1.main)")

@@ -42,6 +42,7 @@ data KernelErr
     = BadGoalGiven TermNode
     | BadFactGiven TermNode
     | UnsupportedArithmeticConstraint TermNode
+    | BackendError String
     deriving ()
 
 data Constraint

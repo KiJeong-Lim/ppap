@@ -1,0 +1,277 @@
+#include "higher_machine.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    const char *name;
+    const int64_t *code;
+    size_t length;
+    const int64_t *answers;
+    const size_t *sizes;
+    size_t count;
+} TestCase;
+
+#include "higher_machine_test_fixtures.h"
+
+static size_t allocation_count, fail_at;
+void *__real_malloc(size_t);
+void *__real_calloc(size_t, size_t);
+void *__real_realloc(void *, size_t);
+void *__wrap_malloc(size_t count)
+{
+    return ++allocation_count == fail_at ? NULL : __real_malloc(count);
+}
+void *__wrap_calloc(size_t count, size_t width)
+{
+    return ++allocation_count == fail_at ? NULL : __real_calloc(count, width);
+}
+void *__wrap_realloc(void *old, size_t count)
+{
+    return ++allocation_count == fail_at ? NULL : __real_realloc(old, count);
+}
+
+static int next_answer(HolV2Machine *machine)
+{
+    for (size_t steps = 0; steps < 10000; ++steps) {
+        int status = hol_v2_next(machine);
+        if (status == 2) continue;
+        if (status != 3) return status;
+        int64_t info[6];
+        if (hol_v2_event_info(machine, info, 6) < 0) return -1;
+        int64_t empty[] = { 0 };
+        int result = info[0] == HV2_EVENT_EQUALITY ? 4 : 1;
+        if (hol_v2_resume(machine, result, 0, 0, empty, 1) < 0) return -1;
+    }
+    assert(!"native search exceeded its test budget");
+    return -1;
+}
+
+static int check(const TestCase *test, int injected)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    if (!machine) { assert(injected); return 0; }
+    size_t answer = 0, offset = 0;
+    int status;
+    while ((status = next_answer(machine)) == 1) {
+        size_t count = hol_v2_answer_size(machine);
+        int64_t *words = malloc((count ? count : 1) * sizeof(*words));
+        if (!words) { assert(injected); hol_v2_destroy(machine); return 0; }
+        if (hol_v2_answer(machine, words, count) < 0) { free(words); status = -1; break; }
+        if (!injected) {
+            if (answer >= test->count || test->sizes[answer] != count || memcmp(words, test->answers + offset, count * sizeof(*words))) {
+                fprintf(stderr, "%s: answer %zu mismatch:", test->name, answer);
+                for (size_t i = 0; i < count; ++i) fprintf(stderr, " %lld", (long long) words[i]);
+                fputc('\n', stderr);
+                abort();
+            }
+        }
+        offset += count;
+        ++answer;
+        free(words);
+    }
+    if (!injected) {
+        if (status < 0) fprintf(stderr, "%s: %s\n", test->name, hol_v2_error(machine));
+        assert(status == 0 && answer == test->count);
+    }
+    hol_v2_destroy(machine);
+    return status == 0;
+}
+
+static void snapshots(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    HolV2Machine *before = hol_v2_clone(machine);
+    assert(before);
+    assert(next_answer(machine) == 1);
+    assert(next_answer(machine) == 1);
+    assert(next_answer(machine) == 0);
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(next_answer(machine) == 1);
+    size_t count = hol_v2_answer_size(machine);
+    int64_t *answer = malloc(count * sizeof(*answer));
+    assert(answer && hol_v2_answer(machine, answer, count) == 1);
+    assert(count == test->sizes[0] && !memcmp(answer, test->answers, count * sizeof(*answer)));
+    free(answer);
+    assert(next_answer(machine) == 1);
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(next_answer(machine) == 1);
+    int64_t assignment[] = { 1, 0, 0, 0, 0, -1, 1, test->answers[test->sizes[0] + 2], -1 };
+    assert(hol_v2_assign(machine, assignment, sizeof(assignment) / sizeof(*assignment)) == 1);
+    assert(next_answer(machine) == 1);
+    count = hol_v2_answer_size(machine);
+    answer = malloc(count * sizeof(*answer));
+    assert(answer && hol_v2_answer(machine, answer, count) == 1);
+    assert(count == test->sizes[1] && !memcmp(answer, test->answers + test->sizes[0], count * sizeof(*answer)));
+    free(answer);
+    assert(next_answer(machine) == 0);
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(next_answer(machine) == 1);
+    assert(next_answer(machine) == 1);
+    assert(next_answer(machine) == 0);
+    HolV2Machine *other = hol_v2_create(test->code, test->length);
+    assert(other && hol_v2_restore(other, before) < 0);
+    assert(hol_v2_error(other)[0] && next_answer(other) == 1);
+    hol_v2_destroy(other);
+    hol_v2_destroy(before);
+    hol_v2_destroy(machine);
+}
+
+static void before_cut(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    HolV2Machine *before = hol_v2_clone(machine);
+    assert(before);
+    assert(next_answer(machine) == 1 && next_answer(machine) == 0);
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(next_answer(machine) == 1 && next_answer(machine) == 0);
+    hol_v2_destroy(before);
+    hol_v2_destroy(machine);
+}
+
+static void snapshot_stale_uid(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    HolV2Machine *before = hol_v2_clone(machine);
+    assert(before && next_answer(machine) == 1);
+    assert(hol_v2_restore(machine, before) == 1);
+    int status;
+    do { status = hol_v2_next(machine); } while (status == 2);
+    assert(status == 3);
+    int64_t stale[] = { 1, 0, 1, 0, 1, -1, 0, 1, 0, 1, -1 };
+    assert(hol_v2_resume(machine, 4, 0, 0, stale, sizeof(stale) / sizeof(*stale)) < 0);
+    assert(strstr(hol_v2_error(machine), "expired identity"));
+    hol_v2_destroy(before);
+    hol_v2_destroy(machine);
+}
+
+static void dynamic_opaque(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    HolV2Machine *before = hol_v2_clone(machine);
+    assert(before);
+    size_t symbol = (size_t) test->code[3];
+    assert(hol_v2_ensure_symbol(machine, symbol, HV2_PRESBURGER) == 1);
+    int64_t binding[] = { 1, 0, 0, 0, 0, -1, 1, (int64_t) symbol, -1 };
+    hol_v2_set_debugging(machine, 1);
+    assert(hol_v2_next(machine) == 3);
+    assert(hol_v2_resume(machine, 1, 0, 0, binding, sizeof(binding) / sizeof(*binding)) == 1);
+    assert(next_answer(machine) == 0);
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(hol_v2_next(machine) == 3);
+    assert(hol_v2_resume(machine, 1, 0, 0, binding, sizeof(binding) / sizeof(*binding)) == 1);
+    assert(next_answer(machine) == 0);
+    assert(hol_v2_restore(machine, before) == 1);
+    hol_v2_set_debugging(machine, 0);
+    assert(hol_v2_assign(machine, binding, sizeof(binding) / sizeof(*binding)) == 1);
+    assert(next_answer(machine) == 1);
+    size_t count = hol_v2_answer_size(machine);
+    int64_t answer[4];
+    assert(count == 4 && hol_v2_answer(machine, answer, 4) == 1);
+    assert(answer[0] == 1 && answer[1] == 1 && answer[2] == (int64_t) symbol);
+    hol_v2_destroy(before);
+    hol_v2_destroy(machine);
+}
+
+static void work_limits(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine && hol_v2_work_limit(machine) == 5000000);
+    HolV2Machine *before = hol_v2_clone(machine);
+    assert(before);
+    assert(hol_v2_set_work_limit(machine, 0) < 0);
+    assert(hol_v2_set_work_limit(machine, 1) == 1);
+    assert(next_answer(machine) < 0);
+    assert(strstr(hol_v2_error(machine), "work") || strstr(hol_v2_error(machine), "budget"));
+    assert(hol_v2_set_work_limit(machine, 5000000) == 1);
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(hol_v2_work_limit(machine) == 5000000);
+    assert(hol_v2_set_work_limit(machine, 3000000) == 1);
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(hol_v2_work_limit(machine) == 3000000);
+    assert(next_answer(machine) == 1);
+    hol_v2_destroy(before);
+    hol_v2_destroy(machine);
+}
+
+static void malformed(const TestCase *test)
+{
+    int64_t *code = malloc(test->length * sizeof(*code));
+    assert(code);
+    const size_t positions[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    for (size_t i = 0; i < sizeof(positions) / sizeof(*positions); ++i) {
+        memcpy(code, test->code, test->length * sizeof(*code));
+        code[positions[i]] = -1;
+        HolV2Machine *machine = hol_v2_create(code, test->length);
+        assert(machine && hol_v2_next(machine) < 0);
+        hol_v2_destroy(machine);
+    }
+    memcpy(code, test->code, test->length * sizeof(*code));
+    code[8] = 0;
+    HolV2Machine *machine = hol_v2_create(code, test->length);
+    assert(machine && hol_v2_next(machine) < 0);
+    hol_v2_destroy(machine);
+    machine = hol_v2_create(NULL, 0);
+    assert(machine && hol_v2_next(machine) < 0);
+    hol_v2_destroy(machine);
+    free(code);
+}
+
+static void snapshot_allocations(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    allocation_count = 0;
+    HolV2Machine *snapshot = hol_v2_clone(machine);
+    assert(snapshot);
+    size_t allocations = allocation_count;
+    hol_v2_destroy(snapshot);
+    hol_v2_destroy(machine);
+    for (size_t i = 1; i <= allocations; ++i) {
+        machine = hol_v2_create(test->code, test->length);
+        assert(machine);
+        allocation_count = 0;
+        fail_at = i;
+        snapshot = hol_v2_clone(machine);
+        fail_at = 0;
+        hol_v2_destroy(snapshot);
+        assert(next_answer(machine) == 1);
+        hol_v2_destroy(machine);
+    }
+    printf("PASS snapshot allocation cleanup (%zu failure points)\n", allocations);
+}
+
+int main(void)
+{
+    size_t count = sizeof(cases) / sizeof(*cases);
+    for (size_t i = 0; i < count; ++i) {
+        check(&cases[i], 0);
+        printf("PASS %s\n", cases[i].name);
+    }
+    snapshots(&cases[count - 2]);
+    before_cut(&cases[count - 1]);
+    snapshot_stale_uid(&cases[count - 2]);
+    dynamic_opaque(&cases[count - 3]);
+    work_limits(&cases[0]);
+    puts("PASS native snapshots, restore, cut and persistent assignment");
+    malformed(&cases[0]);
+    puts("PASS malformed native wordcode");
+    snapshot_allocations(&cases[count - 2]);
+    allocation_count = 0;
+    check(&cases[1], 0);
+    size_t allocations = allocation_count;
+    for (size_t i = 1; i <= allocations; ++i) {
+        allocation_count = 0;
+        fail_at = i;
+        check(&cases[1], 1);
+    }
+    fail_at = 0;
+    printf("PASS native allocation cleanup (%zu failure points)\n", allocations);
+    return 0;
+}

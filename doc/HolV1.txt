@@ -1,0 +1,481 @@
+Hol V1: bytecode compiler and native interpreter
+==============================================
+
+Scope
+-----
+V1 now executes the existing Hol BETA language through a C search engine,
+including higher-order terms. It does not fall back to BETA's interpreter.
+The LGS/PGS-generated frontend, type checker, module loader and surface language
+are shared with BETA. The default `Hol` command continues to select BETA.
+
+The C engine implements beta/eta normalization, scope-aware higher-order
+pattern unification, delayed disagreements, polymorphic terms, pi and sigma,
+dynamic hypotheses, multi-head clauses, ordered search, backtracking and cut.
+It handles arbitrary-size decimal naturals, open successor terms and wildcards.
+Arithmetic, Presburger reasoning, input/output and debugger commands are host
+services: Haskell performs those operations when C yields a service request.
+The search, bindings and choice points stay in C throughout. Existing BETA
+arithmetic semantics and residual constraints are preserved.
+
+Usage
+-----
+Start ppap, then select either:
+
+    V1 --test --strict
+    Hol --v1 --test --strict
+
+Enter a .hol module path and queries as in BETA. `--strict` remains accepted
+for existing scripts; both modes now use only V1 execution. Debugging, :show,
+:assign and reload are available through the usual source REPL.
+`--general` explicitly selects the full engine, including when emitting an
+artifact, and is retained across reload. Replay follows the saved format;
+emit with --general first, then use --run-bytecode without --general.
+
+    bash example/einstein-v1.sh
+
+The script requests an optimized Haskell build and runs the full Einstein
+answer search. C is compiled with -O3. Build time must be measured separately;
+a warm script measurement includes Cabal's up-to-date check. The original
+example/einstein.sh still runs BETA.
+
+`V1 --dump-bytecode` prints the compiled program. To save a query, select:
+
+    V1 --test --emit-bytecode=answer.hbc
+
+Load a module and enter a query. Each successfully compiled query replaces
+answer.hbc and then executes it. Replay enumerates all answers without source:
+
+    V1 --test --run-bytecode=answer.hbc
+
+The artifact contains compiled templates/instructions, symbols, types, query
+identities and annotations, not .hol source. Answer projection is shared with
+the REPL, including existential constraints. Replay uses standard notation;
+module-specific notation declarations are not stored. Its debugger interaction
+supports stepping and :d; use the source REPL for the complete command UI.
+The experimental .hbc format has explicit versions and validates references,
+metadata, identities and closed de Bruijn indices before execution.
+
+Two native code formats
+-----------------------
+The first-order compiler and version 1 VM remain as an optimized path for
+ordinary predicate/constructor queries. The REPL selects version 2 whenever
+the lowered program needs higher-order operations, services, unresolved types
+or debugging. Before selecting a backend, it specializes provable closed
+predicate aliases and checks every reachable clause for first-order support.
+Both paths execute C code. The general embedding API always uses version 2,
+so callbacks can assign variables or enable debugging during a search.
+
+Version 1 has RETURN, FAIL, CALL, UNIFY, CHOICE and CUT instructions, fresh
+clause environments, a trail, continuations and choice points. Its details are
+in src/Hol/V1/Bytecode.hs and src/X/machine.h. Older .hbc files still execute.
+Clause heads are matched directly against existing goal terms; only a subtree
+assigned to an unbound goal variable needs materialization. Internal unbound
+variables link to the older representative. Initial query slots retain fresh
+representatives so answer projection still reports explicit alias bindings.
+Structure bindings retain occurs checks, and every binding is trailed.
+Clause slots start empty. A head variable's first occurrence captures the
+existing goal term directly, and later occurrences unify against that capture.
+Subtree materialization creates variables as needed. After a head succeeds,
+remaining empty slots receive fresh variables before body execution: no body
+choice can restore a heap checkpoint while leaving an environment slot pointing
+into the reclaimed heap. Query slots are allocated eagerly as before.
+
+The version 1 artifact loader reads the emitted decimal word table directly
+with Int64 bounds checks. Other previously accepted Read notation uses a
+bounded fallback. Both paths retain the full bytecode and metadata validator;
+this changes neither the saved format nor the compiler's instruction set.
+
+Version 2 uses a compact executable term graph. Its signed 64-bit word header:
+
+    magic=0x484f4c31, version=2, termCount, symbolCount, factCount,
+    querySlotCount, queryRoot, metadataCount
+
+Sections follow in this order:
+
+    query slots: [isType, metadata]
+    symbol roles: one word per symbol
+    term templates: [tag, a, b, reserved=0, reserved=0, metadata]
+    facts: [predicateSymbol or -1, templateRoot]
+    natural literal payload: decimal ASCII words
+
+Template tags are VAR, CONST, APP, INDEX, LAM, NAT and WILDCARD (0 through 6).
+APP/LAM children refer to earlier templates. The native EXEC loop interprets
+logical roles and predicate calls over instantiated graphs. Quantifier scopes,
+local clauses and continuations are native state, not Haskell AST evaluation.
+src/X/higher_machine.h and src/X/term.h specify the C ABI and prefix term wire.
+
+Embedding API
+-------------
+src/Hol/V1/FullCompiler.hs
+
+    compileFullProgram :: [TermNode] -> TermNode -> Either String FullProgram
+
+Input is the existing typed, converted representation. Use the existing
+module loader/type checker first. The compiler preserves clause order and
+lambda structure; it does not execute the query during compilation.
+
+src/Hol/V1/FullBytecode.hs
+
+    withRuntimeMetadata kinds types queryTypes program
+    validateFullBytecode / serializeFullBytecode / deserializeFullBytecode
+    disassembleFull
+
+Attach the program kind/type environments and query types before embedding or
+saving a compiled query. Saved metadata restores identities without depending
+on pretty-printed terms. queryFromBytecode is a presentation view used for
+answer projection, not an execution path.
+When embedding a saved artifact, start the application's UniqueM generator at
+or above fullUniqueFloor program; fresh host identities must not collide with
+identities already stored in its metadata. The standalone runner does this.
+
+src/Hol/V1/FullRuntime.hs
+
+    createSession :: RuntimeEnv -> IORef Bool -> FullProgram -> IO Session
+    withSession :: RuntimeEnv -> IORef Bool -> FullProgram -> (Session -> IO a) -> IO a
+    nextSolution :: UniqueM m => Session -> ExceptT KernelErr m (Maybe Context)
+    closeSession :: Session -> IO ()
+    takeSnapshot :: Session -> IO (Either String Snapshot)
+    restoreSnapshot :: Session -> Snapshot -> IO (Either String ())
+    closeSnapshot :: Snapshot -> IO ()
+    setWorkLimit :: Session -> Word64 -> IO (Either String ())
+    getWorkLimit :: Session -> IO (Either String Word64)
+
+nextSolution returns one answer or exhaustion and uses RuntimeEnv services;
+runFullProgram additionally drives the _Answer callback/continuation protocol.
+Hol.V1.Runtime.execRuntime compiles and runs this full engine directly.
+Use withSession for IO exception-safe ownership, or explicitly close sessions
+and snapshots. ForeignPtr finalizers provide a backstop. Closed handles and
+snapshots from another session are rejected. Serialize access to a session;
+the host service bridge is not an application-level concurrent session API.
+
+Snapshots own a deep copy of native terms, bindings, continuations, choice
+points, delayed equations and host constraint/premise tokens. Restoring one
+rewinds logical state and assignments. Unique identities are never recycled.
+External IO is not rewound. Pending assignments are checked and retained across
+native alternatives until a snapshot restores the earlier assignment state.
+The current work-limit setting is configuration and survives restoration.
+
+RuntimeEnv's _StackRef provides the current native pending path for inspection,
+including hypotheses and types. C choice points are lazy, so this view does not
+materialize BETA's alternative Stack frames or reproduce its internal IDs.
+Use takeSnapshot/restoreSnapshot for state restoration; the native Session API
+does not expose arbitrary replacement of BETA's mutable Stack representation.
+The legacy runCompiled/CompiledProgram API is only for the first-order fast
+path and does not support interactive assignment or snapshots.
+
+Compile-time specialization
+---------------------------
+Compiler.hs analyzes conjunctions from left to right and lowers them into an
+intermediate goal representation before emitting continuation instructions.
+For `sigma P\ P = answer, P Houses.`, the successful equality proves that P
+names answer; the following dynamic call is emitted as a static CALL answer.
+The resulting reachable program passes the first-order validator and selects
+version 1 automatically. No option is needed. Named query aliases retain their
+bindings in the displayed answer and saved artifacts.
+
+The equality UNIFY and predicate CALL instructions remain in the program.
+Predicate bodies are not inlined, so failure checks, clause/answer order and
+cut activation boundaries stay intact. A sigma binder receives a distinct
+lexical slot, independent of wildcard and outer binder slots. Disjunctions
+are analyzed independently; only identical proven aliases survive their join.
+An equality later in a conjunction cannot justify an earlier dynamic call.
+
+The analysis only propagates closed named constants established by standard
+equality. It does not guess bindings from calls, lambda values, partial
+applications or alias chains whose target is still unknown. Custom equality,
+dynamic hypotheses, arithmetic and other unsupported reachable code retain
+the full engine. This is a conservative optimization, not a decision procedure
+for whether an arbitrary higher-order program will happen to run first-order.
+
+Ownership and resource limits
+-----------------------------
+All C and FFI code lives in src/X/. Safe FFI calls yield at answers, service
+requests and instruction batches, allowing interruption of unbounded search.
+At batch boundaries the host explicitly yields to Haskell's scheduler before
+checking pending exceptions, so optimized loops also process timer and signal
+handlers. Cancellation regressions are compiled with -O2.
+Normalization/unification/import/export also have a per-operation work bound:
+5,000,000 node visits by default, configurable with a positive setWorkLimit.
+Nested operations share the bound. Term nesting is limited to 8192 levels.
+Exceeding a resource bound is an explicit execution error, not logical failure;
+a caller may raise the work limit and restore an earlier snapshot to retry.
+
+Backtracking reclaims branch arenas. Closing releases all machine state.
+Long deterministic searches do not yet have a tracing garbage collector, and
+snapshots copy state rather than using persistent sharing. These are memory/
+performance limits, not a reason to silently switch interpreters.
+
+Validation
+----------
+test/smoke.sh runs the existing frontend/runtime suites and all test/v1/*.sh.
+The V1 checks cover compiler/artifact roundtrips, replay after source deletion,
+strict native execution, services, snapshots, assignment, resource ownership,
+malformed wordcode, cancellation and allocation failures. C tests run with
+ASan/UBSan and leak detection. Higher-order unification is compared against
+BETA on fixed cases and deterministic generated well-scoped terms.
+
+test/v1/conformance.sh runs the 134 existing BETA transcripts through V1 and
+compares answers, constraints, diagnostics and interactive command results.
+It removes backend banners and debugger inspection screens: the latter expose
+the intentionally different native continuation/choice-point representation.
+Separate API tests check the snapshot and assignment behavior behind that UI.
+
+Local performance (2026-11-10)
+------------------------------
+Intel Core Ultra 9 275HX, GHC 9.6.7, optimized build, warm files:
+
+    BETA executable, 3 runs:       median 1.852 s (1.842--1.912 s)
+    V1 executable, 7 runs:         median 0.022 s (0.022--0.023 s)
+    V1 script after build, 3 runs: median 0.145 s (0.136--0.153 s)
+
+These runs use `?- answer Houses.` and enumerate the complete answer sequence.
+Executable times include startup, loading, type checking and query compilation;
+initial compiler build time is excluded. BETA and V1 answer transcripts match.
+This query selects the first-order fast path. Before alias specialization,
+`?- sigma P\ P = answer, P Houses.` selected general execution and took
+2.235 s in one run. Use --general to reproduce that engine choice now.
+Thus the ordinary Einstein script meets the one-second target; general
+higher-order execution still needs separate performance optimization.
+
+Teyjus comparison (2026-11-10, KST)
+-----------------------------------
+Measured the official Teyjus v2.1.1 release, commit
+5cb51538beee8b1ad6dbc47ee14d7491fefa6021, built from unmodified source with
+`dune build @install --profile release`. OCaml 4.14.1 and GCC 13.3.0 were used;
+its native simulator C flags include -O2. Hol used the optimized settings in
+example/einstein-teyjus.sh (GHC 9.6.7 -O2, C -O3).
+
+Same Core Ultra 9 275HX machine under WSL2, all children pinned to logical
+CPU 0. Physical performance/efficiency core mapping is not exposed by this
+virtual machine. Two warmup rounds, nine measured rounds, shuffled interleaved
+order. Each sample starts a fresh process, captures printed answers and runs
+through exhaustion. No builds run concurrently with the measurements.
+
+Primary comparison: precompiled .hbc versus precompiled .lp. Process startup,
+bytecode loading and query dispatch are included; program compilation is not.
+Teyjus parses its startup query; Hol's .hbc already contains the compiled query.
+The .hbc text decoder and Teyjus loader are part of their respective timings.
+
+    Path                          Median       Min--max (seconds)
+    Hol direct, bytecode          0.022567     0.022150--0.032842
+    Teyjus direct, bytecode       0.012561     0.011117--0.017146
+    Hol general, bytecode         2.267786     2.148019--2.857188
+    Teyjus general, bytecode      0.012703     0.011423--0.016518
+    Hol direct, source            0.032760     0.022383--0.033449
+    Hol general, source           2.327723     2.227291--2.857287
+
+Direct query: `answer Houses.`
+General query: `sigma P\ P = answer, P Houses.` (now use --general).
+
+Teyjus is about 178.5 times faster than Hol's general engine on the bytecode
+comparison, and about 1.80 times faster than the first-order fast path. The
+general wrapper selects Hol's full native engine, but the Einstein search
+itself is still predominantly first-order. This is not a comprehensive
+higher-order unification benchmark or a claim about other workloads.
+
+All six paths produce the same single answer, including variable sharing:
+the German household's animal remains existential. The Teyjus fixture keeps
+every original clause and goal in order; it adds no uniqueness/fish constraint
+or optimization annotation. Only signature/module headers and kind-declaration
+syntax are adapted. The harness checks source equivalence before running.
+
+Teyjus runs with `-b -e 1 -s QUERY einstein`, without -m or -q: it prints the
+answer and searches for further solutions. Hol source mode replies `y`, and
+Hol artifact mode automatically enumerates all answers. Compilation and linking
+are setup steps (one observed Teyjus compile: 0.003153 s; link: 0.001449 s),
+excluded from the comparison above. No first-answer-only timing is reported.
+
+Raw samples, commands, representative output, versions and SHA-256 hashes:
+
+    example/teyjus/results.json
+
+This file records the original comparison before compiler specialization.
+The current harness also measures the same sigma query with automatic
+selection, and explicitly uses --general for its general-engine baseline.
+
+Reproduce after building Teyjus v2.1.1 with OCaml 4.x, Dune, flex and yacc:
+
+    bash example/einstein-teyjus.sh \
+        --teyjus-bin /path/to/teyjus/_build/install/default/bin \
+        --teyjus-source /path/to/teyjus \
+        --teyjus-build 'dune build @install --profile release; record compiler versions and C flags' \
+        --cpu 0 --runs 9 --warmups 2 --output /tmp/teyjus-comparison.json
+
+The benchmark script requests the Hol optimization flags before measurement.
+The recorded Teyjus build is at /tmp/ppap-teyjus-v2.1.1 on this machine; its
+temporary flex/bison build tools were extracted locally, not installed globally.
+No Hol runtime implementation was changed for this comparison.
+
+Official release and simulator invocation implementation:
+https://github.com/teyjus/teyjus/releases/tag/v2.1.1
+https://github.com/teyjus/teyjus/blob/5cb51538beee8b1ad6dbc47ee14d7491fefa6021/source/front/simulatorfront.ml
+
+After compiler alias specialization (2026-11-10, KST)
+---------------------------------------------------
+Repeated the same pinned-CPU protocol with two warmups and nine interleaved
+measurements. All eight routes produced the same complete answer sequence.
+The sigma-wrapper query now automatically emits BytecodeArtifact version 1;
+--general emits FullArtifact version 2 for the comparison baseline.
+
+    Same sigma query, bytecode     Median       Min--max (seconds)
+    Hol automatic selection       0.022084     0.021745--0.022440
+    Hol forced general            2.092156     2.041562--2.157829
+    Teyjus                        0.011199     0.010862--0.011550
+
+In this run automatic specialization is about 94.7 times faster than forcing
+the general engine. Teyjus is still about 1.97 times faster than the specialized
+Hol path. Source-inclusive automatic execution is 0.022155 s; the direct-call
+Hol bytecode baseline is 0.022068 s. This optimization removes the avoidable
+general-engine cost for a proven alias; it does not speed up arbitrary
+higher-order unification or calls whose predicate cannot be determined.
+
+New raw measurements: example/teyjus/dispatch-results.json.
+The earlier example/teyjus/results.json remains the historical comparison.
+Re-run the command above with --output /tmp/dispatch-comparison.json to obtain
+all current routes. test/v1/dispatch.sh checks branch agreement, alias scope,
+clause lowering, cut, named answer bindings, full-engine selection and replay.
+
+Runtime bottlenecks and changes (2026-11-10, KST)
+------------------------------------------------
+Profiling the version 1 C engine attributed approximately 61% of sampled time
+to unification (including inlined helpers) and 25% to template instantiation.
+Every candidate clause previously built its entire head before unifying it
+with the goal. Direct head matching avoids those temporary application nodes;
+internal variable linking avoids an extra representative and trail entry.
+Atomic constants need no occurs traversal. Structured assignments still check
+for cycles. Separate C-only experiments measured about 13.0 ms before direct
+matching, 10.6 ms after matching, and a further 9--11% improvement from internal
+variable linking. These probes were not one end-to-end timing series.
+
+The emitted artifact's decimal table previously used the general Haskell Read
+parser. For the 1104-word Einstein artifact, isolated decode plus validation
+fell from median 0.787 ms / 8,534,320 allocated bytes to 0.179 ms / 2,023,768
+bytes. The existing validator still runs, and noncanonical Read syntax remains
+accepted through the bounded fallback.
+
+The GHC 9.6.7 Linux executable also waited for the RTS ticker during shutdown.
+An empty REPL process took about 10.7 ms. Relinking the same code with a 1 ms
+tick reduced it to 1.6 ms, and Einstein replay from 21.1 ms to 17.0 ms before
+the VM/loader changes. ppap.cabal therefore sets -with-rtsopts=-V0.001 only on
+Linux with GHC <9.8. The timer and 20 ms context-switch interval remain enabled;
+the tradeoff is 1000 timer wakeups/sec instead of 100. GHC 9.8+ has an exit-pipe
+ticker implementation and keeps its defaults, including the Stack GHC 9.10.3
+build. This is a process-exit cost, not additional logical search.
+
+The optimized cancellation probe also exposed an existing scheduling defect:
+allowInterrupt alone did not schedule signal/timeout handlers during an
+allocation-free native batch loop. Both FFI wrappers now yield to the Haskell
+scheduler at batch boundaries before checking exceptions. The -O2 first-order
+and full-runtime timeout regressions pass; actual SIGINT terminates both
+engines under both GHC versions.
+
+Teyjus's actual Einstein disassembly uses get_list, unify_variable_t and
+unify_local_value_t to match lists directly, and execute_name for tail calls
+in member/left_of/neighbor. Its compact list/term layout and separate type
+registers also differ from Hol's binary application graph. These explain
+remaining architectural opportunities; they are not separately quantified
+speedups. This fixture has no argument-index switch instructions, and Teyjus
+does perform occurs checks: neither missing indexing nor omitted cycle checks
+is an established explanation for this benchmark's gap.
+
+Diagnostic raw samples, commands, allocation measurements and profiling code:
+
+    example/teyjus/runtime-profile.json
+
+Source references for the ticker and Teyjus instructions:
+https://github.com/ghc/ghc/blob/ghc-9.6.7-release/rts/posix/ticker/Pthread.c
+https://github.com/ghc/ghc/blob/ghc-9.8.1-release/rts/posix/ticker/TimerFd.c
+https://github.com/ghc/ghc/blob/ghc-9.6.7-release/rts/RtsFlags.c
+https://github.com/teyjus/teyjus/blob/5cb51538beee8b1ad6dbc47ee14d7491fefa6021/source/simulator/siminstr.c
+https://github.com/teyjus/teyjus/blob/5cb51538beee8b1ad6dbc47ee14d7491fefa6021/source/simulator/hopu.c
+
+After runtime and loader optimization (2026-11-10, KST)
+-----------------------------------------------------
+Repeated the pinned-CPU protocol with two warmups and nine shuffled measured
+rounds. Included the unchanged previous Hol executable in the same run; its
+SHA-256 matches dispatch-results.json. All ten routes produced the same complete
+answer sequence, including existential-variable sharing. Program clauses and
+goal order were unchanged. Build and test processes were stopped first.
+
+    Same sigma query               Median       Min--max (seconds)
+    Previous Hol, bytecode          0.021946     0.021793--0.039794
+    Improved Hol, bytecode          0.012938     0.012733--0.015212
+    Teyjus, bytecode                0.011260     0.010887--0.012326
+    Previous Hol, source            0.022045     0.021923--0.022322
+    Improved Hol, source            0.018337     0.016826--0.019390
+    Improved Hol, forced general    2.103432     2.069030--2.273254
+
+Automatic bytecode replay takes 41.0% less time (1.70x throughput), but still
+takes 14.9% longer than Teyjus in this run. Source-inclusive execution takes
+16.8% less time. The unchanged general search engine remains around 2.1 seconds;
+the large gain applies to the first-order path, including provable predicate
+aliases. These results establish improvement on Einstein, not superiority
+over Teyjus across higher-order programs. Tail-call lowering and more compact
+term/type representations remain candidates requiring separate measurement.
+
+Final empty-process median is 1.54 ms with the embedded RTS default. Both
+Cabal/GHC 9.6.7 and Stack/GHC 9.10.3 builds pass. The complete smoke suite passes
+164 cases, including -O2 cancellation, BETA/V1 conformance, native sanitizers
+and allocation-failure cleanup.
+
+Raw full-process samples, outputs, command lines and binary/source hashes:
+
+    example/teyjus/runtime-results.json
+
+The older results.json and dispatch-results.json remain historical records.
+To include an earlier executable in a new run, add the following arguments
+to example/einstein-teyjus.sh before selecting the output path:
+
+    --baseline-ppap-bin /path/to/previous/ppap --baseline-label 'previous revision'
+
+After clause-environment optimization (2026-11-10, KST)
+------------------------------------------------------
+The next bottleneck was eagerly allocating every local variable and then
+unifying those fresh variables with existing goal arguments. A head variable's
+first occurrence now captures its goal term directly. Subsequent occurrences
+still unify; original query slots retain explicit fresh representatives for
+answer projection. Empty slots are completed before the clause body starts,
+preserving rollback without introducing a separate environment trail. The
+saved bytecode format and instruction set are unchanged.
+
+Separate C-only interleaved probes measured 8.90--8.99 ms before this change and
+4.55--4.70 ms after it, about 49% less search time. Haskell-side measurements
+found only 0.078 ms in duplicate validation and 0.096 ms in answer decoding and
+output, so those checks and the presentation code were retained. This change
+optimizes the C search engine used by the Haskell application. Teyjus likewise
+uses a C simulator, so this does not establish Haskell-versus-OCaml speed.
+
+Repeated the full-process comparison on CPU 0, with two warmups and nine
+shuffled measured rounds, including the prior 06dd8ce executable. All ten
+routes produced the same complete answer sequence and variable sharing.
+Startup, loading, complete search and output are included; builds are excluded.
+
+    Same sigma query               Median       Min--max (seconds)
+    Previous Hol, bytecode          0.013772     0.012721--0.030622
+    Improved Hol, bytecode          0.008837     0.008801--0.009533
+    Teyjus, bytecode                0.011507     0.010956--0.012311
+    Previous Hol, source            0.018345     0.016835--0.019396
+    Improved Hol, source            0.013153     0.011895--0.014298
+    Hol, forced general            2.137953     2.090698--2.295682
+
+Automatic Hol replay takes 35.8% less time than the prior executable and 23.2%
+less than Teyjus in this run (1.30x speedup relative to Teyjus). The improvement
+applies to the first-order engine selected for this query. The unchanged
+general higher-order engine remains around 2.1 seconds and needs separate work.
+
+Both Cabal/GHC 9.6.7 and Stack/GHC 9.10.3 builds pass, as do all 164 smoke cases.
+Native ASan/UBSan/leak checks and 102 allocation-failure points pass. Independent
+differential testing compared 5,000 generated finite programs and 39,957 ordered
+answers against the previous VM. It preserves original query IDs and compares
+fresh IDs modulo alpha-renaming, including variable sharing, cut, body-only
+variable rollback, structured heads and nested calls. These checks found no
+difference; they are not an exhaustive proof for all programs.
+
+Raw timings and reproducible diagnostic/validation probes:
+
+    example/teyjus/environment-results.json
+    example/teyjus/environment-profile.json
+
+Earlier result files remain historical records. Reproduce with the same
+benchmark command, using --output /tmp/environment-comparison.json and, when
+available, --baseline-ppap-bin pointing to the saved 06dd8ce executable.
