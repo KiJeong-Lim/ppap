@@ -409,20 +409,20 @@ runHolLexerRaw = runHolLexerRaw_this . addLoc 1 1 where
         classify :: Char -> Maybe Char
         classify ch = if ch `XSet.member` theAlphabet then Just ch else Nothing
         loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]
-        loop1 q buffer [] = return buffer
+        loop1 q buffer [] = return (reverse buffer)
         loop1 q buffer (ch : str) = do
             (latest, accepted) <- XState.get
             case XMap.lookup (q, classify (snd ch)) deltas of
-                Nothing -> return (buffer ++ [ch] ++ str)
+                Nothing -> return (reverse buffer ++ (ch : str))
                 Just p -> case XMap.lookup p qfs of
-                    Nothing -> loop1 p (buffer ++ [ch]) str
+                    Nothing -> loop1 p (ch : buffer) str
                     latest' -> do
-                        XState.put (latest', accepted ++ buffer ++ [ch])
+                        XState.put (latest', ch : buffer ++ accepted)
                         loop1 p [] str
         runFast :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
         runFast input = do
             (rest, (latest, accepted)) <- XState.runStateT (loop1 q0 [] input) (Nothing, [])
-            return ((latest, accepted), rest)
+            return ((latest, reverse accepted), rest)
     addLoc :: Int -> Int -> String -> [((Int, Int), Char)]
     addLoc _ _ [] = []
     addLoc row col (ch : chs) = if ch == '\n' then ((row, col), ch) : addLoc (row + 1) 1 chs else ((row, col), ch) : addLoc row (col + 1) chs

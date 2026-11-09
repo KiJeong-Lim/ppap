@@ -388,6 +388,8 @@ getUnitedNFAfromREs = runIdentity . go where
 
 makeDFAfromNFA :: NFA -> DFA
 makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result where
+    theAlphabet :: Set.Set Char
+    theAlphabet = Set.fromList [ ch | ((_, Just ch), _) <- Map.toList deltas ]
     eClosure :: Set.Set ParserS -> Set.Set ParserS
     eClosure qs = if qs == qs' then qs' else eClosure qs' where
         qs' :: Set.Set ParserS
@@ -419,7 +421,7 @@ makeDFAfromNFA (NFA q0 qfs deltas markeds pseudo_finals) = runIdentity result wh
                 drawGraph mapOldToNew triples
     loop :: Map.Map (Set.Set ParserS) ParserS -> StateT (Map.Map (ParserS, Char) ParserS) Identity (Map.Map ParserS ExitNumber, Map.Map (Set.Set ParserS) ParserS)
     loop mapOldToNew = do
-        mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theCsUniv)
+        mapOldToNew' <- drawGraph mapOldToNew ((,) <$> Map.toList mapOldToNew <*> Set.toList theAlphabet)
         let addItem (qf, label) = if and [ maybe True (\q -> not (q `Set.member` qs)) (Map.lookup label pseudo_finals) | (qs, p) <- Map.toList mapOldToNew', p == qf ] then Map.alter (Just . maybe label (min label)) qf else id
         if mapOldToNew == mapOldToNew' then
             return
@@ -752,20 +754,20 @@ genLexer xblocks = do
         tellLine (strstr "    runDFA :: DFA -> [((Int, Int), Char)] -> Either (Int, Int) ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
         tellLine (strstr "    runDFA (DFA q0 qfs deltas) = Right . XIdentity.runIdentity . runFast where")
         tellLine (strstr "        loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]")
-        tellLine (strstr "        loop1 q buffer [] = return buffer")
+        tellLine (strstr "        loop1 q buffer [] = return (reverse buffer)")
         tellLine (strstr "        loop1 q buffer (ch : str) = do")
         tellLine (strstr "            (latest, accepted) <- XState.get")
         tellLine (strstr "            case XMap.lookup (q, snd ch) deltas of")
-        tellLine (strstr "                Nothing -> return (buffer ++ [ch] ++ str)")
+        tellLine (strstr "                Nothing -> return (reverse buffer ++ (ch : str))")
         tellLine (strstr "                Just p -> case XMap.lookup p qfs of")
-        tellLine (strstr "                    Nothing -> loop1 p (buffer ++ [ch]) str")
+        tellLine (strstr "                    Nothing -> loop1 p (ch : buffer) str")
         tellLine (strstr "                    latest' -> do")
-        tellLine (strstr "                        XState.put (latest', accepted ++ buffer ++ [ch])")
+        tellLine (strstr "                        XState.put (latest', ch : buffer ++ accepted)")
         tellLine (strstr "                        loop1 p [] str")
         tellLine (strstr "        runFast :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])")
         tellLine (strstr "        runFast input = do")
         tellLine (strstr "            (rest, (latest, accepted)) <- XState.runStateT (loop1 q0 [] input) (Nothing, [])")
-        tellLine (strstr "            return ((latest, accepted), rest)")
+        tellLine (strstr "            return ((latest, reverse accepted), rest)")
         tellLine (strstr "    addLoc :: Int -> Int -> String -> [((Int, Int), Char)]")
         tellLine (strstr "    addLoc _ _ [] = []")
         tellLine (strstr "    addLoc row col (ch : chs) = if ch == '\\n' then ((row, col), ch) : addLoc (row + 1) 1 chs else ((row, col), ch) : addLoc row (col + 1) chs")

@@ -65,7 +65,7 @@ jsonlexer = jsonlexer_this . addLoc 1 1 where
     theDFA = DFA
         { getInitialQOfDFA = 21
         , getFinalQsOfDFA = XMap.fromAscList [(22, 1), (23, 2), (24, 3), (25, 4), (26, 5), (27, 6), (28, 7), (29, 8), (30, 9), (31, 10), (32, 11), (33, 11), (34, 12), (35, 13), (36, 14)]
-        , getTransitionsOfDFA = XMap.fromList 
+        , getTransitionsOfDFA = XMap.fromList
             [ ((0, Just '"'), 13), ((0, Just '/'), 13), ((0, Just '\\'), 13), ((0, Just 'b'), 13), ((0, Just 'f'), 13), ((0, Just 'n'), 13), ((0, Just 'r'), 13), ((0, Just 't'), 13), ((0, Just 'u'), 4)
             , ((1, Just '0'), 13), ((1, Just '1'), 13), ((1, Just '2'), 13), ((1, Just '3'), 13), ((1, Just '4'), 13), ((1, Just '5'), 13), ((1, Just '6'), 13), ((1, Just '7'), 13), ((1, Just '8'), 13), ((1, Just '9'), 13), ((1, Just 'A'), 13), ((1, Just 'B'), 13), ((1, Just 'C'), 13), ((1, Just 'D'), 13), ((1, Just 'E'), 13), ((1, Just 'F'), 13), ((1, Just 'a'), 13), ((1, Just 'b'), 13), ((1, Just 'c'), 13), ((1, Just 'd'), 13), ((1, Just 'e'), 13), ((1, Just 'f'), 13)
             , ((2, Just '0'), 1), ((2, Just '1'), 1), ((2, Just '2'), 1), ((2, Just '3'), 1), ((2, Just '4'), 1), ((2, Just '5'), 1), ((2, Just '6'), 1), ((2, Just '7'), 1), ((2, Just '8'), 1), ((2, Just '9'), 1), ((2, Just 'A'), 1), ((2, Just 'B'), 1), ((2, Just 'C'), 1), ((2, Just 'D'), 1), ((2, Just 'E'), 1), ((2, Just 'F'), 1), ((2, Just 'a'), 1), ((2, Just 'b'), 1), ((2, Just 'c'), 1), ((2, Just 'd'), 1), ((2, Just 'e'), 1), ((2, Just 'f'), 1)
@@ -101,20 +101,20 @@ jsonlexer = jsonlexer_this . addLoc 1 1 where
         classify :: Char -> Maybe Char
         classify ch = if ch `XSet.member` theAlphabet then Just ch else Nothing
         loop1 :: Int -> [((Int, Int), Char)] -> [((Int, Int), Char)] -> XState.StateT (Maybe Int, [((Int, Int), Char)]) XIdentity.Identity [((Int, Int), Char)]
-        loop1 q buffer [] = return buffer
+        loop1 q buffer [] = return (reverse buffer)
         loop1 q buffer (ch : str) = do
             (latest, accepted) <- XState.get
             case XMap.lookup (q, classify (snd ch)) deltas of
-                Nothing -> return (buffer ++ [ch] ++ str)
+                Nothing -> return (reverse buffer ++ (ch : str))
                 Just p -> case XMap.lookup p qfs of
-                    Nothing -> loop1 p (buffer ++ [ch]) str
+                    Nothing -> loop1 p (ch : buffer) str
                     latest' -> do
-                        XState.put (latest', accepted ++ buffer ++ [ch])
+                        XState.put (latest', ch : buffer ++ accepted)
                         loop1 p [] str
         runFast :: [((Int, Int), Char)] -> XIdentity.Identity ((Maybe Int, [((Int, Int), Char)]), [((Int, Int), Char)])
         runFast input = do
             (rest, (latest, accepted)) <- XState.runStateT (loop1 q0 [] input) (Nothing, [])
-            return ((latest, accepted), rest)
+            return ((latest, reverse accepted), rest)
     addLoc :: Int -> Int -> String -> [((Int, Int), Char)]
     addLoc _ _ [] = []
     addLoc row col (ch : chs) = if ch == '\n' then ((row, col), ch) : addLoc (row + 1) 1 chs else ((row, col), ch) : addLoc row (col + 1) chs

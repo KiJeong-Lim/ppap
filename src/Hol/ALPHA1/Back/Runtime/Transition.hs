@@ -23,34 +23,27 @@ import qualified Data.Set as Set
 
 runTransition :: RuntimeEnv -> [Clause] -> Set.Set LogicVar -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
 runTransition env program free_lvars = go where
-    failure :: ExceptT KernelErr (UniqueGenT IO) Stack
-    failure = return []
-    success :: (Context, [Cell]) -> ExceptT KernelErr (UniqueGenT IO) Stack
-    success with = return [with]
     search :: [Clause] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueGenT IO) Stack
     search facts level predicate args ctx cells = do
         call_id <- getNewUnique
-        fmap concat $ forM [ fact | Clause fact predicate' <- facts ++ program, maybe True (== predicate) predicate' ] $ \fact -> do
-            ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
-            case unfoldlNApp (rewrite HNF goal') of
-                (NCon predicate', args')
-                    | predicate == predicate' -> do
-                        hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ _LeftConstraints ctx)) else throwE (BadFactGiven goal')
-                        let new_level = level
-                            new_facts = facts
-                        case hopu_output of
-                            Nothing -> failure
-                            Just (new_disagreements, HopuSol new_labeling subst) -> success
-                                ( Context
-                                    { _TotalVarBinding = extendBinding subst (_TotalVarBinding ctx)
-                                    , _CurrentLabeling = new_labeling
-                                    , _LeftConstraints = new_disagreements
-                                    , _ContextThreadId = call_id
-                                    , _debuggindModeOn = _debuggindModeOn ctx
-                                    }
-                                , zonkLVar subst (mkCell new_facts new_level new_goal call_id : cells)
-                                )
-                _ -> failure
+        return
+            [ (ctx { _ContextThreadId = call_id }, MatchClause facts level (foldlNApp (mkNCon predicate) args) call_id fact : cells)
+            | Clause fact predicate' <- facts ++ program
+            , maybe True (== predicate) predicate'
+            ]
+    match :: [Clause] -> ScopeLevel -> Goal -> CallId -> Fact -> Context -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
+    match facts level goal call_id fact ctx cells stack = do
+        ((goal', new_goal), labeling) <- runStateT (instantiateFact fact level) (_CurrentLabeling ctx)
+        case (unfoldlNApp (rewrite HNF goal), unfoldlNApp (rewrite HNF goal')) of
+            ((NCon predicate, args), (NCon predicate', args'))
+                | predicate == predicate' -> do
+                    hopu_output <- if length args == length args' then lift (runHOPU labeling (zipWith (:=?=:) args args' ++ _LeftConstraints ctx)) else throwE (BadFactGiven goal')
+                    case hopu_output of
+                        Nothing -> go stack
+                        Just (new_disagreements, HopuSol new_labeling subst) -> do
+                            let ctx' = ctx { _TotalVarBinding = extendBinding subst (_TotalVarBinding ctx), _CurrentLabeling = new_labeling, _LeftConstraints = new_disagreements, _ContextThreadId = call_id }
+                            go ((ctx', zonkLVar subst (mkCell facts level new_goal call_id : cells)) : stack)
+            _ -> go stack
     dispatch :: Context -> [Clause] -> ScopeLevel -> (TermNode, [TermNode]) -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     dispatch ctx facts level (NCon predicate, args) call_id cells stack
         | DC (DC_LO logical_operator) <- predicate
@@ -64,6 +57,7 @@ runTransition env program free_lvars = go where
     dispatch ctx facts level (t, ts) call_id cells stack = throwE (BadGoalGiven (foldlNApp t ts))
     go :: Stack -> ExceptT KernelErr (UniqueGenT IO) Satisfied
     go [] = return False
+    go ((ctx, MatchClause facts level goal call_id fact : cells) : stack) = match facts level goal call_id fact ctx cells stack
     go ((ctx, cells) : stack) = do
         keep_going <- liftIO (_PutStr env ctx (showsCurrentState free_lvars ctx cells stack ""))
         unless keep_going (throwE QuitRequested)
@@ -71,4 +65,4 @@ runTransition env program free_lvars = go where
             [] -> do
                 want_more <- liftIO (_Answer env ctx)
                 if want_more then go stack else return True
-            Cell facts level goal call_id : cells -> dispatch ctx facts level (unfoldlNApp (rewrite HNF goal)) call_id cells stack
+            cell : cells -> dispatch ctx (_LocalFacts cell) (_ScopeLevel cell) (unfoldlNApp (rewrite HNF (_WantedGoal cell))) (_CellCallId cell) cells stack

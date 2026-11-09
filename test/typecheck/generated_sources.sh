@@ -30,4 +30,8 @@ for variant in ALPHA1 ALPHA2 BETA; do
     cmp "$tmp_dir/$variant/PlanHolParser.hs" "example/$variant/PlanHolParser.hs"
 done
 
+cp src/Json/JsonLexer.txt "$tmp_dir/JsonLexer.txt"
+printf 'LGS\n%s\n\n' "$tmp_dir/JsonLexer.txt" | "$PPAP_BIN" >/dev/null
+cmp "$tmp_dir/JsonLexer.hs" src/Json/JsonLexer.hs
+
 echo "generated lexer/parser sources are current"

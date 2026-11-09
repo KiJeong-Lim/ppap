@@ -51,6 +51,13 @@ data Cell
         , _WantedGoal :: Goal
         , _CellCallId :: CallId
         }
+    | MatchClause
+        { _LocalFacts :: [Clause]
+        , _ScopeLevel :: ScopeLevel
+        , _WantedGoal :: Goal
+        , _CellCallId :: CallId
+        , _CandidateFact :: Fact
+        }
     deriving ()
 
 data Context
@@ -75,6 +82,7 @@ instance ZonkLVar Clause where
 
 instance ZonkLVar Cell where
     zonkLVar theta (Cell facts level goal call_id) = Cell (zonkLVar theta facts) level (applyBinding theta goal) call_id
+    zonkLVar theta (MatchClause facts level goal call_id fact) = MatchClause (zonkLVar theta facts) level (applyBinding theta goal) call_id (applyBinding theta fact)
 
 mkClause :: Fact -> Clause
 mkClause fact = Clause { _ClauseBody = fact, _ClauseHead = headPredicate fact }
@@ -98,7 +106,7 @@ mkCell facts level goal call_id = goal `seq` Cell { _LocalFacts = facts, _ScopeL
 
 showStackItem :: Set.Set LogicVar -> Indentation -> (Context, [Cell]) -> ShowS
 showStackItem fvs space (ctx, cells) = strcat
-    [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- " . shows goal . strstr " # call_id = " . shows call_id | Cell facts level goal call_id <- cells ] . nl
+    [ pindent space . strstr "+ progressings = " . plist (space + 4) [ strstr "?- " . shows (_WantedGoal cell) . strstr " # call_id = " . shows (_CellCallId cell) | cell <- cells ] . nl
     , pindent space . strstr "+ context = Context" . nl
     , pindent (space + 4) . strstr "{ " . strstr "_scope_env = " . plist (space + 8) ([ shows (mkNCon c) . strstr " *--- " . shows level | (c, level) <- Map.toList (_ConLabel (_CurrentLabeling ctx)) ] ++ [ shows (mkLVar v) . strstr " *--- " . shows level | (v, level) <- Map.toList (_VarLabel (_CurrentLabeling ctx)), v `Set.member` fvs || not (v `Set.member` Map.keysSet (unVarBinding (_TotalVarBinding ctx))) ]) . nl
     , pindent (space + 4) . strstr ", " . strstr "_substitution = " . plist (space + 8) [ shows (LVar v) . strstr " |--> " . shows (resolveBinding (_TotalVarBinding ctx) t) | (v, t) <- Map.toList (unVarBinding (_TotalVarBinding ctx)), v `Set.member` fvs ] . nl

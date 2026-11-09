@@ -19,18 +19,47 @@ unFoldIApp = flip go [] where
     go (IApp annot term1 term2) terms = go term1 (term2 : terms)
     go term terms = (term, terms)
 
-reduceTermExpr :: TermExpr dcon annot -> TermExpr dcon annot
-reduceTermExpr = go Map.empty where
-    go :: Map.Map IVar (TermExpr tapp annot) -> TermExpr tapp annot -> TermExpr tapp annot
-    go mapsto (IApp annot1 (IAbs annot2 var term1) term2)
-        = go mapsto (go (Map.singleton var term2) term1)
-    go mapsto (IVar annot var)
-        = case Map.lookup var mapsto of
-            Nothing -> IVar annot var
-            Just term -> term
-    go mapsto (DCon annot con)
-        = DCon annot con
-    go mapsto (IApp annot term1 term2)
-        = IApp annot (go mapsto term1) (go mapsto term2)
-    go mapsto (IAbs annot var term)
-        = IAbs annot var (go mapsto term)
+reduceTermExpr :: GenUniqueM m => TermExpr dcon annot -> m (TermExpr dcon annot)
+reduceTermExpr term = do
+    term' <- reduceHeadTermExpr term
+    case term' of
+        IApp annot term1 term2 -> IApp annot <$> reduceTermExpr term1 <*> reduceTermExpr term2
+        IAbs annot var body -> IAbs annot var <$> reduceTermExpr body
+        _ -> return term'
+
+reduceHeadTermExpr :: GenUniqueM m => TermExpr dcon annot -> m (TermExpr dcon annot)
+reduceHeadTermExpr = go where
+    go :: GenUniqueM m => TermExpr dcon annot -> m (TermExpr dcon annot)
+    go (IApp annot term1 term2) = do
+        term1' <- go term1
+        case term1' of
+            IAbs _ var body -> substitute var term2 body >>= go
+            _ -> return (IApp annot term1' term2)
+    go term = return term
+    freeVars :: TermExpr dcon annot -> Set.Set IVar
+    freeVars (IVar _ var) = Set.singleton var
+    freeVars (DCon _ _) = Set.empty
+    freeVars (IApp _ term1 term2) = freeVars term1 `Set.union` freeVars term2
+    freeVars (IAbs _ var body) = Set.delete var (freeVars body)
+    rename :: IVar -> IVar -> TermExpr dcon annot -> TermExpr dcon annot
+    rename old new term = case term of
+        IVar annot var -> IVar annot (if var == old then new else var)
+        DCon _ _ -> term
+        IApp annot term1 term2 -> IApp annot (rename old new term1) (rename old new term2)
+        IAbs annot var body
+            | var == old -> term
+            | otherwise -> IAbs annot var (rename old new body)
+    substitute :: GenUniqueM m => IVar -> TermExpr dcon annot -> TermExpr dcon annot -> m (TermExpr dcon annot)
+    substitute var argument = subst where
+        free = freeVars argument
+        subst term = case term of
+            IVar _ var'
+                | var == var' -> return argument
+            IApp annot term1 term2 -> IApp annot <$> subst term1 <*> subst term2
+            IAbs annot var' body
+                | var == var' -> return term
+                | var' `Set.member` free -> do
+                    fresh <- getNewUnique
+                    IAbs annot fresh <$> subst (rename var' fresh body)
+                | otherwise -> IAbs annot var' <$> subst body
+            _ -> return term

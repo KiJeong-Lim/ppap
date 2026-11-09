@@ -10,6 +10,7 @@ import Hol.ALPHA1.Back.Base.TermNode
 import Hol.ALPHA1.Back.Base.TermNode.Show ()
 import Hol.ALPHA1.Back.Base.VarBinding
 import Hol.ALPHA1.Back.Converter.Main
+import Hol.ALPHA1.Back.Converter.Util
 import Hol.ALPHA1.Back.Runtime.Main
 import Hol.ALPHA1.Back.Runtime.Util
 import Hol.ALPHA1.Front.Analyzer.Main
@@ -37,6 +38,13 @@ compileProgram source = runExceptT $ do
 
 queryResult :: Program TermNode -> String -> UniqueGenT IO (Either KernelErr [Context])
 queryResult program source = do
+    (result, answers) <- queryTrace True program source
+    case result of
+        Left err -> return (Left err)
+        Right _ -> return (Right answers)
+
+queryTrace :: Bool -> Program TermNode -> String -> UniqueGenT IO (Either KernelErr Satisfied, [Context])
+queryTrace want_more program source = do
     compiled <- runExceptT $ do
         query <- case runAnalyzer source of
             Right (Left query) -> return query
@@ -50,11 +58,10 @@ queryResult program source = do
         Right query -> do
             answers <- liftIO (newIORef [])
             debugging <- liftIO (newIORef False)
-            let env = RuntimeEnv { _PutStr = \_ _ -> return True, _Answer = \ctx -> modifyIORef answers (ctx :) >> return True }
+            let env = RuntimeEnv { _PutStr = \_ _ -> return True, _Answer = \ctx -> modifyIORef answers (ctx :) >> return want_more }
             result <- runExceptT (execRuntime env debugging (_FactDecls program) query)
-            case result of
-                Left err -> return (Left err)
-                Right _ -> liftIO (Right . reverse <$> readIORef answers)
+            contexts <- liftIO (reverse <$> readIORef answers)
+            return (result, contexts)
 
 queryAnswers :: Program TermNode -> String -> UniqueGenT IO [Context]
 queryAnswers program source = do
@@ -80,6 +87,32 @@ main = do
     assert "trailing abstraction is parenthesized" (show (mkNApp (mkNCon LO_pi) (mkNAbs (mkLVar (LV_Named "A")))) == "pi W_1\\ A")
     source <- readFile "test/alpha1/legacy.hol"
     runUniqueGenT $ do
+        x <- getNewUnique
+        y <- getNewUnique
+        captureAvoided <- reduceTermExpr (IApp () (IAbs () x (IAbs () y (IVar () x))) (IVar () y))
+        liftIO (assert "beta reduction captured a free variable" (case captureAvoided of
+            IAbs _ bound (IVar _ free) -> bound /= y && free == y
+            _ -> False))
+        shadowed <- reduceTermExpr (IApp () (IAbs () x (IAbs () x (IVar () x))) (IVar () y))
+        liftIO (assert "beta reduction substituted through a shadowing binder" (case shadowed of
+            IAbs _ bound (IVar _ body) -> bound == body
+            _ -> False))
+        normalized <- reduceTermExpr (IApp () (IApp () (IAbs () x (IVar () x)) (IAbs () y (IVar () y))) (IVar () x))
+        liftIO (assert "beta reduction left a newly exposed redex" (case normalized of
+            IVar _ var -> var == x
+            _ -> False))
+        captureCompiled <- compileProgram "type x (nat -> o). type g (nat -> (nat -> o) -> o). type capture (o -> o). capture ((unused\\ ((f\\ f (f x)) (y\\ z\\ g z y)) 0) 0)."
+        captureFacts <- case captureCompiled of
+            Left err -> liftIO (putStrLn err >> exitFailure)
+            Right facts -> return facts
+        captureSuccesses <- mapM (queryAnswers captureFacts)
+            [ "?- ((f\\ f (f x)) (y\\ z\\ g z y)) 0 = g 0 (z\\ g z x)."
+            , "?- (unused\\ ((f\\ f (f x)) (y\\ z\\ g z y)) 0) 0 = g 0 (z\\ g z x)."
+            , "?- capture (g 0 (z\\ g z x))."
+            ]
+        liftIO (assert "beta-equivalent terms changed across compilation" (all (not . null) captureSuccesses))
+        captureFailures <- queryAnswers captureFacts "?- (unused\\ ((f\\ f (f x)) (y\\ z\\ g z y)) 0) 0 = g 0 (z\\ g 0 x)."
+        liftIO (assert "beta reduction equated a bound variable with a constant" (null captureFailures))
         mapM_ (\bad -> compileProgram bad >>= liftIO . assert ("invalid clause compiled: " ++ bad) . either (isInfixOf "converting-error") (const False)) ["type p o. p. true.", "type p o. p :- true => p.", "type p o. (p :- true) :- true.", "type p o. type q o. p :- q :- q.", "type p o. 1 = 1.", "type p o. p :- (1 = 1 :- true)."]
         compiled <- compileProgram source
         facts <- case compiled of
@@ -93,6 +126,21 @@ main = do
         liftIO (assert "backtracking changed" (map (binding "N") choices == [Just "1", Just "2"]))
         cuts <- queryAnswers facts "?- cuttest 3 N."
         liftIO (assert "cut changed" (map (binding "N") cuts == [Just "4"]))
+        let deferred = "?- pi p\\ sigma X\\ X = true, (X => (p => p))."
+        (stopped, first) <- queryTrace False facts deferred
+        liftIO (assert "first answer evaluated a later invalid hypothesis" (case stopped of Right True -> length first == 1; _ -> False))
+        (continued, prefix) <- queryTrace True facts deferred
+        liftIO (assert "later invalid hypothesis was lost or evaluated before the first answer" (case continued of Left (BadFactGiven _) -> length prefix == 1; _ -> False))
+        (immediate, none) <- queryTrace True facts "?- pi p\\ sigma X\\ X = true, (p => (X => p))."
+        liftIO (assert "first invalid hypothesis did not error immediately" (case immediate of Left (BadFactGiven _) -> null none; _ -> False))
+        cutAnswers <- queryAnswers facts "?- pi p\\ sigma X\\ X = true, (X => (p => (p, !)))."
+        liftIO (assert "query cut did not remove a pending invalid hypothesis" (length cutAnswers == 1))
+        predicateCut <- queryAnswers facts "?- pi p\\ sigma X\\ X = true, (X => ((p :- !) => p))."
+        liftIO (assert "predicate cut did not remove a pending invalid hypothesis" (length predicateCut == 1))
+        callerChoices <- queryAnswers facts "?- choice N, (pi p\\ sigma X\\ X = true, (X => ((p :- !) => p)))."
+        liftIO (assert "predicate cut removed caller alternatives" (map (binding "N") callerChoices == [Just "1", Just "2"]))
+        callerBindings <- queryAnswers facts "?- choice N, cuttest 3 M."
+        liftIO (assert "cut lost parent choices or bound variables" (map (binding "N") callerBindings == [Just "1", Just "2"] && map (binding "M") callerBindings == [Just "4", Just "4"]))
         lambdas <- queryAnswers facts "?- X = (x\\ x)."
         liftIO (assert "lower-case binder changed" (map (binding "X") lambdas == [Just "W_1\\ W_1"]))
         kept <- queryAnswers facts "?- X = s (F 1)."

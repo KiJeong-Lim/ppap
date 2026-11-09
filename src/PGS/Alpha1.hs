@@ -596,7 +596,7 @@ makeProductionRuleInstances rule_env = fmap (const ()) . loop where
                                 (pair', cache') <- get
                                 put (pair', Map.update (const (Just (Just pairs))) ns cache')
                             _ -> return ()
-                        return (substituteNS mapsto ns)
+                        return ns
 
 genParser :: [YBlock] -> ExceptT ErrMsg Identity [String]
 genParser blocks = myMain where
@@ -816,35 +816,32 @@ genParser blocks = myMain where
                                     ]
                                 , strstr "])"
                                 ]
-                            sequence
-                                [ do
-                                    let mkIndexErr idx = "the length of rhs is " ++ shows (length syms) (", but the index " ++ shows idx " is greater than or equal to it.")
-                                    des_rep <- fmap (ppunc  "        ") $ sequence
-                                        [ lift $ fmap strcat $ sequence
-                                            [ case de of
-                                                DsStrLit str -> return (shows str)
-                                                DsSource hs_src -> return (strstr hs_src)
-                                                DsNSPatn idx
-                                                    | idx <= length syms -> case syms !! (idx - 1) of
-                                                        NS ns -> return (strstr "(" . getGetRep ns . strstr " " . patNsIdx idx . strstr ")")
-                                                        TS ts -> throwE ("a DsTSPatn must be matched to a nonterminal symbol.")
-                                                    | otherwise -> throwE (mkIndexErr idx)
-                                                DsTSPatn idx field
-                                                    | idx <= length syms -> case syms !! (idx - 1) of
-                                                        NS ns -> throwE ("a DsTSPatn must be matched to a terminal symbol.")
-                                                        TS ts -> return (strstr "(" . patTsIdx idx field . strstr ")")
-                                                    | otherwise -> throwE (mkIndexErr idx)
-                                            | de <- des
-                                            ]
-                                        ]
-                                    tellLine $ strcat
-                                        [ strstr "        | "
-                                        , makeGuard id_env body_name params_name (zip [1, 2 .. ] syms)
-                                        , strstr " = "
-                                        , des_rep
-                                        ]
-                                    return ()
+                            let mkIndexErr idx = "the index " ++ shows idx (" is outside the rhs range 1.." ++ shows (length syms) ".")
+                            des_reps <- sequence
+                                [ lift $ fmap strcat $ sequence
+                                    [ case de of
+                                        DsStrLit str -> return (shows str)
+                                        DsSource hs_src -> return (strstr hs_src)
+                                        DsNSPatn idx
+                                            | 1 <= idx && idx <= length syms -> case syms !! (idx - 1) of
+                                                NS ns -> return (strstr "(" . getGetRep ns . strstr " " . patNsIdx idx . strstr ")")
+                                                TS ts -> throwE ("a DsTSPatn must be matched to a nonterminal symbol.")
+                                            | otherwise -> throwE (mkIndexErr idx)
+                                        DsTSPatn idx field
+                                            | 1 <= idx && idx <= length syms -> case syms !! (idx - 1) of
+                                                NS ns -> throwE ("a DsTSPatn must be matched to a terminal symbol.")
+                                                TS ts -> return (strstr "(" . patTsIdx idx field . strstr ")")
+                                            | otherwise -> throwE (mkIndexErr idx)
+                                    | de <- des
+                                    ]
                                 | des <- dess
+                                ]
+                            tellLine $ strcat
+                                [ strstr "        | "
+                                , makeGuard id_env body_name params_name (zip [1, 2 .. ] syms)
+                                , case des_reps of
+                                    [des_rep] -> strstr " = " . des_rep
+                                    _ -> strstr " =\n            " . ppunc "\n            " des_reps
                                 ]
                             return ()
                         | YMatch prec syms dess <- match_decls
