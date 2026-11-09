@@ -148,7 +148,7 @@ addAbbrev name ps rhs = addEntry EK_Type name ps (compileTypeTemplate rhs)
 addNotation :: SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
 addNotation name ps rhs db
     = assertNonnegativeIndices rhs `seq`
-      addEntry EK_Term name ps rhs db
+        addEntry EK_Term name ps rhs db
 
 addEntry :: EntryKind -> SmallId -> [LargeId] -> TermNode -> NotationDB -> NotationDB
 addEntry kind name ps rhs db = db
@@ -156,16 +156,16 @@ addEntry kind name ps rhs db = db
     , _declaredEntries = Set.insert key (_declaredEntries db)
     , _nextSeq = n + 1
     }
-  where
-    n = _nextSeq db
-    key = (kind, name)
-    entry = FoldEntry
-        { _feName = name
-        , _feParams = ps
-        , _feRhs = rhs
-        , _feSeq = n
-        , _feKind = kind
-        }
+    where
+        n = _nextSeq db
+        key = (kind, name)
+        entry = FoldEntry
+            { _feName = name
+            , _feParams = ps
+            , _feRhs = rhs
+            , _feSeq = n
+            , _feKind = kind
+            }
 
 entryKey :: FoldEntry -> (EntryKind, SmallId)
 entryKey entry = (_feKind entry, _feName entry)
@@ -200,8 +200,8 @@ declarationDelta fixityDecls expansionDecls effective = NotationDB
     where
         ownEntryKeys = Set.fromList
             ( [ (EK_Type, name) | (name, _, _) <- declaredTypeAbbrevList expansionDecls ]
-           ++ [ (EK_Term, name) | (name, _, _) <- declaredTermNotationList expansionDecls ]
-            )
+            ++ [ (EK_Term, name) | (name, _, _) <- declaredTermNotationList expansionDecls ]
+                )
 
 lookupFixity :: SmallId -> NotationDB -> Maybe (FixityKind, Precedence)
 lookupFixity name db = Map.lookup name (_fixity db)
@@ -243,14 +243,14 @@ foldTerm db = constructViewerCustom (const Nothing) (const Nothing) . foldTermAs
 tryMatch :: [FoldEntry] -> TermNode -> Maybe (EntryKind, SmallId, [TermNode])
 tryMatch entries t
     = assertNonnegativeTerms (map _feRhs entries) `seq`
-      assertNonnegativeIndices t `seq`
-      firstJust
-        [ do
-            env <- matchTerm (_feParams e) (_feRhs e) t
-            args <- traverse (`Map.lookup` env) (_feParams e)
-            return (_feKind e, _feName e, args)
-        | e <- entries
-        ]
+        assertNonnegativeIndices t `seq`
+        firstJust
+            [ do
+                env <- matchTerm (_feParams e) (_feRhs e) t
+                args <- traverse (`Map.lookup` env) (_feParams e)
+                return (_feKind e, _feName e, args)
+            | e <- entries
+            ]
 
 tryFoldType :: NotationDB -> MonoType Int -> Maybe (SmallId, [MonoType Int])
 tryFoldType db t
@@ -278,65 +278,65 @@ nodeToMonoTypeInt term = assertNonnegativeIndices term `seq` go term where
 foldTermAsNode :: NotationDB -> TermNode -> TermNode
 foldTermAsNode db term
     = assertNonnegativeTerms (map _feRhs (_entries db)) `seq`
-      assertNonnegativeIndices term `seq`
-      go Set.empty term
-  where
-    go _ (NIdx i)
-        | i < 0 = undefined
-    go active t = tryHere active $ case t of
-        NApp t1 t2 sl -> NApp (go active t1) (go active t2) sl
-        NLam mhint ty body sl -> NLam mhint ty (go active body) sl
-        Susp body env_n env_l mtv -> Susp (go active body) env_n env_l mtv
-        _ -> t
-    tryHere active t = case tryMatch available t of
-        Just (kind, name, args) ->
-            List.foldl' mkNApp head_ (map (go (Set.insert key active)) args)
-          where
-            key = (kind, name)
-            head_ = case kind of
-                EK_Type -> mkNCon (TC_Named name)
-                EK_Term -> mkNCon (DC_Named name)
-        Nothing -> t
-      where
-        -- A template such as @notation id X := X@ legitimately matches every
-        -- term.  While rendering its captured arguments, disable that entry
-        -- (and every enclosing fold entry) so presentation folding cannot
-        -- recursively re-fold the very term it just captured.  Keeping the
-        -- complete active set also terminates mutually overlapping catch-all
-        -- templates without rejecting useful identity declarations.
-        available = filter ((`Set.notMember` active) . entryKey) (_entries db)
+        assertNonnegativeIndices term `seq`
+        go Set.empty term
+    where
+        go _ (NIdx i)
+            | i < 0 = undefined
+        go active t = tryHere active $ case t of
+            NApp t1 t2 sl -> NApp (go active t1) (go active t2) sl
+            NLam mhint ty body sl -> NLam mhint ty (go active body) sl
+            Susp body env_n env_l mtv -> Susp (go active body) env_n env_l mtv
+            _ -> t
+        tryHere active t = case tryMatch available t of
+            Just (kind, name, args) ->
+                List.foldl' mkNApp head_ (map (go (Set.insert key active)) args)
+                where
+                    key = (kind, name)
+                    head_ = case kind of
+                        EK_Type -> mkNCon (TC_Named name)
+                        EK_Term -> mkNCon (DC_Named name)
+            Nothing -> t
+            where
+                -- A template such as @notation id X := X@ legitimately matches every
+                -- term.  While rendering its captured arguments, disable that entry
+                -- (and every enclosing fold entry) so presentation folding cannot
+                -- recursively re-fold the very term it just captured.  Keeping the
+                -- complete active set also terminates mutually overlapping catch-all
+                -- templates without rejecting useful identity declarations.
+                available = filter ((`Set.notMember` active) . entryKey) (_entries db)
 
 matchTerm :: [LargeId] -> TermNode -> TermNode -> Maybe (Map.Map LargeId TermNode)
 matchTerm params tmpl cand
     = assertNonnegativeIndices tmpl `seq`
         assertNonnegativeIndices cand `seq`
         go tmpl cand Map.empty
-  where
-    isParam (LV_Named n) = n `elem` params
-    isParam _ = False
-    go (LVar lv) c env
-        | isParam lv
-        = case Map.lookup n env of
-            Nothing -> Just (Map.insert n c env)
-            Just prev -> if prev == c then Just env else Nothing
-        where
-            LV_Named n = lv
-    go (LVar lv1) (LVar lv2) env
-        | lv1 == lv2 = Just env
-        | otherwise = Nothing
-    go (NCon c1 _) (NCon c2 _) env
-        | c1 == c2 = Just env
-        | otherwise = Nothing
-    go (NIdx i) (NIdx j) env
-        | i < 0 || j < 0 = undefined
-        | i == j = Just env
-        | otherwise = Nothing
-    go (NApp a1 a2 _) (NApp b1 b2 _) env    
-        = go a1 b1 env >>= go a2 b2
-    go (NLam _ _ t1 _) (NLam _ _ t2 _) env
-        = go t1 t2 env
-    go _ _ _
-        = Nothing
+    where
+        isParam (LV_Named n) = n `elem` params
+        isParam _ = False
+        go (LVar lv) c env
+            | isParam lv
+            = case Map.lookup n env of
+                Nothing -> Just (Map.insert n c env)
+                Just prev -> if prev == c then Just env else Nothing
+            where
+                LV_Named n = lv
+        go (LVar lv1) (LVar lv2) env
+            | lv1 == lv2 = Just env
+            | otherwise = Nothing
+        go (NCon c1 _) (NCon c2 _) env
+            | c1 == c2 = Just env
+            | otherwise = Nothing
+        go (NIdx i) (NIdx j) env
+            | i < 0 || j < 0 = undefined
+            | i == j = Just env
+            | otherwise = Nothing
+        go (NApp a1 a2 _) (NApp b1 b2 _) env
+            = go a1 b1 env >>= go a2 b2
+        go (NLam _ _ t1 _) (NLam _ _ t2 _) env
+            = go t1 t2 env
+        go _ _ _
+            = Nothing
 
 firstJust :: [Maybe a] -> Maybe a
 firstJust [] = Nothing
@@ -391,11 +391,11 @@ mergeExpansionWithShadows shadowTypes shadowTerms older newer = ExpansionDB
 initialExpansionDB :: ExpansionDB
 initialExpansionDB = emptyExpansionDB
     { _typeAbbrevs = Map.singleton "string" ([], stringRhs) }
-  where
-    nullLoc :: SLoc
-    nullLoc = SLoc (0, 0) (0, 0)
-    stringRhs :: TypeRep
-    stringRhs = RTyApp nullLoc (RTyCon nullLoc (TC_Named "list")) (RTyCon nullLoc (TC_Named "char"))
+    where
+        nullLoc :: SLoc
+        nullLoc = SLoc (0, 0) (0, 0)
+        stringRhs :: TypeRep
+        stringRhs = RTyApp nullLoc (RTyCon nullLoc (TC_Named "list")) (RTyCon nullLoc (TC_Named "char"))
 
 addTypeAbbrevDecl :: SmallId -> [LargeId] -> TypeRep -> ExpansionDB -> ExpansionDB
 addTypeAbbrevDecl name params body db = db
@@ -599,8 +599,8 @@ expandTermRepChecked db = go [] Set.empty where
     templateNames = Set.unions
         ( Map.keysSet (_termNotations db)
         : [ Set.union (Set.fromList params) (allNamesOfTermRep body)
-          | (params, body) <- Map.elems (_termNotations db)
-          ]
+            | (params, body) <- Map.elems (_termNotations db)
+            ]
         )
     go active bound t = case t of
         RApp loc _ _ -> do

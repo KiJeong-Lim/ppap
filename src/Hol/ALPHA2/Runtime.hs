@@ -59,29 +59,29 @@ assertConstraints (constraint : rest) = assertConstraint constraint `seq` assert
 instance Eq Constraint where
     lhs == rhs
         = assertConstraint lhs `seq`
-          assertConstraint rhs `seq`
-          case (lhs, rhs) of
-            (DisagreementConstraint d1, DisagreementConstraint d2) -> d1 == d2
-            (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> l1 == l2 && r1 == r2
-            (DefinedConstraint t1, DefinedConstraint t2) -> t1 == t2
-            (ArithmeticConstraint t1, ArithmeticConstraint t2) -> t1 == t2
-            _ -> False
+            assertConstraint rhs `seq`
+            case (lhs, rhs) of
+                (DisagreementConstraint d1, DisagreementConstraint d2) -> d1 == d2
+                (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> l1 == l2 && r1 == r2
+                (DefinedConstraint t1, DefinedConstraint t2) -> t1 == t2
+                (ArithmeticConstraint t1, ArithmeticConstraint t2) -> t1 == t2
+                _ -> False
 
 instance Ord Constraint where
     compare lhs rhs
         = assertConstraint lhs `seq`
-          assertConstraint rhs `seq`
-          case (lhs, rhs) of
-            (DisagreementConstraint d1, DisagreementConstraint d2) -> compare d1 d2
-            (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> compare l1 l2 <> compare r1 r2
-            (DefinedConstraint t1, DefinedConstraint t2) -> compare t1 t2
-            (ArithmeticConstraint t1, ArithmeticConstraint t2) -> compare t1 t2
-            _ -> compare (constraintTag lhs) (constraintTag rhs)
-      where
-        constraintTag (DisagreementConstraint _) = 0 :: Int
-        constraintTag (EvalutionConstraint _ _) = 1
-        constraintTag (DefinedConstraint _) = 2
-        constraintTag (ArithmeticConstraint _) = 3
+            assertConstraint rhs `seq`
+            case (lhs, rhs) of
+                (DisagreementConstraint d1, DisagreementConstraint d2) -> compare d1 d2
+                (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> compare l1 l2 <> compare r1 r2
+                (DefinedConstraint t1, DefinedConstraint t2) -> compare t1 t2
+                (ArithmeticConstraint t1, ArithmeticConstraint t2) -> compare t1 t2
+                _ -> compare (constraintTag lhs) (constraintTag rhs)
+        where
+            constraintTag (DisagreementConstraint _) = 0 :: Int
+            constraintTag (EvalutionConstraint _ _) = 1
+            constraintTag (DefinedConstraint _) = 2
+            constraintTag (ArithmeticConstraint _) = 3
 
 data Cell
     = Cell
@@ -115,25 +115,25 @@ assertCell cell
 assertContext :: Context -> ()
 assertContext ctx
     = assertVarBinding (_TotalVarBinding ctx) `seq`
-      assertLabelingDomain (_CurrentLabeling ctx) `seq`
-      assertConstraints (_LeftConstraints ctx)
+        assertLabelingDomain (_CurrentLabeling ctx) `seq`
+        assertConstraints (_LeftConstraints ctx)
 
 assertLabelingDomain :: Labeling -> ()
 assertLabelingDomain labeling
     = assertScopeMap (_ConLabel labeling) `seq`
-      assertScopeMap (_VarLabel labeling)
-  where
-    assertScopeMap values = IntMap.foldrWithKey
-        (\key level rest -> if key < 0 || level < 0 then undefined else rest)
-        () values
+        assertScopeMap (_VarLabel labeling)
+    where
+        assertScopeMap values = IntMap.foldrWithKey
+            (\key level rest -> if key < 0 || level < 0 then undefined else rest)
+            () values
 
 assertStack :: Stack -> ()
 assertStack [] = ()
 assertStack ((ctx, cells) : rest)
     = assertContext ctx `seq` assertCells cells `seq` assertStack rest
-  where
-    assertCells [] = ()
-    assertCells (cell : more) = assertCell cell `seq` assertCells more
+    where
+        assertCells [] = ()
+        assertCells (cell : more) = assertCell cell `seq` assertCells more
 
 data RuntimeEnv
     = RuntimeEnv
@@ -145,9 +145,9 @@ data RuntimeEnv
 instance ZonkLVar Context where
     zonkLVar theta ctx
         = assertVarBinding theta `seq`
-          assertVarBinding (_TotalVarBinding ctx) `seq`
-          assertConstraints (_LeftConstraints ctx) `seq`
-          Context
+            assertVarBinding (_TotalVarBinding ctx) `seq`
+            assertConstraints (_LeftConstraints ctx) `seq`
+            Context
         { _TotalVarBinding = theta <> _TotalVarBinding ctx
         , _CurrentLabeling = zonkLVar theta (_CurrentLabeling ctx)
         , _LeftConstraints = zonkLVar theta (_LeftConstraints ctx)
@@ -158,25 +158,25 @@ instance ZonkLVar Context where
 instance ZonkLVar Constraint where
     zonkLVar theta constraint
         = assertVarBinding theta `seq`
-          assertConstraint constraint `seq`
-          go constraint
-      where
-        go (DisagreementConstraint eqn)
-            = DisagreementConstraint (bindVars theta eqn)
-        go (EvalutionConstraint lhs rhs)
-            = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
-        go (DefinedConstraint term)
-            = DefinedConstraint (bindVars theta term)
-        go (ArithmeticConstraint arith)
-            = ArithmeticConstraint (bindVars theta arith)
+            assertConstraint constraint `seq`
+            go constraint
+        where
+            go (DisagreementConstraint eqn)
+                = DisagreementConstraint (bindVars theta eqn)
+            go (EvalutionConstraint lhs rhs)
+                = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
+            go (DefinedConstraint term)
+                = DefinedConstraint (bindVars theta term)
+            go (ArithmeticConstraint arith)
+                = ArithmeticConstraint (bindVars theta arith)
 
 instance ZonkLVar Cell where
     zonkLVar theta (Cell facts hyps level goal call_id)
         = assertVarBinding theta `seq`
-          assertNonnegativeTerms (concat (Map.elems facts)) `seq`
-          assertNonnegativeTerms hyps `seq`
-          assertNonnegativeIndices goal `seq`
-          mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
+            assertNonnegativeTerms (concat (Map.elems facts)) `seq`
+            assertNonnegativeTerms hyps `seq`
+            assertNonnegativeIndices goal `seq`
+            mkCell facts (bindVars theta hyps) level (bindVars theta goal) call_id
 
 instance Show Constraint where
     showsPrec prec (DisagreementConstraint eqn) = showsPrec prec eqn
@@ -238,7 +238,7 @@ instantiateFact fact level
 runLogicalOperator :: LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
 runLogicalOperator logicalOperator args ctx facts hyps level callId cells stack
     = assertNonnegativeTerms args `seq`
-      runLogicalOperatorUnchecked logicalOperator args ctx facts hyps level callId cells stack
+        runLogicalOperatorUnchecked logicalOperator args ctx facts hyps level callId cells stack
 
 runLogicalOperatorUnchecked :: LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr (UniqueT IO) Stack
 runLogicalOperatorUnchecked LO_true [] ctx facts hyps level call_id cells stack
@@ -293,16 +293,16 @@ runLogicalOperatorUnchecked logical_operator args ctx facts hyps level call_id c
 execIs :: MonadUnique m => Context -> [Cell] -> Stack -> m Stack
 execIs ctx cells stack
     = assertConstraints (_LeftConstraints ctx) `seq`
-      case (recheckEvaluationConstraints new_evaluation_constraints, recheckDefinedConstraints new_definition_constraints) of
-        (Nothing, _) -> return stack
-        (_, Nothing) -> return stack
-        (Just checkedEvaluations, Just checkedDefinitions)
-            | arithmeticConstraintsBad new_arithmetic_constraints -> return stack
-            | otherwise -> return
-                ((ctx { _LeftConstraints = map DisagreementConstraint new_disagreements
-                    ++ map (uncurry EvalutionConstraint) checkedEvaluations
-                    ++ map DefinedConstraint checkedDefinitions
-                    ++ [ ArithmeticConstraint arith | arith <- new_arithmetic_constraints, evaluateB arith == Left "non" ] }, cells) : stack)
+        case (recheckEvaluationConstraints new_evaluation_constraints, recheckDefinedConstraints new_definition_constraints) of
+            (Nothing, _) -> return stack
+            (_, Nothing) -> return stack
+            (Just checkedEvaluations, Just checkedDefinitions)
+                | arithmeticConstraintsBad new_arithmetic_constraints -> return stack
+                | otherwise -> return
+                    ((ctx { _LeftConstraints = map DisagreementConstraint new_disagreements
+                        ++ map (uncurry EvalutionConstraint) checkedEvaluations
+                        ++ map DefinedConstraint checkedDefinitions
+                        ++ [ ArithmeticConstraint arith | arith <- new_arithmetic_constraints, evaluateB arith == Left "non" ] }, cells) : stack)
     where
         new_disagreements = [ eqn | DisagreementConstraint eqn <- _LeftConstraints ctx ]
         new_evaluation_constraints = [ (rewrite NF lhs, rewrite NF rhs) | EvalutionConstraint lhs rhs <- _LeftConstraints ctx ]
@@ -312,7 +312,7 @@ execIs ctx cells stack
 arithmeticConstraintsBad :: [TermNode] -> Bool
 arithmeticConstraintsBad terms
     = assertNonnegativeTerms terms `seq`
-      List.any (\res -> evaluateB res == Right False || evaluateB res == Left "ill") terms
+        List.any (\res -> evaluateB res == Right False || evaluateB res == Left "ill") terms
 
 evaluateA :: TermNode -> Either ErrMsg Integer
 evaluateA term = assertNonnegativeIndices term `seq` go term where
@@ -352,13 +352,13 @@ recheckEvaluationConstraints = foldr step (Just []) where
         (Left "ill", _) -> Nothing
         (_, Left "ill") -> Nothing
         _ -> ((lhs', rhs') :) <$> checked
-      where
-        lhs' = rewrite NF lhs
-        rhs' = rewrite NF rhs
+        where
+            lhs' = rewrite NF lhs
+            rhs' = rewrite NF rhs
 
--- Resolve delayed arithmetic evaluations whose right-hand side has become a
--- concrete natural.  Feed each binding back through the entire store until no
--- further directional `is' constraint can make progress.
+    -- Resolve delayed arithmetic evaluations whose right-hand side has become a
+    -- concrete natural.  Feed each binding back through the entire store until no
+    -- further directional `is' constraint can make progress.
 solveEvaluationConstraints :: [(TermNode, TermNode)] -> Maybe (VarBinding, [(TermNode, TermNode)])
 solveEvaluationConstraints constraints = loop mempty where
     loop theta =
@@ -386,8 +386,8 @@ recheckDefinedConstraints = foldr step (Just []) where
         Right _ -> checked
         Left "ill" -> Nothing
         _ -> (normalized :) <$> checked
-      where
-        normalized = rewrite NF term
+        where
+            normalized = rewrite NF term
 
 definitionUniversallyValid :: TermNode -> Bool
 definitionUniversallyValid term = assertNonnegativeIndices term `seq` go (rewrite NF term) where
@@ -447,14 +447,14 @@ finalizeDefinitionConstraints ctx = do
                 ++ map (uncurry EvalutionConstraint) checkedEvaluations
                 ++ map DefinedConstraint (filter (not . definitionUniversallyValid) checked)
                 ++ [ ArithmeticConstraint term
-                   | term <- normalizedArithmetic
-                   , evaluateB term == Left "non"
-                   ] }
+                    | term <- normalizedArithmetic
+                    , evaluateB term == Left "non"
+                    ] }
 
--- ALPHA2 has no Presburger layer, so strict natural definedness is retained as
--- an explicit obligation.  Keeping it distinct from a source-level `is'
--- constraint lets the answer boundary discharge universally-total terms
--- without accidentally changing the semantics of `X is X'.
+    -- ALPHA2 has no Presburger layer, so strict natural definedness is retained as
+    -- an explicit obligation.  Keeping it distinct from a source-level `is'
+    -- constraint lets the answer boundary discharge universally-total terms
+    -- without accidentally changing the semantics of `X is X'.
 addDefinitionConstraints :: [TermNode] -> Context -> Maybe Context
 addDefinitionConstraints terms ctx = do
     pending <- recheckEvaluationConstraints evaluationTerms
@@ -463,32 +463,32 @@ addDefinitionConstraints terms ctx = do
         { _LeftConstraints = map (uncurry EvalutionConstraint) pending
             ++ map DefinedConstraint pendingDefinitions
             ++ otherConstraints }
-  where
-    normalized = List.nub (map (rewrite NF) terms)
-    newDefinitions =
-        [ DefinedConstraint term
-        | term <- normalized
-        , case evaluateA term of
-            Right _ -> False
-            _ -> True
-        ]
-    constraints = newDefinitions ++ _LeftConstraints ctx
-    evaluationTerms =
-        [ (lhs, rhs)
-        | EvalutionConstraint lhs rhs <- constraints
-        ]
-    definitionTerms =
-        [ term
-        | DefinedConstraint term <- constraints
-        ]
-    otherConstraints =
-        [ constraint
-        | constraint <- constraints
-        , case constraint of
-            EvalutionConstraint _ _ -> False
-            DefinedConstraint _ -> False
-            _ -> True
-        ]
+    where
+        normalized = List.nub (map (rewrite NF) terms)
+        newDefinitions =
+            [ DefinedConstraint term
+            | term <- normalized
+            , case evaluateA term of
+                Right _ -> False
+                _ -> True
+            ]
+        constraints = newDefinitions ++ _LeftConstraints ctx
+        evaluationTerms =
+            [ (lhs, rhs)
+            | EvalutionConstraint lhs rhs <- constraints
+            ]
+        definitionTerms =
+            [ term
+            | DefinedConstraint term <- constraints
+            ]
+        otherConstraints =
+            [ constraint
+            | constraint <- constraints
+            , case constraint of
+                EvalutionConstraint _ _ -> False
+                DefinedConstraint _ -> False
+                _ -> True
+            ]
 
 strictArithmeticTerms :: Constant -> [TermNode] -> [TermNode]
 strictArithmeticTerms (DC DC_eq) [typeArg, lhs, rhs]
@@ -532,20 +532,20 @@ runTransition env free_lvars stack = assertStack stack `seq` go stack where
         = case args of
             [lhs, rhs] -> check lhs rhs
             _ -> failure
-      where
-        check lhs rhs = case evaluateABinary op lhs rhs of
-            Left "non" -> success
-                ( Context
-                    { _TotalVarBinding = _TotalVarBinding ctx
-                    , _CurrentLabeling = _CurrentLabeling ctx
-                    , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
-                    , _ContextThreadId = call_id
-                    , _debuggindModeOn = _debuggindModeOn ctx
-                    }
-                , cells
-                )
-            Right okay -> if okay then success (ctx, cells) else failure
-            _ -> failure
+        where
+            check lhs rhs = case evaluateABinary op lhs rhs of
+                Left "non" -> success
+                    ( Context
+                        { _TotalVarBinding = _TotalVarBinding ctx
+                        , _CurrentLabeling = _CurrentLabeling ctx
+                        , _LeftConstraints = ArithmeticConstraint (foldlNApp (NCon predicate) args) : _LeftConstraints ctx
+                        , _ContextThreadId = call_id
+                        , _debuggindModeOn = _debuggindModeOn ctx
+                        }
+                    , cells
+                    )
+                Right okay -> if okay then success (ctx, cells) else failure
+                _ -> failure
     search :: Map.Map Constant [Fact] -> [Fact] -> ScopeLevel -> Constant -> [TermNode] -> Context -> [Cell] -> ExceptT KernelErr (UniqueT IO) Stack
     search facts hyps level predicate args ctx cells = do
         call_id <- getUnique

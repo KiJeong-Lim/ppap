@@ -1,11 +1,13 @@
 module Main where
 
 import Control.Exception (SomeException, evaluate, try)
+import qualified Data.Map.Strict as Map
 import qualified Hol.ALPHA2.Constant as AlphaConstant
 import qualified Hol.ALPHA2.Header as AlphaHeader
 import qualified Hol.ALPHA2.TermNode as Alpha
 import qualified Hol.BETA.Constant as BetaConstant
 import qualified Hol.BETA.Header as BetaHeader
+import qualified Hol.BETA.HOPU as BetaHopu
 import qualified Hol.BETA.TermNode as Beta
 import System.Exit (exitFailure)
 
@@ -125,6 +127,23 @@ main = do
     assertUndefined "BETA binding smart constructor accepted a bad body"
         (evaluate (Beta.mkBinds (Beta.NIdx (-1)) 0))
 
+    let betaBinding = BetaHopu.VarBinding (Map.singleton (Beta.LV_Named "X") betaX)
+        badBetaBinding = BetaHopu.VarBinding (Map.singleton (Beta.LV_Named "X") forgedBetaIndex)
+    assertUndefined "BETA empty list substitution hid an invalid binding"
+        (evaluate (BetaHopu.bindVars badBetaBinding ([] :: [Beta.TermNode])))
+    assertUndefined "BETA list substitution hid an invalid tail"
+        (evaluate (BetaHopu.bindVars betaBinding [betaX, forgedBetaIndex]))
+    assertUndefined "BETA map substitution hid an invalid value"
+        (evaluate (BetaHopu.bindVars betaBinding (Map.fromList [(0 :: Int, betaX), (1, forgedBetaIndex)])))
+    assertUndefined "BETA tuple substitution hid an invalid value"
+        (evaluate (BetaHopu.bindVars betaBinding ((), forgedBetaIndex)))
+    assertUndefined "BETA disagreement substitution hid an invalid term"
+        (evaluate (BetaHopu.bindVars betaBinding (betaX BetaHopu.:=?=: forgedBetaIndex)))
+    assertUndefined "BETA empty substitution composition hid an invalid binding"
+        (evaluate (mempty <> badBetaBinding))
+    assertUndefined "BETA substitution composition hid an invalid binding"
+        (evaluate (betaBinding <> badBetaBinding))
+
     let alphaBound = Alpha.mkNCon (AlphaHeader.DC_NatL 7)
         betaBound = Beta.mkNCon (BetaHeader.DC_NatL 7)
         alphaValid = Alpha.mkSusp (Alpha.NIdx 0) 1 0 [Alpha.Binds alphaBound 0]
@@ -133,6 +152,21 @@ main = do
         (Alpha.rewrite Alpha.NF alphaValid == alphaBound)
     assert "BETA rejected a well-formed explicit suspension"
         (Beta.rewrite Beta.NF betaValid == betaBound)
+
+    let betaF = Beta.mkNCon (BetaHeader.DC_Named "f")
+        betaIdentity = Beta.mkNLam (Beta.mkNIdx 0)
+        betaRedex = Beta.mkNApp betaIdentity betaBound
+        betaSpine = Beta.foldlNApp (Beta.mkNApp betaIdentity betaF) (replicate 12 betaRedex)
+    assert "BETA normal form left redexes inside a neutral application spine"
+        (Beta.rewrite Beta.NF betaSpine == Beta.foldlNApp betaF (replicate 12 betaBound))
+    assert "BETA head normal form reduced arguments inside a neutral application spine"
+        (Beta.rewrite Beta.HNF betaSpine == Beta.foldlNApp betaF (replicate 12 betaRedex))
+    assert "BETA normalization lost a shifted argument in a substituted spine"
+        (Beta.rewrite Beta.NF (Beta.mkSusp (Beta.mkNApp (Beta.mkNIdx 0) (Beta.mkNApp betaIdentity (Beta.mkNIdx 1))) 1 0 [Beta.Binds betaF 0]) == Beta.mkNApp betaF (Beta.mkNIdx 0))
+    assert "BETA normal form missed a lambda exposed at the application head"
+        (Beta.rewrite Beta.NF (Beta.mkNApp (Beta.mkNApp betaIdentity betaIdentity) betaBound) == betaBound)
+    assert "BETA normal form skipped a raw successor redex"
+        (Beta.rewrite Beta.NF (Beta.NApp (Beta.mkNCon BetaHeader.DC_Succ) betaBound Nothing) == Beta.mkNCon (BetaHeader.DC_NatL 8))
 
     let expectedShows = ["=<", "<", ">=", ">", "+", "-", "*", "/", "_"]
         alphaShows = map show

@@ -48,9 +48,9 @@ branchExample = ifThenElse (geRawV 9.9 10.0) (pure "then branch: x >= 10.0") (pu
 
 printResult :: Result -> IO ()
 printResult r = do
-  putStrLn ("best point = " ++ show (bestPoint r))
-  putStrLn ("best cost  = " ++ show (bestCost r))
-  putStrLn ("iterations = " ++ show (usedIterations r))
+    putStrLn ("best point = " ++ show (bestPoint r))
+    putStrLn ("best cost  = " ++ show (bestCost r))
+    putStrLn ("iterations = " ++ show (usedIterations r))
 
 main :: IO ()
 main = do

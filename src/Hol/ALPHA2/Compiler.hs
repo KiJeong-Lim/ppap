@@ -65,10 +65,10 @@ compilerErrorAt loc err = concat
     [ "*** compiler-error[", pprint 0 loc "]:\n"
     , "  ", detail, "\n"
     ]
-  where
-    detail = case List.stripPrefix "*** compiler-error: " err of
-        Just message -> message
-        Nothing -> err
+    where
+        detail = case List.stripPrefix "*** compiler-error: " err of
+            Just message -> message
+            Nothing -> err
 
 convertProgram :: MonadUnique m => Map.Map MetaTVar SmallId -> Map.Map IVar (MonoType Int) -> TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m TermNode
 convertProgram used_mtvs assumptions = fmap makeUniversalClosure . convertWithoutChecking Map.empty initialEnv where

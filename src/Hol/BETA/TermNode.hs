@@ -88,42 +88,42 @@ assertSuspension body ol nl env
     | ol < 0 || nl < 0 = undefined
     | length env /= ol = undefined
     | otherwise = assertNonnegativeIndices body `seq` checkItems env
-  where
-    checkItems [] = ()
-    checkItems (item : rest) = case item of
-        Dummy level
-            | level >= 0 && level <= nl -> checkItems rest
-            | otherwise -> undefined
-        Binds itemBody level
-            | level >= 0 && level <= nl ->
-                assertNonnegativeIndices itemBody `seq` checkItems rest
-            | otherwise -> undefined
+    where
+        checkItems [] = ()
+        checkItems (item : rest) = case item of
+            Dummy level
+                | level >= 0 && level <= nl -> checkItems rest
+                | otherwise -> undefined
+            Binds itemBody level
+                | level >= 0 && level <= nl ->
+                    assertNonnegativeIndices itemBody `seq` checkItems rest
+                | otherwise -> undefined
 
 validSuspensionMetadata :: Int -> Int -> SuspEnv -> Bool
 validSuspensionMetadata ol nl env
     = ol >= 0 && nl >= 0 && length env == ol && all validItem env
-  where
-    validItem (Dummy level) = level >= 0 && level <= nl
-    validItem (Binds _ level) = level >= 0 && level <= nl
+    where
+        validItem (Dummy level) = level >= 0 && level <= nl
+        validItem (Binds _ level) = level >= 0 && level <= nl
 
 instance Eq SuspItem where
     lhs == rhs
         = assertNonnegativeSuspItem lhs `seq`
-          assertNonnegativeSuspItem rhs `seq`
-          case (lhs, rhs) of
-            (Dummy l1, Dummy l2) -> l1 == l2
-            (Binds t1 l1, Binds t2 l2) -> t1 == t2 && l1 == l2
-            _ -> False
+            assertNonnegativeSuspItem rhs `seq`
+            case (lhs, rhs) of
+                (Dummy l1, Dummy l2) -> l1 == l2
+                (Binds t1 l1, Binds t2 l2) -> t1 == t2 && l1 == l2
+                _ -> False
 
 instance Ord SuspItem where
     compare lhs rhs
         = assertNonnegativeSuspItem lhs `seq`
-          assertNonnegativeSuspItem rhs `seq`
-          case (lhs, rhs) of
-            (Dummy l1, Dummy l2) -> compare l1 l2
-            (Dummy _, Binds _ _) -> LT
-            (Binds _ _, Dummy _) -> GT
-            (Binds t1 l1, Binds t2 l2) -> compare t1 t2 <> compare l1 l2
+            assertNonnegativeSuspItem rhs `seq`
+            case (lhs, rhs) of
+                (Dummy l1, Dummy l2) -> compare l1 l2
+                (Dummy _, Binds _ _) -> LT
+                (Binds _ _, Dummy _) -> GT
+                (Binds t1 l1, Binds t2 l2) -> compare t1 t2 <> compare l1 l2
 
 data ReduceOption
     = WHNF
@@ -163,47 +163,47 @@ instance Ord LamType where
 instance Eq TermNode where
     lhs == rhs
         = assertNonnegativeIndices lhs `seq`
-          assertNonnegativeIndices rhs `seq`
-          eqTerm lhs rhs
-      where
-        eqTerm (LVar v1) (LVar v2) = v1 == v2
-        eqTerm (NCon c1 _) (NCon c2 _) = c1 == c2
-        eqTerm (NIdx i) (NIdx j) = i == j
-        eqTerm (NApp a1 b1 _) (NApp a2 b2 _) = eqTerm a1 a2 && eqTerm b1 b2
-        eqTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = eqTerm b1 b2
-        eqTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) = eqTerm b1 b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
-        eqTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) = f1 == f2 && m1 == m2
-        eqTerm _ _ = False
+            assertNonnegativeIndices rhs `seq`
+            eqTerm lhs rhs
+        where
+            eqTerm (LVar v1) (LVar v2) = v1 == v2
+            eqTerm (NCon c1 _) (NCon c2 _) = c1 == c2
+            eqTerm (NIdx i) (NIdx j) = i == j
+            eqTerm (NApp a1 b1 _) (NApp a2 b2 _) = eqTerm a1 a2 && eqTerm b1 b2
+            eqTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = eqTerm b1 b2
+            eqTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) = eqTerm b1 b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
+            eqTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) = f1 == f2 && m1 == m2
+            eqTerm _ _ = False
 
 instance Ord TermNode where
     compare lhs rhs
         = assertNonnegativeIndices lhs `seq`
-          assertNonnegativeIndices rhs `seq`
-          cmpTerm lhs rhs
-      where
-        ctorIdx :: TermNode -> Int
-        ctorIdx (LVar _) = 0
-        ctorIdx (NCon _ _) = 1
-        ctorIdx (NIdx i)
-            | i >= 0 = 2
-            | otherwise = undefined
-        ctorIdx (NApp _ _ _) = 3
-        ctorIdx (NLam _ _ _ _) = 4
-        ctorIdx (Susp {}) = 5
-        ctorIdx (NPresburgerCheck _ _ _) = 6
-        cmpTerm :: TermNode -> TermNode -> Ordering
-        cmpTerm (LVar v1) (LVar v2) = compare v1 v2
-        cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
-        cmpTerm (NIdx i) (NIdx j)
-            | i < 0 || j < 0 = undefined
-            | otherwise = compare i j
-        cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = cmpTerm a1 a2 <> cmpTerm b1 b2
-        cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = cmpTerm b1 b2
-        cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
-            cmpTerm b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
-        cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
-            compare f1 f2 <> compare m1 m2
-        cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
+            assertNonnegativeIndices rhs `seq`
+            cmpTerm lhs rhs
+        where
+            ctorIdx :: TermNode -> Int
+            ctorIdx (LVar _) = 0
+            ctorIdx (NCon _ _) = 1
+            ctorIdx (NIdx i)
+                | i >= 0 = 2
+                | otherwise = undefined
+            ctorIdx (NApp _ _ _) = 3
+            ctorIdx (NLam _ _ _ _) = 4
+            ctorIdx (Susp {}) = 5
+            ctorIdx (NPresburgerCheck _ _ _) = 6
+            cmpTerm :: TermNode -> TermNode -> Ordering
+            cmpTerm (LVar v1) (LVar v2) = compare v1 v2
+            cmpTerm (NCon c1 _) (NCon c2 _) = compare c1 c2
+            cmpTerm (NIdx i) (NIdx j)
+                | i < 0 || j < 0 = undefined
+                | otherwise = compare i j
+            cmpTerm (NApp a1 b1 _) (NApp a2 b2 _) = cmpTerm a1 a2 <> cmpTerm b1 b2
+            cmpTerm (NLam _ _ b1 _) (NLam _ _ b2 _) = cmpTerm b1 b2
+            cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
+                cmpTerm b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
+            cmpTerm (NPresburgerCheck f1 m1 _) (NPresburgerCheck f2 m2 _) =
+                compare f1 f2 <> compare m1 m2
+            cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
 
 instance Show TermNode where
     showsPrec prec = pprint prec . constructViewer
@@ -281,24 +281,24 @@ mkNApp :: TermNode -> TermNode -> TermNode
 mkNApp (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
     | n < 0 = undefined
     | otherwise = n' `seq` mkNCon (DC_NatL n')
-  where
-    n' = n + 1
+    where
+        n' = n + 1
 mkNApp t1 t2
     = assertNonnegativeIndices t1 `seq`
-      assertNonnegativeIndices t2 `seq`
-      NApp t1 t2 Nothing
+        assertNonnegativeIndices t2 `seq`
+        NApp t1 t2 Nothing
 
 {-# INLINE mkNAppLoc #-}
 mkNAppLoc :: Maybe SLoc -> TermNode -> TermNode -> TermNode
 mkNAppLoc sl (NCon (DC (DC_Succ)) _) (NCon (DC (DC_NatL n)) _)
     | n < 0 = undefined
     | otherwise = n' `seq` mkNConLoc sl (DC_NatL n')
-  where
-    n' = n + 1
+    where
+        n' = n + 1
 mkNAppLoc sl t1 t2
     = assertNonnegativeIndices t1 `seq`
-      assertNonnegativeIndices t2 `seq`
-      NApp t1 t2 sl
+        assertNonnegativeIndices t2 `seq`
+        NApp t1 t2 sl
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
@@ -370,8 +370,30 @@ rewriteWithSusp t ol nl env option
     = assertSuspension t ol nl env `seq`
         rewriteWithSuspUnchecked t ol nl env option
 
+-- Internal reconstruction after the enclosing operation has checked its input.
+mkNAppLocUnchecked :: Maybe SLoc -> TermNode -> TermNode -> TermNode
+mkNAppLocUnchecked sl (NCon (DC DC_Succ) _) (NCon (DC (DC_NatL n)) _)
+    | n < 0 = undefined
+    | otherwise = mkNConLoc sl (DC_NatL (n + 1))
+mkNAppLocUnchecked sl t1 t2 = NApp t1 t2 sl
+
 rewriteWithSuspUnchecked :: TermNode -> Int -> Int -> SuspEnv -> ReduceOption -> TermNode
 rewriteWithSuspUnchecked t ol nl env option = dispatch t where
+    suspend :: TermNode -> Int -> Int -> SuspEnv -> TermNode
+    suspend body 0 0 [] = body
+    suspend body old new items
+        | validSuspensionMetadata old new items = Susp body old new items
+        | otherwise = undefined
+    binding :: TermNode -> Int -> SuspItem
+    binding body level
+        | level >= 0 = Binds body level
+        | otherwise = undefined
+    normalizeSpine :: TermNode -> TermNode
+    normalizeSpine (NApp fun arg sl) = mkNAppLocUnchecked sl (normalizeSpine fun) (rewriteWithSuspUnchecked arg 0 0 [] NF)
+    normalizeSpine term@(LVar {}) = term
+    normalizeSpine term@(NCon {}) = term
+    normalizeSpine term@(NIdx _) = term
+    normalizeSpine term = rewriteWithSuspUnchecked term 0 0 [] NF
     dispatch :: TermNode -> TermNode
     dispatch (LVar {})
         = t
@@ -387,19 +409,19 @@ rewriteWithSuspUnchecked t ol nl env option = dispatch t where
         = t
     dispatch (NApp t1 t2 sl)
         | NLam _ _ t11 _ <- t1' = beta t11
-        | option == WHNF = mkNAppLoc sl t1' (mkSusp t2 ol nl env)
-        | option == HNF = mkNAppLoc sl (rewriteWithSuspUnchecked t1' 0 0 [] option) (mkSusp t2 ol nl env)
-        | option == NF = mkNAppLoc sl (rewriteWithSuspUnchecked t1' 0 0 [] option) (rewriteWithSuspUnchecked t2 ol nl env option)
+        | option == WHNF = mkNAppLocUnchecked sl t1' (suspend t2 ol nl env)
+        | option == HNF = mkNAppLocUnchecked sl (rewriteWithSuspUnchecked t1' 0 0 [] option) (suspend t2 ol nl env)
+        | option == NF = mkNAppLocUnchecked sl (normalizeSpine t1') (rewriteWithSuspUnchecked t2 ol nl env option)
         where
             t1' :: TermNode
             t1' = rewriteWithSuspUnchecked t1 ol nl env WHNF
             beta :: TermNode -> TermNode
             beta (Susp t' ol' nl' (Dummy l' : env'))
-                | nl' == l' = rewriteWithSuspUnchecked t' ol' (pred nl') (mkBinds (mkSusp t2 ol nl env) (pred l') : env') option
-            beta t' = rewriteWithSuspUnchecked t' 1 0 [mkBinds (mkSusp t2 ol nl env) 0] option
+                | nl' == l' = rewriteWithSuspUnchecked t' ol' (pred nl') (binding (suspend t2 ol nl env) (pred l') : env') option
+            beta t' = rewriteWithSuspUnchecked t' 1 0 [binding (suspend t2 ol nl env) 0] option
     dispatch (NLam h ty t1 sl)
-        | option == WHNF = mkNLamLoc sl h ty (mkSusp t1 (succ ol) (succ nl) (Dummy (succ nl) : env))
-        | otherwise = mkNLamLoc sl h ty (rewriteWithSuspUnchecked t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option)
+        | option == WHNF = NLam h ty (suspend t1 (succ ol) (succ nl) (Dummy (succ nl) : env)) sl
+        | otherwise = NLam h ty (rewriteWithSuspUnchecked t1 (succ ol) (succ nl) (Dummy (succ nl) : env) option) sl
     dispatch (Susp t' ol' nl' env')
         | ol' == 0 && nl' == 0 = rewriteWithSuspUnchecked t' ol nl env option
         | ol == 0 = rewriteWithSuspUnchecked t' ol' (nl + nl') env' option
@@ -516,11 +538,11 @@ validPresburgerIdentifier :: String -> Bool
 validPresburgerIdentifier (first : rest) =
     ((first >= 'A' && first <= 'Z') || first == '_')
         && all isRest rest
-  where
-    isRest ch = (ch >= 'A' && ch <= 'Z')
-        || (ch >= 'a' && ch <= 'z')
-        || (ch >= '0' && ch <= '9')
-        || ch == '_'
+    where
+        isRest ch = (ch >= 'A' && ch <= 'Z')
+            || (ch >= 'a' && ch <= 'z')
+            || (ch >= '0' && ch <= '9')
+            || ch == '_'
 validPresburgerIdentifier [] = False
 
 presburgerIdentifiers :: String -> Set.Set SmallId
@@ -531,11 +553,11 @@ presburgerIdentifiers = go Set.empty where
             let (suffix, remaining) = span isRest rest
             in go (Set.insert (ch : suffix) found) remaining
         | otherwise = go found rest
-      where
-        isRest c = (c >= 'A' && c <= 'Z')
-            || (c >= 'a' && c <= 'z')
-            || (c >= '0' && c <= '9')
-            || c == '_'
+        where
+            isRest c = (c >= 'A' && c <= 'Z')
+                || (c >= 'a' && c <= 'z')
+                || (c >= '0' && c <= '9')
+                || c == '_'
 
 presburgerVarStem :: String -> MyVar -> SmallId
 presburgerVarStem prefix v
@@ -546,12 +568,12 @@ freshPresburgerName :: Set.Set SmallId -> SmallId -> SmallId
 freshPresburgerName forbidden base
     | Set.notMember base forbidden = base
     | otherwise = go (1 :: Int)
-  where
-    go n
-        | Set.notMember candidate forbidden = candidate
-        | otherwise = go (n + 1)
-      where
-        candidate = base ++ "_" ++ show n
+    where
+        go n
+            | Set.notMember candidate forbidden = candidate
+            | otherwise = go (n + 1)
+            where
+                candidate = base ++ "_" ++ show n
 
 constructViewerCustom :: (String -> Maybe (Fixity (), Precedence)) -> (LogicVar -> Maybe SmallId) -> TermNode -> ViewNode
 constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT (formatView rendered_names (eraseType raw_view)) next_fresh where
@@ -589,13 +611,13 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
     freshAmbientName used slot
         | Set.notMember base used = base
         | otherwise = pick (1 :: Int)
-      where
-        base = "DB_" ++ show slot
-        pick suffix
-            | Set.notMember candidate used = candidate
-            | otherwise = pick (suffix + 1)
-          where
-            candidate = base ++ "_" ++ show suffix
+        where
+            base = "DB_" ++ show slot
+            pick suffix
+                | Set.notMember candidate used = candidate
+                | otherwise = pick (suffix + 1)
+                where
+                    candidate = base ++ "_" ++ show suffix
     collectAmbientSlots :: Int -> TermNode -> Set.Set DeBruijn
     collectAmbientSlots depth node = case node of
         LVar _ -> Set.empty
@@ -625,9 +647,9 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
         NApp t1 t2 _ -> Set.union (collectOccupiedNames t1) (collectOccupiedNames t2)
         NLam mhint _ body _ -> maybe id Set.insert mhint (collectOccupiedNames body)
         Susp body _ _ env -> Set.unions (collectOccupiedNames body : map collectItemNames env)
-          where
-            collectItemNames (Dummy _) = Set.empty
-            collectItemNames (Binds itemBody _) = collectOccupiedNames itemBody
+            where
+                collectItemNames (Dummy _) = Set.empty
+                collectItemNames (Binds itemBody _) = collectOccupiedNames itemBody
         NPresburgerCheck _ freeOf _ -> Set.unions (map collectOccupiedNames (Map.elems freeOf))
     collectFreeNames :: TermNode -> Set.Set SmallId
     collectFreeNames (LVar var) = case var of
@@ -841,22 +863,22 @@ constructViewerCustom checkOper lookupName term = fst . runIdentity $ runStateT 
             -- @?V_4@ or @v1@.
             renderFreeCandidate :: [SmallId] -> TermNode -> StateT Int Identity (Maybe SmallId)
             renderFreeCandidate boundVars = goFree . rewrite NF
-              where
-                goFree (NCon (DC (DC_NatL n)) _)
-                    | n >= 0 = return (Just (show n))
-                    | otherwise = return Nothing
-                goFree (NApp (NApp (NCon (DC DC_plus) _) left _) right _) = do
-                    mleft <- goFree left
-                    mright <- goFree right
-                    return ((\leftText rightText -> "(" ++ leftText ++ " + " ++ rightText ++ ")") <$> mleft <*> mright)
-                goFree t@(LVar _) = renderVariable t
-                goFree t@(NIdx _) = renderVariable t
-                goFree _ = return Nothing
-                renderVariable t = do
-                    v <- makeView boundVars t
-                    v' <- formatView (collectViewNames v) (eraseType v)
-                    let text = pprint 0 v' ""
-                    return (if validPresburgerIdentifier text then Just text else Nothing)
+                where
+                    goFree (NCon (DC (DC_NatL n)) _)
+                        | n >= 0 = return (Just (show n))
+                        | otherwise = return Nothing
+                    goFree (NApp (NApp (NCon (DC DC_plus) _) left _) right _) = do
+                        mleft <- goFree left
+                        mright <- goFree right
+                        return ((\leftText rightText -> "(" ++ leftText ++ " + " ++ rightText ++ ")") <$> mleft <*> mright)
+                    goFree t@(LVar _) = renderVariable t
+                    goFree t@(NIdx _) = renderVariable t
+                    goFree _ = return Nothing
+                    renderVariable t = do
+                        v <- makeView boundVars t
+                        v' <- formatView (collectViewNames v) (eraseType v)
+                        let text = pprint 0 v' ""
+                        return (if validPresburgerIdentifier text then Just text else Nothing)
 
             foldedNat :: PresburgerTermRep -> Maybe Integer
             foldedNat Zero = Just 0

@@ -261,14 +261,16 @@ validHolCharLexeme _ = False
 readHolStringLiteral :: String -> Maybe String
 readHolStringLiteral src
     | validHolStringLexeme src = case reads src of
-        [(str, "")] | all isHolLiteralChar str -> Just str
+        [(str, "")]
+            | all isHolLiteralChar str -> Just str
         _ -> Nothing
     | otherwise = Nothing
 
 readHolCharLiteral :: String -> Maybe Char
 readHolCharLiteral src
     | validHolCharLexeme src = case reads src of
-        [(ch, "")] | isHolLiteralChar ch -> Just ch
+        [(ch, "")]
+            | isHolLiteralChar ch -> Just ch
         _ -> Nothing
     | otherwise = Nothing
 

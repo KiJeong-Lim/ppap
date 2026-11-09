@@ -33,7 +33,8 @@ answerView final_ctx = (theAnswerSubst, theDisagreements) where
     tryMatchLVar :: TermNode -> Maybe LogicVar
     tryMatchLVar t = case viewNestedNAbs (rewrite NF t) of
         (n, t') -> case unfoldlNApp t' of
-            (LVar v, ts) | ts == map mkNIdx [n, n - 1 .. 1] -> Just v
+            (LVar v, ts)
+                | ts == map mkNIdx [n, n - 1 .. 1] -> Just v
             _ -> Nothing
     isInternal :: LogicVar -> Bool
     isInternal (LV_Named _) = False

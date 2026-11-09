@@ -230,6 +230,6 @@ operatorTerm (RCon loc dataConstructor)
         DC_Succ -> found "s"
         DC_Named name -> found name
         _ -> Nothing
-      where
-        found name = Just (loc, name, dataConstructor)
+        where
+            found name = Just (loc, name, dataConstructor)
 operatorTerm _ = Nothing

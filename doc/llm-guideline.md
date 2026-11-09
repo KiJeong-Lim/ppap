@@ -129,6 +129,17 @@ normalizeArg arg
         Nothing -> arg
 ```
 
+패턴과 가드를 같은 줄에 쓰지 않는다. `| ... ->`는 패턴 다음 줄에서 4칸 더 들여쓰고, 이어지는 가드도 같은 깊이에 둔다. 가드 본문이 다음 줄로 이어지면 다시 4칸 더 들여쓴다.
+
+```hs
+case setting of
+    Just "always" -> return True
+    _
+        | enabled -> do
+            checkSupport
+        | otherwise -> return False
+```
+
 `if`는 한 줄로 충분하면 한 줄로 쓰고, 길면 다음처럼 자연스럽게 나눈다.
 
 ```hs

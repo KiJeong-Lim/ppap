@@ -90,7 +90,7 @@ instance Monoid TypeSubst where
     mempty = TypeSubst { getTypeSubst = Map.empty }
 
 (+->) :: MetaTVar -> MonoType Int -> Either TypeError TypeSubst
-mtv +-> typ 
+mtv +-> typ
     | TyMTV mtv == typ = return mempty
     | mtv `Set.member` getFMTVs typ = Left (OccursCheckFailed mtv typ)
     | otherwise = case (getKindEither (TyMTV mtv), getKindEither typ) of
@@ -140,7 +140,7 @@ getMGU lhs rhs
         go _ typ1@(TyCon tcon1) typ2@(TyCon tcon2)
             | typesAgreeIncludingKinds typ1 typ2 = (Nothing, mempty)
             | tcon1 == tcon2 = (Just (KindsAreMismatched (typ1, getTConKind tcon1) (typ2, getTConKind tcon2)), mempty)
-        go lockeds (TyMTV mtv) typ 
+        go lockeds (TyMTV mtv) typ
             | mtv `Set.member` lockeds
             = (Nothing, mempty)
             | otherwise
@@ -434,11 +434,11 @@ mkExpectedTyErr :: DiagnosticMode -> Maybe String -> SourceLines -> NotationDB -
 mkExpectedTyErr mode moduleName sourceLines db usedMTVs loc actualType expectedType (_, typError) =
     diagnosticWithModule mode "HolBETA-TypeError" moduleName sourceLines loc
         ( [ text "Expression has the wrong result type."
-          , text ("Expected: `" ++ ty expectedType ++ "'")
-          , text ("Actual:   `" ++ ty actualType ++ "'")
-          ]
-          ++ goalHint
-          ++ reasonLine typError
+            , text ("Expected: `" ++ ty expectedType ++ "'")
+            , text ("Actual:   `" ++ ty actualType ++ "'")
+            ]
+            ++ goalHint
+            ++ reasonLine typError
         )
     where
         text = Z.Doc.text
@@ -470,83 +470,83 @@ inferTypeWithModule :: MonadUnique m => DiagnosticMode -> Maybe String -> Source
 inferTypeWithModule mode moduleName source_lines db type_env term = do
     ((inferredTerm, assumptions), usedMTVs) <- runStateT (infer term) Map.empty
     return ((inferredTerm, Map.map assumptionType assumptions), usedMTVs)
-  where
-    infer :: MonadUnique m => TermExpr DataConstructor SLoc -> StateT (Map.Map MetaTVar SmallId) (ExceptT ErrMsg m) (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar TypeAssumption)
-    infer (Var loc var) = do
-        mtv <- getNewMTV "A"
-        return (Var (loc, TyMTV mtv) var, Map.singleton var (TypeAssumption (TyMTV mtv) [loc]))
-    infer (Con loc con) = case con of
-        DC_ChrL chr -> return (Con (loc, mkTyChr) (con, []), Map.empty)
-        DC_NatL nat -> return (Con (loc, mkTyNat) (con, []), Map.empty)
-        DC_wc -> do
-            var <- getUnique
+    where
+        infer :: MonadUnique m => TermExpr DataConstructor SLoc -> StateT (Map.Map MetaTVar SmallId) (ExceptT ErrMsg m) (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), Map.Map IVar TypeAssumption)
+        infer (Var loc var) = do
             mtv <- getNewMTV "A"
-            return (Con (loc, TyMTV mtv) (con, []), Map.singleton var (TypeAssumption (TyMTV mtv) [loc]))
-        con -> do
-            (mtvs, typ) <- case Map.lookup con type_env of
-                Nothing -> lift (throwE (mkUnknownConErr mode moduleName source_lines loc con))
-                Just scheme -> instantiateSchemeAt mode moduleName source_lines loc scheme
-            return (Con (loc, typ) (con, map TyMTV mtvs), Map.empty)
-    infer (App loc term1 term2) = do
-        (term1', assumptions1) <- infer term1
-        (term2', assumptions2) <- infer term2
-        mtv <- getNewMTV "A"
-        used_mtvs <- get
-        let sharedVariables = Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2)
-            constraints =
-                (FunctionApplicationConstraint, snd (getAnnot term1'), snd (getAnnot term2') `mkTyArrow` TyMTV mtv)
-                : map sharedVariableConstraint sharedVariables
-            sharedVariableConstraint var =
-                let earlierAssumption = assumptions1 Map.! var
-                    conflictingAssumption = assumptions2 Map.! var
-                in ( SharedVariableConstraint
-                        (firstAssumptionLoc (fst (getAnnot term1')) earlierAssumption)
-                        (firstAssumptionLoc (fst (getAnnot term2')) conflictingAssumption)
-                   , assumptionType earlierAssumption
-                   , assumptionType conflictingAssumption
-                   )
-        let isSelfApplication = case (term1, term2) of
-                (Var _ var1, Var _ var2) -> var1 == var2
-                _ -> False
-            applicationError = mkApplicationTyErr mode moduleName source_lines db used_mtvs loc
-                (fst (getAnnot term1')) (fst (getAnnot term2')) isSelfApplication
-                (snd (getAnnot term1')) (snd (getAnnot term2')) (TyMTV mtv)
-            isOccursFailure (OccursCheckFailed _ _) = True
-            isOccursFailure _ = False
-        theta <- lift $ catchE (unifyWithProvenance constraints) $ \(origin, requiredEarlier, requiredHere, mismatch@(_, typError)) ->
-            throwE $ case origin of
-                SharedVariableConstraint earlierLoc conflictingLoc
-                    | not (isSelfApplication && isOccursFailure typError) ->
-                        mkSharedVariableTyErr mode moduleName source_lines db used_mtvs earlierLoc conflictingLoc requiredEarlier requiredHere
-                _ -> applicationError mismatch
-        let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
-            assumptions' = Map.unionWith mergeAssumptions (substMTVars theta assumptions1) (substMTVars theta assumptions2)
-        put used_mtvs'
-        return (zonkMTV theta (App (loc, TyMTV mtv) term1' term2'), assumptions')
-    infer (Lam loc var h term) = do
-        (term', assumptions) <- infer term
-        case Map.lookup var assumptions of
-            Nothing -> do
+            return (Var (loc, TyMTV mtv) var, Map.singleton var (TypeAssumption (TyMTV mtv) [loc]))
+        infer (Con loc con) = case con of
+            DC_ChrL chr -> return (Con (loc, mkTyChr) (con, []), Map.empty)
+            DC_NatL nat -> return (Con (loc, mkTyNat) (con, []), Map.empty)
+            DC_wc -> do
+                var <- getUnique
                 mtv <- getNewMTV "A"
-                return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var h term', assumptions)
-            Just assumption -> return (Lam (loc, assumptionType assumption `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
-    firstAssumptionLoc _ (TypeAssumption _ (loc : _)) = loc
-    firstAssumptionLoc fallback (TypeAssumption _ []) = fallback
-    mergeAssumptions earlier conflicting = TypeAssumption
-        (assumptionType earlier)
-        (assumptionLocs earlier ++ assumptionLocs conflicting)
-    mkUnknownConErr :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> DataConstructor -> ErrMsg
-    mkUnknownConErr mode' moduleName' source loc con =
-        diagnosticWithModule mode' "HolBETA-NotInScope" moduleName' source loc
-            [ Z.Doc.text ("Unknown predicate or constructor " ++ renderDataConstructor con ++ ".")
-            , Z.Doc.text "No type declaration for this name is visible here."
-            , Z.Doc.text "Declare it with `type', import its module, or check the spelling."
-            ]
-      where
-        renderDataConstructor (DC_Named name)
-            | isReservedNamedIdentifier name = renderNamedIdentifier name
-        renderDataConstructor dataConstructor =
-            "`" ++ showsPrec 0 dataConstructor "'"
+                return (Con (loc, TyMTV mtv) (con, []), Map.singleton var (TypeAssumption (TyMTV mtv) [loc]))
+            con -> do
+                (mtvs, typ) <- case Map.lookup con type_env of
+                    Nothing -> lift (throwE (mkUnknownConErr mode moduleName source_lines loc con))
+                    Just scheme -> instantiateSchemeAt mode moduleName source_lines loc scheme
+                return (Con (loc, typ) (con, map TyMTV mtvs), Map.empty)
+        infer (App loc term1 term2) = do
+            (term1', assumptions1) <- infer term1
+            (term2', assumptions2) <- infer term2
+            mtv <- getNewMTV "A"
+            used_mtvs <- get
+            let sharedVariables = Set.toList (Map.keysSet assumptions1 `Set.intersection` Map.keysSet assumptions2)
+                constraints =
+                    (FunctionApplicationConstraint, snd (getAnnot term1'), snd (getAnnot term2') `mkTyArrow` TyMTV mtv)
+                    : map sharedVariableConstraint sharedVariables
+                sharedVariableConstraint var =
+                    let earlierAssumption = assumptions1 Map.! var
+                        conflictingAssumption = assumptions2 Map.! var
+                    in ( SharedVariableConstraint
+                            (firstAssumptionLoc (fst (getAnnot term1')) earlierAssumption)
+                            (firstAssumptionLoc (fst (getAnnot term2')) conflictingAssumption)
+                        , assumptionType earlierAssumption
+                        , assumptionType conflictingAssumption
+                        )
+            let isSelfApplication = case (term1, term2) of
+                    (Var _ var1, Var _ var2) -> var1 == var2
+                    _ -> False
+                applicationError = mkApplicationTyErr mode moduleName source_lines db used_mtvs loc
+                    (fst (getAnnot term1')) (fst (getAnnot term2')) isSelfApplication
+                    (snd (getAnnot term1')) (snd (getAnnot term2')) (TyMTV mtv)
+                isOccursFailure (OccursCheckFailed _ _) = True
+                isOccursFailure _ = False
+            theta <- lift $ catchE (unifyWithProvenance constraints) $ \(origin, requiredEarlier, requiredHere, mismatch@(_, typError)) ->
+                throwE $ case origin of
+                    SharedVariableConstraint earlierLoc conflictingLoc
+                        | not (isSelfApplication && isOccursFailure typError) ->
+                            mkSharedVariableTyErr mode moduleName source_lines db used_mtvs earlierLoc conflictingLoc requiredEarlier requiredHere
+                    _ -> applicationError mismatch
+            let used_mtvs' = used_mtvs `Map.withoutKeys` Map.keysSet (getTypeSubst theta)
+                assumptions' = Map.unionWith mergeAssumptions (substMTVars theta assumptions1) (substMTVars theta assumptions2)
+            put used_mtvs'
+            return (zonkMTV theta (App (loc, TyMTV mtv) term1' term2'), assumptions')
+        infer (Lam loc var h term) = do
+            (term', assumptions) <- infer term
+            case Map.lookup var assumptions of
+                Nothing -> do
+                    mtv <- getNewMTV "A"
+                    return (Lam (loc, TyMTV mtv `mkTyArrow` snd (getAnnot term')) var h term', assumptions)
+                Just assumption -> return (Lam (loc, assumptionType assumption `mkTyArrow` snd (getAnnot term')) var h term', Map.delete var assumptions)
+        firstAssumptionLoc _ (TypeAssumption _ (loc : _)) = loc
+        firstAssumptionLoc fallback (TypeAssumption _ []) = fallback
+        mergeAssumptions earlier conflicting = TypeAssumption
+            (assumptionType earlier)
+            (assumptionLocs earlier ++ assumptionLocs conflicting)
+        mkUnknownConErr :: DiagnosticMode -> Maybe String -> SourceLines -> SLoc -> DataConstructor -> ErrMsg
+        mkUnknownConErr mode' moduleName' source loc con =
+            diagnosticWithModule mode' "HolBETA-NotInScope" moduleName' source loc
+                [ Z.Doc.text ("Unknown predicate or constructor " ++ renderDataConstructor con ++ ".")
+                , Z.Doc.text "No type declaration for this name is visible here."
+                , Z.Doc.text "Declare it with `type', import its module, or check the spelling."
+                ]
+            where
+                renderDataConstructor (DC_Named name)
+                    | isReservedNamedIdentifier name = renderNamedIdentifier name
+                renderDataConstructor dataConstructor =
+                    "`" ++ showsPrec 0 dataConstructor "'"
 
 checkType :: MonadUnique m => NotationDB -> TypeEnv -> TermExpr DataConstructor SLoc -> MonoType Int -> ExceptT ErrMsg m (TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int), (Map.Map MetaTVar LargeId, Map.Map IVar (MonoType Int)))
 checkType = checkTypeWithDiagnostic DiagnosticPretty Nothing

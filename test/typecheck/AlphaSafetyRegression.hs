@@ -513,8 +513,8 @@ main = do
                     , _Answer = \ctx -> do
                         modifyIORef' rawAnswers
                             (++ [ ( _LeftConstraints ctx
-                                  , bindVars (_TotalVarBinding ctx) xTerm
-                                  ) ])
+                                    , bindVars (_TotalVarBinding ctx) xTerm
+                                    ) ])
                         pure False
                     }
             rawResult <- execUniqueT $ runExceptT $
@@ -568,5 +568,5 @@ main = do
 
     assert "constant module is linked" (Constant.DC DC_plus == Constant.DC DC_plus)
     putStrLn "ALPHA2 safety regressions passed"
-  where
-    loc = SLoc (1, 1) (1, 2)
+    where
+        loc = SLoc (1, 1) (1, 2)

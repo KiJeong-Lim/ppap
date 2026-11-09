@@ -172,8 +172,9 @@ elaborate canonicalPath mname sourceLines mHeader imports body0 = do
     st0 <- lift State.get
     let mode = lsDiagnosticMode st0
     case mHeader of
-        Just (loc, declared) | declared /= mname ->
-            throwE (moduleErr mode (Just canonicalPath) (Just sourceLines) loc ("Module header `" ++ declared ++ "' does not match file path-derived name `" ++ mname ++ "'."))
+        Just (loc, declared)
+            | declared /= mname ->
+                throwE (moduleErr mode (Just canonicalPath) (Just sourceLines) loc ("Module header `" ++ declared ++ "' does not match file path-derived name `" ++ mname ++ "'."))
         _ -> return ()
     let importWarnings = duplicateImportWarnings mode canonicalPath (Just sourceLines) imports
         importsUnique = uniqueImports imports
@@ -355,7 +356,8 @@ validateLocalClauseTerm fact = case unfoldlNApp fact of
     (NCon (DC (DC_LO LO_pi)) _, [NLam _ _ body _]) -> validateLocalClauseTerm body
     (NCon (DC (DC_LO LO_if)) _, [conclusion, premise]) ->
         validateLocalClauseConclusion conclusion >> validateGoalTerm premise
-    _ | isLocalPredicateHead fact -> Right ()
+    _
+        | isLocalPredicateHead fact -> Right ()
     (NCon (DC DC_eq) _, _) -> Right ()
     (NCon (DC dataConstructor) _, _)
         | dataConstructor `elem` [DC_ge, DC_gt, DC_le, DC_lt]
@@ -372,7 +374,8 @@ validateLocalClauseConclusion conclusion = case unfoldlNApp conclusion of
         validateLocalClauseConclusion left >> validateLocalClauseConclusion right
     (NCon (DC (DC_LO LO_ty_pi)) _, [NLam _ _ body _]) -> validateLocalClauseConclusion body
     (NCon (DC (DC_LO LO_pi)) _, [NLam _ _ body _]) -> validateLocalClauseConclusion body
-    _ | isLocalPredicateHead conclusion -> Right ()
+    _
+        | isLocalPredicateHead conclusion -> Right ()
     _ -> Left conclusion
 
 isLocalPredicateHead :: TermNode -> Bool
@@ -417,8 +420,8 @@ underGoalBinder anchorsBinder (indices, variables) =
         else shifted
     , variables
     )
-  where
-    shifted = Set.mapMonotonic (+ 1) indices
+    where
+        shifted = Set.mapMonotonic (+ 1) indices
 
 termGoalAnchors :: TermNode -> GoalAnchors
 termGoalAnchors = go . rewrite NF where
@@ -485,8 +488,9 @@ checkOwnFixityAgainstImports imported = mapM_ checkDecl where
             fp = (fixityKind form, precedence)
     checkDecl _ = Right ()
     checkAlias loc name fp alias = case lookup alias importedFixities of
-        Just importedFp | importedFp /= fp ->
-            Left (FixityError loc ("Fixity declaration for `" ++ name ++ "' conflicts with an imported fixity."))
+        Just importedFp
+            | importedFp /= fp ->
+                Left (FixityError loc ("Fixity declaration for `" ++ name ++ "' conflicts with an imported fixity."))
         _ -> Right ()
     fixityKind FF_InfixL = Notation.FK_InfixL
     fixityKind FF_InfixR = Notation.FK_InfixR
@@ -693,30 +697,30 @@ alphaNameEq leftParams left rightParams right =
 termRepAlphaEq :: [LargeId] -> TermRep -> [LargeId] -> TermRep -> Bool
 termRepAlphaEq leftParams = go [] where
     go leftBound left rightParams right = compareTerm leftBound left [] right
-      where
-        compareTerm lb (RPrn _ a) rb b = compareTerm lb a rb b
-        compareTerm lb a rb (RPrn _ b) = compareTerm lb a rb b
-        compareTerm lb (RVar _ x) rb (RVar _ y) = variableEq lb x rb y
-        compareTerm lb (RCon _ (DC_Named x)) rb (RCon _ (DC_Named y)) =
-            namedConstantEq lb x rb y
-        compareTerm lb (RVar _ x) rb (RCon _ (DC_Named y)) = boundOccurrenceEq lb x rb y
-        compareTerm lb (RCon _ (DC_Named x)) rb (RVar _ y) = boundOccurrenceEq lb x rb y
-        compareTerm _ (RCon _ x) _ (RCon _ y) = x == y
-        compareTerm lb (RApp _ a b) rb (RApp _ c d) = compareTerm lb a rb c && compareTerm lb b rb d
-        compareTerm lb (RAbs _ x a) rb (RAbs _ y b) = compareTerm (x : lb) a (y : rb) b
-        compareTerm _ (R_wc _) _ (R_wc _) = True
-        compareTerm _ _ _ _ = False
-        variableEq lb x rb y = case (List.elemIndex x lb, List.elemIndex y rb) of
-            (Just i, Just j) -> i == j
-            (Nothing, Nothing) -> alphaNameEq leftParams x rightParams y
-            _ -> False
-        namedConstantEq lb x rb y = case (List.elemIndex x lb, List.elemIndex y rb) of
-            (Just i, Just j) -> i == j
-            (Nothing, Nothing) -> x == y
-            _ -> False
-        boundOccurrenceEq lb x rb y = case (List.elemIndex x lb, List.elemIndex y rb) of
-            (Just i, Just j) -> i == j
-            _ -> False
+        where
+            compareTerm lb (RPrn _ a) rb b = compareTerm lb a rb b
+            compareTerm lb a rb (RPrn _ b) = compareTerm lb a rb b
+            compareTerm lb (RVar _ x) rb (RVar _ y) = variableEq lb x rb y
+            compareTerm lb (RCon _ (DC_Named x)) rb (RCon _ (DC_Named y)) =
+                namedConstantEq lb x rb y
+            compareTerm lb (RVar _ x) rb (RCon _ (DC_Named y)) = boundOccurrenceEq lb x rb y
+            compareTerm lb (RCon _ (DC_Named x)) rb (RVar _ y) = boundOccurrenceEq lb x rb y
+            compareTerm _ (RCon _ x) _ (RCon _ y) = x == y
+            compareTerm lb (RApp _ a b) rb (RApp _ c d) = compareTerm lb a rb c && compareTerm lb b rb d
+            compareTerm lb (RAbs _ x a) rb (RAbs _ y b) = compareTerm (x : lb) a (y : rb) b
+            compareTerm _ (R_wc _) _ (R_wc _) = True
+            compareTerm _ _ _ _ = False
+            variableEq lb x rb y = case (List.elemIndex x lb, List.elemIndex y rb) of
+                (Just i, Just j) -> i == j
+                (Nothing, Nothing) -> alphaNameEq leftParams x rightParams y
+                _ -> False
+            namedConstantEq lb x rb y = case (List.elemIndex x lb, List.elemIndex y rb) of
+                (Just i, Just j) -> i == j
+                (Nothing, Nothing) -> x == y
+                _ -> False
+            boundOccurrenceEq lb x rb y = case (List.elemIndex x lb, List.elemIndex y rb) of
+                (Just i, Just j) -> i == j
+                _ -> False
 
 extractHeaderAndImports :: DiagnosticMode -> Maybe String -> SourceLines -> [DeclRep] -> Either ErrMsg (Maybe (SLoc, String), [(SLoc, String)], [DeclRep])
 extractHeaderAndImports mode moduleName sourceLines decls0

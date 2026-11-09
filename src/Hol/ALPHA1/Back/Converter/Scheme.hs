@@ -69,7 +69,8 @@ validateClauseForms expected_as = if expected_as == "fact" then clause False els
             (DCon _ (DC_LO _, _), _) -> invalid term
             (DCon (loc, _) (DC_Eq, _), _) -> throwE ("*** converting-error[" ++ pprint 0 loc "]:\n  ? the built-in predicate `=\' cannot be given a clause.")
             (DCon _ _, _) -> return ()
-            (IVar _ _, _) | allow_variables -> return ()
+            (IVar _ _, _)
+                | allow_variables -> return ()
             _ -> invalid term
     goal :: GenUniqueM m => TermExpr (DataConstructor, [MonoType Int]) (SLoc, MonoType Int) -> ExceptT ErrMsg m ()
     goal term = do

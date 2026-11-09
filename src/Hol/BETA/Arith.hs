@@ -421,41 +421,41 @@ parseAtomFormula = do
 zonkPresburger :: Map.Map MyVar TermNode -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 zonkPresburger freeOf rep
     = assertTermMap freeOf `seq`
-      goFormula Set.empty rep
-  where
-    goFormula bound (ValF b) = ValF b
-    goFormula bound (EqnF t1 t2) = EqnF (goTerm bound t1) (goTerm bound t2)
-    goFormula bound (LtnF t1 t2) = LtnF (goTerm bound t1) (goTerm bound t2)
-    goFormula bound (LeqF t1 t2) = LeqF (goTerm bound t1) (goTerm bound t2)
-    goFormula bound (GtnF t1 t2) = GtnF (goTerm bound t1) (goTerm bound t2)
-    goFormula bound (ModF t1 r t2) = ModF (goTerm bound t1) r (goTerm bound t2)
-    goFormula bound (NegF f1) = NegF (goFormula bound f1)
-    goFormula bound (DisF f1 f2) = DisF (goFormula bound f1) (goFormula bound f2)
-    goFormula bound (ConF f1 f2) = ConF (goFormula bound f1) (goFormula bound f2)
-    goFormula bound (ImpF f1 f2) = ImpF (goFormula bound f1) (goFormula bound f2)
-    goFormula bound (IffF f1 f2) = IffF (goFormula bound f1) (goFormula bound f2)
-    goFormula bound (AllF y f1) = AllF y (goFormula (Set.insert y bound) f1)
-    goFormula bound (ExsF y f1) = ExsF y (goFormula (Set.insert y bound) f1)
+        goFormula Set.empty rep
+    where
+        goFormula bound (ValF b) = ValF b
+        goFormula bound (EqnF t1 t2) = EqnF (goTerm bound t1) (goTerm bound t2)
+        goFormula bound (LtnF t1 t2) = LtnF (goTerm bound t1) (goTerm bound t2)
+        goFormula bound (LeqF t1 t2) = LeqF (goTerm bound t1) (goTerm bound t2)
+        goFormula bound (GtnF t1 t2) = GtnF (goTerm bound t1) (goTerm bound t2)
+        goFormula bound (ModF t1 r t2) = ModF (goTerm bound t1) r (goTerm bound t2)
+        goFormula bound (NegF f1) = NegF (goFormula bound f1)
+        goFormula bound (DisF f1 f2) = DisF (goFormula bound f1) (goFormula bound f2)
+        goFormula bound (ConF f1 f2) = ConF (goFormula bound f1) (goFormula bound f2)
+        goFormula bound (ImpF f1 f2) = ImpF (goFormula bound f1) (goFormula bound f2)
+        goFormula bound (IffF f1 f2) = IffF (goFormula bound f1) (goFormula bound f2)
+        goFormula bound (AllF y f1) = AllF y (goFormula (Set.insert y bound) f1)
+        goFormula bound (ExsF y f1) = ExsF y (goFormula (Set.insert y bound) f1)
 
-    goTerm bound (IVar v)
-        | v `Set.member` bound
-        = IVar v
-        | otherwise
-        = case Map.lookup v freeOf of
-            Just t -> case asClosedNatLit (rewrite NF t) of
-                Just n -> natToTermRep n
+        goTerm bound (IVar v)
+            | v `Set.member` bound
+            = IVar v
+            | otherwise
+            = case Map.lookup v freeOf of
+                Just t -> case asClosedNatLit (rewrite NF t) of
+                    Just n -> natToTermRep n
+                    Nothing -> IVar v
                 Nothing -> IVar v
-            Nothing -> IVar v
-    goTerm _ Zero
-        = Zero
-    goTerm bound (Succ t)
-        = Succ (goTerm bound t)
-    goTerm bound (Plus t1 t2)
-        = Plus (goTerm bound t1) (goTerm bound t2)
+        goTerm _ Zero
+            = Zero
+        goTerm bound (Succ t)
+            = Succ (goTerm bound t)
+        goTerm bound (Plus t1 t2)
+            = Plus (goTerm bound t1) (goTerm bound t2)
 
-    asClosedNatLit :: TermNode -> Maybe Integer
-    asClosedNatLit (NCon (DC (DC_NatL n)) _) = Just n
-    asClosedNatLit _ = Nothing
+        asClosedNatLit :: TermNode -> Maybe Integer
+        asClosedNatLit (NCon (DC (DC_NatL n)) _) = Just n
+        asClosedNatLit _ = Nothing
 
 liftConstraint :: TermNode -> Maybe LiftResult
 liftConstraint t
@@ -506,13 +506,14 @@ allocTerm :: TermNode -> L MyVar
 allocTerm term
     = L $ \s -> case Map.lookup term (lsInverse s) of
         Just v -> Just (v, s)
-        Nothing -> let v = lsNextVar s
-                   in Just (v, s { lsFreeMap = Map.insert v term (lsFreeMap s), lsInverse = Map.insert term v (lsInverse s), lsNextVar = v + 1 })
+        Nothing ->
+            let v = lsNextVar s
+            in Just (v, s { lsFreeMap = Map.insert v term (lsFreeMap s), lsInverse = Map.insert term v (lsInverse s), lsNextVar = v + 1 })
 
 liftFormula :: TermNode -> L MyPresburgerFormulaRep
 liftFormula t
     = case t of
-        NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) a _) b _ -> do 
+        NApp (NApp (NApp (NCon (DC DC_eq) _) (NCon (TC (TC_Named "nat")) _) _) a _) b _ -> do
             a' <- liftTerm a
             b' <- liftTerm b
             return (EqnF a' b')
@@ -594,56 +595,56 @@ scaleTermRep n t
 renumberFormula :: Map.Map TermNode MyVar -> Map.Map MyVar TermNode -> MyPresburgerFormulaRep -> MyPresburgerFormulaRep
 renumberFormula shared local rep
     = assertNonnegativeTerms (Map.keys shared) `seq`
-      assertTermMap local `seq`
-      fst (goFormula startFresh Map.empty rep)
-  where
-    startFresh = maxMyVar (Map.elems shared) + 1
-    maxMyVar :: [MyVar] -> MyVar
-    maxMyVar = foldr max (theMinNumOfMyVar - 1)
-    goFormula :: MyVar -> Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> (MyPresburgerFormulaRep, MyVar)
-    goFormula n _ (ValF b) = (ValF b, n)
-    goFormula n env (EqnF t1 t2) = (EqnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (LtnF t1 t2) = (LtnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (LeqF t1 t2) = (LeqF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (GtnF t1 t2) = (GtnF (goTerm env t1) (goTerm env t2), n)
-    goFormula n env (ModF t1 r t2) = (ModF (goTerm env t1) r (goTerm env t2), n)
-    goFormula n env (NegF f1) = (NegF f1', n1) where
-        (f1', n1) = goFormula n env f1
-    goFormula n env (DisF f1 f2) = (DisF f1' f2', n2) where
-        (f1', n1) = goFormula n env f1
-        (f2', n2) = goFormula n1 env f2
-    goFormula n env (ConF f1 f2) = (ConF f1' f2', n2) where
-        (f1', n1) = goFormula n env f1
-        (f2', n2) = goFormula n1 env f2
-    goFormula n env (ImpF f1 f2) = (ImpF f1' f2', n2) where
-        (f1', n1) = goFormula n env f1
-        (f2', n2) = goFormula n1 env f2
-    goFormula n env (IffF f1 f2) = (IffF f1' f2', n2) where
-        (f1', n1) = goFormula n env f1
-        (f2', n2) = goFormula n1 env f2
-    goFormula n env (AllF y f1) = (AllF y' f1', n1) where
-        y' = n
-        env' = Map.insert y y' env
-        (f1', n1) = goFormula (n + 1) env' f1
-    goFormula n env (ExsF y f1) = (ExsF y' f1', n1) where
-        y' = n
-        env' = Map.insert y y' env
-        (f1', n1) = goFormula (n + 1) env' f1
-    goTerm :: Map.Map MyVar MyVar -> PresburgerTermRep -> PresburgerTermRep
-    goTerm env (IVar v)
-        = case Map.lookup v env of
-            Just v' -> IVar v'                  -- bound; α-renamed
-            Nothing -> case Map.lookup v local of
-                Just t -> case Map.lookup (rewrite NF t) shared of
-                    Just v' -> IVar v'          -- free; mapped via shared
-                    Nothing -> IVar v           -- fallback: leave as-is
-                Nothing -> IVar v               -- unknown; leave as-is
-    goTerm _ Zero
-        = Zero
-    goTerm env (Succ t)
-        = Succ (goTerm env t)
-    goTerm env (Plus t1 t2)
-        = Plus (goTerm env t1) (goTerm env t2)
+        assertTermMap local `seq`
+        fst (goFormula startFresh Map.empty rep)
+    where
+        startFresh = maxMyVar (Map.elems shared) + 1
+        maxMyVar :: [MyVar] -> MyVar
+        maxMyVar = foldr max (theMinNumOfMyVar - 1)
+        goFormula :: MyVar -> Map.Map MyVar MyVar -> MyPresburgerFormulaRep -> (MyPresburgerFormulaRep, MyVar)
+        goFormula n _ (ValF b) = (ValF b, n)
+        goFormula n env (EqnF t1 t2) = (EqnF (goTerm env t1) (goTerm env t2), n)
+        goFormula n env (LtnF t1 t2) = (LtnF (goTerm env t1) (goTerm env t2), n)
+        goFormula n env (LeqF t1 t2) = (LeqF (goTerm env t1) (goTerm env t2), n)
+        goFormula n env (GtnF t1 t2) = (GtnF (goTerm env t1) (goTerm env t2), n)
+        goFormula n env (ModF t1 r t2) = (ModF (goTerm env t1) r (goTerm env t2), n)
+        goFormula n env (NegF f1) = (NegF f1', n1) where
+            (f1', n1) = goFormula n env f1
+        goFormula n env (DisF f1 f2) = (DisF f1' f2', n2) where
+            (f1', n1) = goFormula n env f1
+            (f2', n2) = goFormula n1 env f2
+        goFormula n env (ConF f1 f2) = (ConF f1' f2', n2) where
+            (f1', n1) = goFormula n env f1
+            (f2', n2) = goFormula n1 env f2
+        goFormula n env (ImpF f1 f2) = (ImpF f1' f2', n2) where
+            (f1', n1) = goFormula n env f1
+            (f2', n2) = goFormula n1 env f2
+        goFormula n env (IffF f1 f2) = (IffF f1' f2', n2) where
+            (f1', n1) = goFormula n env f1
+            (f2', n2) = goFormula n1 env f2
+        goFormula n env (AllF y f1) = (AllF y' f1', n1) where
+            y' = n
+            env' = Map.insert y y' env
+            (f1', n1) = goFormula (n + 1) env' f1
+        goFormula n env (ExsF y f1) = (ExsF y' f1', n1) where
+            y' = n
+            env' = Map.insert y y' env
+            (f1', n1) = goFormula (n + 1) env' f1
+        goTerm :: Map.Map MyVar MyVar -> PresburgerTermRep -> PresburgerTermRep
+        goTerm env (IVar v)
+            = case Map.lookup v env of
+                Just v' -> IVar v'                  -- bound; α-renamed
+                Nothing -> case Map.lookup v local of
+                    Just t -> case Map.lookup (rewrite NF t) shared of
+                        Just v' -> IVar v'          -- free; mapped via shared
+                        Nothing -> IVar v           -- fallback: leave as-is
+                    Nothing -> IVar v               -- unknown; leave as-is
+        goTerm _ Zero
+            = Zero
+        goTerm env (Succ t)
+            = Succ (goTerm env t)
+        goTerm env (Plus t1 t2)
+            = Plus (goTerm env t1) (goTerm env t2)
 
 entails :: [MyPresburgerFormula] -> MyPresburgerFormula -> Bool
 entails phis phi = checkTruthValueOfMyPresburgerFormula eliminated == Just True where
@@ -656,17 +657,17 @@ entails phis phi = checkTruthValueOfMyPresburgerFormula eliminated == Just True 
 arithEntails :: [TermNode] -> TermNode -> Bool
 arithEntails hyps phi
     = assertNonnegativeTerms hyps `seq`
-      assertNonnegativeIndices phi `seq`
-      case liftConstraint phi of
-        Nothing -> False
-        Just lrPhi -> entails compiledHyps compiledPhi where
-            liftedHs = mapMaybe liftConstraint hyps
-            allFreeTerms = Set.toAscList $ Set.union (Set.fromList (map (rewrite NF) (Map.elems (_freeOfLifted lrPhi)))) (Set.unions [ Set.fromList (map (rewrite NF) (Map.elems (_freeOfLifted h))) | h <- liftedHs ])
-            shared = Map.fromAscList (zip allFreeTerms [theMinNumOfMyVar ..])
-            phiRep = renumberFormula shared (_freeOfLifted lrPhi) (_liftedFormula lrPhi)
-            hypReps = [ renumberFormula shared (_freeOfLifted h) (_liftedFormula h) | h <- liftedHs ]
-            compiledPhi = fmap compilePresburgerTerm phiRep
-            compiledHyps = map (fmap compilePresburgerTerm) hypReps
+        assertNonnegativeIndices phi `seq`
+        case liftConstraint phi of
+            Nothing -> False
+            Just lrPhi -> entails compiledHyps compiledPhi where
+                liftedHs = mapMaybe liftConstraint hyps
+                allFreeTerms = Set.toAscList $ Set.union (Set.fromList (map (rewrite NF) (Map.elems (_freeOfLifted lrPhi)))) (Set.unions [ Set.fromList (map (rewrite NF) (Map.elems (_freeOfLifted h))) | h <- liftedHs ])
+                shared = Map.fromAscList (zip allFreeTerms [theMinNumOfMyVar ..])
+                phiRep = renumberFormula shared (_freeOfLifted lrPhi) (_liftedFormula lrPhi)
+                hypReps = [ renumberFormula shared (_freeOfLifted h) (_liftedFormula h) | h <- liftedHs ]
+                compiledPhi = fmap compilePresburgerTerm phiRep
+                compiledHyps = map (fmap compilePresburgerTerm) hypReps
 
 -- | Quantifier attached to a free atom when closing a presburger goal.
 data FreeQuant
@@ -701,14 +702,14 @@ type GuardedArithStore = [(ArithStore, ArithStore)]
 assertArithStore :: ArithStore -> ()
 assertArithStore (comparisons, formulas)
     = assertNonnegativeTerms comparisons `seq`
-      assertNonnegativeTerms (concatMap (Map.elems . snd) formulas)
+        assertNonnegativeTerms (concatMap (Map.elems . snd) formulas)
 
 assertGuardedArithStore :: GuardedArithStore -> ()
 assertGuardedArithStore [] = ()
 assertGuardedArithStore ((assumptions, obligations) : rest)
     = assertArithStore assumptions `seq`
-      assertArithStore obligations `seq`
-      assertGuardedArithStore rest
+        assertArithStore obligations `seq`
+        assertGuardedArithStore rest
 
 -- | Close a constraint store into a single presburger formula under the
 --   lia-style semantics, as @assumptions => obligations@.
@@ -731,8 +732,8 @@ assertGuardedArithStore ((assumptions, obligations) : rest)
 closeStore :: ArithStore -> ArithStore -> MyPresburgerFormula
 closeStore assumptions obligations
     = assertArithStore assumptions `seq`
-      assertArithStore obligations `seq`
-      closeGuardedStore [(assumptions, obligations)]
+        assertArithStore obligations `seq`
+        closeGuardedStore [(assumptions, obligations)]
 
 -- | Close a conjunction of separately guarded residual obligations.  Keeping
 -- one 'LeafSt' for the whole conjunction is essential: closing every pair on
@@ -763,8 +764,8 @@ closeGuardedStore guarded = assertGuardedArithStore guarded `seq` fullyClosed wh
 presburgerStoreSat :: ArithStore -> ArithStore -> Bool
 presburgerStoreSat assumptions obligations
     = assertArithStore assumptions `seq`
-      assertArithStore obligations `seq`
-      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeStore assumptions obligations)) == Just True
+        assertArithStore obligations `seq`
+        checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeStore assumptions obligations)) == Just True
 
 -- | Is the shared existential/universal closure of all guarded residuals true?
 -- This is the branch-admissibility check used while proof search accumulates
@@ -772,7 +773,7 @@ presburgerStoreSat assumptions obligations
 presburgerGuardedStoreSat :: GuardedArithStore -> Bool
 presburgerGuardedStoreSat guarded
     = assertGuardedArithStore guarded `seq`
-      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeGuardedStore guarded)) == Just True
+        checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman (closeGuardedStore guarded)) == Just True
 
 -- | Does a guarded residual conjunction carry no information for any values of
 -- its free leaves?  Unlike 'presburgerGuardedStoreSat', every free leaf is
@@ -781,7 +782,7 @@ presburgerGuardedStoreSat guarded
 presburgerGuardedValid :: GuardedArithStore -> Bool
 presburgerGuardedValid guarded
     = assertGuardedArithStore guarded `seq`
-      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
+        checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
     where
         (body0, _finalSt) = runState (buildGuardedStore guarded) (LeafSt Map.empty Map.empty theMinNumOfMyVar)
         bodyC :: MyPresburgerFormula
@@ -815,8 +816,8 @@ conjoinStore (cmpTerms, presForms) = do
 presburgerEntails :: ArithStore -> (MyPresburgerFormulaRep, Map.Map MyVar TermNode) -> Bool
 presburgerEntails assumptions (rep, freeOf)
     = assertArithStore assumptions `seq`
-      assertTermMap freeOf `seq`
-      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
+        assertTermMap freeOf `seq`
+        checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
     where
         (body0, _finalSt) = runState build (LeafSt Map.empty Map.empty theMinNumOfMyVar)
         build :: State LeafSt MyPresburgerFormulaRep
@@ -834,7 +835,7 @@ presburgerEntails assumptions (rep, freeOf)
 presburgerValid :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> Bool
 presburgerValid rep freeOf
     = assertTermMap freeOf `seq`
-      checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
+        checkTruthValueOfMyPresburgerFormula (eliminateQuantifierReferringToTheBookWrittenByPeterHinman validClosed) == Just True
     where
         (body0, _finalSt) = runState (renumFormulaDecomp (Map.map (rewrite NF) freeOf) Map.empty rep) (LeafSt Map.empty Map.empty theMinNumOfMyVar)
         bodyC :: MyPresburgerFormula
@@ -985,68 +986,68 @@ installPresburgerUsing
     -> Either ErrMsg TermNode
 installPresburgerUsing parseLiteral badArgument env term
     = assertTermMap env `seq`
-      assertNonnegativeIndices term `seq`
-      go env term
-  where
-    placeholderSLoc :: SLoc
-    placeholderSLoc = SLoc (0, 0) (0, 0)
+        assertNonnegativeIndices term `seq`
+        go env term
+    where
+        placeholderSLoc :: SLoc
+        placeholderSLoc = SLoc (0, 0) (0, 0)
 
-    go :: Map.Map LargeId TermNode -> TermNode -> Either ErrMsg TermNode
-    go env (NApp (NCon (DC (DC_Named "presburger")) _) arg sl)
-        = case extractString arg of
-            Just src -> do
-                let litLoc = fromMaybeLoc (getNodeSLoc arg) (fromMaybeLoc sl placeholderSLoc)
-                r <- parseLiteral litLoc src env
-                return (NPresburgerCheck (_formula r) (_freeOfFormula r) sl)
-            Nothing -> Left (badArgument (fromMaybeLoc (getNodeSLoc arg) (fromMaybeLoc sl placeholderSLoc)))
-    go env (NApp t1 t2 sl) = do
-        t1' <- go env t1
-        t2' <- go env t2
-        return (NApp t1' t2' sl)
-    go env (NLam h ty t sl) = do
-        t' <- go (enterLam h env) t
-        return (NLam h ty t' sl)
-    go env (Susp body ol nl senv) = do
-        body' <- go env body
-        senv' <- traverse (goSuspItem env) senv
-        return (Susp body' ol nl senv')
-    go _ t = return t
+        go :: Map.Map LargeId TermNode -> TermNode -> Either ErrMsg TermNode
+        go env (NApp (NCon (DC (DC_Named "presburger")) _) arg sl)
+            = case extractString arg of
+                Just src -> do
+                    let litLoc = fromMaybeLoc (getNodeSLoc arg) (fromMaybeLoc sl placeholderSLoc)
+                    r <- parseLiteral litLoc src env
+                    return (NPresburgerCheck (_formula r) (_freeOfFormula r) sl)
+                Nothing -> Left (badArgument (fromMaybeLoc (getNodeSLoc arg) (fromMaybeLoc sl placeholderSLoc)))
+        go env (NApp t1 t2 sl) = do
+            t1' <- go env t1
+            t2' <- go env t2
+            return (NApp t1' t2' sl)
+        go env (NLam h ty t sl) = do
+            t' <- go (enterLam h env) t
+            return (NLam h ty t' sl)
+        go env (Susp body ol nl senv) = do
+            body' <- go env body
+            senv' <- traverse (goSuspItem env) senv
+            return (Susp body' ol nl senv')
+        go _ t = return t
 
-    fromMaybeLoc :: Maybe SLoc -> SLoc -> SLoc
-    fromMaybeLoc (Just loc) _ = loc
-    fromMaybeLoc Nothing fallback = fallback
+        fromMaybeLoc :: Maybe SLoc -> SLoc -> SLoc
+        fromMaybeLoc (Just loc) _ = loc
+        fromMaybeLoc Nothing fallback = fallback
 
-    enterLam :: Maybe SmallId -> Map.Map LargeId TermNode -> Map.Map LargeId TermNode
-    enterLam mh env =
-        case mh of
-            Nothing -> shifted
-            Just h -> Map.insert h (mkNIdx 0) shifted
-        where
-            shifted = Map.map (raiseIndices 0 1) env
+        enterLam :: Maybe SmallId -> Map.Map LargeId TermNode -> Map.Map LargeId TermNode
+        enterLam mh env =
+            case mh of
+                Nothing -> shifted
+                Just h -> Map.insert h (mkNIdx 0) shifted
+            where
+                shifted = Map.map (raiseIndices 0 1) env
 
-    raiseIndices :: DeBruijn -> Int -> TermNode -> TermNode
-    raiseIndices cutoff amount = goRaise cutoff where
-        goRaise depth (LVar v) = mkLVar v
-        goRaise depth (NCon c sl) = NCon c sl
-        goRaise depth (NIdx i)
-            | i >= depth = mkNIdx (i + amount)
-            | otherwise = mkNIdx i
-        goRaise depth (NApp t1 t2 sl) = NApp (goRaise depth t1) (goRaise depth t2) sl
-        goRaise depth (NLam h ty body sl) = NLam h ty (goRaise (depth + 1) body) sl
-        goRaise depth (Susp body ol nl senv) = Susp (goRaise depth body) ol nl (map (raiseSuspItem depth) senv)
-        goRaise depth (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map (goRaise depth) freeOf) sl
+        raiseIndices :: DeBruijn -> Int -> TermNode -> TermNode
+        raiseIndices cutoff amount = goRaise cutoff where
+            goRaise depth (LVar v) = mkLVar v
+            goRaise depth (NCon c sl) = NCon c sl
+            goRaise depth (NIdx i)
+                | i >= depth = mkNIdx (i + amount)
+                | otherwise = mkNIdx i
+            goRaise depth (NApp t1 t2 sl) = NApp (goRaise depth t1) (goRaise depth t2) sl
+            goRaise depth (NLam h ty body sl) = NLam h ty (goRaise (depth + 1) body) sl
+            goRaise depth (Susp body ol nl senv) = Susp (goRaise depth body) ol nl (map (raiseSuspItem depth) senv)
+            goRaise depth (NPresburgerCheck rep freeOf sl) = NPresburgerCheck rep (Map.map (goRaise depth) freeOf) sl
 
-        raiseSuspItem depth (Dummy l) = Dummy l
-        raiseSuspItem depth (Binds t l) = Binds (goRaise depth t) l
+            raiseSuspItem depth (Dummy l) = Dummy l
+            raiseSuspItem depth (Binds t l) = Binds (goRaise depth t) l
 
-    goSuspItem :: Map.Map LargeId TermNode -> SuspItem -> Either ErrMsg SuspItem
-    goSuspItem env (Dummy l) = return (Dummy l)
-    goSuspItem env (Binds t l) = do
-        t' <- go env t
-        return (Binds t' l)
-    extractString :: TermNode -> Maybe String
-    extractString (NApp (NCon (DC DC_Nil) _) _ _) = Just ""
-    extractString (NApp (NApp (NApp (NCon (DC DC_Cons) _) _typeArg _) (NCon (DC (DC_ChrL c)) _) _) rest _) = do
-        cs <- extractString rest
-        return (c : cs)
-    extractString _ = Nothing
+        goSuspItem :: Map.Map LargeId TermNode -> SuspItem -> Either ErrMsg SuspItem
+        goSuspItem env (Dummy l) = return (Dummy l)
+        goSuspItem env (Binds t l) = do
+            t' <- go env t
+            return (Binds t' l)
+        extractString :: TermNode -> Maybe String
+        extractString (NApp (NCon (DC DC_Nil) _) _ _) = Just ""
+        extractString (NApp (NApp (NApp (NCon (DC DC_Cons) _) _typeArg _) (NCon (DC (DC_ChrL c)) _) _) rest _) = do
+            cs <- extractString rest
+            return (c : cs)
+        extractString _ = Nothing

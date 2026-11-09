@@ -267,16 +267,17 @@ eliminateQuantifierReferringToTheBookWrittenByPeterHinman = asterify . simplify 
             hisMethod :: CollectionOfProperKlasses -> MyPresburgerFormula
             hisMethod (CollectionOfProperKlasses theEqns0 theLtns0 theGtns0 theMods0 theR)
                 = case theEqns0 of
-                    [] | null theLtns0 ->
-                        -- Cooper's +infinity case: with no upper bounds the
-                        -- existential is satisfied by taking X arbitrarily
-                        -- large. Every lower bound is then trivially met,
-                        -- and any mod constraint can be satisfied by
-                        -- choosing X in the right residue class — so the
-                        -- only obstacle is an internally inconsistent
-                        -- mod constraint, which we approximate as never
-                        -- arising when no real Eqn/Ltn appears.
-                        mkValF True
+                    []
+                        | null theLtns0 ->
+                            -- Cooper's +infinity case: with no upper bounds the
+                            -- existential is satisfied by taking X arbitrarily
+                            -- large. Every lower bound is then trivially met,
+                            -- and any mod constraint can be satisfied by
+                            -- choosing X in the right residue class — so the
+                            -- only obstacle is an internally inconsistent
+                            -- mod constraint, which we approximate as never
+                            -- arising when no real Eqn/Ltn appears.
+                            mkValF True
                     [] -> orcat
                         [ andcat
                             [ andcat [ mkLeqF (mkPlus u' _u) (mkPlus u _u') | (_u, _u') <- theLtns0 ]

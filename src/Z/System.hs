@@ -74,7 +74,8 @@ autoPM = PM . readsPrec
 
 acceptCharIf :: (Char -> Bool) -> PM Char
 acceptCharIf condition = PM $ \str -> case str of
-    ch : rest | condition ch -> [(ch, rest)]
+    ch : rest
+        | condition ch -> [(ch, rest)]
     _ -> []
 
 consumeStr :: String -> PM ()
@@ -186,9 +187,10 @@ shellyM = shellymain where
         case ppapColor of
             Just "always" -> return True
             Just "never" -> return False
-            _ | envEnabled clicolorForce -> return True
-              | envEnabled noColor -> return False
-              | otherwise -> supportsPretty
+            _
+                | envEnabled clicolorForce -> return True
+                | envEnabled noColor -> return False
+                | otherwise -> supportsPretty
     envEnabled :: Maybe String -> Bool
     envEnabled Nothing = False
     envEnabled (Just "") = False
@@ -213,7 +215,8 @@ shellyM = shellymain where
                         remember str
                         return str
             else do
-                liftIO (delay 100)
+                interactive <- liftIO ((&&) <$> hIsTerminalDevice stdin <*> hIsTerminalDevice stdout)
+                if interactive then liftIO (delay 100) else return ()
                 liftIO $ cout << endl << Flush
                 return ""
     readEditedLine :: String -> ShellyT String
@@ -229,120 +232,121 @@ shellyM = shellymain where
         str <- liftIO (loop history 0 "" "" Nothing `finally` restore)
         remember str
         return str
-      where
-        loop :: [String] -> Int -> String -> String -> Maybe String -> IO String
-        loop history index left right saved = do
-            ch <- hGetChar stdin
-            case ch of
-                '\n' -> finish left right
-                '\r' -> finish left right
-                '\DEL' -> backspace history index left right saved
-                '\b' -> backspace history index left right saved
-                '\ESC' -> do
-                    (index', left', right', saved') <- escape history index left right saved
-                    loop history index' left' right' saved'
-                _ | ch >= ' ' -> do
-                    let left' = left ++ [ch]
-                    redraw left' right
-                    loop history index left' right saved
-                  | otherwise -> loop history index left right saved
-        finish left right = do
-            cout << endl << Flush
-            return (left ++ right)
-        backspace history index [] right saved = loop history index [] right saved
-        backspace history index left right saved = do
-            let left' = init left
-            redraw left' right
-            loop history index left' right saved
-        escape history index left right saved = do
-            ready <- hReady stdin
-            if not ready
-                then return (index, left, right, saved)
-                else do
-                    ch <- hGetChar stdin
-                    case ch of
-                        '[' -> csi history index left right saved
-                        'O' -> ss3 index left right saved
-                        _ -> return (index, left, right, saved)
-        csi history index left right saved = do
-            ready <- hReady stdin
-            if not ready
-                then return (index, left, right, saved)
-                else do
-                    ch <- hGetChar stdin
-                    case ch of
-                        'D' -> withIndex index saved <$> moveLeft left right
-                        'C' -> withIndex index saved <$> moveRight left right
-                        'A' -> historyUp history index left right saved
-                        'B' -> historyDown history index left right saved
-                        'H' -> withIndex index saved <$> moveHome left right
-                        'F' -> withIndex index saved <$> moveEnd left right
-                        '3' -> do
-                            tilde <- hReady stdin
-                            if tilde then do { _ <- hGetChar stdin; withIndex index saved <$> deleteChar left right } else return (index, left, right, saved)
-                        '1' -> consumeTilde *> (withIndex index saved <$> moveHome left right)
-                        '4' -> consumeTilde *> (withIndex index saved <$> moveEnd left right)
-                        _ -> return (index, left, right, saved)
-        ss3 index left right saved = do
-            ready <- hReady stdin
-            if not ready
-                then return (index, left, right, saved)
-                else do
-                    ch <- hGetChar stdin
-                    case ch of
-                        'H' -> withIndex index saved <$> moveHome left right
-                        'F' -> withIndex index saved <$> moveEnd left right
-                        _ -> return (index, left, right, saved)
-        consumeTilde = do
-            ready <- hReady stdin
-            if ready then do { _ <- hGetChar stdin; return () } else return ()
-        withIndex index saved (left, right) = (index, left, right, saved)
-        moveLeft [] right = return ([], right)
-        moveLeft left right = do
-            let left' = init left
-                right' = last left : right
-            redraw left' right'
-            return (left', right')
-        moveRight left [] = return (left, [])
-        moveRight left (ch : right) = do
-            let left' = left ++ [ch]
-            redraw left' right
-            return (left', right)
-        moveHome left right = do
-            redraw "" (left ++ right)
-            return ("", left ++ right)
-        moveEnd left right = do
-            redraw (left ++ right) ""
-            return (left ++ right, "")
-        deleteChar left [] = return (left, [])
-        deleteChar left (_ : right) = do
-            redraw left right
-            return (left, right)
-        historyUp [] index left right saved = return (index, left, right, saved)
-        historyUp history index left right saved
-            | index >= length history = return (index, left, right, saved)
-            | otherwise = do
-                let saved' = case saved of
-                        Nothing -> Just (left ++ right)
-                        Just old -> Just old
-                    entry = history !! index
-                redraw entry ""
-                return (index + 1, entry, "", saved')
-        historyDown history index left right saved
-            | index <= 0 = return (index, left, right, saved)
-            | index == 1 = do
-                let entry = maybe "" id saved
-                redraw entry ""
-                return (0, entry, "", saved)
-            | otherwise = do
-                let index' = index - 1
-                    entry = history !! (index' - 1)
-                redraw entry ""
-                return (index', entry, "", saved)
-        redraw left right = do
-            cout << "\r\ESC[2K" << prompt << left << right << cursorBack (length right) << Flush
-        cursorBack 0 = ""
-        cursorBack n = "\ESC[" ++ show n ++ "D"
+        where
+            loop :: [String] -> Int -> String -> String -> Maybe String -> IO String
+            loop history index left right saved = do
+                ch <- hGetChar stdin
+                case ch of
+                    '\n' -> finish left right
+                    '\r' -> finish left right
+                    '\DEL' -> backspace history index left right saved
+                    '\b' -> backspace history index left right saved
+                    '\ESC' -> do
+                        (index', left', right', saved') <- escape history index left right saved
+                        loop history index' left' right' saved'
+                    _
+                        | ch >= ' ' -> do
+                            let left' = left ++ [ch]
+                            redraw left' right
+                            loop history index left' right saved
+                        | otherwise -> loop history index left right saved
+            finish left right = do
+                cout << endl << Flush
+                return (left ++ right)
+            backspace history index [] right saved = loop history index [] right saved
+            backspace history index left right saved = do
+                let left' = init left
+                redraw left' right
+                loop history index left' right saved
+            escape history index left right saved = do
+                ready <- hReady stdin
+                if not ready
+                    then return (index, left, right, saved)
+                    else do
+                        ch <- hGetChar stdin
+                        case ch of
+                            '[' -> csi history index left right saved
+                            'O' -> ss3 index left right saved
+                            _ -> return (index, left, right, saved)
+            csi history index left right saved = do
+                ready <- hReady stdin
+                if not ready
+                    then return (index, left, right, saved)
+                    else do
+                        ch <- hGetChar stdin
+                        case ch of
+                            'D' -> withIndex index saved <$> moveLeft left right
+                            'C' -> withIndex index saved <$> moveRight left right
+                            'A' -> historyUp history index left right saved
+                            'B' -> historyDown history index left right saved
+                            'H' -> withIndex index saved <$> moveHome left right
+                            'F' -> withIndex index saved <$> moveEnd left right
+                            '3' -> do
+                                tilde <- hReady stdin
+                                if tilde then do { _ <- hGetChar stdin; withIndex index saved <$> deleteChar left right } else return (index, left, right, saved)
+                            '1' -> consumeTilde *> (withIndex index saved <$> moveHome left right)
+                            '4' -> consumeTilde *> (withIndex index saved <$> moveEnd left right)
+                            _ -> return (index, left, right, saved)
+            ss3 index left right saved = do
+                ready <- hReady stdin
+                if not ready
+                    then return (index, left, right, saved)
+                    else do
+                        ch <- hGetChar stdin
+                        case ch of
+                            'H' -> withIndex index saved <$> moveHome left right
+                            'F' -> withIndex index saved <$> moveEnd left right
+                            _ -> return (index, left, right, saved)
+            consumeTilde = do
+                ready <- hReady stdin
+                if ready then do { _ <- hGetChar stdin; return () } else return ()
+            withIndex index saved (left, right) = (index, left, right, saved)
+            moveLeft [] right = return ([], right)
+            moveLeft left right = do
+                let left' = init left
+                    right' = last left : right
+                redraw left' right'
+                return (left', right')
+            moveRight left [] = return (left, [])
+            moveRight left (ch : right) = do
+                let left' = left ++ [ch]
+                redraw left' right
+                return (left', right)
+            moveHome left right = do
+                redraw "" (left ++ right)
+                return ("", left ++ right)
+            moveEnd left right = do
+                redraw (left ++ right) ""
+                return (left ++ right, "")
+            deleteChar left [] = return (left, [])
+            deleteChar left (_ : right) = do
+                redraw left right
+                return (left, right)
+            historyUp [] index left right saved = return (index, left, right, saved)
+            historyUp history index left right saved
+                | index >= length history = return (index, left, right, saved)
+                | otherwise = do
+                    let saved' = case saved of
+                            Nothing -> Just (left ++ right)
+                            Just old -> Just old
+                        entry = history !! index
+                    redraw entry ""
+                    return (index + 1, entry, "", saved')
+            historyDown history index left right saved
+                | index <= 0 = return (index, left, right, saved)
+                | index == 1 = do
+                    let entry = maybe "" id saved
+                    redraw entry ""
+                    return (0, entry, "", saved)
+                | otherwise = do
+                    let index' = index - 1
+                        entry = history !! (index' - 1)
+                    redraw entry ""
+                    return (index', entry, "", saved)
+            redraw left right = do
+                cout << "\r\ESC[2K" << prompt << left << right << cursorBack (length right) << Flush
+            cursorBack 0 = ""
+            cursorBack n = "\ESC[" ++ show n ++ "D"
     remember :: String -> ShellyT ()
     remember str = do
         let entry = dropWhile (== ' ') str

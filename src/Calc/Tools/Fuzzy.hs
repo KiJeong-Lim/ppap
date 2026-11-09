@@ -365,9 +365,9 @@ localSearchCost cfg box objective x0 = go 0 (initialStep cfg) x0 (safeObjective 
 
 minimizeCost :: Config -> Box -> (Point -> Cost) -> IO Result
 minimizeCost cfg box objective = do
-  starts <- replicateM (max 1 (restarts cfg)) (randomPoint box)
-  let results = map (localSearchCost cfg box objective) starts
-  pure (minimumBy (comparing bestCost) results)
+    starts <- replicateM (max 1 (restarts cfg)) (randomPoint box)
+    let results = map (localSearchCost cfg box objective) starts
+    pure (minimumBy (comparing bestCost) results)
 
 minimize :: Config -> Box -> (Point -> DBool) -> IO Result
 minimize cfg box objective = minimizeCost cfg box (getCost . objective)

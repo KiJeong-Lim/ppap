@@ -10,20 +10,20 @@ import System.FilePath ((</>))
 import Z.OldPC (eofPC, lend, runPC)
 
 lexerSpec :: [String] -> [String] -> String
-lexerSpec rules checks = unlines
-    ([ "\\hshead {"
-     , "    module Main (main) where"
-     , "    import Control.Monad (unless)"
-     , "}"
-     , "\\target {"
-     , "    token-type: \"(String, String, (Int, Int), (Int, Int))\""
-     , "    lexer-name: \"scan\""
-     , "}"
-     ] ++ rules ++
-     [ "\\hstail {"
-     , "    assert label okay = unless okay (fail label)"
-     , "    main = do"
-     ] ++ map ("        " ++) checks ++ ["}"])
+lexerSpec rules checks = unlines $
+    [ "\\hshead {"
+    , "    module Main (main) where"
+    , "    import Control.Monad (unless)"
+    , "}"
+    , "\\target {"
+    , "    token-type: \"(String, String, (Int, Int), (Int, Int))\""
+    , "    lexer-name: \"scan\""
+    , "}"
+    ] ++ rules ++
+    [ "\\hstail {"
+    , "    assert label okay = unless okay (fail label)"
+    , "    main = do"
+    ] ++ map ("        " ++) checks ++ ["}"]
 
 match :: String -> String -> [String]
 match pattern label = ["\\xmatch " ++ pattern ++ ":", "    (" ++ show label ++ ", this, (row1, col1), (row2, col2))"]

@@ -256,17 +256,19 @@ runREPLWithControl mode program notationDB expansionDB control
                             ":reload" -> do
                                 _ <- promptify (diagnosticNoLocWith mode "HolBETA-REPLError" [Z.Doc.text "`:reload' is not available inside `:debug' mode or while a query is searching for answers."])
                                 return ()
-                            _ | (":assign " `List.isPrefixOf` response) ->
-                                handleAssign env ctx (drop (length (":assign " :: String)) response)
-                            _ | (":show " `List.isPrefixOf` response) -> do
-                                let body = drop (length (":show " :: String)) response
-                                    trimmed = dropWhile (== ' ') body
-                                    varName = case trimmed of
-                                        '?' : rest -> rest
-                                        _ -> trimmed
-                                result <- runRuntime (cmdShow varName) env
-                                _ <- promptify ("*** :show: ?" ++ varName ++ " = " ++ result)
-                                return ()
+                            _
+                                | (":assign " `List.isPrefixOf` response) ->
+                                    handleAssign env ctx (drop (length (":assign " :: String)) response)
+                            _
+                                | (":show " `List.isPrefixOf` response) -> do
+                                    let body = drop (length (":show " :: String)) response
+                                        trimmed = dropWhile (== ' ') body
+                                        varName = case trimmed of
+                                            '?' : rest -> rest
+                                            _ -> trimmed
+                                    result <- runRuntime (cmdShow varName) env
+                                    _ <- promptify ("*** :show: ?" ++ varName ++ " = " ++ result)
+                                    return ()
                             _ -> return ()
                 parseAssign :: String -> Maybe (String, String)
                 parseAssign body0
@@ -342,17 +344,17 @@ runREPLWithControl mode program notationDB expansionDB control
                                         | actual <- maybeToList mexpectedTy
                                         ]
                                         ++ [ ("c_" ++ show uni, inferred, actual)
-                                           | (nm, uni) <- xconNames
-                                           , actual <- maybeToList (IntMap.lookup uni (_ConTypes labelingForCheck))
-                                           , inferred <- maybeToList (Map.lookup nm nameToType)
-                                           ]
+                                            | (nm, uni) <- xconNames
+                                            , actual <- maybeToList (IntMap.lookup uni (_ConTypes labelingForCheck))
+                                            , inferred <- maybeToList (Map.lookup nm nameToType)
+                                            ]
                                         ++ [ ("?" ++ nm, inferred, actual)
-                                           | LV_Named nm <- Set.toList (getLVars t_compiled)
-                                           , Nothing <- [parseXcon nm]
-                                           , Just resolved <- [resolveDisplayName nm]
-                                           , actual <- maybeToList (lookupLVarType resolved labelingForCheck `mplus` Map.lookup resolved typeMap)
-                                           , inferred <- maybeToList (Map.lookup nm nameToType)
-                                           ]
+                                            | LV_Named nm <- Set.toList (getLVars t_compiled)
+                                            , Nothing <- [parseXcon nm]
+                                            , Just resolved <- [resolveDisplayName nm]
+                                            , actual <- maybeToList (lookupLVarType resolved labelingForCheck `mplus` Map.lookup resolved typeMap)
+                                            , inferred <- maybeToList (Map.lookup nm nameToType)
+                                            ]
                                     runtimeTypesAgree = typesJointlyCompatible
                                         [ (inferred, separateRuntimeMTVs actual)
                                         | (_, inferred, actual) <- runtimeTypeChecks
@@ -406,7 +408,8 @@ runREPLWithControl mode program notationDB expansionDB control
                         where
                             str = c : rest
                     rewrite ident = case ident of
-                        'c' : '_' : ds | not (null ds) && all isDigitC ds -> "XCON_" ++ ds
+                        'c' : '_' : ds
+                            | not (null ds) && all isDigitC ds -> "XCON_" ++ ds
                         _ -> ident
                 parseXcon :: LargeId -> Maybe Int
                 parseXcon nm = case nm of
@@ -570,25 +573,25 @@ runREPLWithControl mode program notationDB expansionDB control
                         residualComponents :: [(Int, Constraint)] -> [[(Int, Constraint)]]
                         residualComponents [] = []
                         residualComponents (seed : rest) = component : residualComponents remaining
-                          where
-                            (component, remaining) = grow [seed] (constraintVars (snd seed)) rest
-                            grow members variables pending
-                                | null touching = (members, separate)
-                                | otherwise = grow
-                                    (members ++ touching)
-                                    (variables `Set.union` Set.unions (map (constraintVars . snd) touching))
-                                    separate
-                              where
-                                (touching, separate) = List.partition
-                                    (not . Set.disjoint variables . constraintVars . snd)
-                                    pending
+                            where
+                                (component, remaining) = grow [seed] (constraintVars (snd seed)) rest
+                                grow members variables pending
+                                    | null touching = (members, separate)
+                                    | otherwise = grow
+                                        (members ++ touching)
+                                        (variables `Set.union` Set.unions (map (constraintVars . snd) touching))
+                                        separate
+                                    where
+                                        (touching, separate) = List.partition
+                                            (not . Set.disjoint variables . constraintVars . snd)
+                                            pending
                         componentProjectable :: [(Int, Constraint)] -> Bool
                         componentProjectable component
                             = Set.disjoint componentVariables answerRelevantVars
                                 && all (constraintArithmeticComplete . snd) component
                                 && componentSatisfiable component
-                          where
-                            componentVariables = Set.unions (map (constraintVars . snd) component)
+                            where
+                                componentVariables = Set.unions (map (constraintVars . snd) component)
                         componentSatisfiable :: [(Int, Constraint)] -> Bool
                         componentSatisfiable component = case traverse
                             (guardedConstraintStore (_TotalVarBinding ctx) . snd)
@@ -664,8 +667,8 @@ runREPLWithControl mode program notationDB expansionDB control
                                 : map mkLVar (Map.keys finalBinding)
                                 ++ Map.elems finalBinding
                                 ++ concatMap constraintTerms (_LeftConstraints final_ctx)
-                          where
-                            finalBinding = unVarBinding (_TotalVarBinding final_ctx)
+                            where
+                                finalBinding = unVarBinding (_TotalVarBinding final_ctx)
                         constraintTerms :: Constraint -> [TermNode]
                         constraintTerms (DisagreementConstraint (lhs :=?=: rhs)) = [lhs, rhs]
                         constraintTerms (EvalutionConstraint lhs rhs) = [lhs, rhs]

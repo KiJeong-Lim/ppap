@@ -129,8 +129,8 @@ main = do
                         , ("S", mkTyList mkTyChr)
                         ] }
                 }
-          , [cell LO_true]
-          )
+            , [cell LO_true]
+            )
         ]
     assignmentPendingRef <- newIORef mempty
     assignmentCacheRef <- newIORef initialCache
@@ -245,8 +245,8 @@ main = do
                 { _CurrentLabeling = emptyLabeling
                     { _VarLabel = IntMap.singleton 1 (-1) }
                 }
-          , [cell LO_true]
-          )
+            , [cell LO_true]
+            )
         ]
     malformedLabelPendingRef <- newIORef mempty
     malformedLabelCacheRef <- newIORef initialCache
@@ -266,8 +266,8 @@ main = do
         callbackMalformedStack =
             [ (callbackContext, [])
             , ( callbackContext
-              , [Cell Map.empty [] ([], []) 0 (NIdx (-1)) cutId]
-              )
+                , [Cell Map.empty [] ([], []) 0 (NIdx (-1)) cutId]
+                )
             ]
     callbackStackRef <- newIORef callbackInitialStack
     callbackPendingRef <- newIORef mempty
@@ -307,8 +307,8 @@ main = do
                     { _Answer = \ctx -> do
                         modifyIORef' answerCalls
                             (++ [ ( _LeftConstraints ctx
-                                  , bindVars (_TotalVarBinding ctx) answerXTerm
-                                  ) ])
+                                    , bindVars (_TotalVarBinding ctx) answerXTerm
+                                    ) ])
                         return False
                     }
             result <- execUniqueT (runExceptT

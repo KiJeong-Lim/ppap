@@ -51,14 +51,14 @@ assertDisagreements (disagreement : rest)
 instance Eq Disagreement where
     d1@(lhs1 :=?=: rhs1) == d2@(lhs2 :=?=: rhs2)
         = assertDisagreement d1 `seq`
-          assertDisagreement d2 `seq`
-          lhs1 == lhs2 && rhs1 == rhs2
+            assertDisagreement d2 `seq`
+            lhs1 == lhs2 && rhs1 == rhs2
 
 instance Ord Disagreement where
     compare d1@(lhs1 :=?=: rhs1) d2@(lhs2 :=?=: rhs2)
         = assertDisagreement d1 `seq`
-          assertDisagreement d2 `seq`
-          compare lhs1 lhs2 <> compare rhs1 rhs2
+            assertDisagreement d2 `seq`
+            compare lhs1 lhs2 <> compare rhs1 rhs2
 
 data HopuSol
     = HopuSol
@@ -70,16 +70,16 @@ data HopuSol
 instance Eq HopuSol where
     lhs == rhs
         = assertVarBinding (_MostGeneralUnifier lhs) `seq`
-          assertVarBinding (_MostGeneralUnifier rhs) `seq`
-          _ChangedLabelingEnv lhs == _ChangedLabelingEnv rhs
-            && _MostGeneralUnifier lhs == _MostGeneralUnifier rhs
+            assertVarBinding (_MostGeneralUnifier rhs) `seq`
+            _ChangedLabelingEnv lhs == _ChangedLabelingEnv rhs
+                && _MostGeneralUnifier lhs == _MostGeneralUnifier rhs
 
 instance Ord HopuSol where
     compare lhs rhs
         = assertVarBinding (_MostGeneralUnifier lhs) `seq`
-          assertVarBinding (_MostGeneralUnifier rhs) `seq`
-          compare (_ChangedLabelingEnv lhs) (_ChangedLabelingEnv rhs)
-            <> compare (_MostGeneralUnifier lhs) (_MostGeneralUnifier rhs)
+            assertVarBinding (_MostGeneralUnifier rhs) `seq`
+            compare (_ChangedLabelingEnv lhs) (_ChangedLabelingEnv rhs)
+                <> compare (_MostGeneralUnifier lhs) (_MostGeneralUnifier rhs)
 
 data HopuFail
     = DownFail
@@ -98,14 +98,14 @@ newtype VarBinding
 instance Eq VarBinding where
     lhs == rhs
         = assertVarBinding lhs `seq`
-          assertVarBinding rhs `seq`
-          unVarBinding lhs == unVarBinding rhs
+            assertVarBinding rhs `seq`
+            unVarBinding lhs == unVarBinding rhs
 
 instance Ord VarBinding where
     compare lhs rhs
         = assertVarBinding lhs `seq`
-          assertVarBinding rhs `seq`
-          compare (unVarBinding lhs) (unVarBinding rhs)
+            assertVarBinding rhs `seq`
+            compare (unVarBinding lhs) (unVarBinding rhs)
 
 class Labelable atom where
     enrollLabel :: atom -> ScopeLevel -> Labeling -> Labeling
@@ -153,18 +153,18 @@ lvKey (LV_Named _) = error "lvKey: LV_Named has no Int key"
 instance ZonkLVar Labeling where
     zonkLVar subst labeling
         = assertVarBinding subst `seq`
-          Map.foldlWithKey' applyBinding labeling (unVarBinding subst)
-      where
-        applyBinding :: Labeling -> LogicVar -> TermNode -> Labeling
-        applyBinding lbl v t = case getLevel v lbl of
-            Nothing -> lbl
-            Just level -> Set.foldr (insertVarMin level) lbl (accLVarsTerm t Set.empty)
-        getLevel :: LogicVar -> Labeling -> Maybe ScopeLevel
-        getLevel (LV_Named _) _ = Just 0
-        getLevel v lbl = IntMap.lookup (lvKey v) (_VarLabel lbl)
-        insertVarMin :: ScopeLevel -> LogicVar -> Labeling -> Labeling
-        insertVarMin _ (LV_Named _) lbl = lbl
-        insertVarMin level v lbl = lbl { _VarLabel = IntMap.insertWith min (lvKey v) level (_VarLabel lbl) }
+            Map.foldlWithKey' applyBinding labeling (unVarBinding subst)
+        where
+            applyBinding :: Labeling -> LogicVar -> TermNode -> Labeling
+            applyBinding lbl v t = case getLevel v lbl of
+                Nothing -> lbl
+                Just level -> Set.foldr (insertVarMin level) lbl (accLVarsTerm t Set.empty)
+            getLevel :: LogicVar -> Labeling -> Maybe ScopeLevel
+            getLevel (LV_Named _) _ = Just 0
+            getLevel v lbl = IntMap.lookup (lvKey v) (_VarLabel lbl)
+            insertVarMin :: ScopeLevel -> LogicVar -> Labeling -> Labeling
+            insertVarMin _ (LV_Named _) lbl = lbl
+            insertVarMin level v lbl = lbl { _VarLabel = IntMap.insertWith min (lvKey v) level (_VarLabel lbl) }
 
 accLVarsTerm :: TermNode -> Set.Set LogicVar -> Set.Set LogicVar
 accLVarsTerm (LVar v) = Set.insert v
@@ -189,28 +189,28 @@ instance HasLVar a => HasLVar [a] where
     accLVars = flip (foldr accLVars)
     bindVars theta values
         = assertVarBinding theta `seq`
-          assertHasLVar values `seq`
-          map (bindVars theta) values
+            assertHasLVar values `seq`
+            map (bindVars theta) values
 
 instance HasLVar b => HasLVar (a, b) where
     accLVars = accLVars . snd
     bindVars theta value
         = assertVarBinding theta `seq`
-          assertHasLVar value `seq`
-          fmap (bindVars theta) value
+            assertHasLVar value `seq`
+            fmap (bindVars theta) value
 
 instance HasLVar a => HasLVar (Map.Map k a) where
     accLVars = accLVars . Map.elems
     bindVars theta values
         = assertVarBinding theta `seq`
-          assertHasLVar values `seq`
-          Map.map (bindVars theta) values
+            assertHasLVar values `seq`
+            Map.map (bindVars theta) values
 
 instance Semigroup VarBinding where
     theta2 <> theta1
         = assertVarBinding theta2 `seq`
-          assertVarBinding theta1 `seq`
-          combine
+            assertVarBinding theta1 `seq`
+            combine
         where
             map1 = unVarBinding theta1
             map2 = unVarBinding theta2
@@ -228,25 +228,25 @@ instance ZonkLVar VarBinding where
 instance ZonkLVar a => ZonkLVar [a] where
     zonkLVar subst values
         = assertVarBinding subst `seq`
-          validate values `seq`
-          map (zonkLVar subst) values
-      where
-        validate [] = ()
-        validate (value : rest) = zonkLVar subst value `seq` validate rest
+            validate values `seq`
+            map (zonkLVar subst) values
+        where
+            validate [] = ()
+            validate (value : rest) = zonkLVar subst value `seq` validate rest
 
 instance HasLVar Disagreement where
     accLVars disagreement@(lhs :=?=: rhs)
         = assertDisagreement disagreement `seq` accLVars lhs . accLVars rhs
     bindVars theta disagreement@(lhs :=?=: rhs)
         = assertVarBinding theta `seq`
-          assertDisagreement disagreement `seq`
-          (bindVars theta lhs :=?=: bindVars theta rhs)
+            assertDisagreement disagreement `seq`
+            (bindVars theta lhs :=?=: bindVars theta rhs)
 
 instance ZonkLVar HopuSol where
     zonkLVar subst (HopuSol labeling binding)
         = assertVarBinding subst `seq`
-          assertVarBinding binding `seq`
-          HopuSol (zonkLVar subst labeling) (zonkLVar subst binding)
+            assertVarBinding binding `seq`
+            HopuSol (zonkLVar subst labeling) (zonkLVar subst binding)
 
 instance Outputable Labeling where
     pprint _ labeling
@@ -284,243 +284,243 @@ isTyLVar _ = False
 isPatternRespectTo :: LogicVar -> [TermNode] -> Labeling -> Bool
 isPatternRespectTo v ts labeling
     = assertNonnegativeTerms ts `seq`
-      (all isRigidAtom ts && areAllDistinct ts && and [ lookupLabel v labeling < lookupLabel c labeling | NCon c <- ts ])
+        (all isRigidAtom ts && areAllDistinct ts && and [ lookupLabel v labeling < lookupLabel c labeling | NCon c <- ts ])
 
 down :: Monad m => [TermNode] -> [TermNode] -> StateT Labeling (ExceptT HopuFail m) [TermNode]
 zs `down` ts
     = assertNonnegativeTerms zs `seq`
-      assertNonnegativeTerms ts `seq`
-      if downable then return indices else lift (throwE DownFail)
-  where
-    downable :: Bool
-    downable = areAllDistinct ts && all isRigidAtom ts && areAllDistinct zs && all isRigidAtom zs
-    indices :: [TermNode]
-    indices = [ mkNIdx (length ts - i - 1) | z <- zs, i <- toList (z `List.elemIndex` ts) ]
+        assertNonnegativeTerms ts `seq`
+        if downable then return indices else lift (throwE DownFail)
+    where
+        downable :: Bool
+        downable = areAllDistinct ts && all isRigidAtom ts && areAllDistinct zs && all isRigidAtom zs
+        indices :: [TermNode]
+        indices = [ mkNIdx (length ts - i - 1) | z <- zs, i <- toList (z `List.elemIndex` ts) ]
 
 up :: Monad m => [TermNode] -> LogicVar -> StateT Labeling (ExceptT HopuFail m) [TermNode]
 ts `up` y
     = assertNonnegativeTerms ts `seq`
-      if upable then fmap findVisibles get else lift (throwE UpFail)
-  where
-    upable :: Bool
-    upable = areAllDistinct ts && all isRigidAtom ts
-    findVisibles :: Labeling -> [TermNode]
-    findVisibles labeling = [ mkNCon c | NCon c <- ts, lookupLabel c labeling <= lookupLabel y labeling ]
+        if upable then fmap findVisibles get else lift (throwE UpFail)
+    where
+        upable :: Bool
+        upable = areAllDistinct ts && all isRigidAtom ts
+        findVisibles :: Labeling -> [TermNode]
+        findVisibles labeling = [ mkNCon c | NCon c <- ts, lookupLabel c labeling <= lookupLabel y labeling ]
 
 bind :: LogicVar -> TermNode -> [TermNode] -> Int -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
 bind var rhs parameters lambda
     = assertNonnegativeIndices rhs `seq`
-      assertNonnegativeTerms parameters `seq`
-      go (rewrite HNF rhs) parameters lambda
-  where
-    go :: TermNode -> [TermNode] -> Int -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
-    go rhs parameters lambda
-        | (lambda', rhs') <- viewNestedNLam rhs
-        , lambda' > 0
-        = do
-            (subst, lhs') <- go rhs' parameters (lambda + lambda')
-            return (subst, makeNestedNLam lambda' lhs')
-        | (NCon (DC DC_wc), _) <- unfoldlNApp rhs
-        = do
-            labeling <- get
-            h <- getNewLVar (isTyLVar var) (lookupLabel var labeling)
-            return (mempty, h)
-        | (rhs_head, rhs_tail) <- unfoldlNApp rhs
-        , isRigidAtom rhs_head
-        = do
-            labeling <- get
-            let foldbind [] = return (mempty, [])
-                foldbind (rhs_tail_elements : rhs_tail) = do
-                    (subst, lhs_tail_elements) <- go (rewrite HNF rhs_tail_elements) parameters lambda
-                    (theta, lhs_tail) <- foldbind (bindVars subst rhs_tail)
-                    return (theta <> subst, bindVars theta lhs_tail_elements : lhs_tail)
-                getLhsHead lhs_arguments
-                    | NCon con <- rhs_head
-                    , lookupLabel var labeling >= lookupLabel con labeling
-                    = return rhs_head
-                    | Just idx <- rhs_head `List.elemIndex` lhs_arguments
-                    = return (mkNIdx (length lhs_arguments - idx - 1))
-                    | otherwise
-                    = lift (throwE FlexRigidFail)
-            lhs_head <- getLhsHead ([ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0])
-            (subst, lhs_tail) <- foldbind rhs_tail
-            return (subst, List.foldl' mkNApp lhs_head lhs_tail)
-        | (LVar var', rhs_tail) <- unfoldlNApp rhs
-        = do
-            when (var == var') $ lift (throwE OccursCheckFail)
-            labeling <- get
-            let lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
-                rhs_arguments = map (rewrite NF) rhs_tail
-                common_arguments = Set.toList (Set.fromList lhs_arguments `Set.intersection` Set.fromList rhs_arguments)
-                cmp_res = lookupLabel var labeling `compare` lookupLabel var' labeling
-            if isPatternRespectTo var' rhs_arguments labeling then do
-                (lhs_inner, rhs_inner) <- case cmp_res of
-                    LT -> do
-                        selected_rhs_parameters <- lhs_arguments `up` var'
-                        selected_lhs_parameters <- selected_rhs_parameters `down` lhs_arguments
-                        return (selected_lhs_parameters, selected_rhs_parameters)
-                    _ -> do
-                        selected_lhs_parameters <- rhs_arguments `up` var
-                        selected_rhs_parameters <- selected_lhs_parameters `down` rhs_arguments
-                        return (selected_lhs_parameters, selected_rhs_parameters)
-                lhs_outer <- common_arguments `down` lhs_arguments
-                rhs_outer <- common_arguments `down` rhs_arguments
-                common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLam (length rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
-                modify (zonkLVar theta)
-                return (theta, List.foldl' mkNApp common_head (lhs_inner ++ lhs_outer))
-            else if cmp_res /= LT && all isRigidAtom rhs_arguments && and [ lookupLabel c labeling > lookupLabel var' labeling | NCon c <- rhs_arguments ] then do
-                let mkBetaPattern (NCon c)
-                        | lookupLabel c labeling <= lookupLabel var labeling = [mkNCon c]
-                    mkBetaPattern z = [ mkNIdx (length lhs_arguments - 1 - i) | i <- toList (z `List.elemIndex` lhs_arguments) ]
-                    isBetaPattern (NCon c)
-                        | lookupLabel c labeling <= lookupLabel var labeling = True
-                    isBetaPattern z = z `elem` common_arguments
-                common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLam (length rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
-                modify (zonkLVar theta)
-                return (theta, List.foldl' mkNApp common_head (rhs_arguments >>= mkBetaPattern))
-            else lift (throwE NotAPattern)
-        | otherwise
-        = lift (throwE BindFail)
+        assertNonnegativeTerms parameters `seq`
+        go (rewrite HNF rhs) parameters lambda
+    where
+        go :: TermNode -> [TermNode] -> Int -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) (LogicVarSubst, TermNode)
+        go rhs parameters lambda
+            | (lambda', rhs') <- viewNestedNLam rhs
+            , lambda' > 0
+            = do
+                (subst, lhs') <- go rhs' parameters (lambda + lambda')
+                return (subst, makeNestedNLam lambda' lhs')
+            | (NCon (DC DC_wc), _) <- unfoldlNApp rhs
+            = do
+                labeling <- get
+                h <- getNewLVar (isTyLVar var) (lookupLabel var labeling)
+                return (mempty, h)
+            | (rhs_head, rhs_tail) <- unfoldlNApp rhs
+            , isRigidAtom rhs_head
+            = do
+                labeling <- get
+                let foldbind [] = return (mempty, [])
+                    foldbind (rhs_tail_elements : rhs_tail) = do
+                        (subst, lhs_tail_elements) <- go (rewrite HNF rhs_tail_elements) parameters lambda
+                        (theta, lhs_tail) <- foldbind (bindVars subst rhs_tail)
+                        return (theta <> subst, bindVars theta lhs_tail_elements : lhs_tail)
+                    getLhsHead lhs_arguments
+                        | NCon con <- rhs_head
+                        , lookupLabel var labeling >= lookupLabel con labeling
+                        = return rhs_head
+                        | Just idx <- rhs_head `List.elemIndex` lhs_arguments
+                        = return (mkNIdx (length lhs_arguments - idx - 1))
+                        | otherwise
+                        = lift (throwE FlexRigidFail)
+                lhs_head <- getLhsHead ([ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0])
+                (subst, lhs_tail) <- foldbind rhs_tail
+                return (subst, List.foldl' mkNApp lhs_head lhs_tail)
+            | (LVar var', rhs_tail) <- unfoldlNApp rhs
+            = do
+                when (var == var') $ lift (throwE OccursCheckFail)
+                labeling <- get
+                let lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
+                    rhs_arguments = map (rewrite NF) rhs_tail
+                    common_arguments = Set.toList (Set.fromList lhs_arguments `Set.intersection` Set.fromList rhs_arguments)
+                    cmp_res = lookupLabel var labeling `compare` lookupLabel var' labeling
+                if isPatternRespectTo var' rhs_arguments labeling then do
+                    (lhs_inner, rhs_inner) <- case cmp_res of
+                        LT -> do
+                            selected_rhs_parameters <- lhs_arguments `up` var'
+                            selected_lhs_parameters <- selected_rhs_parameters `down` lhs_arguments
+                            return (selected_lhs_parameters, selected_rhs_parameters)
+                        _ -> do
+                            selected_lhs_parameters <- rhs_arguments `up` var
+                            selected_rhs_parameters <- selected_lhs_parameters `down` rhs_arguments
+                            return (selected_lhs_parameters, selected_rhs_parameters)
+                    lhs_outer <- common_arguments `down` lhs_arguments
+                    rhs_outer <- common_arguments `down` rhs_arguments
+                    common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
+                    theta <- lift $ var' +-> makeNestedNLam (length rhs_tail) (List.foldl' mkNApp common_head (rhs_inner ++ rhs_outer))
+                    modify (zonkLVar theta)
+                    return (theta, List.foldl' mkNApp common_head (lhs_inner ++ lhs_outer))
+                else if cmp_res /= LT && all isRigidAtom rhs_arguments && and [ lookupLabel c labeling > lookupLabel var' labeling | NCon c <- rhs_arguments ] then do
+                    let mkBetaPattern (NCon c)
+                            | lookupLabel c labeling <= lookupLabel var labeling = [mkNCon c]
+                        mkBetaPattern z = [ mkNIdx (length lhs_arguments - 1 - i) | i <- toList (z `List.elemIndex` lhs_arguments) ]
+                        isBetaPattern (NCon c)
+                            | lookupLabel c labeling <= lookupLabel var labeling = True
+                        isBetaPattern z = z `elem` common_arguments
+                    common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
+                    theta <- lift $ var' +-> makeNestedNLam (length rhs_arguments) (List.foldl' mkNApp common_head [ mkNIdx (length rhs_arguments - i - 1) | i <- [0, 1 .. length rhs_arguments - 1], isBetaPattern (rhs_arguments !! i) ])
+                    modify (zonkLVar theta)
+                    return (theta, List.foldl' mkNApp common_head (rhs_arguments >>= mkBetaPattern))
+                else lift (throwE NotAPattern)
+            | otherwise
+            = lift (throwE BindFail)
 
 mksubst :: LogicVar -> TermNode -> [TermNode] -> Labeling -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
 mksubst var rhs parameters labeling
     = assertNonnegativeIndices rhs `seq`
-      assertNonnegativeTerms parameters `seq`
-      catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr
-  where
-    dispatch :: TermNode -> [TermNode] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) LogicVarSubst
-    dispatch rhs parameters
-        | (lambda, rhs') <- viewNestedNLam rhs
-        , (LVar var', rhs_tail) <- unfoldlNApp rhs'
-        , var == var'
-        = do
-            labeling <- get
-            let n = length parameters + lambda
-                lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
-                rhs_arguments = map (rewrite NF) rhs_tail
-                common_arguments = [ mkNIdx (n - i - 1) | i <- [0, 1 .. n - 1], lhs_arguments !! i == rhs_arguments !! i ]
-            if lhs_arguments == rhs_arguments then
-                return mempty
-            else do
-                unless (isPatternRespectTo var' rhs_arguments labeling) $ lift (throwE NotAPattern)
-                common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
-                theta <- lift $ var' +-> makeNestedNLam n (List.foldl' mkNApp common_head common_arguments)
+        assertNonnegativeTerms parameters `seq`
+        catchE (Just . uncurry (flip HopuSol) <$> runStateT (dispatch (rewrite NF rhs) parameters) labeling) handleErr
+    where
+        dispatch :: TermNode -> [TermNode] -> StateT Labeling (ExceptT HopuFail (UniqueT IO)) LogicVarSubst
+        dispatch rhs parameters
+            | (lambda, rhs') <- viewNestedNLam rhs
+            , (LVar var', rhs_tail) <- unfoldlNApp rhs'
+            , var == var'
+            = do
+                labeling <- get
+                let n = length parameters + lambda
+                    lhs_arguments = [ rewriteWithSusp param 0 lambda [] NF | param <- parameters ] ++ map mkNIdx [lambda - 1, lambda - 2 .. 0]
+                    rhs_arguments = map (rewrite NF) rhs_tail
+                    common_arguments = [ mkNIdx (n - i - 1) | i <- [0, 1 .. n - 1], lhs_arguments !! i == rhs_arguments !! i ]
+                if lhs_arguments == rhs_arguments then
+                    return mempty
+                else do
+                    unless (isPatternRespectTo var' rhs_arguments labeling) $ lift (throwE NotAPattern)
+                    common_head <- getNewLVar (isTyLVar var || isTyLVar var') (lookupLabel var labeling)
+                    theta <- lift $ var' +-> makeNestedNLam n (List.foldl' mkNApp common_head common_arguments)
+                    modify (zonkLVar theta)
+                    return theta
+    {-
+            | null parameters && canView labeling rhs
+            = do -- ?- F = G x\ H y\ 1.
+                theta <- lift $ var +-> rhs
                 modify (zonkLVar theta)
                 return theta
-{-
-        | null parameters && canView labeling rhs
-        = do -- ?- F = G x\ H y\ 1.
-            theta <- lift $ var +-> rhs
-            modify (zonkLVar theta)
-            return theta
--}
-        | otherwise
-        = do
-            labeling <- get
-            let n = length parameters
-                lhs_arguments = map (rewrite NF) parameters
-            unless (isPatternRespectTo var lhs_arguments labeling) $ lift (throwE NotAPattern)
-            (subst, lhs) <- bind var rhs parameters 0
-            theta <- lift $ var +-> makeNestedNLam n lhs
-            modify (zonkLVar theta)
-            return (theta <> subst)
-    handleErr :: HopuFail -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
-    handleErr NotAPattern = return Nothing
-    handleErr err = throwE err
-    canView :: Labeling -> TermNode -> Bool
-    canView labeling = go where
-        go :: TermNode -> Bool
-        go (NLam t1) = go t1
-        go (NApp t1 t2) = go t1 && go t2
-        go (NCon c) = lookupLabel var labeling >= lookupLabel c labeling
-        go (LVar x) = lookupLabel var labeling >= lookupLabel x labeling
+    -}
+            | otherwise
+            = do
+                labeling <- get
+                let n = length parameters
+                    lhs_arguments = map (rewrite NF) parameters
+                unless (isPatternRespectTo var lhs_arguments labeling) $ lift (throwE NotAPattern)
+                (subst, lhs) <- bind var rhs parameters 0
+                theta <- lift $ var +-> makeNestedNLam n lhs
+                modify (zonkLVar theta)
+                return (theta <> subst)
+        handleErr :: HopuFail -> ExceptT HopuFail (UniqueT IO) (Maybe HopuSol)
+        handleErr NotAPattern = return Nothing
+        handleErr err = throwE err
+        canView :: Labeling -> TermNode -> Bool
+        canView labeling = go where
+            go :: TermNode -> Bool
+            go (NLam t1) = go t1
+            go (NApp t1 t2) = go t1 && go t2
+            go (NCon c) = lookupLabel var labeling >= lookupLabel c labeling
+            go (LVar x) = lookupLabel var labeling >= lookupLabel x labeling
 
 simplify :: [Disagreement] -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
 simplify disagreements labeling
     = assertDisagreements disagreements `seq`
-      loop (zip (repeat 0) disagreements) mempty labeling
-  where
-    loop :: [(Int, Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
-    loop [] subst labeling = return ([], HopuSol labeling subst)
-    loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
-        dispatch :: Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
-        dispatch l lhs rhs
-            | (lambda1, lhs') <- viewNestedNLam lhs
-            , (lambda2, rhs') <- viewNestedNLam rhs
-            , lambda1 > 0 && lambda2 > 0
-            = (\lambda -> dispatch (l + lambda) (makeNestedNLam (lambda1 - lambda) lhs') (makeNestedNLam (lambda2 - lambda) rhs')) $! min lambda1 lambda2
-            | (lambda1, lhs') <- viewNestedNLam lhs
-            , (rhs_head, rhs_tail) <- unfoldlNApp rhs
-            , lambda1 > 0 && isRigidAtom rhs_head
-            = dispatch (l + lambda1) lhs' (List.foldl' mkNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1 - 1, lambda1 - 2 .. 0]))
-            | (lhs_head, lhs_tail) <- unfoldlNApp lhs
-            , (lambda2, rhs') <- viewNestedNLam rhs
-            , isRigidAtom lhs_head && lambda2 > 0
-            = dispatch (l + lambda2) (List.foldl' mkNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2 - 1, lambda2 - 2 .. 0])) rhs'
-            | (lhs_head, lhs_tail) <- unfoldlNApp lhs
-            , (rhs_head, rhs_tail) <- unfoldlNApp rhs
-            , isRigidAtom lhs_head && isRigidAtom rhs_head
-            = if lhs_head == rhs_head && length lhs_tail == length rhs_tail
-                then loop ([ (l, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tail rhs_tail ] ++ disagreements) subst labeling
-                else lift (throwE RigidRigidFail)
-            | lhs == rhs
-            = do
-                put True
-                loop disagreements subst labeling
-            | (LVar var, parameters) <- unfoldlNApp lhs
-            , isPatternRespectTo var parameters labeling
-            = do
-                output <- lift (mksubst var rhs parameters labeling)
-                case output of
-                    Nothing -> solveNext
-                    Just (HopuSol labeling' subst') -> do
-                        put True
-                        loop (bindVars subst' disagreements) (subst' <> subst) labeling'
-            | (LVar var, parameters) <- unfoldlNApp rhs
-            , isPatternRespectTo var parameters labeling
-            = do
-                output <- lift (mksubst var lhs parameters labeling)
-                case output of
-                    Nothing -> solveNext
-                    Just (HopuSol labeling' subst') -> do
-                        put True
-                        loop (bindVars subst' disagreements) (subst' <> subst) labeling'
-            | (NCon (DC DC_wc), parameters) <- unfoldlNApp lhs
-            = do
-                put True
-                loop disagreements subst labeling
-            | (NCon (DC DC_wc), parameters) <- unfoldlNApp rhs
-            = do
-                put True
-                loop disagreements subst labeling
-            | otherwise
-            = solveNext
-        solveNext :: StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
-        solveNext = do
-            (disagreements', HopuSol labeling' subst') <- loop disagreements mempty labeling
-            return (bindVars subst' (makeNestedNLam l lhs :=?=: makeNestedNLam l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
+        loop (zip (repeat 0) disagreements) mempty labeling
+    where
+        loop :: [(Int, Disagreement)] -> LogicVarSubst -> Labeling -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+        loop [] subst labeling = return ([], HopuSol labeling subst)
+        loop ((l, lhs :=?=: rhs) : disagreements) subst labeling = dispatch l (rewrite NF lhs) (rewrite NF rhs) where
+            dispatch :: Int -> TermNode -> TermNode -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+            dispatch l lhs rhs
+                | (lambda1, lhs') <- viewNestedNLam lhs
+                , (lambda2, rhs') <- viewNestedNLam rhs
+                , lambda1 > 0 && lambda2 > 0
+                = (\lambda -> dispatch (l + lambda) (makeNestedNLam (lambda1 - lambda) lhs') (makeNestedNLam (lambda2 - lambda) rhs')) $! min lambda1 lambda2
+                | (lambda1, lhs') <- viewNestedNLam lhs
+                , (rhs_head, rhs_tail) <- unfoldlNApp rhs
+                , lambda1 > 0 && isRigidAtom rhs_head
+                = dispatch (l + lambda1) lhs' (List.foldl' mkNApp (rewriteWithSusp rhs_head 0 lambda1 [] HNF) ([ mkSusp rhs_tail_element 0 lambda1 [] | rhs_tail_element <- rhs_tail ] ++ map mkNIdx [lambda1 - 1, lambda1 - 2 .. 0]))
+                | (lhs_head, lhs_tail) <- unfoldlNApp lhs
+                , (lambda2, rhs') <- viewNestedNLam rhs
+                , isRigidAtom lhs_head && lambda2 > 0
+                = dispatch (l + lambda2) (List.foldl' mkNApp (rewriteWithSusp lhs_head 0 lambda2 [] HNF) ([ mkSusp lhs_tail_element 0 lambda2 [] | lhs_tail_element <- lhs_tail ] ++ map mkNIdx [lambda2 - 1, lambda2 - 2 .. 0])) rhs'
+                | (lhs_head, lhs_tail) <- unfoldlNApp lhs
+                , (rhs_head, rhs_tail) <- unfoldlNApp rhs
+                , isRigidAtom lhs_head && isRigidAtom rhs_head
+                = if lhs_head == rhs_head && length lhs_tail == length rhs_tail
+                    then loop ([ (l, lhs' :=?=: rhs') | (lhs', rhs') <- zip lhs_tail rhs_tail ] ++ disagreements) subst labeling
+                    else lift (throwE RigidRigidFail)
+                | lhs == rhs
+                = do
+                    put True
+                    loop disagreements subst labeling
+                | (LVar var, parameters) <- unfoldlNApp lhs
+                , isPatternRespectTo var parameters labeling
+                = do
+                    output <- lift (mksubst var rhs parameters labeling)
+                    case output of
+                        Nothing -> solveNext
+                        Just (HopuSol labeling' subst') -> do
+                            put True
+                            loop (bindVars subst' disagreements) (subst' <> subst) labeling'
+                | (LVar var, parameters) <- unfoldlNApp rhs
+                , isPatternRespectTo var parameters labeling
+                = do
+                    output <- lift (mksubst var lhs parameters labeling)
+                    case output of
+                        Nothing -> solveNext
+                        Just (HopuSol labeling' subst') -> do
+                            put True
+                            loop (bindVars subst' disagreements) (subst' <> subst) labeling'
+                | (NCon (DC DC_wc), parameters) <- unfoldlNApp lhs
+                = do
+                    put True
+                    loop disagreements subst labeling
+                | (NCon (DC DC_wc), parameters) <- unfoldlNApp rhs
+                = do
+                    put True
+                    loop disagreements subst labeling
+                | otherwise
+                = solveNext
+            solveNext :: StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+            solveNext = do
+                (disagreements', HopuSol labeling' subst') <- loop disagreements mempty labeling
+                return (bindVars subst' (makeNestedNLam l lhs :=?=: makeNestedNLam l rhs) : disagreements', HopuSol labeling' (subst' <> subst))
 
 runHOPU :: Labeling -> [Disagreement] -> UniqueT IO (Maybe ([Disagreement], HopuSol))
 runHOPU labeling disagreements
     = assertDisagreements disagreements `seq`
-      go labeling disagreements
-  where
-    loop :: ([Disagreement], HopuSol) -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
-    loop (disagreements, HopuSol labeling subst)
-        | null disagreements = return (disagreements, HopuSol labeling subst)
-        | otherwise = do
-            (disagreements', HopuSol labeling' subst') <- simplify disagreements labeling
-            let result = (disagreements', HopuSol labeling' (subst' <> subst))
-            has_changed <- get
-            if has_changed then put False >> loop result else return result
-    go :: Labeling -> [Disagreement] -> UniqueT IO (Maybe ([Disagreement], HopuSol))
-    go labeling disagreements = do
-        output <- runExceptT (runStateT (loop (disagreements, HopuSol labeling mempty)) False)
-        case output of
-            Left _ -> return Nothing
-            Right (result, _) -> return (Just result)
+        go labeling disagreements
+    where
+        loop :: ([Disagreement], HopuSol) -> StateT HasChanged (ExceptT HopuFail (UniqueT IO)) ([Disagreement], HopuSol)
+        loop (disagreements, HopuSol labeling subst)
+            | null disagreements = return (disagreements, HopuSol labeling subst)
+            | otherwise = do
+                (disagreements', HopuSol labeling' subst') <- simplify disagreements labeling
+                let result = (disagreements', HopuSol labeling' (subst' <> subst))
+                has_changed <- get
+                if has_changed then put False >> loop result else return result
+        go :: Labeling -> [Disagreement] -> UniqueT IO (Maybe ([Disagreement], HopuSol))
+        go labeling disagreements = do
+            output <- runExceptT (runStateT (loop (disagreements, HopuSol labeling mempty)) False)
+            case output of
+                Left _ -> return Nothing
+                Right (result, _) -> return (Just result)
 
 getLVars :: HasLVar expr => expr -> Set.Set LogicVar
 getLVars = flip accLVars Set.empty
@@ -528,8 +528,8 @@ getLVars = flip accLVars Set.empty
 flatten :: VarBinding -> TermNode -> TermNode
 flatten binding@(VarBinding mapsto) term
     = assertVarBinding binding `seq`
-      assertNonnegativeIndices term `seq`
-      if Map.null mapsto then term else go (rewrite NF term)
+        assertNonnegativeIndices term `seq`
+        if Map.null mapsto then term else go (rewrite NF term)
     where
         go :: TermNode -> TermNode
         go (LVar v) = case Map.lookup v mapsto of

@@ -171,9 +171,9 @@ runREPL program = lift (newIORef False) >>= go where
                     ]
                 definedokay :: Bool
                 definedokay = not (any isPendingDefinition (_LeftConstraints final_ctx))
-                  where
-                    isPendingDefinition (DefinedConstraint _) = True
-                    isPendingDefinition _ = False
+                    where
+                        isPendingDefinition (DefinedConstraint _) = True
+                        isPendingDefinition _ = False
                 consistent :: Bool
                 consistent = evalokay && arithokay && definedokay
     go :: IORef Debugging -> UniqueT IO ()

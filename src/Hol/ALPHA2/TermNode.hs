@@ -81,83 +81,83 @@ assertSuspension body ol nl env
     | ol < 0 || nl < 0 = undefined
     | length env /= ol = undefined
     | otherwise = assertNonnegativeIndices body `seq` checkItems env
-  where
-    checkItems [] = ()
-    checkItems (item : rest) = case item of
-        Dummy level
-            | level >= 0 && level <= nl -> checkItems rest
-            | otherwise -> undefined
-        Binds itemBody level
-            | level >= 0 && level <= nl ->
-                assertNonnegativeIndices itemBody `seq` checkItems rest
-            | otherwise -> undefined
+    where
+        checkItems [] = ()
+        checkItems (item : rest) = case item of
+            Dummy level
+                | level >= 0 && level <= nl -> checkItems rest
+                | otherwise -> undefined
+            Binds itemBody level
+                | level >= 0 && level <= nl ->
+                    assertNonnegativeIndices itemBody `seq` checkItems rest
+                | otherwise -> undefined
 
 validSuspensionMetadata :: Int -> Int -> SuspEnv -> Bool
 validSuspensionMetadata ol nl env
     = ol >= 0 && nl >= 0 && length env == ol && all validItem env
-  where
-    validItem (Dummy level) = level >= 0 && level <= nl
-    validItem (Binds _ level) = level >= 0 && level <= nl
+    where
+        validItem (Dummy level) = level >= 0 && level <= nl
+        validItem (Binds _ level) = level >= 0 && level <= nl
 
 instance Eq SuspItem where
     lhs == rhs
         = assertNonnegativeSuspItem lhs `seq`
-          assertNonnegativeSuspItem rhs `seq`
-          case (lhs, rhs) of
-            (Dummy l1, Dummy l2) -> l1 == l2
-            (Binds t1 l1, Binds t2 l2) -> t1 == t2 && l1 == l2
-            _ -> False
+            assertNonnegativeSuspItem rhs `seq`
+            case (lhs, rhs) of
+                (Dummy l1, Dummy l2) -> l1 == l2
+                (Binds t1 l1, Binds t2 l2) -> t1 == t2 && l1 == l2
+                _ -> False
 
 instance Ord SuspItem where
     compare lhs rhs
         = assertNonnegativeSuspItem lhs `seq`
-          assertNonnegativeSuspItem rhs `seq`
-          case (lhs, rhs) of
-            (Dummy l1, Dummy l2) -> compare l1 l2
-            (Dummy _, Binds _ _) -> LT
-            (Binds _ _, Dummy _) -> GT
-            (Binds t1 l1, Binds t2 l2) -> compare t1 t2 <> compare l1 l2
+            assertNonnegativeSuspItem rhs `seq`
+            case (lhs, rhs) of
+                (Dummy l1, Dummy l2) -> compare l1 l2
+                (Dummy _, Binds _ _) -> LT
+                (Binds _ _, Dummy _) -> GT
+                (Binds t1 l1, Binds t2 l2) -> compare t1 t2 <> compare l1 l2
 
 instance Eq TermNode where
     lhs == rhs
         = assertNonnegativeIndices lhs `seq`
-          assertNonnegativeIndices rhs `seq`
-          eqTerm lhs rhs
-      where
-        eqTerm (LVar v1) (LVar v2) = v1 == v2
-        eqTerm (NCon c1) (NCon c2) = c1 == c2
-        eqTerm (NIdx i) (NIdx j) = i == j
-        eqTerm (NApp a1 b1) (NApp a2 b2) = eqTerm a1 a2 && eqTerm b1 b2
-        eqTerm (NLam b1) (NLam b2) = eqTerm b1 b2
-        eqTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) = eqTerm b1 b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
-        eqTerm _ _ = False
+            assertNonnegativeIndices rhs `seq`
+            eqTerm lhs rhs
+        where
+            eqTerm (LVar v1) (LVar v2) = v1 == v2
+            eqTerm (NCon c1) (NCon c2) = c1 == c2
+            eqTerm (NIdx i) (NIdx j) = i == j
+            eqTerm (NApp a1 b1) (NApp a2 b2) = eqTerm a1 a2 && eqTerm b1 b2
+            eqTerm (NLam b1) (NLam b2) = eqTerm b1 b2
+            eqTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) = eqTerm b1 b2 && ol1 == ol2 && nl1 == nl2 && e1 == e2
+            eqTerm _ _ = False
 
 instance Ord TermNode where
     compare lhs rhs
         = assertNonnegativeIndices lhs `seq`
-          assertNonnegativeIndices rhs `seq`
-          cmpTerm lhs rhs
-      where
-        ctorIdx :: TermNode -> Int
-        ctorIdx (LVar _) = 0
-        ctorIdx (NCon _) = 1
-        ctorIdx (NIdx i)
-            | i >= 0 = 2
-            | otherwise = undefined
-        ctorIdx (NApp _ _) = 3
-        ctorIdx (NLam _) = 4
-        ctorIdx (Susp {}) = 5
-        cmpTerm :: TermNode -> TermNode -> Ordering
-        cmpTerm (LVar v1) (LVar v2) = compare v1 v2
-        cmpTerm (NCon c1) (NCon c2) = compare c1 c2
-        cmpTerm (NIdx i) (NIdx j)
-            | i < 0 || j < 0 = undefined
-            | otherwise = compare i j
-        cmpTerm (NApp a1 b1) (NApp a2 b2) = cmpTerm a1 a2 <> cmpTerm b1 b2
-        cmpTerm (NLam b1) (NLam b2) = cmpTerm b1 b2
-        cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
-            cmpTerm b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
-        cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
+            assertNonnegativeIndices rhs `seq`
+            cmpTerm lhs rhs
+        where
+            ctorIdx :: TermNode -> Int
+            ctorIdx (LVar _) = 0
+            ctorIdx (NCon _) = 1
+            ctorIdx (NIdx i)
+                | i >= 0 = 2
+                | otherwise = undefined
+            ctorIdx (NApp _ _) = 3
+            ctorIdx (NLam _) = 4
+            ctorIdx (Susp {}) = 5
+            cmpTerm :: TermNode -> TermNode -> Ordering
+            cmpTerm (LVar v1) (LVar v2) = compare v1 v2
+            cmpTerm (NCon c1) (NCon c2) = compare c1 c2
+            cmpTerm (NIdx i) (NIdx j)
+                | i < 0 || j < 0 = undefined
+                | otherwise = compare i j
+            cmpTerm (NApp a1 b1) (NApp a2 b2) = cmpTerm a1 a2 <> cmpTerm b1 b2
+            cmpTerm (NLam b1) (NLam b2) = cmpTerm b1 b2
+            cmpTerm (Susp b1 ol1 nl1 e1) (Susp b2 ol2 nl2 e2) =
+                cmpTerm b1 b2 <> compare ol1 ol2 <> compare nl1 nl2 <> compare e1 e2
+            cmpTerm a b = compare (ctorIdx a) (ctorIdx b)
 
 data ReduceOption
     = WHNF
@@ -258,8 +258,8 @@ mkNApp (NCon (DC (DC_Succ))) (NCon (DC (DC_NatL n)))
         n' = n + 1
 mkNApp t1 t2
     = assertNonnegativeIndices t1 `seq`
-      assertNonnegativeIndices t2 `seq`
-      NApp t1 t2
+        assertNonnegativeIndices t2 `seq`
+        NApp t1 t2
 
 {-# INLINE mkNLam #-}
 mkNLam :: TermNode -> TermNode
@@ -400,13 +400,13 @@ constructViewer term = fst . runIdentity $ runStateT (formatView rendered_names 
     freshAmbientName used slot
         | Set.notMember base used = base
         | otherwise = pick (1 :: Int)
-      where
-        base = "DB_" ++ show slot
-        pick suffix
-            | Set.notMember candidate used = candidate
-            | otherwise = pick (suffix + 1)
-          where
-            candidate = base ++ "_" ++ show suffix
+        where
+            base = "DB_" ++ show slot
+            pick suffix
+                | Set.notMember candidate used = candidate
+                | otherwise = pick (suffix + 1)
+                where
+                    candidate = base ++ "_" ++ show suffix
     collectAmbientSlots :: Int -> TermNode -> Set.Set DeBruijn
     collectAmbientSlots depth node = case node of
         LVar _ -> Set.empty
@@ -436,9 +436,9 @@ constructViewer term = fst . runIdentity $ runStateT (formatView rendered_names 
         NApp t1 t2 -> Set.union (collectOccupiedNames t1) (collectOccupiedNames t2)
         NLam body -> collectOccupiedNames body
         Susp body _ _ env -> Set.unions (collectOccupiedNames body : map collectItemNames env)
-          where
-            collectItemNames (Dummy _) = Set.empty
-            collectItemNames (Binds itemBody _) = collectOccupiedNames itemBody
+            where
+                collectItemNames (Dummy _) = Set.empty
+                collectItemNames (Binds itemBody _) = collectOccupiedNames itemBody
     collectFreeNames :: TermNode -> Set.Set SmallId
     collectFreeNames (LVar var) = case var of
         LV_Named name -> Set.singleton name

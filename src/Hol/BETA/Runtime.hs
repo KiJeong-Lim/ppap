@@ -75,10 +75,10 @@ nullArithStore (comparisons, formulas) = null comparisons && null formulas
 bindArithStore :: VarBinding -> ArithStore -> ArithStore
 bindArithStore theta store@(comparisons, formulas)
     = assertVarBinding theta `seq`
-      assertArithStore store `seq`
-      ( bindVars theta comparisons
-      , [ (rep, Map.map (bindVars theta) freeOf) | (rep, freeOf) <- formulas ]
-      )
+        assertArithStore store `seq`
+        ( bindVars theta comparisons
+        , [ (rep, Map.map (bindVars theta) freeOf) | (rep, freeOf) <- formulas ]
+        )
 
 arithStoreTerms :: ArithStore -> [TermNode]
 arithStoreTerms (comparisons, formulas)
@@ -105,36 +105,36 @@ assertConstraints (constraint : rest) = assertConstraint constraint `seq` assert
 instance Eq Constraint where
     lhs == rhs
         = assertConstraint lhs `seq`
-          assertConstraint rhs `seq`
-          case (lhs, rhs) of
-            (DisagreementConstraint d1, DisagreementConstraint d2) -> d1 == d2
-            (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> l1 == l2 && r1 == r2
-            (ArithmeticConstraint p1 t1, ArithmeticConstraint p2 t2) -> p1 == p2 && t1 == t2
-            (PresburgerConstraint p1 f1 m1, PresburgerConstraint p2 f2 m2) -> p1 == p2 && f1 == f2 && m1 == m2
-            _ -> False
+            assertConstraint rhs `seq`
+            case (lhs, rhs) of
+                (DisagreementConstraint d1, DisagreementConstraint d2) -> d1 == d2
+                (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> l1 == l2 && r1 == r2
+                (ArithmeticConstraint p1 t1, ArithmeticConstraint p2 t2) -> p1 == p2 && t1 == t2
+                (PresburgerConstraint p1 f1 m1, PresburgerConstraint p2 f2 m2) -> p1 == p2 && f1 == f2 && m1 == m2
+                _ -> False
 
 instance Ord Constraint where
     compare lhs rhs
         = assertConstraint lhs `seq`
-          assertConstraint rhs `seq`
-          case (lhs, rhs) of
-            (DisagreementConstraint d1, DisagreementConstraint d2) -> compare d1 d2
-            (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> compare l1 l2 <> compare r1 r2
-            (ArithmeticConstraint p1 t1, ArithmeticConstraint p2 t2) -> compare p1 p2 <> compare t1 t2
-            (PresburgerConstraint p1 f1 m1, PresburgerConstraint p2 f2 m2) -> compare p1 p2 <> compare f1 f2 <> compare m1 m2
-            _ -> compare (constraintTag lhs) (constraintTag rhs)
-      where
-        constraintTag (DisagreementConstraint _) = 0 :: Int
-        constraintTag (EvalutionConstraint _ _) = 1
-        constraintTag (ArithmeticConstraint _ _) = 2
-        constraintTag (PresburgerConstraint _ _ _) = 3
+            assertConstraint rhs `seq`
+            case (lhs, rhs) of
+                (DisagreementConstraint d1, DisagreementConstraint d2) -> compare d1 d2
+                (EvalutionConstraint l1 r1, EvalutionConstraint l2 r2) -> compare l1 l2 <> compare r1 r2
+                (ArithmeticConstraint p1 t1, ArithmeticConstraint p2 t2) -> compare p1 p2 <> compare t1 t2
+                (PresburgerConstraint p1 f1 m1, PresburgerConstraint p2 f2 m2) -> compare p1 p2 <> compare f1 f2 <> compare m1 m2
+                _ -> compare (constraintTag lhs) (constraintTag rhs)
+        where
+            constraintTag (DisagreementConstraint _) = 0 :: Int
+            constraintTag (EvalutionConstraint _ _) = 1
+            constraintTag (ArithmeticConstraint _ _) = 2
+            constraintTag (PresburgerConstraint _ _ _) = 3
 
 assertEvaluationTerms :: [(TermNode, TermNode)] -> ()
 assertEvaluationTerms [] = ()
 assertEvaluationTerms ((lhs, rhs) : rest)
     = assertNonnegativeIndices lhs `seq`
-      assertNonnegativeIndices rhs `seq`
-      assertEvaluationTerms rest
+        assertNonnegativeIndices rhs `seq`
+        assertEvaluationTerms rest
 
 data Context
     = Context
@@ -159,31 +159,31 @@ assertCell cell
 assertContext :: Context -> ()
 assertContext ctx
     = assertVarBinding (_TotalVarBinding ctx) `seq`
-      assertLabelingDomain (_CurrentLabeling ctx) `seq`
-      assertConstraints (_LeftConstraints ctx)
+        assertLabelingDomain (_CurrentLabeling ctx) `seq`
+        assertConstraints (_LeftConstraints ctx)
 
 assertLabelingDomain :: Labeling -> ()
 assertLabelingDomain labeling
     = assertScopeMap (_ConLabel labeling) `seq`
-      assertScopeMap (_VarLabel labeling) `seq`
-      assertKeyMap (_ConTypes labeling) `seq`
-      assertKeyMap (_VarTypes labeling) `seq`
-      assertKeyMap (_TyVarKeys labeling)
-  where
-    assertScopeMap values = IntMap.foldrWithKey
-        (\key level rest -> if key < 0 || level < 0 then undefined else rest)
-        () values
-    assertKeyMap values = IntMap.foldrWithKey
-        (\key _ rest -> if key < 0 then undefined else rest)
-        () values
+        assertScopeMap (_VarLabel labeling) `seq`
+        assertKeyMap (_ConTypes labeling) `seq`
+        assertKeyMap (_VarTypes labeling) `seq`
+        assertKeyMap (_TyVarKeys labeling)
+    where
+        assertScopeMap values = IntMap.foldrWithKey
+            (\key level rest -> if key < 0 || level < 0 then undefined else rest)
+            () values
+        assertKeyMap values = IntMap.foldrWithKey
+            (\key _ rest -> if key < 0 then undefined else rest)
+            () values
 
 assertStack :: Stack -> ()
 assertStack [] = ()
 assertStack ((ctx, cells) : rest)
     = assertContext ctx `seq` assertCells cells `seq` assertStack rest
-  where
-    assertCells [] = ()
-    assertCells (cell : more) = assertCell cell `seq` assertCells more
+    where
+        assertCells [] = ()
+        assertCells (cell : more) = assertCell cell `seq` assertCells more
 
 data RuntimeEnv
     = RuntimeEnv
@@ -262,7 +262,7 @@ snapshot = do
 restore :: Snapshot -> Runtime (Either ErrMsg ())
 restore snap
     = assertStack (_SnapStack snap) `seq`
-      assertVarBinding (_SnapPendingSubst snap) `seq` do
+        assertVarBinding (_SnapPendingSubst snap) `seq` do
     env <- askRuntimeEnv
     if _SnapOwner snap /= _StackRef env
         || _SnapPendingOwner snap /= _PendingSubst env
@@ -413,15 +413,15 @@ primitiveListEvidenceWithKinds kindEnv value = case primitiveListView (rewrite N
                     PrimitiveExactType (mkTyList itemType)
             _ -> PrimitiveInvalidValue
     Nothing -> Nothing
-  where
-    explicitTypeMatches Nothing _ = True
-    explicitTypeMatches (Just typeArg) itemType =
-        maybe False (`monoTypesCouldMatch` itemType) (primitiveTypeArgumentWithKinds kindEnv typeArg)
+    where
+        explicitTypeMatches Nothing _ = True
+        explicitTypeMatches (Just typeArg) itemType =
+            maybe False (`monoTypesCouldMatch` itemType) (primitiveTypeArgumentWithKinds kindEnv typeArg)
 
-    restMatches _ PrimitiveEmptyList = True
-    restMatches itemType (PrimitiveExactType (TyApp (TyCon (TCon (TC_Named "list") _)) tailType)) =
-        monoTypesCouldMatch itemType tailType
-    restMatches _ _ = False
+        restMatches _ PrimitiveEmptyList = True
+        restMatches itemType (PrimitiveExactType (TyApp (TyCon (TCon (TC_Named "list") _)) tailType)) =
+            monoTypesCouldMatch itemType tailType
+        restMatches _ _ = False
 
 primitiveTypeArgument :: TermNode -> Maybe (MonoType Int)
 primitiveTypeArgument = primitiveTypeArgumentWithKinds primitiveBuiltinKindEnv
@@ -434,26 +434,26 @@ primitiveTypeArgumentWithKinds kindEnv term = do
     (typ, kind) <- go (rewrite NF term)
     guard (kind == Star)
     return typ
-  where
-    go :: TermNode -> Maybe (MonoType Int, KindExpr)
-    go (LVar (LV_ty_var mtv)) = Just (TyMTV mtv, Star)
-    go (NCon (TC typeConstructor) _) = do
-        kind <- typeConstructorKind typeConstructor
-        return (TyCon (TCon typeConstructor kind), kind)
-    go (NApp lhs rhs _) = do
-        (lhsType, lhsKind) <- go lhs
-        (rhsType, rhsKind) <- go rhs
-        case lhsKind of
-            KArr argumentKind resultKind
-                | argumentKind == rhsKind ->
-                    Just (TyApp lhsType rhsType, resultKind)
-            _ -> Nothing
-    go _ = Nothing
+    where
+        go :: TermNode -> Maybe (MonoType Int, KindExpr)
+        go (LVar (LV_ty_var mtv)) = Just (TyMTV mtv, Star)
+        go (NCon (TC typeConstructor) _) = do
+            kind <- typeConstructorKind typeConstructor
+            return (TyCon (TCon typeConstructor kind), kind)
+        go (NApp lhs rhs _) = do
+            (lhsType, lhsKind) <- go lhs
+            (rhsType, rhsKind) <- go rhs
+            case lhsKind of
+                KArr argumentKind resultKind
+                    | argumentKind == rhsKind ->
+                        Just (TyApp lhsType rhsType, resultKind)
+                _ -> Nothing
+        go _ = Nothing
 
-    typeConstructorKind (TC_Unique _) = Just Star
-    typeConstructorKind typeConstructor =
-        Map.lookup typeConstructor kindEnv
-            `mplus` Map.lookup typeConstructor primitiveBuiltinKindEnv
+        typeConstructorKind (TC_Unique _) = Just Star
+        typeConstructorKind typeConstructor =
+            Map.lookup typeConstructor kindEnv
+                `mplus` Map.lookup typeConstructor primitiveBuiltinKindEnv
 
 primitiveBuiltinKindEnv :: KindEnv
 primitiveBuiltinKindEnv = Map.fromList
@@ -613,14 +613,14 @@ assignmentTargetIsKnown env ctx cells pending target
 labelingWithRuntimeTypes :: RuntimeEnv -> Labeling -> Labeling
 labelingWithRuntimeTypes env labeling0
     = Map.foldlWithKey' insertType labeling0 (_TypeInfo env)
-  where
-    insertType labeling variable typ = case variable of
-        LV_Named name -> labeling
-            { _NamedTypes = Map.insert name typ (_NamedTypes labeling) }
-        LV_Unique unique _ -> labeling
-            { _VarTypes = IntMap.insert (unUnique unique) typ (_VarTypes labeling) }
-        LV_ty_var unique -> labeling
-            { _VarTypes = IntMap.insert (unUnique unique) typ (_VarTypes labeling) }
+    where
+        insertType labeling variable typ = case variable of
+            LV_Named name -> labeling
+                { _NamedTypes = Map.insert name typ (_NamedTypes labeling) }
+            LV_Unique unique _ -> labeling
+                { _VarTypes = IntMap.insert (unUnique unique) typ (_VarTypes labeling) }
+            LV_ty_var unique -> labeling
+                { _VarTypes = IntMap.insert (unUnique unique) typ (_VarTypes labeling) }
 
 assignmentTypeError :: RuntimeEnv -> Labeling -> LogicVar -> TermNode -> Maybe ErrMsg
 assignmentTypeError env originalLabeling target value
@@ -641,15 +641,15 @@ assignmentTypeError env originalLabeling target value
                     | monoTypesCouldMatch expected actual -> Nothing
                     | otherwise -> Just (mismatch expected (Just actual))
                 Nothing -> Just (mismatch expected Nothing)
-  where
-    labeling = labelingWithRuntimeTypes env originalLabeling
-    renderType = showsMonoType (_NotationDB env) 0
-    mismatch expected actual =
-        "type mismatch for debugger assignment: expected `"
-            ++ renderType expected "' but "
-            ++ case actual of
-                Just typ -> "the assigned term has type `" ++ renderType typ "'."
-                Nothing -> "the assigned term is not well-typed in the active context."
+    where
+        labeling = labelingWithRuntimeTypes env originalLabeling
+        renderType = showsMonoType (_NotationDB env) 0
+        mismatch expected actual =
+            "type mismatch for debugger assignment: expected `"
+                ++ renderType expected "' but "
+                ++ case actual of
+                    Just typ -> "the assigned term has type `" ++ renderType typ "'."
+                    Nothing -> "the assigned term is not well-typed in the active context."
 
 cmdAssignTarget :: SmallId -> LogicVar -> TermNode -> Runtime (Either ErrMsg ())
 cmdAssignTarget name targetLV term
@@ -724,18 +724,18 @@ cmdAssignTarget name targetLV term
 assignedTermsAgree :: TermNode -> TermNode -> Bool
 assignedTermsAgree lhs rhs
     = assertNonnegativeIndices lhs `seq`
-      assertNonnegativeIndices rhs `seq`
-      (etaReduce (rewrite NF lhs) == etaReduce (rewrite NF rhs)
-        || case arithmeticEquality lhs rhs of
-            ArithEqTrue -> evaluationConstraintUniversallyValid lhs rhs
-            _ -> False)
+        assertNonnegativeIndices rhs `seq`
+        (etaReduce (rewrite NF lhs) == etaReduce (rewrite NF rhs)
+            || case arithmeticEquality lhs rhs of
+                ArithEqTrue -> evaluationConstraintUniversallyValid lhs rhs
+                _ -> False)
 
 instance ZonkLVar Context where
     zonkLVar theta ctx
         = assertVarBinding theta `seq`
-          assertVarBinding (_TotalVarBinding ctx) `seq`
-          assertConstraints (_LeftConstraints ctx) `seq`
-          Context
+            assertVarBinding (_TotalVarBinding ctx) `seq`
+            assertConstraints (_LeftConstraints ctx) `seq`
+            Context
         { _TotalVarBinding = theta <> _TotalVarBinding ctx
         , _CurrentLabeling = zonkLVar theta (_CurrentLabeling ctx)
         , _LeftConstraints = zonkLVar theta (_LeftConstraints ctx)
@@ -746,26 +746,26 @@ instance ZonkLVar Context where
 instance ZonkLVar Constraint where
     zonkLVar theta constraint
         = assertVarBinding theta `seq`
-          assertConstraint constraint `seq`
-          go constraint
-      where
-        go (DisagreementConstraint eqn)
-            = DisagreementConstraint (bindVars theta eqn)
-        go (EvalutionConstraint lhs rhs)
-            = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
-        go (ArithmeticConstraint premises arith)
-            = ArithmeticConstraint (bindArithStore theta premises) (bindVars theta arith)
-        go (PresburgerConstraint premises rep freeOf)
-            = PresburgerConstraint (bindArithStore theta premises) rep (Map.map (bindVars theta) freeOf)
+            assertConstraint constraint `seq`
+            go constraint
+        where
+            go (DisagreementConstraint eqn)
+                = DisagreementConstraint (bindVars theta eqn)
+            go (EvalutionConstraint lhs rhs)
+                = EvalutionConstraint (bindVars theta lhs) (bindVars theta rhs)
+            go (ArithmeticConstraint premises arith)
+                = ArithmeticConstraint (bindArithStore theta premises) (bindVars theta arith)
+            go (PresburgerConstraint premises rep freeOf)
+                = PresburgerConstraint (bindArithStore theta premises) rep (Map.map (bindVars theta) freeOf)
 
 instance ZonkLVar Cell where
     zonkLVar theta (Cell facts hyps premises level goal call_id)
         = assertVarBinding theta `seq`
-          assertNonnegativeTerms (concat (Map.elems facts)) `seq`
-          assertNonnegativeTerms hyps `seq`
-          assertArithStore premises `seq`
-          assertNonnegativeIndices goal `seq`
-          mkCell facts (bindVars theta hyps) (bindArithStore theta premises) level (bindVars theta goal) call_id
+            assertNonnegativeTerms (concat (Map.elems facts)) `seq`
+            assertNonnegativeTerms hyps `seq`
+            assertArithStore premises `seq`
+            assertNonnegativeIndices goal `seq`
+            mkCell facts (bindVars theta hyps) (bindArithStore theta premises) level (bindVars theta goal) call_id
 
 instance Show Constraint where
     showsPrec prec (DisagreementConstraint eqn) = showsPrec prec eqn
@@ -947,7 +947,7 @@ instantiateFact fact level
 runLogicalOperator :: UniqueM m => LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ArithStore -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Stack
 runLogicalOperator logicalOperator args ctx facts hyps premises level callId cells stack
     = assertNonnegativeTerms args `seq`
-      runLogicalOperatorUnchecked logicalOperator args ctx facts hyps premises level callId cells stack
+        runLogicalOperatorUnchecked logicalOperator args ctx facts hyps premises level callId cells stack
 
 runLogicalOperatorUnchecked :: UniqueM m => LogicalOperator -> [TermNode] -> Context -> Map.Map Constant [Fact] -> [Fact] -> ArithStore -> ScopeLevel -> CallId -> [Cell] -> Stack -> ExceptT KernelErr m Stack
 runLogicalOperatorUnchecked LO_true [] ctx facts hyps premises level call_id cells stack
@@ -1168,10 +1168,10 @@ instantiateArithPremises = collect [] . rewrite HNF where
 execIs :: MonadUnique m => [Fact] -> Context -> [Cell] -> Stack -> m Stack
 execIs hyps ctx cells stack
     = assertNonnegativeTerms hyps `seq`
-      assertConstraints (_LeftConstraints ctx) `seq`
-      case settleEvaluationConstraints ctx cells of
-        Nothing -> return stack
-        Just (ctx', cells') -> return ((ctx', cells') : stack)
+        assertConstraints (_LeftConstraints ctx) `seq`
+        case settleEvaluationConstraints ctx cells of
+            Nothing -> return stack
+            Just (ctx', cells') -> return ((ctx', cells') : stack)
 
 -- Apply bindings produced by delayed @is@ constraints, normalize every other
 -- arithmetic residual under those bindings, and validate the complete joint
@@ -1204,9 +1204,9 @@ settleEvaluationConstraints ctx cells = do
                 map DisagreementConstraint newDisagreements
                     ++ map (uncurry EvalutionConstraint) pendingEvaluations
                     ++ [ ArithmeticConstraint premises arith
-                       | (premises, arith) <- newArithmeticConstraints
-                       , evaluateB arith /= Right True
-                       ]
+                        | (premises, arith) <- newArithmeticConstraints
+                        , evaluateB arith /= Right True
+                        ]
                     ++ newPresburgerConstraints
             }
     if storeSatisfiable ctx2 then Just (ctx2, cells1) else Nothing
@@ -1257,21 +1257,21 @@ evaluateA term = assertNonnegativeIndices term `seq` go term where
 recheckEvaluationConstraints :: [(TermNode, TermNode)] -> Maybe [(TermNode, TermNode)]
 recheckEvaluationConstraints constraints
     = assertEvaluationTerms constraints `seq`
-      foldr step (Just []) constraints
-  where
-    step (lhs, rhs) checked
-        = case (evaluateA lhs', evaluateA rhs') of
-            (Right lhsValue, Right rhsValue)
-                | lhsValue == rhsValue -> checked
-                | otherwise -> Nothing
-            (Left "ill", _) -> Nothing
-            (_, Left "ill") -> Nothing
-            _
-                | evaluationConstraintPossible lhs' rhs' -> ((lhs', rhs') :) <$> checked
-                | otherwise -> Nothing
-        where
-            lhs' = rewrite NF lhs
-            rhs' = rewrite NF rhs
+        foldr step (Just []) constraints
+    where
+        step (lhs, rhs) checked
+            = case (evaluateA lhs', evaluateA rhs') of
+                (Right lhsValue, Right rhsValue)
+                    | lhsValue == rhsValue -> checked
+                    | otherwise -> Nothing
+                (Left "ill", _) -> Nothing
+                (_, Left "ill") -> Nothing
+                _
+                    | evaluationConstraintPossible lhs' rhs' -> ((lhs', rhs') :) <$> checked
+                    | otherwise -> Nothing
+            where
+                lhs' = rewrite NF lhs
+                rhs' = rewrite NF rhs
 
 -- Resolve every delayed @L is R@ whose right-hand side has become a concrete
 -- natural.  Bindings are accumulated and fed back through the whole set until
@@ -1360,12 +1360,12 @@ completeEvaluationObligation lhs rhs
 evaluationConstraintPossible :: TermNode -> TermNode -> Bool
 evaluationConstraintPossible lhs rhs
     = assertNonnegativeIndices lhs `seq`
-      assertNonnegativeIndices rhs `seq`
-      case (evaluateA lhs', evaluateA rhs') of
-        (Right x, Right y) -> x == y
-        (Left "ill", _) -> False
-        (_, Left "ill") -> False
-        _ -> presburgerStoreSat emptyArithStore (evaluationObligation lhs' rhs')
+        assertNonnegativeIndices rhs `seq`
+        case (evaluateA lhs', evaluateA rhs') of
+            (Right x, Right y) -> x == y
+            (Left "ill", _) -> False
+            (_, Left "ill") -> False
+            _ -> presburgerStoreSat emptyArithStore (evaluationObligation lhs' rhs')
     where
         lhs' = rewrite NF lhs
         rhs' = rewrite NF rhs
@@ -1377,14 +1377,14 @@ evaluationConstraintPossible lhs rhs
 evaluationConstraintUniversallyValid :: TermNode -> TermNode -> Bool
 evaluationConstraintUniversallyValid lhs rhs
     = assertNonnegativeIndices lhs `seq`
-      assertNonnegativeIndices rhs `seq`
-      case (evaluateA lhs', evaluateA rhs') of
-        (Right x, Right y) -> x == y
-        (Left "ill", _) -> False
-        (_, Left "ill") -> False
-        _ -> case completeEvaluationObligation lhs' rhs' of
-            Nothing -> False
-            Just obligation -> presburgerGuardedValid [(emptyArithStore, obligation)]
+        assertNonnegativeIndices rhs `seq`
+        case (evaluateA lhs', evaluateA rhs') of
+            (Right x, Right y) -> x == y
+            (Left "ill", _) -> False
+            (_, Left "ill") -> False
+            _ -> case completeEvaluationObligation lhs' rhs' of
+                Nothing -> False
+                Just obligation -> presburgerGuardedValid [(emptyArithStore, obligation)]
     where
         lhs' = rewrite NF lhs
         rhs' = rewrite NF rhs
@@ -1421,16 +1421,17 @@ data ArithmeticEquality
 arithmeticEquality :: TermNode -> TermNode -> ArithmeticEquality
 arithmeticEquality t1 t2
     = assertNonnegativeIndices t1 `seq`
-      assertNonnegativeIndices t2 `seq`
-      case (evaluateA t1', evaluateA t2') of
-        (Right v1, Right v2) -> if v1 == v2 then ArithEqTrue else ArithEqFalse
-        (Left "ill", _) -> ArithEqFalse
-        (_, Left "ill") -> ArithEqFalse
-        _
-            | t1' == t2' -> ArithEqTrue
-            | otherwise -> case (simplifyArithmetic t1', simplifyArithmetic t2') of
-                (Just s1, Just s2) | rewrite NF s1 == rewrite NF s2 -> ArithEqTrue
-                _ -> ArithEqUnknown
+        assertNonnegativeIndices t2 `seq`
+        case (evaluateA t1', evaluateA t2') of
+            (Right v1, Right v2) -> if v1 == v2 then ArithEqTrue else ArithEqFalse
+            (Left "ill", _) -> ArithEqFalse
+            (_, Left "ill") -> ArithEqFalse
+            _
+                | t1' == t2' -> ArithEqTrue
+                | otherwise -> case (simplifyArithmetic t1', simplifyArithmetic t2') of
+                    (Just s1, Just s2)
+                        | rewrite NF s1 == rewrite NF s2 -> ArithEqTrue
+                    _ -> ArithEqUnknown
     where
         t1' = rewrite NF t1
         t2' = rewrite NF t2
@@ -1512,9 +1513,9 @@ runDebugger loc_str ctx facts hyps level call_id cells stack = assertNonnegative
 runPresburger :: MyPresburgerFormulaRep -> Map.Map MyVar TermNode -> ArithStore -> Context -> [Cell] -> Stack -> Stack
 runPresburger rep freeOf premises ctx cells stack
     = assertNonnegativeTerms (Map.elems freeOf) `seq`
-      assertArithStore premises `seq`
-      assertVarBinding (_TotalVarBinding ctx) `seq`
-      dispatch
+        assertArithStore premises `seq`
+        assertVarBinding (_TotalVarBinding ctx) `seq`
+        dispatch
     where
         dispatch
             = case addDefinitionConstraints (Map.elems freeOfBound) ctx of
@@ -1543,31 +1544,31 @@ arithAssumptions premises ctx = bindArithStore (_TotalVarBinding ctx) premises
 storeSatisfiable :: Context -> Bool
 storeSatisfiable ctx
     = assertVarBinding theta `seq`
-      assertConstraints (_LeftConstraints ctx) `seq`
-      isJust (recheckEvaluationConstraints evaluations)
-        && presburgerGuardedStoreSat guarded
-  where
-    theta = _TotalVarBinding ctx
-    evaluations =
-        [ (bindVars theta lhs, bindVars theta rhs)
-        | EvalutionConstraint lhs rhs <- _LeftConstraints ctx
-        ]
-    guarded :: GuardedArithStore
-    guarded = mapMaybe (guardedConstraintStore theta) (_LeftConstraints ctx)
+        assertConstraints (_LeftConstraints ctx) `seq`
+        isJust (recheckEvaluationConstraints evaluations)
+            && presburgerGuardedStoreSat guarded
+    where
+        theta = _TotalVarBinding ctx
+        evaluations =
+            [ (bindVars theta lhs, bindVars theta rhs)
+            | EvalutionConstraint lhs rhs <- _LeftConstraints ctx
+            ]
+        guarded :: GuardedArithStore
+        guarded = mapMaybe (guardedConstraintStore theta) (_LeftConstraints ctx)
 
 guardedConstraintStore :: VarBinding -> Constraint -> Maybe (ArithStore, ArithStore)
 guardedConstraintStore theta constraint
     = assertVarBinding theta `seq`
-      assertConstraint constraint `seq`
-      go constraint
-  where
-    go (EvalutionConstraint lhs rhs) =
-        Just (emptyArithStore, evaluationObligation (bindVars theta lhs) (bindVars theta rhs))
-    go (ArithmeticConstraint premises term) =
-        Just (bindArithStore theta premises, arithmeticObligation (bindVars theta term))
-    go (PresburgerConstraint premises rep freeOf) =
-        Just (bindArithStore theta premises, ([], [(rep, Map.map (bindVars theta) freeOf)]))
-    go _ = Nothing
+        assertConstraint constraint `seq`
+        go constraint
+    where
+        go (EvalutionConstraint lhs rhs) =
+            Just (emptyArithStore, evaluationObligation (bindVars theta lhs) (bindVars theta rhs))
+        go (ArithmeticConstraint premises term) =
+            Just (bindArithStore theta premises, arithmeticObligation (bindVars theta term))
+        go (PresburgerConstraint premises rep freeOf) =
+            Just (bindArithStore theta premises, ([], [(rep, Map.map (bindVars theta) freeOf)]))
+        go _ = Nothing
 
 -- Ground false/ill comparison consequents must stay false under their captured
 -- guard.  Treating an ill term as an opaque arithmetic atom would incorrectly
@@ -1583,7 +1584,7 @@ arithmeticObligation term = assertNonnegativeIndices term `seq` case evaluateB t
 isInconsistent :: [TermNode] -> Bool
 isInconsistent arithTerms
     = assertNonnegativeTerms arithTerms `seq`
-      if cheapKill then True else entails compiledHyps (ValF False)
+        if cheapKill then True else entails compiledHyps (ValF False)
     where
         cheapKill :: Bool
         cheapKill = List.any (\t -> evaluateB t == Right False || evaluateB t == Left "ill") arithTerms
@@ -1612,6 +1613,13 @@ runTransition env free_lvars stack = assertStack stack `seq` go stack where
     failure = return []
     success :: (Context, [Cell]) -> ExceptT KernelErr m Stack
     success with = return [with]
+    -- The stack and HOPU substitution are validated; program clauses stay shared.
+    zonkMatchedCells :: VarBinding -> [Cell] -> [Cell]
+    zonkMatchedCells subst cells
+        | Map.null (unVarBinding subst) = cells
+        | otherwise = map go cells
+        where
+            go (Cell facts hyps premises level goal call_id) = mkCell facts (map (bindVarsUnchecked subst) hyps) (if nullArithStore premises then premises else bindArithStore subst premises) level (bindVarsUnchecked subst goal) call_id
     arithOpCheck :: CallId -> CallId -> ArithStore -> Context -> [Cell] -> Constant -> [TermNode] -> (Integer -> Integer -> Bool) -> ExceptT KernelErr m Stack
     arithOpCheck source_call_id call_id premises ctx cells predicate args@[_, _] op
         = case addDefinitionConstraints boundArgs ctx of
@@ -1760,13 +1768,16 @@ runTransition env free_lvars stack = assertStack stack `seq` go stack where
                                                 DisagreementConstraint _ -> False
                                                 _ -> True
                                             ]
-                                        baseCtx = (zonkLVar subst activeCtx)
-                                            { _CurrentLabeling = new_labeling
+                                        baseCtx = activeCtx
+                                            { _TotalVarBinding = subst <> _TotalVarBinding activeCtx
+                                            , _CurrentLabeling = new_labeling
                                             , _LeftConstraints = map DisagreementConstraint new_disagreements ++ otherConstraints
                                             , _ContextThreadId = call_id
                                             }
-                                        baseCells = zonkLVar subst (mkCell facts new_hyps premises new_level new_goal call_id : cells)
-                                    case settleEvaluationConstraints baseCtx baseCells of
+                                        baseCells = zonkMatchedCells subst (mkCell facts new_hyps premises new_level new_goal call_id : cells)
+                                    if null (_LeftConstraints baseCtx) then
+                                        success (baseCtx, baseCells)
+                                    else case settleEvaluationConstraints baseCtx baseCells of
                                         Nothing -> failure
                                         Just settled -> success settled
                     _ -> failure
@@ -1809,18 +1820,21 @@ runTransition env free_lvars stack = assertStack stack `seq` go stack where
             [] -> return False
             (ctx, cells) : stack -> do
                 liftIO $ writeIORef (_StackRef env) ((ctx, cells) : stack)
-                liftIO $ do
+                debugged <- liftIO $ do
                     dbg <- readIORef (_debuggindModeOn ctx)
                     verbose <- readIORef (_VerboseTyping env)
                     when dbg $ do
                         modifyIORef' (_NameCacheRef env) (recordVisibleLVarHints ((ctx, cells) : stack))
                         _PutStr env env ctx (showsCurrentState (_NotationDB env) verbose free_lvars (_TypeInfo env) ctx cells stack "")
+                    return dbg
                 stackAfterCb <- liftIO $ do
                     updatedStack <- readIORef (_StackRef env)
                     -- The debugger callback may replace the public stack ref.
                     -- Re-establish the same domain invariant enforced at the
                     -- runTransition entry point before inspecting any frame.
-                    assertStack updatedStack `seq` return updatedStack
+                    if debugged
+                        then assertStack updatedStack `seq` return updatedStack
+                        else return updatedStack
                 stack1 <- applyPending stackAfterCb
                 case stack1 of
                     [] -> return False
