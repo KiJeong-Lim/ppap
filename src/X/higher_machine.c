@@ -8,6 +8,7 @@
 
 #define NONE SIZE_MAX
 #define MAGIC INT64_C(0x484f4c31)
+#define BATCH 4096
 
 typedef struct {
     HTerm goal;
@@ -27,7 +28,7 @@ typedef struct {
     HTerm goal, head;
     size_t arity, global, dynamic, local, barrier;
     Frame frame;
-    int phase, fallback, equality;
+    int phase, fallback, equality, plain;
 } Search;
 typedef struct {
     int kind;
@@ -60,10 +61,11 @@ struct HolV2Machine {
     Assignment *assignments;
     size_t assignment_count, assignment_capacity;
     Frame current;
+    size_t batch, permanent, collect_at, collect_step, collections;
     uint64_t host_state, next_call, origin;
     int action, debugging, assignment_failed, exhausted, answer_ready, resume_answer, end_debugged;
     int event_kind, event_continuation, event_aux;
-    HTerm event_term;
+    HTerm event_term, truth;
     int64_t *buffer;
     size_t buffer_count, buffer_capacity;
     const char *api_error;
@@ -175,6 +177,7 @@ static int event(HolV2Machine *m, int kind, HTerm term, int continuation, int au
 
 static HTerm true_term(HolV2Machine *m)
 {
+    if (m->truth != HT_NONE) return m->truth;
     for (size_t i = 0; i < m->symbol_count; ++i) {
         if (m->roles[i] == HV2_TRUE) return ht_constant(m->terms, i, -1);
     }
@@ -186,6 +189,110 @@ static int normalized_spine(HolV2Machine *m, HTerm term, HTSpine *spine)
 {
     HTerm normalized = ht_normalize(m->terms, term, HT_HNF);
     return normalized != HT_NONE && ht_spine(m->terms, normalized, spine);
+}
+
+#define PREFIX_LIMIT 32
+
+/* The literal shape of a clause: pi (x\ pi (y\ ... head :- body)). Its
+    * binders are instantiated together, and its body only after the head has
+    * matched. Any other shape takes the general path of instantiate_fact. */
+typedef struct {
+    int is_type[PREFIX_LIMIT];
+    int64_t meta[PREFIX_LIMIT];
+    HTerm values[PREFIX_LIMIT];
+    size_t count;
+    HTerm head, body;
+} Clause;
+
+static HTerm rigid_head_of(const HolV2Machine *m, HTerm term, size_t *arity)
+{
+    size_t budget = 4096;
+    *arity = 0;
+    for (;;) {
+        term = ht_deref(m->terms, term);
+        HTView view = ht_view(m->terms, term);
+        if (view.tag != HT_APP) return view.tag == HT_CONST || view.tag == HT_NOMINAL ? term : HT_NONE;
+        if (!budget--) return HT_NONE;
+        ++*arity;
+        term = view.a;
+    }
+}
+
+static void clause_shape(const HolV2Machine *m, HTerm fact, Clause *clause)
+{
+    HTerm term = ht_deref(m->terms, fact);
+    clause->count = 0;
+    while (clause->count < PREFIX_LIMIT) {
+        HTView application = ht_view(m->terms, term);
+        if (application.tag != HT_APP || ht_view(m->terms, ht_deref(m->terms, application.a)).tag != HT_CONST) break;
+        int operation = role(m, application.a);
+        HTView function = ht_view(m->terms, ht_deref(m->terms, application.b));
+        if ((operation != HV2_PI && operation != HV2_TY_PI) || function.tag != HT_LAM) break;
+        clause->is_type[clause->count] = operation == HV2_TY_PI;
+        clause->meta[clause->count] = function.meta;
+        ++clause->count;
+        term = ht_deref(m->terms, function.a);
+    }
+    clause->head = HT_NONE;
+    clause->body = HT_NONE;
+    HTView outer = ht_view(m->terms, term);
+    HTView inner = ht_view(m->terms, outer.tag == HT_APP ? ht_deref(m->terms, outer.a) : HT_NONE);
+    size_t arity;
+    if (inner.tag == HT_APP && ht_view(m->terms, ht_deref(m->terms, inner.a)).tag == HT_CONST && role(m, inner.a) == HV2_IF) {
+        clause->head = inner.b;
+        clause->body = outer.b;
+    } else {
+        HTerm head = rigid_head_of(m, term, &arity);
+        if (head != HT_NONE && (ht_view(m->terms, head).tag == HT_NOMINAL || role(m, head) == HV2_ORDINARY)) clause->head = term;
+    }
+}
+
+/* Two arguments whose rigid heads differ cannot unify. Naturals, successors
+    * and opaque formulas are compared by the unifier alone. */
+static int rigid_clash(const HolV2Machine *m, HTerm goal, HTerm pattern)
+{
+    size_t arity;
+    HTerm left = rigid_head_of(m, goal, &arity), right = rigid_head_of(m, pattern, &arity);
+    if (left == HT_NONE || right == HT_NONE) return 0;
+    HTView lhs = ht_view(m->terms, left), rhs = ht_view(m->terms, right);
+    if ((lhs.tag == HT_CONST && role(m, left) != HV2_ORDINARY) || (rhs.tag == HT_CONST && role(m, right) != HV2_ORDINARY)) return 0;
+    if (lhs.tag != rhs.tag) return 1;
+    return lhs.tag == HT_CONST ? lhs.symbol != rhs.symbol : lhs.uid != rhs.uid;
+}
+
+/* Whether a clause head of this literal shape is certain not to match. */
+static int head_clash(const HolV2Machine *m, const Search *search, HTerm fact)
+{
+    Clause clause;
+    if (!search->plain) return 0;
+    clause_shape(m, fact, &clause);
+    if (clause.head == HT_NONE) return 0;
+    size_t arity;
+    HTerm head = rigid_head_of(m, clause.head, &arity);
+    if (head == HT_NONE) return 0;
+    if (!same_head(m, search->head, head)) return 1;
+    if (arity != search->arity) return 0;
+    HTerm goal = ht_deref(m->terms, search->goal), pattern = ht_deref(m->terms, clause.head);
+    while (arity--) {
+        HTView left = ht_view(m->terms, goal), right = ht_view(m->terms, pattern);
+        if (left.tag != HT_APP || right.tag != HT_APP) return 0;
+        if (rigid_clash(m, left.b, right.b)) return 1;
+        goal = ht_deref(m->terms, left.a);
+        pattern = ht_deref(m->terms, right.a);
+    }
+    return 0;
+}
+
+static int instantiate_head(HolV2Machine *m, HTerm fact, size_t scope, Clause *clause, HTerm *head)
+{
+    clause_shape(m, fact, clause);
+    if (clause->head == HT_NONE) return 0;
+    for (size_t i = 0; i < clause->count; ++i) {
+        clause->values[i] = ht_var(m->terms, scope, clause->is_type[i], clause->meta[i]);
+        if (!term_ok(m, clause->values[i])) return -1;
+    }
+    *head = clause->count ? ht_instantiate(m->terms, clause->head, clause->values, clause->count) : clause->head;
+    return term_ok(m, *head) ? 1 : -1;
 }
 
 static int instantiate_fact(HolV2Machine *m, HTerm fact, size_t scope, HTerm *head, HTerm *body)
@@ -233,12 +340,43 @@ static void schedule_search(HolV2Machine *m, Search search, Checkpoint saved)
     m->action = ACTION_SEARCH;
 }
 
+/* Advances past candidates that are certain not to match in the state of the
+    * search checkpoint. Later bindings only add clashes, so a resumed
+    * alternative skips them soundly. Every skipped candidate consumes the
+    * scheduler batch like a failed trial; 0 reports an exhausted batch. */
+static int skip_excluded(HolV2Machine *m, Search *search)
+{
+    if (!search->plain) return 1;
+    if (search->phase == SEARCH_GLOBAL || search->phase == SEARCH_EQUAL_GLOBAL) {
+        for (;;) {
+            size_t candidate = search->global < search->dynamic ? search->global : search->dynamic;
+            if (candidate == NONE) break;
+            if (m->batch >= BATCH) return 0;
+            if (!head_clash(m, search, m->facts[candidate].fact)) return 1;
+            ++m->batch;
+            if (candidate == search->global) search->global = m->facts[candidate].next;
+            else search->dynamic = m->facts[candidate].next;
+        }
+        if (search->phase == SEARCH_EQUAL_GLOBAL) return 1;
+    }
+    while (search->local != NONE) {
+        Hypothesis candidate = m->hyps[search->local];
+        if (m->batch >= BATCH) return 0;
+        int excluded = candidate.rigid_head != HT_NONE && !same_head(m, search->head, candidate.rigid_head);
+        if (!excluded && !head_clash(m, search, candidate.fact)) return 1;
+        ++m->batch;
+        search->local = candidate.next;
+    }
+    return 1;
+}
+
 /* One candidate or phase transition per scheduler step permits cancellation. */
 static int search_step(HolV2Machine *m)
 {
     Search *search = &m->search;
     Checkpoint saved = m->search_checkpoint;
     if (!restore_checkpoint(m, saved)) return 0;
+    if (!skip_excluded(m, search)) return 1;
     HTerm fact;
     if (search->phase == SEARCH_GLOBAL || search->phase == SEARCH_EQUAL_GLOBAL) {
         size_t candidate = search->global < search->dynamic ? search->global : search->dynamic;
@@ -269,8 +407,11 @@ static int search_step(HolV2Machine *m)
             return 0;
         }
     }
-    HTerm head, body;
-    if (!instantiate_fact(m, fact, search->frame.scope, &head, &body)) return 0;
+    skip_excluded(m, search);
+    Clause clause;
+    HTerm head, body = HT_NONE;
+    int literal = instantiate_head(m, fact, search->frame.scope, &clause, &head);
+    if (literal < 0 || (!literal && !instantiate_fact(m, fact, search->frame.scope, &head, &body))) return 0;
     HTSpine spine;
     if (!normalized_spine(m, head, &spine)) return fail(m, ht_error(m->terms));
     int matches = same_head(m, search->head, spine.head);
@@ -281,6 +422,10 @@ static int search_step(HolV2Machine *m)
     int unified = ht_unify(m->terms, search->goal, head);
     if (unified < 0) return fail(m, ht_error(m->terms));
     if (!unified) return 1;
+    if (literal) {
+        body = clause.body == HT_NONE ? true_term(m) : clause.count ? ht_instantiate(m->terms, clause.body, clause.values, clause.count) : clause.body;
+        if (!term_ok(m, body)) return 0;
+    }
     Search alternative = *search;
     if (alternative.phase == SEARCH_EQUAL_LOCAL) alternative.fallback = 0;
     if (search_has_alternative(&alternative)) {
@@ -324,6 +469,8 @@ static int begin_search(HolV2Machine *m, int equality)
     search.phase = equality ? SEARCH_EQUAL_LOCAL : SEARCH_GLOBAL;
     search.fallback = equality != 0;
     search.equality = equality;
+    size_t plain_arity;
+    search.plain = rigid_head_of(m, search.goal, &plain_arity) != HT_NONE && plain_arity == search.arity;
     ht_spine_free(&spine);
     schedule_search(m, search, checkpoint(m));
     return 1;
@@ -565,6 +712,7 @@ HolV2Machine *hol_v2_create(const int64_t *code, size_t length)
     if (!m) return NULL;
     m->work_head = NONE;
     m->dynamic_first = NONE;
+    m->truth = HT_NONE;
     m->next_call = 1;
     m->origin = atomic_fetch_add(&next_origin, 1);
     if (!m->origin) { fail(m, "V2 runtime identity exhausted"); return m; }
@@ -610,6 +758,8 @@ HolV2Machine *hol_v2_create(const int64_t *code, size_t length)
         if (roles[i] == HV2_SUCCESSOR) { ht_set_successor(m->terms, i); has_successor = 1; }
     }
     if (!has_true || !has_successor) { fail(m, "V2 requires true and successor symbols"); return m; }
+    m->truth = true_term(m);
+    if (!term_ok(m, m->truth)) return m;
     if (m->query_count > SIZE_MAX / sizeof(*m->query)) { fail(m, "V2 query allocation overflow"); return m; }
     m->query = m->query_count ? calloc(m->query_count, sizeof(*m->query)) : NULL;
     if (m->query_count && !m->query) { fail(m, "V2 query allocation failed"); return m; }
@@ -705,9 +855,156 @@ HolV2Machine *hol_v2_create(const int64_t *code, size_t length)
     if (!m->error[0]) {
         Frame initial = { roots[code[6]], NONE, 0, NONE, 0, 0, 0 };
         m->work_head = push_frame(m, initial);
+        m->current = initial;
     }
+    m->permanent = ht_heap_count(m->terms);
+    hol_v2_set_collection_step(m, 65536);
     free(roots);
     return m;
+}
+
+typedef struct {
+    HolV2Machine *machine;
+    unsigned char *frames, *hyps;
+    size_t *frame_forward, *hyp_forward;
+} Collection;
+
+static void keep_hyps(Collection *c, size_t at)
+{
+    for (; at != NONE && !c->hyps[at]; at = c->machine->hyps[at].next) c->hyps[at] = 1;
+}
+
+static void keep_frames(Collection *c, size_t at)
+{
+    for (; at != NONE && !c->frames[at]; at = c->machine->work[at].next) {
+        c->frames[at] = 1;
+        keep_hyps(c, c->machine->work[at].hyps);
+    }
+}
+
+static void collect_mark(HTCollection *terms, void *context)
+{
+    Collection *c = context;
+    HolV2Machine *m = c->machine;
+    for (size_t i = 0; i < m->work_count; ++i) if (c->frames[i]) ht_collect_mark(terms, m->work[i].goal);
+    for (size_t i = 0; i < m->hyp_count; ++i) {
+        if (!c->hyps[i]) continue;
+        ht_collect_mark(terms, m->hyps[i].fact);
+        ht_collect_mark(terms, m->hyps[i].rigid_head);
+    }
+    for (size_t i = 0; i < m->choice_count; ++i) {
+        if (!m->choices[i].kind) continue;
+        ht_collect_mark(terms, m->choices[i].search.goal);
+        ht_collect_mark(terms, m->choices[i].search.head);
+        ht_collect_mark(terms, m->choices[i].search.frame.goal);
+    }
+}
+
+static size_t moved(const size_t *forward, size_t at)
+{
+    return at == NONE ? NONE : forward[at];
+}
+
+static void collect_relocate(const HTCollection *terms, void *context)
+{
+    Collection *c = context;
+    HolV2Machine *m = c->machine;
+    for (size_t i = 0; i < m->work_count; ++i) {
+        if (!c->frames[i]) continue;
+        Frame frame = m->work[i];
+        frame.goal = ht_collect_term(terms, frame.goal);
+        frame.next = moved(c->frame_forward, frame.next);
+        frame.hyps = moved(c->hyp_forward, frame.hyps);
+        m->work[c->frame_forward[i]] = frame;
+    }
+    for (size_t i = 0; i < m->hyp_count; ++i) {
+        if (!c->hyps[i]) continue;
+        Hypothesis hyp = m->hyps[i];
+        hyp.fact = ht_collect_term(terms, hyp.fact);
+        hyp.rigid_head = hyp.rigid_head == HT_NONE ? HT_NONE : ht_collect_term(terms, hyp.rigid_head);
+        hyp.next = moved(c->hyp_forward, hyp.next);
+        m->hyps[c->hyp_forward[i]] = hyp;
+    }
+    for (size_t i = 0; i < m->choice_count; ++i) {
+        Choice *choice = &m->choices[i];
+        choice->checkpoint.terms.heap = ht_collect_heap(terms, choice->checkpoint.terms.heap);
+        choice->checkpoint.terms.trail = ht_collect_trail(terms, choice->checkpoint.terms.trail);
+        choice->checkpoint.work = c->frame_forward[choice->checkpoint.work];
+        choice->checkpoint.hyps = c->hyp_forward[choice->checkpoint.hyps];
+        if (!choice->kind) {
+            choice->work_head = moved(c->frame_forward, choice->work_head);
+            continue;
+        }
+        choice->search.goal = ht_collect_term(terms, choice->search.goal);
+        choice->search.head = ht_collect_term(terms, choice->search.head);
+        choice->search.local = moved(c->hyp_forward, choice->search.local);
+        choice->search.frame.goal = ht_collect_term(terms, choice->search.frame.goal);
+        choice->search.frame.next = moved(c->frame_forward, choice->search.frame.next);
+        choice->search.frame.hyps = moved(c->hyp_forward, choice->search.frame.hyps);
+    }
+    m->work_head = moved(c->frame_forward, m->work_head);
+    m->work_count = c->frame_forward[m->work_count];
+    m->hyp_count = c->hyp_forward[m->hyp_count];
+}
+
+/* Between two goals nothing but the continuations, the choice points, the
+    * disagreements and the identities known to the host can reach a term: the
+    * goal executed last is dead. Compaction keeps the order of terms, frames
+    * and hypotheses, so every checkpoint remains a prefix of the same state. */
+static void collect(HolV2Machine *m)
+{
+    static const HTCollector collector = { collect_mark, collect_relocate };
+    Collection c = { m, NULL, NULL, NULL, NULL };
+    c.frames = calloc(m->work_count + 1, 1);
+    c.hyps = calloc(m->hyp_count + 1, 1);
+    c.frame_forward = m->work_count < SIZE_MAX / sizeof(size_t) ? malloc((m->work_count + 1) * sizeof(size_t)) : NULL;
+    c.hyp_forward = m->hyp_count < SIZE_MAX / sizeof(size_t) ? malloc((m->hyp_count + 1) * sizeof(size_t)) : NULL;
+    int collected = 0;
+    if (c.frames && c.hyps && c.frame_forward && c.hyp_forward) {
+        keep_frames(&c, m->work_head);
+        for (size_t i = 0; i < m->choice_count; ++i) {
+            Choice *choice = &m->choices[i];
+            if (!choice->kind) {
+                keep_frames(&c, choice->work_head);
+                continue;
+            }
+            keep_frames(&c, choice->search.frame.next);
+            keep_hyps(&c, choice->search.frame.hyps);
+            keep_hyps(&c, choice->search.local);
+        }
+        size_t frames = 0, hyps = 0;
+        for (size_t i = 0; i < m->work_count; ++i) { c.frame_forward[i] = frames; frames += c.frames[i]; }
+        for (size_t i = 0; i < m->hyp_count; ++i) { c.hyp_forward[i] = hyps; hyps += c.hyps[i]; }
+        c.frame_forward[m->work_count] = frames;
+        c.hyp_forward[m->hyp_count] = hyps;
+        collected = ht_collect(m->terms, m->permanent, &collector, &c);
+    }
+    free(c.frames);
+    free(c.hyps);
+    free(c.frame_forward);
+    free(c.hyp_forward);
+    if (collected) ++m->collections;
+    size_t heap = ht_heap_count(m->terms), growth = heap - m->permanent;
+    if (growth < m->collect_step) growth = m->collect_step;
+    m->collect_at = !m->collect_step ? 0 : heap > SIZE_MAX - growth ? SIZE_MAX : heap + growth;
+}
+
+void hol_v2_set_collection_step(HolV2Machine *m, size_t nodes)
+{
+    if (!m) return;
+    m->collect_step = nodes;
+    size_t heap = ht_heap_count(m->terms);
+    m->collect_at = !nodes ? 0 : heap > SIZE_MAX - nodes ? SIZE_MAX : heap + nodes;
+}
+
+size_t hol_v2_heap_count(const HolV2Machine *m)
+{
+    return m ? ht_heap_count(m->terms) : 0;
+}
+
+size_t hol_v2_collections(const HolV2Machine *m)
+{
+    return m ? m->collections : 0;
 }
 
 int hol_v2_next(HolV2Machine *m)
@@ -722,7 +1019,7 @@ int hol_v2_next(HolV2Machine *m)
         m->resume_answer = 0;
         m->action = ACTION_FAIL;
     }
-    for (size_t budget = 0; budget < 4096; ++budget) {
+    for (m->batch = 0; m->batch < BATCH; ++m->batch) {
         if (m->action == ACTION_FAIL) {
             if (!backtrack_step(m)) return m->error[0] ? -1 : 0;
             if (m->event_kind) return 3;
@@ -766,6 +1063,7 @@ int hol_v2_next(HolV2Machine *m)
             m->action = ACTION_ANSWER;
             continue;
         }
+        if (ht_heap_count(m->terms) >= m->collect_at) collect(m);
         m->current = m->work[m->work_head];
         m->end_debugged = 0;
         m->work_head = m->current.next;
@@ -833,6 +1131,7 @@ size_t hol_v2_state_size(HolV2Machine *m)
     for (size_t i = 0; i < heap; ++i) {
         HTView variable = ht_view(m->terms, i);
         if (variable.tag != HT_VAR) continue;
+        ht_pin(m->terms, i);
         if (!push_word(m, HT_VAR) || !push_word(m, (int64_t) variable.uid)
             || !push_word(m, (int64_t) variable.scope) || !push_word(m, variable.is_type)
             || !push_word(m, variable.meta) || !push_term(m, i)) return 0;
@@ -849,6 +1148,37 @@ size_t hol_v2_state_size(HolV2Machine *m)
 int hol_v2_state(HolV2Machine *m, int64_t *output, size_t capacity)
 {
     return copy_buffer(m, output, capacity);
+}
+
+size_t hol_v2_root_state_size(HolV2Machine *m, int with_query)
+{
+    if (!m || m->error[0]) return 0;
+    m->buffer_count = 0;
+    size_t variables = with_query ? m->query_count : 0;
+    if (!push_word(m, (int64_t) variables)) return 0;
+    for (size_t i = 0; i < variables; ++i) {
+        HTView variable = ht_view(m->terms, m->query[i]);
+        if (!push_word(m, HT_VAR) || !push_word(m, (int64_t) variable.uid)
+            || !push_word(m, (int64_t) variable.scope) || !push_word(m, variable.is_type)
+            || !push_word(m, variable.meta) || !push_term(m, m->query[i])) return 0;
+    }
+    size_t pending = ht_pending_count(m->terms);
+    if (!push_word(m, (int64_t) pending)) return 0;
+    for (size_t i = 0; i < pending; ++i) {
+        HTerm left, right;
+        if (!ht_pending(m->terms, i, &left, &right) || !push_term(m, left) || !push_term(m, right)) return 0;
+    }
+    return m->buffer_count;
+}
+
+size_t hol_v2_pending_count(const HolV2Machine *m)
+{
+    return m && !m->error[0] ? ht_pending_count(m->terms) : 0;
+}
+
+uint64_t hol_v2_uid_frontier(const HolV2Machine *m)
+{
+    return m ? ht_next_uid(m->terms) : 0;
 }
 
 size_t hol_v2_event_size(HolV2Machine *m)
@@ -1199,6 +1529,7 @@ int hol_v2_assign(HolV2Machine *m, const int64_t *bindings, size_t length)
         uint64_t uid = (uint64_t) bindings[at + 1];
         HTerm target = ht_lookup_uid(m->terms, uid);
         if (target == HT_NONE || ht_view(m->terms, target).tag != HT_VAR) { fail(m, "Unknown V2 assignment target"); return -1; }
+        ht_pin(m->terms, target);
         at += 5;
         size_t start = at;
         if (!skip_wire(bindings, length, &at)) { fail(m, "Malformed V2 assignment value"); return -1; }

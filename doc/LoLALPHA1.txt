@@ -1,0 +1,705 @@
+================================================================================
+LoL ALPHA1 — Architecture and Language Specification
+================================================================================
+
+Status
+--------------------------------------------------------------------------------
+
+LoL ALPHA1 is a proof script language without tactics. Its theory is LoL Core
+(`doc/LoLCore.txt`). This document says who does what (Chapter 0), what the
+user writes (Chapters 1, 2 and 4), how omitted parts are filled in (Chapter 3),
+what the kernel program is and how it is run (Chapter 5), and how the result is
+exported, stored, reported and tested (Chapters 6 through 9).
+
+Chapters 0 through 9 are normative. Chapter 10 and Appendix A are informative.
+Examples are informative.
+
+
+================================================================================
+Chapter 0. Parts and Boundaries
+================================================================================
+
+0.1 Parts
+--------------------------------------------------------------------------------
+
+  Part         Written in   Location              Job
+  -----------  -----------  --------------------  ------------------------------
+  Hol engine   Haskell, C   src/Hol, src/X        runs Hol programs
+  kernel       Hol          lol/hol/kernel.hol    decides the judgments of
+                                                  LoL Core
+  elaborator   Hol          lol/hol/elab.hol      fills the holes of a raw term
+  host         Haskell      src/LoL               syntax, driving the engine,
+                                                  storage, export
+
+LoL is a proof assistant that runs on a kernel written in lambda-Prolog. The
+kernel and the elaborator are Hol programs. The host moves syntax around.
+
+0.2 The path of a declaration
+--------------------------------------------------------------------------------
+
+  source text
+      |   host: lex, parse, resolve names and notations         Chapter 2
+      v
+  raw term              may contain `_` and omit implicit arguments
+      |   elaborator: fill every hole                           Chapter 3
+      v
+  Core term             no hole
+      |   kernel: ground run                                    Chapter 5
+      v
+  environment           the declaration is admitted
+
+0.3 Three runs
+--------------------------------------------------------------------------------
+
+  ground run        The kernel checks a declaration that has no hole. This is
+                    the only run that admits anything.
+
+  elaboration run   The elaborator turns a raw term into a Core term. A hole
+                    is a Hol logic variable, and Hol unification fills it. The
+                    elaborator calls the kernel's reduction and conversion
+                    clauses on terms that still contain holes.
+
+  interactive run   The elaboration run under the Hol debugger. It belongs to
+                    LoL BETA and is previewed in Chapter 10.
+
+0.4 Boundary rules
+--------------------------------------------------------------------------------
+
+(B1) Admission. A declaration enters the environment only after a ground run
+of the kernel succeeds on it (5.3). An answer that contains a logic variable or
+a residual constraint does not admit. A run stopped by a resource limit does
+not admit.
+
+(B2) No semantics in the host. The host implements no reduction, no
+conversion, no unification and no rule of LoL Core. It lexes, parses, resolves
+names, encodes terms as Hol terms, drives sessions, stores declarations, prints
+and exports.
+
+(B3) The elaborator proposes. Its output goes through (B1) like any other
+term. A defect in the elaborator can make a correct script fail. It cannot
+make a wrong script pass.
+
+(B4) Explicit form. Every admitted declaration can be printed in the explicit
+fragment (2.3). Reading the printed text back yields the same Core term
+without running the elaborator. `LoL --explicit` prints a file this way.
+
+(B5) Fixed scope. The elaborator does what Chapter 3 lists and nothing else.
+Section 3.7 lists what it does not do. A new elaboration feature is a change
+to the specification of a later version, not an addition to ALPHA1.
+
+(B6) Budgets. Counted in non-blank, non-comment lines and checked by
+`test/lol/budget.sh`:
+
+    lol/hol/kernel.hol                               at most 1500
+    lol/hol/elab.hol                                 at most  800
+    src/LoL, without the generated lexer and parser  at most 6500
+
+The elaborator MUST stay smaller than the kernel.
+
+(B7) Kernel dialect. The kernel uses the subset of Hol given in 5.4.
+
+(B8) Trust. Trusted: the kernel, the Hol engine, and the host modules that
+turn Core terms and admitted declarations into Hol terms and facts
+(`LoL.Hol.Embed`, `LoL.Env`). Not trusted: the rest of the host and the
+elaborator.
+
+(B9) Second opinion. Every admitted declaration is exported to Rocq
+(Chapter 6). The test suite compiles the export of every library file.
+
+0.5 Who decides what
+--------------------------------------------------------------------------------
+
+  Question                                          Decided by
+  ------------------------------------------------- ------------------------
+  Is this term well typed?                          kernel
+  Are these two terms convertible?                  kernel
+  Is this recursion guarded?                        kernel
+  Is this inductive declaration admissible?         kernel
+  What goes in an omitted argument or a `_`?        elaborator
+  Which argument is the struct argument?            elaborator proposes,
+                                                    kernel decides
+  What does `x + y` stand for? Which `x` is meant?  host
+
+
+================================================================================
+Chapter 1. Lexical Structure
+================================================================================
+
+Whitespace separates tokens. A comment is `(* ... *)`; comments do not nest.
+
+  ident     ::= (letter | '_') (letter | digit | '_' | ''')*
+  qualid    ::= ident ('.' ident)*
+  numeral   ::= digit+
+  string    ::= '"' (any character except '"')* '"'
+
+Keywords:
+
+  Arguments Axiom Check Compute Definition Fixpoint Import Inductive Infix
+  Lemma Numerals Print Prop Set Theorem Type as at end fix for forall fun in
+  let level match return struct with
+
+Punctuation and reserved symbols:
+
+  ( ) { } : := , . | => -> @ _ @{
+
+Any other sequence of symbol characters is an operator token and has a meaning
+only after an `Infix` command declares it.
+
+
+================================================================================
+Chapter 2. Surface Syntax
+================================================================================
+
+2.1 Terms
+--------------------------------------------------------------------------------
+
+  term    ::= 'forall' binder+ ',' term
+            | 'fun' binder+ '=>' term
+            | 'let' ident (':' term)? ':=' term 'in' term
+            | 'match' term ('as' ident)? ('in' pattern)? ('return' term)?
+              'with' branch* 'end'
+            | 'fix' fixbody ('with' fixbody)* ('for' ident)?
+            | term '->' term
+            | term operator term
+            | term atom+
+            | atom
+
+  atom    ::= qualid | '@' qualid | sort | numeral | '_'
+            | '(' term ')' | '(' term ':' term ')'
+
+  sort    ::= 'Prop' | 'Set' | 'Type' '@{' numeral '}'
+
+  binder  ::= ident | '_'
+            | '(' ident+ ':' term ')'
+            | '{' ident+ ':' term '}'
+
+  branch  ::= '|' pattern '=>' term
+  pattern ::= qualid (ident | '_')* | '_'
+
+  fixbody ::= ident binder+ ('{' 'struct' ident '}')? ':' term ':=' term
+
+Application binds tighter than every operator. `->` is right associative and
+binds looser than every declared operator. `forall`, `fun`, `let` and `fix`
+extend as far to the right as possible.
+
+2.2 Commands
+--------------------------------------------------------------------------------
+
+  command ::= 'Definition' ident binder* ':' term ':=' term '.'
+            | ('Theorem' | 'Lemma') ident binder* ':' term ':=' term '.'
+            | 'Axiom' ident ':' term '.'
+            | 'Inductive' indbody ('with' indbody)* '.'
+            | 'Fixpoint' fixbody ('with' fixbody)* '.'
+            | 'Arguments' qualid argspec+ '.'
+            | 'Infix' string ':=' qualid
+              '(' 'at' 'level' numeral (',' assoc)? ')' '.'
+            | 'Numerals' qualid qualid '.'
+            | 'Check' term '.'
+            | 'Compute' term '.'
+            | 'Print' qualid '.'
+            | 'Print' 'Assumptions' qualid '.'
+            | 'Import' qualid '.'
+
+  indbody ::= ident binder* ':' term ':=' ('|' ident ':' term)*
+  argspec ::= ident | '{' ident '}'
+  assoc   ::= 'left' 'associativity' | 'right' 'associativity'
+            | 'no' 'associativity'
+
+2.3 The explicit fragment
+--------------------------------------------------------------------------------
+
+A term is *explicit* when all of the following hold.
+
+  (X1) It contains no `_`, no numeral and no operator.
+  (X2) Every binder has a type and is written `(x : A)`.
+  (X3) A constant that has implicit arguments is written with `@` and applied
+  to all of them.
+  (X4) Every `match` has a `return` clause, with `as` and `in` whenever the
+  clause mentions the scrutinee or an index.
+  (X5) Every `fix` and `Fixpoint` has `{struct x}`.
+  (X6) Every pattern lists the constructor's parameters as `_` and binds all of
+  its arguments. Branches are in declaration order.
+
+An explicit term denotes one Core term. No rule of Chapter 3 applies to it.
+
+2.4 What the host does to a term
+--------------------------------------------------------------------------------
+
+Each step is a rewriting of syntax. None looks at a type.
+
+  [H-Name]     An identifier becomes a bound variable or a global constant. An
+  unknown or ambiguous name is an error.
+  [H-Arrow]    `A -> B` becomes `forall (_ : A), B`.
+  [H-Binders]  `forall (x y : A), B` becomes
+  `forall (x : A), forall (y : A), B`. Likewise for `fun`, and for the binders
+  of a command, which move into the type as `forall` and into the body as
+  `fun`.
+  [H-Infix]    Operators are grouped by the declared levels and associativity
+  and become applications of the declared constant.
+  [H-Numeral]  A numeral `n` becomes `S (... (S O))` with n applications, for
+  the constants named by the last `Numerals O S.`.
+  [H-Fixpoint] `Fixpoint f ... := t.` becomes `Definition f : F := fix f ... .`
+  A `Fixpoint ... with ...` block becomes one definition per function, each a
+  `fix` over the whole block.
+  [H-Position] Every node keeps its source position.
+
+The result is the *raw term* that Chapter 3 receives.
+
+2.5 Differences from Rocq
+--------------------------------------------------------------------------------
+
+  Rocq                                  LoL ALPHA1
+  ------------------------------------- -------------------------------------
+  `Type`, `Type@{u}`                    `Type@{n}` with a numeral
+  `Theorem` opens proof mode            `Theorem c : A := t.` closes with a
+                                        term
+  comments nest                         comments do not nest
+  nested and multiple patterns          one constructor per pattern, one
+                                        scrutinee
+  `Notation` with arbitrary templates   `Infix` and `Numerals` only
+  `Arguments` with many options         implicit status only
+  sections, modules, functors           one module per file, `Import`
+  induction principles are generated    not generated in ALPHA1
+
+
+================================================================================
+Chapter 3. Filling Holes
+================================================================================
+
+3.1 Holes
+--------------------------------------------------------------------------------
+
+A hole is a Hol logic variable standing for a Core term that is not known yet.
+The elaborator creates a hole
+
+  * for each implicit argument it inserts, and
+  * for each `_` written in a term.
+
+A hole is solved only by unification (3.5). When a command has been
+elaborated, every hole MUST be solved. A hole that is not solved is the error
+`E-Unsolved` at the position where it was created. There is no default value
+and no generalisation.
+
+3.2 Judgments
+--------------------------------------------------------------------------------
+
+  G |- e => t : A        infer: raw e elaborates to t of type A
+  G |- e <= A ~> t       check: raw e elaborates to t against type A
+  G |- t =?= u           unify t and u
+
+G is the local context: the variables bound so far, with their types. In Hol it
+is the set of hypotheses installed by `=>`.
+
+3.3 Rules
+--------------------------------------------------------------------------------
+
+[E-Const]  A constant written without `@` gets a hole for each leading
+implicit argument. Written with `@`, it gets none.
+
+[E-App]  For `h e1 ... en`:
+
+  1. Elaborate the head h and take its type.
+  2. Walk the type from left to right. At an implicit position insert a hole.
+  At an explicit position take the next written argument and check it against
+  the domain. A written `_` is a hole.
+  3. In check mode, unify the resulting type with the expected type.
+
+  Too many written arguments is the error `E-Arity`. A head whose type is not
+  a `forall` when an argument remains is `E-NotFunction`.
+
+[E-Lam]  In check mode, `fun x => e` against a type whose weak head normal
+form is `forall (x : A), B` elaborates e against B with x : A. If the binder
+is annotated, the annotation is unified with A. In infer mode the annotation
+is required; without it the error is `E-NeedAnnotation`.
+
+[E-Pi], [E-Let], [E-Annot]  The components are elaborated in order. A type
+position is checked to be a sort. `(e : A)` checks e against A.
+
+[E-Sort]  `Prop`, `Set` and `Type@{n}` denote themselves. A sort without a
+level does not exist in ALPHA1.
+
+[E-Match]  With a `return` clause, the clause is used as written. Without one,
+in check mode against T, with scrutinee `t : I qs vs`:
+
+  * if t and all of vs are distinct variables, P is T abstracted over them;
+  * otherwise P does not depend on the scrutinee or the indices and is T.
+
+  In infer mode a `match` without `return` is `E-NeedReturn`. Branches may be
+  written in any order. A last branch `| _ => b` stands for every constructor
+  not listed. A pattern names a constructor and gives a variable or `_` for
+  each argument that is not a parameter.
+
+[E-Fix]  With `{struct x}`, as written. Without it, the elaborator tries the
+arguments whose type is an inductive family, from left to right, and keeps the
+first for which the kernel accepts the guard condition.
+
+[E-Switch]  In check mode, when no rule above applies: infer `e => t : B`,
+then unify B with the expected type.
+
+3.4 Order
+--------------------------------------------------------------------------------
+
+Elaboration is one pass, depth first, left to right. Nothing is postponed and
+nothing is retried. This is why [E-App] checks the written arguments before it
+compares the resulting type: the written arguments are what determines the
+holes.
+
+3.5 Unification
+--------------------------------------------------------------------------------
+
+`G |- t =?= u` is decided as follows.
+
+  (U1) If Hol unification makes t and u equal, they are unified. This solves a
+  hole against a term, and a hole applied to distinct bound variables against a
+  term in which only those variables occur. Scope and occurs checks are those
+  of Hol.
+  (U2) Otherwise, if t or u is a hole, unification fails.
+  (U3) Otherwise both sides are reduced to weak head normal form by the
+  kernel's `whnf`. If the heads agree, the arguments are unified pairwise; the
+  bodies of two `forall` or two `fun` are unified under a fresh variable.
+  (U4) Otherwise unification fails.
+
+A failure is the error `E-Unify` with the two terms.
+
+3.6 After elaboration
+--------------------------------------------------------------------------------
+
+The elaborated declaration has no hole. It is then admitted or rejected by a
+ground run (B1). The elaborator's own view of what is well typed plays no part
+in that decision.
+
+3.7 What the elaborator does not do
+--------------------------------------------------------------------------------
+
+  Done in ALPHA1                          Not done in ALPHA1
+  --------------------------------------- ------------------------------------
+  implicit arguments, `_`                 level inference, universe
+                                          polymorphism
+  first-order and pattern unification,    postponed constraints, backtracking,
+  reducing both sides by `whnf`           unification hints
+  `return` clause of a simple `match`     nested patterns, several scrutinees
+  struct argument by trying each          sections, coercions, type classes
+  candidate
+
+3.8 Example
+--------------------------------------------------------------------------------
+
+With `Arguments f_equal {A} {B} f {x} {y} e.`, elaborate `f_equal S (F p)`
+against `eq nat (add (S p) O) (S p)` where `F p : eq nat (add p O) p`.
+
+  [E-Const]   f_equal ?A ?B              two holes for the leading implicits
+  [E-App]     S <= ?A -> ?B              ?A := nat, ?B := nat
+              holes ?x ?y                the next two positions are implicit
+              F p <= eq nat ?x ?y        ?x := add p O, ?y := p
+  result      eq nat (S (add p O)) (S p)
+  (U3)        add (S p) O reduces to S (add p O); the types agree
+
+  output      @f_equal nat nat S (add p O) p (F p)
+
+
+================================================================================
+Chapter 4. Commands
+================================================================================
+
+  Command               Effect
+  --------------------  ------------------------------------------------------
+  Definition            elaborate type and body; ground run [D-Def];
+                        transparent
+  Theorem, Lemma        the same with [D-Thm]; opaque
+  Axiom                 elaborate the type; ground run [D-Ax]
+  Inductive             elaborate parameters, arities and constructor types;
+                        ground run [D-Ind]
+  Fixpoint              [H-Fixpoint], then as Definition
+  Arguments             sets which arguments of a constant are implicit
+  Infix, Numerals       extend [H-Infix] and [H-Numeral] for the rest of the
+                        file and for importers
+  Check t               elaborate t; print its type
+  Compute t             elaborate t; print its normal form
+  Print c               print the declaration of c in the explicit fragment
+  Print Assumptions c   print Assumptions(c) (LoLCore, Chapter 8)
+  Import M              make the declarations and notations of module M
+                        available
+
+A binder `{x : A}` in a declaration makes that argument implicit. `Arguments`
+overrides it. A command that fails changes nothing.
+
+
+================================================================================
+Chapter 5. The Kernel Program
+================================================================================
+
+5.1 Core terms as Hol terms
+--------------------------------------------------------------------------------
+
+  kind tm type.
+  kind lvl type.
+
+  type lz    lvl.
+  type ls    (lvl -> lvl).
+
+  type prop  tm.
+  type typ   (lvl -> tm).
+  type cst   (nat -> tm).
+  type ind   (nat -> nat -> tm).
+  type con   (nat -> nat -> nat -> tm).
+  type prod  (tm -> (tm -> tm) -> tm).
+  type lam   (tm -> (tm -> tm) -> tm).
+  type letin (tm -> tm -> (tm -> tm) -> tm).
+  type app   (tm -> tm -> tm).
+  type cas   (tm -> tm -> tm -> list tm -> tm).
+  type fix   (nat -> list nat -> list tm -> ((nat -> tm) -> list tm) -> tm).
+
+  cst N                 constant number N
+  ind B I               family I of inductive block B
+  con B I J             constructor J of that family
+  prod A (x\ B)         forall (x : A), B
+  lam A (x\ t)          fun (x : A) => t
+  letin t A (x\ u)      let x := t : A in u
+  cas (ind B I) P t Bs  match; P and the branches are functions (LoLCore,
+                        Chapter 6)
+  fix K Ns Fs (f\ Ts)   block of functions; Ns the struct positions, Fs the
+                        types, `f J` the J-th function inside the bodies Ts
+
+Binders are Hol abstractions. A local variable is a constant introduced by
+`pi`, and its type is a hypothesis installed by `=>`. Levels are unary so that
+comparing them needs no arithmetic. Global names are numbers; the host keeps
+the table of names.
+
+5.2 The environment as facts
+--------------------------------------------------------------------------------
+
+  cst_type N A.           every constant
+  cst_body N T.           `Definition` only
+  ind_type B I A.         type of a family, parameters included
+  con_type B I J A.       type of a constructor, parameters included
+  ind_info B I ...        number of parameters, elimination sorts, recursive
+                          argument positions
+
+The host generates these facts from admitted declarations only. The contents
+of `ind_info` are computed by the kernel when it admits the block; the host
+stores what the kernel returned.
+
+A run receives the kernel clauses and the facts of the declarations that the
+checked declaration depends on.
+
+5.3 Ground runs
+--------------------------------------------------------------------------------
+
+  admit_ax A.               [D-Ax]
+  admit_def A T.            [D-Def], [D-Thm]
+  admit_ind Block Info.     [D-Ind]; Info is an output
+  infer T A.                `Check`; A is an output
+  norm T U.                 `Compute`; U is an output
+
+  (R1) The query contains no logic variable other than the outputs above.
+  (R2) The first answer is the answer.
+  (R3) Admitted: there is an answer, its outputs contain no logic variable,
+  and it has no residual constraint.
+  (R4) Rejected: there is no answer. The reason is the first report made by
+  `expect` (5.5).
+  (R5) Undecided: the engine stopped on a resource limit or an error. This is
+  reported as such. It is neither admission nor rejection.
+
+5.4 The kernel dialect
+--------------------------------------------------------------------------------
+
+  (K1) Every clause is preceded by a comment naming the rule of LoLCore that it
+  implements.
+  (K2) No arithmetic, no Presburger goal, no `read`, no `sigma`, no `;`, no
+  `debug`. `print` occurs only inside `expect`.
+  (K3) A cut occurs only right after the clause has recognised its case: after
+  the head, or after a `flex` test.
+  (K4) Every predicate that looks at the shape of a term starts with a `flex`
+  clause for the case where that term is a hole. `infer` and `check` fail on a
+  hole. `whnf` returns a hole unchanged. `conv` unifies.
+  (K5) Local variables are introduced by `pi` and typed by hypotheses.
+
+In a ground run no `flex` clause fires, because there is no hole. The `flex`
+clauses exist so that the elaborator can call `whnf` and `conv` on terms with
+holes without the engine enumerating candidate terms.
+
+5.5 Reporting a rejection
+--------------------------------------------------------------------------------
+
+  expect G E :- G, !.
+  expect G E :- print E, fail.
+
+A check that can fail is written `expect Goal Report`. The report names the
+rule and carries the terms involved. The host turns the first report of a
+rejected run into a diagnostic (Chapter 8).
+
+5.6 Example clauses
+--------------------------------------------------------------------------------
+
+  % (K4)
+  infer M A :- flex M, !, fail.
+  whnf M M :- flex M, !.
+
+  % [T-App]
+  infer (app M N) T :-
+      infer M TM, whnf TM W,
+      expect (W = prod A B) (not_a_function M TM),
+      check N A,
+      T = B N.
+
+  % [T-Lam]
+  infer (lam A F) (prod A G) :-
+      sort_of A S,
+      pi x\ var_type x A => infer (F x) (G x).
+
+  % [T-Conv], as used by `check`
+  check M A :- infer M B, expect (sub B A) (type_mismatch M B A).
+
+
+================================================================================
+Chapter 6. Export to Rocq
+================================================================================
+
+The export of a file is a `.v` file for `rocq compile -noinit` (Rocq 9.0).
+
+  [R-Term]     Every declaration is printed in the explicit fragment.
+  [R-Arrow]    `forall (_ : A), B` is printed as such. `->` is not available
+  under `-noinit`.
+  [R-Sort]     `Type@{0}` is printed `Set`. `Type@{n}` for n >= 1 is printed
+  `Type@{Ln}`, with a preamble `Universe L1 ... Lk.`, `Constraint Set < L1.`,
+  `Constraint L1 < L2.` and so on.
+  [R-Theorem]  `Theorem c : A := t.` is printed `Definition c : A := t.`
+  [R-Name]     A name that Rocq generates for an inductive type (`I_rect`,
+  `I_ind`, `I_rec`, `I_sind`) is renamed when a LoL declaration uses it.
+  [R-Import]   `Import M.` is printed `Require Import M.`
+
+Invariant checked by the test suite: if LoL admits a file, Rocq compiles its
+export.
+
+
+================================================================================
+Chapter 7. Files and Modules
+================================================================================
+
+A source file has the extension `.lol`. A file is a module; its name is its
+path relative to the project root, with `.` for the separator. `Import M.`
+loads M once, in dependency order. A cycle is an error.
+
+An object file has the extension `.lolo`. It is versioned text and contains,
+for each declaration of the module in order: its name, its kind, its type and
+body as explicit Core terms, and the names it depends on. It contains no mark
+saying that a declaration was checked.
+
+  LoL --check-only F.lolo   runs a ground run for every declaration of F,
+                            without the front end and the elaborator
+  LoL --explicit F.lol      prints F in the explicit fragment (B4)
+
+
+================================================================================
+Chapter 8. Diagnostics
+================================================================================
+
+  Class                 Raised by     Meaning
+  --------------------  ------------  ----------------------------------------
+  LoL-LexError          host          not a token
+  LoL-ParseError        host          not a command
+  LoL-ScopeError        host          unknown, ambiguous or duplicate name
+  LoL-ImportError       host          missing module, import cycle
+  LoL-ElabError         elaborator    `E-Unsolved`, `E-Unify`, `E-Arity`,
+                                      `E-NotFunction`, `E-NeedAnnotation`,
+                                      `E-NeedReturn`
+  LoL-KernelError       kernel        rejected; names a rule label of LoLCore
+  LoL-KernelUndecided   engine        (R5)
+
+A diagnostic has the source position, the class, the code or rule label, and
+the terms involved printed in surface syntax. Its layout is the one Hol BETA
+uses for located errors.
+
+
+================================================================================
+Chapter 9. Tests
+================================================================================
+
+  test/lol/pos/       files that MUST be admitted
+  test/lol/neg/L/     files that MUST be rejected with rule label or code L
+  test/lol/paradox/   for a soundness check: a derivation of `False` that the
+                      kernel rejects, and a patch to the kernel under which
+                      it is admitted
+  test/lol/mutants/   patches to the kernel, each with the tests that MUST
+                      fail under it
+  test/lol/rocq.sh    compiles the export of every file under pos/ and of
+                      the library
+  test/lol/budget.sh  checks (B6), and for (B2) that nothing under src/LoL
+                      is named `whnf`, `conv`, `infer`, `check` or `unify`
+
+A test is a `.lol` file with a sidecar `.expected.txt`, as in `test/smoke.sh`.
+A negative test checks the reported label or code, not only the failure.
+Every rule label of LoLCore has at least one file under pos/ and one under
+neg/. Every run has a time limit and a memory limit.
+
+
+================================================================================
+Chapter 10. Preview of the Interactive Run (informative)
+================================================================================
+
+The Hol debugger was designed for building terms interactively. LoL BETA uses
+it as the proof mode. The elaborator gets one more rule: a `_` that
+unification has not solved calls `debug` instead of raising `E-Unsolved`.
+
+  elab hole T M :- debug "goal", elab R T M.
+
+At that point the debugger shows the local context and the goal as a sequent,
+and the user assigns the raw term R that goes in place of the `_`. R may
+contain new `_`. Elaboration then continues with R, and stops again at each
+new `_`.
+
+A session on the probe elaborator (measured on the Hol BETA interpreter,
+2026-11-11, with no change to the engine):
+
+  ?- elab hole (forall n : nat, add O n = n) M.
+
+  [ |- elab R (forall n : nat, add O n = n) ?M ]
+  R := fun n => _                             the step a tactic `intro n` makes
+
+  [ n : nat |- elab R (add O n = n) (?M' n) ]     so far M := fun n => ?M' n
+  R := eq_refl                                `apply eq_refl`; its implicit
+                                              arguments are filled by 3.3
+
+  M := fun (n : nat) => @eq_refl nat (add O n)
+
+The terms are shown here in surface syntax; the probe used Hol terms. The
+kernel admits the final term in a separate ground run.
+
+What this gives BETA:
+
+  * A proof state is a stopped session. No separate goal structure exists.
+  * A tactic is a rule that chooses R. `exact t` gives t, `intro x` gives
+  `fun x => _`, `apply f` gives `f _ ... _`.
+  * Undo is a snapshot taken before each step.
+  * `Qed` is a ground run on the finished term, so tactics need no trust.
+
+
+================================================================================
+Appendix A. Seed Library (informative)
+================================================================================
+
+The library of ALPHA1 has at least 200 definitions and theorems.
+
+  Logic   True False not and or iff ex eq; introduction and elimination of
+          each; eq_sym eq_trans f_equal f_equal2 eq_ind; and_comm or_comm
+          and_assoc or_assoc iff_refl iff_sym iff_trans; contrapositive,
+          double negation introduction, the constructive De Morgan laws
+
+  Bool    bool negb andb orb xorb; involution, commutativity, associativity,
+          units; true <> false; decidable equality
+
+  Nat     nat pred add mul; add_O_n add_n_O add_n_Sm add_comm add_assoc;
+          mul_O_n mul_n_O mul_n_Sm mul_comm mul_assoc and distributivity;
+          S injective, O <> S n; le lt with reflexivity, transitivity,
+          antisymmetry, le_n_S le_S_n; eqb leb and their specifications;
+          decidable equality
+
+  List    list app length map rev fold_right In; app_nil_r app_assoc
+          length_app map_app map_length rev_app_distr rev_involutive
+          in_app; decidable membership from decidable equality
+
+  Vec     vec vhead vtail vappend vmap; fin; conversion to list and the
+          length theorem
+
+  Wf      Acc well_founded Acc_inv Fix_F; lt is well founded; strong
+          induction on nat

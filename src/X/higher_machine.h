@@ -55,6 +55,13 @@ size_t hol_v2_answer_size(HolV2Machine *machine);
 int hol_v2_answer(HolV2Machine *machine, int64_t *output, size_t capacity);
 size_t hol_v2_state_size(HolV2Machine *machine);
 int hol_v2_state(HolV2Machine *machine, int64_t *output, size_t capacity);
+/* Root state: the State layout restricted to the query slots (with_query) or
+    * to no variable at all, followed by every disagreement. Copy it with
+    * hol_v2_state. It suffices while the host holds no constraint or premise. */
+size_t hol_v2_root_state_size(HolV2Machine *machine, int with_query);
+size_t hol_v2_pending_count(const HolV2Machine *machine);
+/* Every identity created so far is below this bound. */
+uint64_t hol_v2_uid_frontier(const HolV2Machine *machine);
 size_t hol_v2_event_size(HolV2Machine *machine);
 int hol_v2_event(HolV2Machine *machine, int64_t *output, size_t capacity);
 int hol_v2_event_info(const HolV2Machine *machine, int64_t *output, size_t capacity);
@@ -87,6 +94,14 @@ uint64_t hol_v2_reserve_uid(HolV2Machine *machine);
     * setting, so raising a limit is not undone by restoring a proof snapshot. */
 int hol_v2_set_work_limit(HolV2Machine *machine, uint64_t visits);
 uint64_t hol_v2_work_limit(const HolV2Machine *machine);
+
+/* Unreachable terms, continuations and hypotheses are compacted between two
+    * goals once the term heap has grown by its own size since the previous
+    * collection, and by at least this many nodes (default 65536; 0 collects
+    * before every goal). Identities exported to the host are kept. */
+void hol_v2_set_collection_step(HolV2Machine *machine, size_t nodes);
+size_t hol_v2_heap_count(const HolV2Machine *machine);
+size_t hol_v2_collections(const HolV2Machine *machine);
 
 /* Snapshots own a deep copy. Restoring preserves the live monotonic UID/call
     * counters, so identities created after a snapshot can never be reused. */

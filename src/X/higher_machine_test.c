@@ -34,6 +34,16 @@ void *__wrap_realloc(void *old, size_t count)
     return ++allocation_count == fail_at ? NULL : __real_realloc(old, count);
 }
 
+/* Every scenario also runs with a collection before each goal. */
+static int collect_always;
+
+static HolV2Machine *create(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    if (machine && collect_always) hol_v2_set_collection_step(machine, 0);
+    return machine;
+}
+
 static int next_answer(HolV2Machine *machine)
 {
     for (size_t steps = 0; steps < 10000; ++steps) {
@@ -52,7 +62,7 @@ static int next_answer(HolV2Machine *machine)
 
 static int check(const TestCase *test, int injected)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     if (!machine) { assert(injected); return 0; }
     size_t answer = 0, offset = 0;
     int status;
@@ -83,7 +93,7 @@ static int check(const TestCase *test, int injected)
 
 static void snapshots(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     HolV2Machine *before = hol_v2_clone(machine);
     assert(before);
@@ -113,7 +123,7 @@ static void snapshots(const TestCase *test)
     assert(next_answer(machine) == 1);
     assert(next_answer(machine) == 1);
     assert(next_answer(machine) == 0);
-    HolV2Machine *other = hol_v2_create(test->code, test->length);
+    HolV2Machine *other = create(test);
     assert(other && hol_v2_restore(other, before) < 0);
     assert(hol_v2_error(other)[0] && next_answer(other) == 1);
     hol_v2_destroy(other);
@@ -123,7 +133,7 @@ static void snapshots(const TestCase *test)
 
 static void before_cut(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     HolV2Machine *before = hol_v2_clone(machine);
     assert(before);
@@ -136,7 +146,7 @@ static void before_cut(const TestCase *test)
 
 static void snapshot_stale_uid(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     HolV2Machine *before = hol_v2_clone(machine);
     assert(before && next_answer(machine) == 1);
@@ -153,7 +163,7 @@ static void snapshot_stale_uid(const TestCase *test)
 
 static void dynamic_opaque(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     HolV2Machine *before = hol_v2_clone(machine);
     assert(before);
@@ -182,7 +192,7 @@ static void dynamic_opaque(const TestCase *test)
 
 static void work_limits(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine && hol_v2_work_limit(machine) == 5000000);
     HolV2Machine *before = hol_v2_clone(machine);
     assert(before);
@@ -226,7 +236,7 @@ static void malformed(const TestCase *test)
 
 static void snapshot_allocations(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     allocation_count = 0;
     HolV2Machine *snapshot = hol_v2_clone(machine);
@@ -235,7 +245,7 @@ static void snapshot_allocations(const TestCase *test)
     hol_v2_destroy(snapshot);
     hol_v2_destroy(machine);
     for (size_t i = 1; i <= allocations; ++i) {
-        machine = hol_v2_create(test->code, test->length);
+        machine = create(test);
         assert(machine);
         allocation_count = 0;
         fail_at = i;
@@ -250,7 +260,7 @@ static void snapshot_allocations(const TestCase *test)
 
 static void yielded_search(const TestCase *test, int equality)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     if (equality) {
         assert(hol_v2_next(machine) == 3);
@@ -269,7 +279,7 @@ static void yielded_search(const TestCase *test, int equality)
 
 static void yielded_backtracking(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     int status;
     do { status = hol_v2_next(machine); } while (status == 2);
@@ -284,6 +294,32 @@ static void yielded_backtracking(const TestCase *test)
     assert(hol_v2_restore(machine, during) == 1);
     assert(next_answer(machine) == 0);
     hol_v2_destroy(during);
+    hol_v2_destroy(machine);
+}
+
+static void excluded_choice(const TestCase *test)
+{
+    HolV2Machine *machine = create(test);
+    assert(machine);
+    int status;
+    do { status = hol_v2_next(machine); } while (status == 2);
+    assert(status == 3);
+    int64_t info[6], empty[] = { 0 };
+    assert(hol_v2_event_info(machine, info, 6) == 1 && info[0] == HV2_EVENT_PRIMITIVE);
+    assert(hol_v2_resume(machine, 0, 0, 0, empty, 1) == 1);
+    assert(hol_v2_next(machine) == 0);
+    hol_v2_destroy(machine);
+}
+
+static void collected_descent(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    size_t program = hol_v2_heap_count(machine);
+    hol_v2_set_collection_step(machine, 1024);
+    assert(next_answer(machine) == 1);
+    assert(hol_v2_collections(machine) > 8 && hol_v2_heap_count(machine) < program + 4096);
+    assert(next_answer(machine) == 0);
     hol_v2_destroy(machine);
 }
 
@@ -321,7 +357,7 @@ static void collect_term_declarations(const int64_t *wire, size_t length, size_t
 
 static void compact_declarations(const TestCase *test)
 {
-    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    HolV2Machine *machine = create(test);
     assert(machine);
     for (;;) {
         int status = hol_v2_next(machine);
@@ -385,7 +421,7 @@ static void compact_declarations(const TestCase *test)
     printf("PASS compact metadata allocation cleanup (%zu failure points)\n", allocations);
 }
 
-int main(void)
+static void scenarios(void)
 {
     size_t count = sizeof(cases) / sizeof(*cases);
     for (size_t i = 0; i < count; ++i) {
@@ -393,6 +429,8 @@ int main(void)
         if (!strcmp(cases[i].name, "yielded_clause_search")) yielded_search(&cases[i], 0);
         if (!strcmp(cases[i].name, "yielded_equality_resume")) yielded_search(&cases[i], 1);
         if (!strcmp(cases[i].name, "yield_failed_backtracking")) yielded_backtracking(&cases[i]);
+        if (!strcmp(cases[i].name, "excluded_clause_choice")) excluded_choice(&cases[i]);
+        if (!strcmp(cases[i].name, "collected_descent")) collected_descent(&cases[i]);
         if (!strcmp(cases[i].name, "compact_frame_declarations")) compact_declarations(&cases[i]);
         printf("PASS %s\n", cases[i].name);
     }
@@ -415,5 +453,13 @@ int main(void)
     }
     fail_at = 0;
     printf("PASS native allocation cleanup (%zu failure points)\n", allocations);
+}
+
+int main(void)
+{
+    scenarios();
+    collect_always = 1;
+    scenarios();
+    puts("PASS every scenario with a collection before each goal");
     return 0;
 }

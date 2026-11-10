@@ -1,0 +1,169 @@
+{
+  "date": "2026-11-11",
+  "machine": "Intel Core Ultra 9 275HX under WSL2, GHC 9.6.7, default `cabal build ppap` flags for both executables",
+  "baseline": "430f7a4b6ae7c5c311f6554151475105fb1383cd, built from `git archive HEAD`",
+  "protocol": "One fresh process per sample through `V1 --test --general` (or `Hol --test` for BETA). /usr/bin/time elapsed seconds and peak RSS in KiB include startup, loading, type checking, query compilation, the complete search and output. A watchdog killed any process above 3 GiB RSS. Single samples unless a list is given.",
+  "program": {
+    "module": "lolprobe.hol",
+    "description": "A conversion and type checker for a small dependent calculus (products, a natural-number recursor, an equality eliminator) written with higher-order abstract syntax, plus unary numeral builders. It is a measurement probe, not part of the repository's programs.",
+    "source": "kind tm type.\n\ntype prop tm.\ntype typ (nat -> tm).\ntype prod (tm -> (tm -> tm) -> tm).\ntype lam (tm -> (tm -> tm) -> tm).\ntype app (tm -> tm -> tm).\ntype nat_ty tm.\ntype zero tm.\ntype succ (tm -> tm).\ntype nat_elim (tm -> tm -> tm -> tm -> tm).\ntype eq (tm -> tm -> tm -> tm).\ntype refl (tm -> tm -> tm).\ntype eq_elim (tm -> tm -> tm -> tm -> tm -> tm -> tm).\ntype add tm.\ntype mul tm.\n\ntype unfold (tm -> tm -> o).\ntype typeof (tm -> tm -> o).\ntype whnf (tm -> tm -> o).\ntype whnf_app (tm -> tm -> tm -> o).\ntype whnf_nat_elim (tm -> tm -> tm -> tm -> tm -> o).\ntype whnf_eq_elim (tm -> tm -> tm -> tm -> tm -> tm -> tm -> o).\ntype conv (tm -> tm -> o).\ntype conv_whnf (tm -> tm -> o).\ntype of (tm -> tm -> o).\ntype sort_of (tm -> tm -> o).\ntype rule (tm -> tm -> tm -> o).\ntype check (tm -> tm -> o).\ntype neg (o -> o).\ntype isvar (tm -> o).\n\nunfold add (lam nat_ty (m\\ lam nat_ty (n\\ nat_elim (lam nat_ty (x\\ nat_ty)) n (lam nat_ty (k\\ lam nat_ty (ih\\ succ ih))) m))).\ntypeof add (prod nat_ty (x\\ prod nat_ty (y\\ nat_ty))).\nunfold mul (lam nat_ty (m\\ lam nat_ty (n\\ nat_elim (lam nat_ty (x\\ nat_ty)) zero (lam nat_ty (k\\ lam nat_ty (ih\\ app (app add n) ih))) m))).\ntypeof mul (prod nat_ty (x\\ prod nat_ty (y\\ nat_ty))).\n\nwhnf (app M N) R :- !, whnf M M1, whnf_app M1 N R.\nwhnf (nat_elim P Z S N) R :- !, whnf N N1, whnf_nat_elim N1 P Z S R.\nwhnf (eq_elim A X P D Y E) R :- !, whnf E E1, whnf_eq_elim E1 A X P D Y R.\nwhnf C R :- unfold C B, !, whnf B R.\nwhnf M M.\n\nwhnf_app (lam A F) N R :- !, whnf (F N) R.\nwhnf_app M N (app M N).\n\nwhnf_nat_elim zero P Z S R :- !, whnf Z R.\nwhnf_nat_elim (succ K) P Z S R :- !, whnf (app (app S K) (nat_elim P Z S K)) R.\nwhnf_nat_elim N P Z S (nat_elim P Z S N).\n\nwhnf_eq_elim (refl B W) A X P D Y R :- !, whnf D R.\nwhnf_eq_elim E A X P D Y (eq_elim A X P D Y E).\n\nconv M M :- !.\nconv M N :- whnf M M1, whnf N N1, conv_whnf M1 N1.\n\nconv_whnf M M :- !.\nconv_whnf (prod A F) (prod B G) :- conv A B, pi x\\ conv (F x) (G x).\nconv_whnf (lam A F) (lam B G) :- conv A B, pi x\\ conv (F x) (G x).\nconv_whnf (app M N) (app M1 N1) :- conv_whnf M M1, conv N N1.\nconv_whnf (succ M) (succ N) :- conv M N.\nconv_whnf (nat_elim P Z S N) (nat_elim P1 Z1 S1 N1) :- conv_whnf N N1, conv P P1, conv Z Z1, conv S S1.\nconv_whnf (eq A X Y) (eq A1 X1 Y1) :- conv A A1, conv X X1, conv Y Y1.\nconv_whnf (refl A X) (refl A1 X1) :- conv A A1, conv X X1.\nconv_whnf (eq_elim A X P D Y E) (eq_elim A1 X1 P1 D1 Y1 E1) :- conv_whnf E E1, conv A A1, conv X X1, conv P P1, conv D D1, conv Y Y1.\n\nrule SA prop prop.\nrule prop (typ J) (typ J).\nrule (typ I) (typ J) (typ J) :- I =< J.\nrule (typ I) (typ J) (typ I) :- I > J.\n\nsort_of A S :- of A T, whnf T S, rule S prop prop.\n\nof prop (typ 0).\nof (typ I) (typ J) :- J is I + 1.\nof (prod A F) S :- sort_of A SA, (pi x\\ of x A => sort_of (F x) SB), rule SA SB S.\nof (lam A F) (prod A G) :- sort_of A SA, pi x\\ of x A => of (F x) (G x).\nof (app M N) T :- of M TM, whnf TM (prod A G), of N TN, conv TN A, T = G N.\nof nat_ty (typ 0).\nof zero nat_ty.\nof (succ N) nat_ty :- check N nat_ty.\nof (nat_elim P Z S N) (app P N) :- check N nat_ty, of P TP, whnf TP (prod PA PG), conv PA nat_ty, (pi x\\ of x nat_ty => sort_of (app P x) SP), check Z (app P zero), check S (prod nat_ty (k\\ prod (app P k) (ih\\ app P (succ k)))).\nof (eq A X Y) prop :- check A (typ 0), check X A, check Y A.\nof (refl A X) (eq A X X) :- check A (typ 0), check X A.\nof (eq_elim A X P D Y E) (app (app P Y) E) :- check A (typ 0), check X A, check P (prod A (y\\ prod (eq A X y) (e\\ prop))), check D (app (app P X) (refl A X)), check Y A, check E (eq A X Y).\nof C T :- typeof C T.\n\ncheck M T :- of M T1, conv T1 T.\n\nneg G :- G, !, fail.\nneg G.\nisvar X :- neg (neg (X = prop)), neg (neg (X = nat_ty)).\n\ntype num (nat -> tm -> o).\nnum 0 zero.\nnum N (succ M) :- N > 0, K is N - 1, num K M.\n\ntype p10 (tm -> tm -> o).\ntype p100 (tm -> tm -> o).\np10 X (succ (succ (succ (succ (succ (succ (succ (succ (succ (succ X)))))))))).\np100 X Y :- p10 X A, p10 A B, p10 B C, p10 C D, p10 D E, p10 E F, p10 F G, p10 G H, p10 H I, p10 I Y.\n\ntype p1000 (tm -> tm -> o).\ntype p10000 (tm -> tm -> o).\ntype cnt (tm -> o).\ntype big (nat -> o).\np1000 X Y :- p100 X A, p100 A B, p100 B C, p100 C D, p100 D E, p100 E F, p100 F G, p100 G H, p100 H I, p100 I Y.\np10000 X Y :- p1000 X A, p1000 A B, p1000 B C, p1000 C D, p1000 D E, p1000 E F, p1000 F G, p1000 G H, p1000 H I, p1000 I Y.\ncnt zero.\ncnt (succ M) :- 5 > 0, K is 3 - 1, cnt M.\nbig N :- N > 0, K is N - 1.\n"
+  },
+  "queries": {
+    "num N": "?- sigma C\\ num N C.",
+    "cnt 10000": "?- sigma A\\ p10000 zero A, cnt A.",
+    "conv NxN": "p10/p100 build the unary numerals N and N*N, then `conv (app (app mul A) A) C`; the exact queries are below",
+    "conv 10x10": "?- sigma A1\\ sigma C1\\ p10 zero A1, p100 zero C1, conv (app (app mul A1) A1) C1.",
+    "conv 20x20": "?- sigma A1\\ sigma A2\\ sigma C1\\ sigma C2\\ sigma C3\\ sigma C4\\ p10 zero A1, p10 A1 A2, p100 zero C1, p100 C1 C2, p100 C2 C3, p100 C3 C4, conv (app (app mul A2) A2) C4.",
+    "conv 30x30": "?- sigma A1\\ sigma A2\\ sigma A3\\ sigma C1\\ sigma C2\\ sigma C3\\ sigma C4\\ sigma C5\\ sigma C6\\ sigma C7\\ sigma C8\\ sigma C9\\ p10 zero A1, p10 A1 A2, p10 A2 A3, p100 zero C1, p100 C1 C2, p100 C2 C3, p100 C3 C4, p100 C4 C5, p100 C5 C6, p100 C6 C7, p100 C7 C8, p100 C8 C9, conv (app (app mul A3) A3) C9.",
+    "einstein general": "example/einstein.hol, `?- sigma P\\ P = answer, P Houses.` followed by `y` until exhaustion"
+  },
+  "results": {
+    "V1 general, baseline": {
+      "num 100": {
+        "seconds": 0.54,
+        "peak_kib": 65140
+      },
+      "num 200": {
+        "seconds": 8.26,
+        "peak_kib": 355168
+      },
+      "num 400": {
+        "note": "stopped by a 124 s limit at 2481500 KiB (measured before this work on the same code)"
+      },
+      "cnt 10000": {
+        "note": "killed by the watchdog at 3018688 KiB after 3.10 s"
+      },
+      "conv 10x10": {
+        "seconds": 0.11,
+        "peak_kib": 92320
+      },
+      "conv 20x20": {
+        "seconds": 0.65,
+        "peak_kib": 506748
+      },
+      "conv 30x30": {
+        "seconds": 2.36,
+        "peak_kib": 1732660
+      },
+      "einstein general": {
+        "seconds": [
+          1.69,
+          1.71,
+          1.73,
+          1.72,
+          1.73
+        ],
+        "peak_kib": 291264
+      }
+    },
+    "V1 general, current": {
+      "num 100": {
+        "seconds": 0.02,
+        "peak_kib": 20124
+      },
+      "num 400": {
+        "seconds": 0.02,
+        "peak_kib": 20352
+      },
+      "num 1000": {
+        "seconds": 0.03,
+        "peak_kib": 21888
+      },
+      "num 2000": {
+        "seconds": 0.04,
+        "peak_kib": 24192
+      },
+      "num 10000": {
+        "seconds": 0.16,
+        "peak_kib": 34104
+      },
+      "num 100000": {
+        "seconds": 1.42,
+        "peak_kib": 156776
+      },
+      "cnt 10000": {
+        "seconds": 0.12,
+        "peak_kib": 35424
+      },
+      "conv 10x10": {
+        "seconds": 0.02,
+        "peak_kib": 22272
+      },
+      "conv 20x20": {
+        "seconds": 0.04,
+        "peak_kib": 25876
+      },
+      "conv 30x30": {
+        "seconds": 0.07,
+        "peak_kib": 25552
+      },
+      "conv 60x60": {
+        "seconds": 0.23,
+        "peak_kib": 28272
+      },
+      "conv 100x100": {
+        "seconds": 0.63,
+        "peak_kib": 33924
+      },
+      "einstein general": {
+        "seconds": [
+          0.36,
+          0.37,
+          0.37,
+          0.37,
+          0.37
+        ],
+        "peak_kib": 30336
+      }
+    },
+    "BETA, baseline": {
+      "num 100": {
+        "seconds": 0.03,
+        "peak_kib": 17856
+      },
+      "num 400": {
+        "seconds": 2.06,
+        "peak_kib": 44028
+      },
+      "num 1000": {
+        "seconds": 51.98,
+        "peak_kib": 205820
+      },
+      "conv 10x10": {
+        "seconds": 7.75,
+        "peak_kib": 3033984,
+        "note": "measured before this work on the same code"
+      },
+      "conv 20x20": {
+        "note": "stopped by a 124 s limit at 23461632 KiB (measured before this work on the same code); not repeated"
+      }
+    },
+    "BETA, current": {
+      "num 100": {
+        "seconds": 0.03,
+        "peak_kib": 17856
+      },
+      "num 400": {
+        "seconds": 2.44,
+        "peak_kib": 43844
+      },
+      "num 1000": {
+        "seconds": 50.71,
+        "peak_kib": 207744
+      }
+    }
+  },
+  "host_stops": {
+    "corpus": "the 134 BETA transcripts of test/v1/conformance.sh, run through `V1 --test --general` (236 sessions)",
+    "service_events": 2879,
+    "complete_state_exports": 291,
+    "root_state_exports_for_requests": 378,
+    "root_state_exports_for_answers": 139,
+    "note": "Counted with temporary counters in the C state exporters. A stop that falls back exports a root state and then the complete state; the remaining events were answered from the event terms alone."
+  },
+  "validation": {
+    "smoke": "164 passed, 0 failed, 0 missing, also with a collection forced before every goal",
+    "general_engine_conformance": "134/134 BETA transcripts matched through `V1 --test --general`, for the baseline, the current build and the current build with a collection forced before every goal",
+    "einstein": "baseline and current forced-general transcripts are byte-identical apart from the Compiling line"
+  }
+}

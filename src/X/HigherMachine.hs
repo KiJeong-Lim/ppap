@@ -9,6 +9,16 @@ module X.HigherMachine
     , withMachine
     , nextStep
     , nextStepForHost
+    , nextEvent
+    , fetchState
+    , fetchRootState
+    , fetchFrames
+    , fetchDeclarations
+    , pendingCount
+    , uidFrontier
+    , heapCount
+    , collections
+    , setCollectionStep
     , resume
     , setDebugging
     , ensureSymbol
@@ -76,6 +86,12 @@ foreign import ccall safe "hol_v2_answer_size" c_answerSize :: Ptr CMachine -> I
 foreign import ccall safe "hol_v2_answer" c_answer :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
 foreign import ccall safe "hol_v2_state_size" c_stateSize :: Ptr CMachine -> IO CSize
 foreign import ccall safe "hol_v2_state" c_state :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
+foreign import ccall safe "hol_v2_root_state_size" c_rootStateSize :: Ptr CMachine -> CInt -> IO CSize
+foreign import ccall safe "hol_v2_pending_count" c_pendingCount :: Ptr CMachine -> IO CSize
+foreign import ccall safe "hol_v2_uid_frontier" c_uidFrontier :: Ptr CMachine -> IO Word64
+foreign import ccall safe "hol_v2_heap_count" c_heapCount :: Ptr CMachine -> IO CSize
+foreign import ccall safe "hol_v2_collections" c_collections :: Ptr CMachine -> IO CSize
+foreign import ccall safe "hol_v2_set_collection_step" c_setCollectionStep :: Ptr CMachine -> CSize -> IO ()
 foreign import ccall safe "hol_v2_event_size" c_eventSize :: Ptr CMachine -> IO CSize
 foreign import ccall safe "hol_v2_event" c_event :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
 foreign import ccall safe "hol_v2_event_info" c_eventInfo :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
@@ -184,6 +200,68 @@ nextStepWith compact (Machine _ state) = withPointer state $ \pointer -> do
             status <- c_next pointer
             -- Let signal and timeout threads run even when this loop allocates nothing.
             if status == 2 then yield >> allowInterrupt >> nextStatus pointer else return status
+
+-- The state, frames and declarations of the returned step are left empty: a
+-- host that needs one of them fetches it before the next mutating call.
+nextEvent :: Machine -> IO (Either String NativeStep)
+nextEvent (Machine _ state) = withPointer state $ \pointer -> do
+    status <- nextStatus pointer
+    case status of
+        -1 -> Left <$> readError pointer
+        0 -> return (Right Exhausted)
+        1 -> do
+            token <- c_hostState pointer
+            return (Right (Answer token [] []))
+        3 -> do
+            info <- copyBuffer pointer (const (return 6)) c_eventInfo
+            terms <- copyBuffer pointer c_eventSize c_event
+            return $ do
+                fields <- info
+                roots <- terms
+                case fields of
+                    [kind, host, premises, scope, callId, auxiliary]
+                        | all (>= 0) [kind, host, premises, scope, callId]
+                        , toInteger scope <= toInteger (maxBound :: Int) ->
+                            Right (Request (NativeRequest (fromIntegral kind) (fromIntegral host) (fromIntegral premises) (fromIntegral scope) (fromIntegral callId) auxiliary roots [] [] []))
+                    _ -> Left "Hol V1 native machine returned invalid event metadata"
+        _ -> return (Left "Hol V1 native machine returned an invalid status")
+    where
+        nextStatus pointer = do
+            status <- c_next pointer
+            if status == 2 then yield >> allowInterrupt >> nextStatus pointer else return status
+
+fetchState :: Machine -> IO (Either String [Int64])
+fetchState (Machine _ state) = withPointer state $ \pointer -> copyBuffer pointer c_stateSize c_state
+
+fetchRootState :: Machine -> Bool -> IO (Either String [Int64])
+fetchRootState (Machine _ state) query = withPointer state $ \pointer -> copyBuffer pointer (\machine -> c_rootStateSize machine (if query then 1 else 0)) c_state
+
+fetchFrames :: Machine -> IO (Either String [Int64])
+fetchFrames (Machine _ state) = withPointer state $ \pointer -> copyBuffer pointer c_framesSize c_frames
+
+fetchDeclarations :: Machine -> IO (Either String [Int64])
+fetchDeclarations (Machine _ state) = withPointer state $ \pointer -> copyBuffer pointer c_declarationsSize c_declarations
+
+pendingCount :: Machine -> IO (Either String Int)
+pendingCount (Machine _ state) = withPointer state $ \pointer -> do
+    count <- c_pendingCount pointer
+    return (if toInteger count > toInteger (maxBound :: Int) then Left "Hol V1 native disagreement count exceeds the host range" else Right (fromIntegral count))
+
+uidFrontier :: Machine -> IO (Either String Word64)
+uidFrontier (Machine _ state) = withPointer state (fmap Right . c_uidFrontier)
+
+-- Term nodes now on the native heap, and compactions run so far.
+heapCount :: Machine -> IO (Either String Word64)
+heapCount (Machine _ state) = withPointer state (fmap (Right . fromIntegral) . c_heapCount)
+
+collections :: Machine -> IO (Either String Word64)
+collections (Machine _ state) = withPointer state (fmap (Right . fromIntegral) . c_collections)
+
+-- Minimum heap growth, in term nodes, between two compactions.
+setCollectionStep :: Machine -> Word64 -> IO (Either String ())
+setCollectionStep (Machine _ state) nodes = withPointer state $ \pointer -> do
+    c_setCollectionStep pointer (fromIntegral nodes)
+    return (Right ())
 
 resume :: Machine -> Int -> Word64 -> Word64 -> [Int64] -> IO (Either String ())
 resume (Machine _ state) result host premises bindings = withPointer state $ \pointer ->

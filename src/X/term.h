@@ -63,6 +63,9 @@ HTerm ht_deref(const HolTermStore *store, HTerm term);
 HTView ht_view(const HolTermStore *store, HTerm term);
 HTerm ht_normalize(HolTermStore *store, HTerm term, enum HTNormalForm form);
 HTerm ht_apply(HolTermStore *store, HTerm function, HTerm argument);
+/* Replaces the indices of count enclosing binders at once: index i of body
+    * denotes values[count - 1 - i]. Every value is a variable or a nominal. */
+HTerm ht_instantiate(HolTermStore *store, HTerm body, const HTerm *values, size_t count);
 int ht_spine(HolTermStore *store, HTerm term, HTSpine *spine);
 void ht_spine_free(HTSpine *spine);
 
@@ -81,9 +84,29 @@ int ht_pending(const HolTermStore *store, size_t index, HTerm *left, HTerm *righ
     * NOMINAL: uid,scope,meta; NAT: byte-count,decimal ASCII; WILD: no payload.
     * Import consumes one term, advances *offset, and reuses live UID identities.
     * Export allocates *words; caller releases it with free(). */
+/* Export and import pin the identities they name: the host may name a pinned
+    * variable or nominal again, so a collection keeps it. */
 HTerm ht_import(HolTermStore *store, const int64_t *words, size_t count, size_t *offset);
 /* Authorized snapshot/persistent-assignment replay may restore retired UIDs. */
 HTerm ht_import_restored(HolTermStore *store, const int64_t *words, size_t count, size_t *offset);
 int ht_export(HolTermStore *store, HTerm term, int64_t **words, size_t *count);
+
+void ht_pin(HolTermStore *store, HTerm term);
+
+/* Order-preserving compaction. The first keep nodes, pinned identities, every
+    * disagreement and whatever mark names stay; a trailed binding stays with its
+    * variable. relocate then rewrites the caller's terms and checkpoint
+    * positions before the old numbering is dropped. An unreachable identity is
+    * retired. 0 means that nothing was changed: temporary memory was missing. */
+typedef struct HTCollection HTCollection;
+typedef struct {
+    void (*mark)(HTCollection *collection, void *context);
+    void (*relocate)(const HTCollection *collection, void *context);
+} HTCollector;
+void ht_collect_mark(HTCollection *collection, HTerm term);
+HTerm ht_collect_term(const HTCollection *collection, HTerm term);
+size_t ht_collect_heap(const HTCollection *collection, size_t heap);
+size_t ht_collect_trail(const HTCollection *collection, size_t trail);
+int ht_collect(HolTermStore *store, size_t keep, const HTCollector *collector, void *context);
 
 #endif

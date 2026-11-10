@@ -282,4 +282,37 @@ main = do
             outcome <- try (execUniqueT (runExceptT (Full.nextSolution session))) :: IO (Either IOException (Either KernelErr (Maybe Context)))
             closed <- Full.getWorkLimit session
             check "primitive callback exceptions close the native session immediately" (either (const True) (const False) outcome && either (const True) (const False) closed)
-    putStrLn "V1 full runtime: snapshots, assignment, host state, I/O, work limits and exception cleanup passed"
+    -- Host services answer from the event terms while no constraint or premise
+    -- is held: the accumulated bindings are not exported, and the native heap is
+    -- compacted between goals.
+    let greater left right = foldlNApp (mkNCon DC_gt) [left, right]
+        evaluate left right = foldlNApp (mkNCon LO_is) [left, right]
+        minus left right = foldlNApp (mkNCon DC_minus) [left, right]
+        plus left right = foldlNApp (mkNCon DC_plus) [left, right]
+        forAll hints body = foldr (binder LO_pi) body hints
+        sumTo args = foldlNApp (name "sum_to") args
+        sumStep = forAll ["N", "A", "R", "M", "B"] (clause (sumTo [mkNIdx 4, mkNIdx 3, mkNIdx 2]) (conjunction (greater (mkNIdx 4) (nat 0)) (conjunction (evaluate (mkNIdx 1) (minus (mkNIdx 4) (nat 1))) (conjunction (evaluate (mkNIdx 0) (plus (mkNIdx 3) (mkNIdx 4))) (sumTo [mkNIdx 1, mkNIdx 0, mkNIdx 2])))))
+        sumBase = forAll ["A"] (sumTo [nat 0, mkNIdx 0, mkNIdx 0])
+        descend arg = mkNApp (name "descend") arg
+        descendStep = forAll ["N"] (clause (descend (mkNApp (mkNCon DC_Succ) (mkNIdx 0))) (descend (mkNIdx 0)))
+    sumCode <- program natEnv [sumBase, sumStep] (sumTo [nat 3000, nat 0, variable])
+    summed <- timeout 20000000 $ withSession natEnv sumCode $ \session -> execUniqueT $ do
+        liftIO (Native.setCollectionStep (Full.sessionMachine session) 1024 >>= right)
+        saved <- liftIO (Full.takeSnapshot session >>= right)
+        first <- next session
+        bridge <- liftIO (readIORef (Full.sessionBridge session))
+        runs <- liftIO (Native.collections (Full.sessionMachine session) >>= right)
+        liftIO (Full.restoreSnapshot session saved >>= right)
+        second <- next session
+        liftIO (Full.closeSnapshot saved)
+        return (value first, value second, Map.size (Full.bridgeVariables bridge), runs)
+    check "9000 arithmetic requests decode their own variables, survive compaction and replay from a snapshot" $ case summed of
+        Just (first, second, seen, runs) -> first == Just (nat 4501500) && second == first && seen <= 6100 && runs > 0
+        Nothing -> False
+    descendCode <- program base [descend (nat 0), descendStep] (descend (nat 300000))
+    withSession base descendCode $ \session -> execUniqueT $ do
+        answer <- next session
+        runs <- liftIO (Native.collections (Full.sessionMachine session) >>= right)
+        heap <- liftIO (Native.heapCount (Full.sessionMachine session) >>= right)
+        liftIO (check "a deterministic descent of 300000 calls keeps a bounded native heap" (not (done answer) && runs > 0 && heap < 200000))
+    putStrLn "V1 full runtime: snapshots, assignment, host state, I/O, work limits, exception cleanup, request scaling and compaction passed"

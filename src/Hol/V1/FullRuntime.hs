@@ -56,6 +56,7 @@ data Bridge
         , bridgeIdentityBlocks :: Map.Map Word64 UniqueBlock
         , bridgeNextIdentity :: Word64
         , bridgeQuerySlots :: Word64
+        , bridgeUncertain :: Bool
         }
     deriving ()
 
@@ -80,7 +81,7 @@ createSession env debugging program = do
             wires = Map.fromList [(variable, [0, fromIntegral uid, 0, isType, meta]) | (uid, (variable, [isType, meta])) <- zip [0 :: Int ..] (zip (fullVariables program) slots)]
             indices = Map.fromList [(symbolIdentity symbol, index) | (index, symbol) <- IntMap.toList (fullSymbols program)]
             querySlotCount = fromIntegral (length (fullVariables program))
-            bridge = Bridge variables wires Map.empty Map.empty (fullSymbols program) indices (labelingWithRuntimeTypes env labeling) Map.empty Map.empty Map.empty querySlotCount querySlotCount
+            bridge = Bridge variables wires Map.empty Map.empty (fullSymbols program) indices (labelingWithRuntimeTypes env labeling) Map.empty Map.empty Map.empty querySlotCount querySlotCount False
             protected = env
                 { _PrintPrimitive = \ctx term -> _PrintPrimitive env ctx term `onException` Native.closeMachine machine
                 , _ReadPrimitive = \ctx term -> _ReadPrimitive env ctx term `onException` Native.closeMachine machine
@@ -151,24 +152,25 @@ nextSolutionActive session = do
     applyPending session
     debugging <- liftIO (readIORef (sessionDebugging session))
     liftIO (Native.setDebugging machine debugging) >>= nativeResult
-    result <- liftIO (Native.nextStepForHost machine `onException` closeSession session) >>= nativeResult
+    result <- liftIO (Native.nextEvent machine `onException` closeSession session) >>= nativeResult
     case result of
         Native.Exhausted -> do
             liftIO (writeIORef (_StackRef env) [])
             return Nothing
-        Native.Answer token _ state -> do
-            (binding, disagreements) <- decodeState session state
+        Native.Answer token _ _ -> do
+            reserveIdentities session
+            pending <- fetched session Native.pendingCount
+            (binding, disagreements) <- if debugging || token /= 0 || pending /= 0 then completeState session else do
+                reduced <- rootState session True (return ())
+                maybe (completeState session) (return . fst) reduced
             ctx <- currentContext session token 0 binding disagreements
             liftIO (writeIORef (_StackRef env) [(ctx, [])])
             return (Just ctx)
-        Native.Request request -> do
-            (binding, disagreements) <- decodeState session (Native.requestState request)
-            roots <- decodeRoots session (Native.requestTerms request)
-            cells <- decodeFrames session (Native.requestFrames request)
-            void (decodeRoots session (Native.requestDeclarations request))
-            ctx <- currentContext session (Native.requestHostState request) (Native.requestCallId request) binding disagreements
-            premises <- lookupToken "arithmetic premise" (sessionPremises session) (Native.requestPremises request)
-            if Native.requestKind request == 4 then do
+        Native.Request request
+            | Native.requestKind request == 4 -> do
+                reserveIdentities session
+                (binding, disagreements, _, cells) <- completeRequest session request
+                ctx <- currentContext session (Native.requestHostState request) (Native.requestCallId request) binding disagreements
                 continue <- debugInteraction session ctx cells
                 if continue then do
                     applyPending session
@@ -178,13 +180,37 @@ nextSolutionActive session = do
                     liftIO (Native.resume machine 0 (Native.requestHostState request) (Native.requestPremises request) [0]) >>= nativeResult
                     liftIO (writeIORef (sessionStopped session) True)
                     return Nothing
-            else do
+            | otherwise -> do
+                reserveIdentities session
+                (binding, disagreements, roots) <- requestState debugging request
+                ctx <- currentContext session (Native.requestHostState request) (Native.requestCallId request) binding disagreements
+                premises <- lookupToken "arithmetic premise" (sessionPremises session) (Native.requestPremises request)
                 reply <- dispatch request roots premises ctx
                 installReply session request ctx reply
                 nextSolution session
     where
         machine = sessionMachine session
         env = sessionEnvironment session
+        -- An antecedent contributes premises from its own term, and an
+        -- equality that mentions no arithmetic is left to the native search:
+        -- neither reply consults a binding, a label or a disagreement.
+        requestState debugging request = case Native.requestKind request of
+            3 -> termsOnly
+            5 -> do
+                (_, _, roots) <- termsOnly
+                case roots of
+                    [goal]
+                        | not (Services.equalityUsesArithmetic (snd (unfoldlNApp goal))) -> return (mempty, [], roots)
+                    _ -> stateWithRoots
+            _ -> stateWithRoots
+            where
+                reducible = not debugging && Native.requestHostState request == 0 && Native.requestPremises request == 0
+                termsOnly = do
+                    resetLabeling session
+                    roots <- decodeRoots session (Native.requestTerms request)
+                    return (mempty, [], roots)
+                stateWithRoots = if reducible then rootState session False (decodeRoots session (Native.requestTerms request)) >>= maybe complete (\((binding, disagreements), roots) -> return (binding, disagreements, roots)) else complete
+                complete = (\(binding, disagreements, roots, _) -> (binding, disagreements, roots)) <$> completeRequest session request
         dispatch request roots premises ctx = case (Native.requestKind request, roots) of
             (2, []) -> Services.runService env premises ctx Services.Settle
             (3, [fact]) -> Services.runService env premises ctx (Services.AssumePremises fact)
@@ -210,6 +236,63 @@ nextSolutionActive session = do
             , UnsupportedArithmeticConstraint (NApp function argument _) <- failure
             = UnsupportedArithmeticConstraint (NApp function argument (Just location))
             | otherwise = failure
+
+fetched :: MonadIO m => Session -> (Native.Machine -> IO (Either String a)) -> ExceptT KernelErr m a
+fetched session fetch = liftIO (fetch (sessionMachine session)) >>= nativeResult
+
+-- The complete state: every native variable with its value, the event terms,
+-- and the frames of a debugger stop or the declarations of any other stop.
+completeState :: UniqueM m => Session -> ExceptT KernelErr m (VarBinding, [Disagreement])
+completeState session = fetched session Native.fetchState >>= decodeState session
+
+completeRequest :: UniqueM m => Session -> Native.NativeRequest -> ExceptT KernelErr m (VarBinding, [Disagreement], [TermNode], [Cell])
+completeRequest session request = do
+    let debug = Native.requestKind request == 4
+    state <- fetched session Native.fetchState
+    frames <- if debug then fetched session Native.fetchFrames else return [0]
+    declarations <- if debug then return [0] else fetched session Native.fetchDeclarations
+    (binding, disagreements) <- decodeState session state
+    roots <- decodeRoots session (Native.requestTerms request)
+    cells <- decodeFrames session frames
+    void (decodeRoots session declarations)
+    return (binding, disagreements, roots, cells)
+
+-- The state a stop can consult while the host holds no constraint and no
+-- premise: the query variables of an answer, the disagreements, and whatever
+-- the given action decodes. Nothing is returned when a decoded variable has a
+-- type that the complete state could decide differently.
+rootState :: UniqueM m => Session -> Bool -> ExceptT KernelErr m a -> ExceptT KernelErr m (Maybe ((VarBinding, [Disagreement]), a))
+rootState session query decodeMore = do
+    state <- fetched session (\machine -> Native.fetchRootState machine query)
+    decoded <- decodeState session state
+    more <- decodeMore
+    bridge <- liftIO (readIORef (sessionBridge session))
+    return (if bridgeUncertain bridge then Nothing else Just (decoded, more))
+
+-- Native identities are numbered in creation order at every stop, whether or
+-- not the stop decodes them, before the host allocates identities of its own.
+reserveIdentities :: UniqueM m => Session -> ExceptT KernelErr m ()
+reserveIdentities session = do
+    frontier <- fetched session Native.uidFrontier
+    bridge <- liftIO (readIORef (sessionBridge session))
+    let start = bridgeNextIdentity bridge
+        count = toInteger frontier - toInteger start
+    when (count > 0) $ do
+        when (count > toInteger (maxBound :: Int)) (throwE (BackendError "native identity reservation exceeds host range"))
+        reserved <- getUniqueBlock (fromInteger count)
+        block <- maybe (throwE (BackendError "native identity reservation exhausted")) return reserved
+        liftIO (modifyIORef' (sessionBridge session) (\current -> current { bridgeIdentityBlocks = Map.insert start block (bridgeIdentityBlocks current), bridgeNextIdentity = frontier }))
+
+resetLabeling :: MonadIO m => Session -> m ()
+resetLabeling session = liftIO (modifyIORef' (sessionBridge session) (\bridge -> bridge { bridgeLabeling = labelingWithRuntimeTypes env empty, bridgeTypeBinders = Map.empty, bridgeUncertain = False })) where
+    env = sessionEnvironment session
+    empty = Labeling IntMap.empty IntMap.empty IntMap.empty IntMap.empty Map.empty IntMap.empty (_ProgramTypeEnv env)
+
+closedType :: MonoType Int -> Bool
+closedType typ = case typ of
+    TyCon _ -> True
+    TyApp left right -> closedType left && closedType right
+    _ -> False
 
 lookupToken :: MonadIO m => String -> IORef (Map.Map Word64 a) -> Word64 -> ExceptT KernelErr m a
 lookupToken name table token = do
@@ -383,7 +466,10 @@ decodeVariable session uid scope isType meta = do
             (_, Just typ) -> label { _VarTypes = IntMap.insert (lvKey variable) typ (_VarTypes label) }
             _ -> label
         typed = if isType then withType { _TyVarKeys = IntMap.insert (lvKey variable) () (_TyVarKeys withType) } else withType
-    liftIO (writeIORef (sessionBridge session) bridge { bridgeVariables = Map.insert uid variable (bridgeVariables bridge), bridgeVariableWires = Map.insert variable encoded (bridgeVariableWires bridge), bridgeLabeling = typed, bridgeTypeBinders = binders })
+        uncertain = case variable of
+            LV_Named _ -> isType
+            _ -> isType || maybe True (not . closedType) (unLamType (nodeType (metadata session meta)))
+    liftIO (writeIORef (sessionBridge session) bridge { bridgeVariables = Map.insert uid variable (bridgeVariables bridge), bridgeVariableWires = Map.insert variable encoded (bridgeVariableWires bridge), bridgeLabeling = typed, bridgeTypeBinders = binders, bridgeUncertain = bridgeUncertain bridge || uncertain })
     return variable
 
 decodeNominal :: UniqueM m => Session -> Word64 -> Int -> Int64 -> ExceptT KernelErr m Constant
@@ -400,14 +486,13 @@ decodeNominal session uid scope meta = do
         typed = case (constant, fmap (instantiateMetadataType (bridgeTypeBinders bridge)) (unLamType (nodeType (metadata session meta)))) of
             (DC (DC_Unique unique _), Just typ) -> labeling { _ConTypes = IntMap.insert (unUnique unique) typ (_ConTypes labeling) }
             _ -> labeling
-    liftIO (writeIORef (sessionBridge session) bridge { bridgeConstants = Map.insert uid constant (bridgeConstants bridge), bridgeConstantWires = Map.insert constant encoded (bridgeConstantWires bridge), bridgeLabeling = typed })
+        uncertain = maybe False (not . closedType) (unLamType (nodeType (metadata session meta)))
+    liftIO (writeIORef (sessionBridge session) bridge { bridgeConstants = Map.insert uid constant (bridgeConstants bridge), bridgeConstantWires = Map.insert constant encoded (bridgeConstantWires bridge), bridgeLabeling = typed, bridgeUncertain = bridgeUncertain bridge || uncertain })
     return constant
 
 decodeState :: UniqueM m => Session -> [Int64] -> ExceptT KernelErr m (VarBinding, [Disagreement])
 decodeState session words = do
-    let env = sessionEnvironment session
-        empty = Labeling IntMap.empty IntMap.empty IntMap.empty IntMap.empty Map.empty IntMap.empty (_ProgramTypeEnv env)
-    liftIO (modifyIORef' (sessionBridge session) (\bridge -> bridge { bridgeLabeling = labelingWithRuntimeTypes env empty, bridgeTypeBinders = Map.empty }))
+    resetLabeling session
     runDecode parser words
     where
         parser = do

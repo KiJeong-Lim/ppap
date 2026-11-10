@@ -127,21 +127,54 @@ and answer order retain these rules. Equality still uses its host decision
 service and ordered clause search; it is not replaced by unconditional native
 unification.
 
-Nondebug host requests carry compact variable/nominal declarations from pending
-frames, preserving their identity, type and scope information without sending
-the complete frame trees to Haskell. Every declaration occurrence remains in
-the original frame traversal order, including repeated identities and shared
-hypothesis chains: re-enrolling type binders can affect later metadata decoding.
-Debug requests retain full frames. The host-facing
-answer path also omits the unused separate query-answer buffer; the public
-X.HigherMachine.nextStep interface retains its full output.
+A candidate is excluded without a trial when its head is certain not to match:
+the clause has the literal shape `pi x\ ... head :- body`, the call is a rigid
+application, and either the two predicates differ or some argument pair has
+different rigid heads (two distinct ordinary constants or nominals). Naturals,
+successor terms, opaque formulas, logical operators, flexible terms and
+lambdas never exclude a clause, so the unifier still decides every other case. Excluded candidates are skipped before
+the current one is tried, in the state of the search checkpoint; a call whose
+remaining candidates are all excluded leaves no choice point. Each skipped
+candidate consumes the scheduler batch like a failed trial. A clause of the
+literal shape with at most 32 leading binders receives all its variables in
+one instantiation of its head, and its body is instantiated only after the
+head has unified. Any other clause keeps the binder-by-binder path. Identities are created in the same
+order as before, but a skipped trial no longer consumes any.
 
-Every service request still exports the complete variable-binding state and
-pending disagreements. Existing arithmetic constraints and callbacks require
-that context, including at SETTLE events with no event terms. Compact declaration
-collection still traverses normalized pending terms, and state export still
-scans the native heap. This reduces redundant transfer and decoding without
-eliminating all growth-dependent service costs.
+A host stop exports only what its reply can consult:
+
+    antecedent of `=>`            the event term
+    equality without arithmetic   the event terms
+    other service request         event terms and disagreements, while the
+                                  host holds no constraint and no premise
+    answer                        query variables with their values, while
+                                  the host holds no constraint and no
+                                  disagreement is pending
+    debugger stop                 the complete state and frames
+
+Every remaining stop exports the complete variable-binding state, the pending
+disagreements and the compact declarations of pending frames, as before: a
+stop with a host constraint or premise token, a SETTLE event, a stop while
+debugging, and any stop in which a decoded variable or nominal has a type that
+the complete state could decide differently (a type variable, a type that
+mentions a clause type variable, or a variable without a recorded type). The
+reduced stops therefore see the same labels, types and values for every
+identity they decode. The compact declarations keep every occurrence in the
+original frame traversal order, including repeated identities and shared
+hypothesis chains: re-enrolling type binders can affect later metadata decoding.
+The public X.HigherMachine.nextStep and nextStepForHost interfaces retain their
+full output; FullRuntime uses nextEvent and fetches the rest on demand.
+
+An equality "mentions arithmetic" exactly when its type argument is nat or one
+of its sides contains a successor or an arithmetic operator; Services decides
+this with the same predicate that selects its arithmetic branch. A comparison
+with a ground truth value is decided without the Presburger solver while no
+premise is in scope, in BETA and in V1 alike: the solver represents a literal
+n by n successors.
+
+The host numbers native identities in creation order at every stop, up to the
+native frontier, before it allocates identities of its own. The numbering no
+longer depends on which identities a stop happens to decode.
 
 The term store's identity hash contains live identities. Retired UIDs are kept
 as exact merged intervals, so rollback removes hash entries without forgetting
@@ -200,6 +233,9 @@ src/Hol/V1/FullRuntime.hs
 
 nextSolution returns one answer or exhaustion and uses RuntimeEnv services;
 runFullProgram additionally drives the _Answer callback/continuation protocol.
+The Context of an answer binds the query variables. It also binds every other
+native variable only when the complete state was exported: with a residual
+constraint or disagreement, while debugging, or after the type fallback above.
 Hol.V1.Runtime.execRuntime compiles and runs this full engine directly.
 Use withSession for IO exception-safe ownership, or explicitly close sessions
 and snapshots. ForeignPtr finalizers provide a backstop. Closed handles and
@@ -275,9 +311,22 @@ Exceeding a resource bound is an explicit execution error, not logical failure;
 a caller may raise the work limit and restore an earlier snapshot to retry.
 
 Backtracking reclaims branch arenas. Closing releases all machine state.
-Long deterministic searches do not yet have a tracing garbage collector, and
-snapshots copy state rather than using persistent sharing. These are memory/
-performance limits, not a reason to silently switch interpreters.
+The general engine also compacts its term heap, continuation frames and
+hypotheses between two goals, once the heap has grown by the size of its
+non-program part and by at least 65536 nodes since the previous compaction
+(X.HigherMachine.setCollectionStep; heapCount and collections report the
+result). The roots are the program, the pending continuations, every choice
+point, every disagreement, and every variable or nominal that has been
+exported to or imported from the host. Compaction preserves order, so each
+choice point still restores a prefix of the same state; a trailed binding is
+kept exactly when its variable is still reachable. An unreachable identity is
+retired like one discarded by backtracking. Identities known to the host are
+never collected, and the host's identity tables still grow with them: a loop
+that passes a fresh unbound variable to a host service in every iteration
+keeps that variable. A stop that exports the complete state pins every
+variable alive at that stop. The first-order engine is unchanged. Snapshots
+copy state rather than using persistent sharing. These are memory/performance
+limits, not a reason to silently switch interpreters.
 
 Validation
 ----------
@@ -660,3 +709,102 @@ Reproduce with the optimized wrapper and the saved baseline executable:
 
 Supply --teyjus-build with the build command/flags used for the supplied tools.
 The /tmp paths above refer to the saved local measurement setup.
+
+Host stops, clause exclusion and compaction (2026-11-11)
+--------------------------------------------------------
+Measured against 430f7a4 built from `git archive HEAD`, on the same Core Ultra
+9 275HX machine under WSL2 with GHC 9.6.7. Both executables use the default
+`cabal build ppap` flags, not the optimized wrapper of the sections above, so
+these numbers are not comparable with the earlier Einstein tables. Each sample
+is one fresh process through `V1 --test --general`; elapsed time and peak RSS
+include startup, loading, type checking, query compilation, the complete
+search and output. A watchdog killed any process above 3 GiB.
+
+The probe is a conversion checker for a small dependent calculus written with
+higher-order abstract syntax, with these helpers (the complete source and the
+exact queries are in example/teyjus/service-results.json):
+
+    num 0 zero.
+    num N (succ M) :- N > 0, K is N - 1, num K M.
+    cnt zero.
+    cnt (succ M) :- 5 > 0, K is 3 - 1, cnt M.
+
+`num N` makes 2N arithmetic requests on literals up to N. `cnt` walks a unary
+numeral of 10000 and makes 20000 requests on small literals. `conv NxN`
+checks `mul N N` against the unary numeral N*N by weak-head reduction and
+makes no service request.
+
+                      430f7a4                    current
+    num 100           0.54 s      65 MB          0.02 s    20 MB
+    num 200           8.26 s     355 MB             --
+    num 400           >124 s    2482 MB          0.02 s    20 MB
+    num 1000             --                      0.03 s    22 MB
+    num 2000             --                      0.04 s    24 MB
+    num 10000            --                      0.16 s    34 MB
+    num 100000           --                      1.42 s   157 MB
+    cnt 10000         killed at 3 GiB (3.1 s)    0.12 s    35 MB
+    conv 10x10        0.11 s      92 MB          0.02 s    22 MB
+    conv 20x20        0.65 s     507 MB          0.04 s    26 MB
+    conv 30x30        2.36 s    1733 MB          0.07 s    26 MB
+    conv 60x60           --                      0.23 s    28 MB
+    conv 100x100         --                      0.63 s    34 MB
+
+The num 400 baseline was stopped by a 124-second limit; larger baseline sizes
+were not run. BETA takes 0.03 s, 2.06 s and 51.98 s on num 100, 400 and 1000
+(18, 44 and 206 MB) at 430f7a4, and 0.03 s, 2.44 s and 50.71 s now; before
+this work BETA took 7.75 s and 3034 MB on conv 10x10 and was stopped at
+23462 MB on conv 20x20, and those two runs were not repeated.
+
+Where the cost was. At every service request and every answer the host
+received each native variable with its fully dereferenced value. On num, the
+k-th request therefore exported a chain of k successors once per variable of
+the chain, and the export normalized each value into a fresh copy on the
+native heap. With the reduced host stops in place and the search engine still
+unchanged, an instrumented run of conv 60x60 attributed 9,322,736 of
+10,682,909 allocated nodes to clause instantiation: every candidate clause
+was instantiated completely, one binder at a time, before its head was
+unified. It ended with 3,600 choice points, left by calls whose remaining
+clauses had a different constructor in an argument; nothing below a choice
+point can be reclaimed. With exclusion and head-first instantiation, and
+still without compaction, the same run allocated 1,874,927 nodes and ended
+with one choice point. A comparison of the
+literal 2,000,000 with 0 took 0.14 s and 122 MB because the Presburger term of
+a literal is unary; the ground shortcut makes it 0.02 s and 20 MB.
+
+Forced-general Einstein (`sigma P\ P = answer, P Houses.`, source, five
+alternating runs): 1.69--1.73 s (median 1.72 s) and 291 MB before, 0.36--0.37 s
+(median 0.37 s) and 30 MB now. The two transcripts are identical. This is the
+default build; the optimized-wrapper and bytecode-replay measurements of the
+earlier sections were not repeated, and no Teyjus comparison was made.
+
+Over the 134 BETA transcripts run through `V1 --test --general` (236 sessions,
+2,879 service events), temporary counters recorded 291 complete-state exports,
+378 root-state exports for requests and 139 for answers. The other events were
+answered from their terms. A stop that falls back is counted in both groups.
+
+What these numbers do not show. They are single samples of one probe and one
+puzzle, not a benchmark of higher-order unification. num and cnt still grow
+with the number of iterations (about 1.4 kB per num iteration at 100000):
+each iteration exports one fresh unbound variable, which stays pinned natively
+and in the host's identity tables. A program that leaves a host constraint or
+an arithmetic premise in force exports the complete state at every stop, as
+before, and compaction then finds every variable pinned. Binding a variable to
+a term that contains lambdas, nominals or variables still rebuilds that term,
+and unification still normalizes both sides at every level. The comparison
+shortcut does not change the unary representation inside the solver: a
+comparison that is not ground, or that has a premise in scope, still costs
+time proportional to its literals.
+
+Validation: 164 smoke cases; the 134 BETA transcripts through the forced
+general engine for 430f7a4, for this revision, and for this revision with a
+compaction before every goal; every native C scenario twice, the second time
+with a compaction before every goal, under ASan/UBSan with leak detection and
+74 allocation-failure points. New regressions: exclusion order and choice
+points, a 20000-call descent whose heap stays within 4096 nodes of the
+program, 9000 arithmetic requests that decode at most their own variables and
+replay from a snapshot across compactions, and a 300000-call descent bounded
+below 200000 heap nodes. The yield_failed_backtracking fixture now uses an
+alternative clause that matches and fails in its body: its former alternative
+`p red` is excluded and no longer creates the choice points the test walks.
+
+    example/teyjus/service-results.json

@@ -1,0 +1,620 @@
+================================================================================
+LoL Core — Normative Theory Specification
+================================================================================
+
+Status
+--------------------------------------------------------------------------------
+
+This document defines LoL Core, the type theory that LoL checks. It does not
+depend on the surface language or on the LoL version; the surface language of
+each version has its own document (`doc/LoLALPHA1.txt`).
+
+Chapters 0 through 8 are normative. Chapter 9 is reserved. Chapter 10 is
+informative.
+
+The kernel is the Hol program `lol/hol/kernel.hol`. It MUST decide every
+judgment exactly as this text does. A declaration enters an environment only
+when a run of that program on the declaration succeeds; how the program is run
+is specified in `doc/LoLALPHA1.txt`, Chapter 5. There is no other checker.
+
+Every rule has a label such as [T-App]. Labels are stable. Each clause of the
+kernel cites the label of the rule it implements, and tests and diagnostics
+cite labels too.
+
+Design constraint. A declaration admitted by LoL Core MUST be admitted by Rocq
+9.0 after the translation of `doc/LoLALPHA1.txt`, Chapter 6. LoL Core MAY
+reject a declaration that Rocq admits. Chapter 10 lists where it does.
+
+
+================================================================================
+Chapter 0. Notation
+================================================================================
+
+0.1 Metavariables
+--------------------------------------------------------------------------------
+
+  x, y, z, f     variables
+  c              constants
+  I              inductive families
+  C              constructors
+  n, k, m        natural numbers
+  l              universe levels
+  s              sorts
+  t, u, v, b     terms
+  A, B, P, T     terms used as types
+  G              local contexts
+  E              global environments
+  D              declarations
+
+A name ending in `s` is a finite sequence: `xs` is `x1 ... xn`.
+
+  (xs : As)                 the telescope (x1 : A1) ... (xn : An)
+  forall (xs : As), B       forall (x1 : A1), ... forall (xn : An), B
+  fun (xs : As) => t        fun (x1 : A1) => ... fun (xn : An) => t
+  t us                      t u1 ... un
+  t[xs := us]               simultaneous capture-avoiding substitution
+
+In a telescope, A_i may mention x_1 ... x_(i-1).
+
+0.2 Judgments
+--------------------------------------------------------------------------------
+
+  E |- G ok          G is a well-formed context
+  E; G |- t : A      t has type A
+  E; G |- t ~> u     t reduces to u in one step
+  E; G |- t == u     t and u are convertible
+  E; G |- A <= B     A is a subtype of B (cumulativity)
+  E |- D ok          D may be added to E
+
+Terms are identified up to renaming of bound variables.
+
+
+================================================================================
+Chapter 1. Syntax
+================================================================================
+
+  l ::= n
+
+  s ::= Prop | Type@{l}
+
+  t ::= x | s | c | I | C
+      | forall (x : A), B
+      | fun (x : A) => t
+      | let x := t : A in u
+      | t u
+      | match t as x in I _ ys return P with (| C zs => b)* end
+      | fix f_k { f_i (xs_i : As_i) {struct x_i} : B_i := t_i }
+
+  G ::= .  |  G, x : A  |  G, x := t : A
+
+  D ::= Axiom c : A
+      | Definition c : A := t
+      | Theorem c : A := t
+      | Inductive (ps : Ps) { I_i : forall (ys_i : Ys_i), s_i
+                              := (| C_ij : T_ij)* }
+
+  E ::= .  |  E, D
+
+Conventions:
+
+  * `Set` abbreviates `Type@{0}`. `A -> B` abbreviates `forall (_ : A), B`.
+  * In `match`, the `_` stands for the parameters of I; they are not bound.
+  `x` and `ys` are bound in P only. `zs` are bound in b only.
+  * A `fix` is a block of m >= 1 mutually recursive functions; the index k
+  selects the one the term denotes. `{struct x_i}` names one of `xs_i`; its
+  position is written n_i. All f_1 ... f_m are bound in every t_i.
+  * An `Inductive` declares a block of m >= 1 families that share the
+  parameters `ps`. Inside every T_ij, each family occurs applied to `ps`.
+
+In ALPHA1 a level is a numeral. Chapter 9 reserves level expressions.
+
+
+================================================================================
+Chapter 2. Sorts
+================================================================================
+
+Axioms:
+
+  Prop     : Type@{1}                               [S-Prop]
+  Type@{l} : Type@{l+1}                             [S-Type]
+
+Products. R(s1, s2) is the sort of `forall (x : A), B` when A : s1 and B : s2.
+
+  R(s, Prop)               = Prop                   [P-Prop]
+  R(Prop, Type@{l})        = Type@{l}               [P-Type]
+  R(Type@{l1}, Type@{l2})  = Type@{max(l1, l2)}     [P-Max]
+
+Order on sorts:
+
+  Prop <= Prop        Prop <= Type@{l}              [C-Prop]
+  Type@{l} <= Type@{l'}   iff   l <= l'             [C-Type]
+
+`Prop` is impredicative by [P-Prop]. `Type@{l}` is predicative by [P-Max].
+
+
+================================================================================
+Chapter 3. Typing
+================================================================================
+
+3.1 Contexts
+--------------------------------------------------------------------------------
+
+  ------------ [W-Empty]
+  E |- . ok
+
+  E |- G ok    E; G |- A : s    x not in G
+  ------------------------------------------ [W-Assum]
+  E |- G, x : A ok
+
+  E |- G ok    E; G |- A : s    E; G |- t : A    x not in G
+  ----------------------------------------------------------- [W-Def]
+  E |- G, x := t : A ok
+
+3.2 Terms
+--------------------------------------------------------------------------------
+
+  E |- G ok    (x : A) in G  or  (x := t : A) in G
+  -------------------------------------------------- [T-Var]
+  E; G |- x : A
+
+  E |- G ok    s : s' is an axiom ([S-Prop], [S-Type])
+  ------------------------------------------------------ [T-Sort]
+  E; G |- s : s'
+
+  E |- G ok    c is declared in E with type A
+  --------------------------------------------- [T-Const]
+  E; G |- c : A
+
+  E |- G ok
+  I_i is declared in E with parameters (ps : Ps)
+  and arity forall (ys_i : Ys_i), s_i
+  ------------------------------------------------- [T-Ind]
+  E; G |- I_i : forall (ps : Ps) (ys_i : Ys_i), s_i
+
+  E |- G ok
+  C_ij is declared in E with type T_ij
+  in a block with parameters (ps : Ps)
+  --------------------------------------- [T-Constr]
+  E; G |- C_ij : forall (ps : Ps), T_ij
+
+  E; G |- A : s1    E; G, x : A |- B : s2
+  ------------------------------------------ [T-Pi]
+  E; G |- forall (x : A), B : R(s1, s2)
+
+  E; G |- A : s    E; G, x : A |- t : B
+  ----------------------------------------------- [T-Lam]
+  E; G |- fun (x : A) => t : forall (x : A), B
+
+  E; G |- t : forall (x : A), B    E; G |- u : A
+  ------------------------------------------------- [T-App]
+  E; G |- t u : B[x := u]
+
+  E; G |- A : s    E; G |- t : A    E; G, x := t : A |- u : B
+  ------------------------------------------------------------- [T-Let]
+  E; G |- let x := t : A in u : B[x := t]
+
+  E; G |- t : A    E; G |- B : s    E; G |- A <= B
+  --------------------------------------------------- [T-Conv]
+  E; G |- t : B
+
+[T-Match] is in Chapter 6. [T-Fix] is in Chapter 7.
+
+3.3 Reading the rules as an algorithm
+--------------------------------------------------------------------------------
+
+Every rule except [T-Conv] is directed by the syntax of the term. The kernel
+follows this reading:
+
+  * `infer` computes a type from E, G and t by the rule for the shape of t.
+  * `check t A` infers a type B for t and then decides `B <= A`.
+  * Where a rule needs a type of a given shape (`forall` in [T-App], a sort in
+  [T-Pi], [T-Lam] and [T-Let], `I qs vs` in [T-Match]), the inferred type is
+  reduced to weak head normal form first.
+  * [T-Conv] is used only inside `check`: at the argument of [T-App], at the
+  body of [T-Let], at the branches of [T-Match], at the bodies of [T-Fix],
+  and at the body of a declaration (Chapter 8).
+
+A type is reduced only after it has been checked.
+
+
+================================================================================
+Chapter 4. Reduction, Conversion and Cumulativity
+================================================================================
+
+4.1 Reduction
+--------------------------------------------------------------------------------
+
+  (fun (x : A) => t) u   ~>   t[x := u]                         [R-Beta]
+
+  let x := t : A in u    ~>   u[x := t]                         [R-Zeta]
+
+  x                      ~>   t                                 [R-Local]
+    when (x := t : A) is in G
+
+  c                      ~>   t                                 [R-Delta]
+    when `Definition c : A := t` is in E
+
+  match C_ij qs us as x in I_i _ ys return P with ... | C_ij zs => b | ... end
+                        ~>    b[zs := us]                       [R-Iota]
+
+  F_k us                 ~>   (fun (xs_k : As_k) => t_k)[fs := Fs] us
+                                                                [R-Fix]
+    where F_j is the block `fix f_j { ... }` selecting j,
+    `us` has at least n_k elements,
+    and the n_k-th element of `us` is a constructor applied to arguments
+
+A constant declared by `Theorem` or `Axiom` does not reduce. A reduction step
+may be applied to any subterm.
+
+4.2 Conversion
+--------------------------------------------------------------------------------
+
+`E; G |- t == u` is the least equivalence relation that is compatible with
+every term constructor and satisfies:
+
+  E; G |- t ~> u
+  ---------------- [Eq-Red]
+  E; G |- t == u
+
+  E; G, x : A |- t == u x      x not free in u
+  ---------------------------------------------- [Eq-Eta]
+  E; G |- fun (x : A) => t == u
+
+Conversion does not include proof irrelevance and does not include eta for
+values of an inductive family.
+
+4.3 Cumulativity
+--------------------------------------------------------------------------------
+
+  E; G |- A == B
+  ---------------- [C-Conv]
+  E; G |- A <= B
+
+  E; G |- A == s1    E; G |- B == s2    s1 <= s2
+  ------------------------------------------------- [C-Sort]
+  E; G |- A <= B
+
+  E; G |- A == forall (x : A1), A2    E; G |- B == forall (x : B1), B2
+  E; G |- A1 == B1                    E; G, x : A1 |- A2 <= B2
+  --------------------------------------------------------------------- [C-Pi]
+  E; G |- A <= B
+
+The domain of a product is compared by conversion, not by cumulativity.
+
+4.4 Deciding conversion
+--------------------------------------------------------------------------------
+
+The kernel decides `==` and `<=` by comparing weak head normal forms and
+recursing into them. It MAY unfold constants lazily and MAY compare the
+arguments of two applications of the same constant before unfolding it. The
+answer MUST NOT depend on the strategy.
+
+Termination is required on well-typed terms only (3.3).
+
+
+================================================================================
+Chapter 5. Inductive Families
+================================================================================
+
+5.1 Shape of a declaration
+--------------------------------------------------------------------------------
+
+  Inductive (ps : Ps) {
+    I_1 : forall (ys_1 : Ys_1), s_1 := | C_11 : T_11 | ... ;
+    ...
+    I_m : forall (ys_m : Ys_m), s_m := | C_m1 : T_m1 | ...
+  }
+
+Every constructor type has the form
+
+  T_ij  =  forall (zs : Zs), I_i ps us
+
+`zs` are the arguments of C_ij and `us` are its indices. An argument z is
+*recursive* when its type, in weak head normal form, is
+
+  forall (ws : Ws), I_k ps vs
+
+for a family I_k of the same block.
+
+Examples in surface syntax:
+
+  Inductive eq (A : Set) (x : A) : A -> Prop :=
+  | eq_refl : eq A x x.
+    parameters A, x; one index; no recursive argument
+
+  Inductive vec (A : Set) : nat -> Set :=
+  | vnil : vec A O
+  | vcons : forall (n : nat), A -> vec A n -> vec A (S n).
+    parameter A; one index; the third argument of vcons is recursive
+
+  Inductive Acc (A : Set) (R : A -> A -> Prop) (x : A) : Prop :=
+  | Acc_intro : (forall (y : A), R y x -> Acc A R y) -> Acc A R x.
+    the argument of Acc_intro is recursive, with ws = y and a proof of R y x
+
+5.2 Admissibility
+--------------------------------------------------------------------------------
+
+`E |- Inductive ... ok` holds when all of the following hold. In [I-Con],
+[I-Pos] and [I-Univ] the families are assumed with the types that [T-Ind]
+will give them.
+
+  [I-Fresh]    The names of the families and constructors are distinct and
+  not declared in E.
+
+  [I-Params]   `(ps : Ps)` is a well-formed telescope in E.
+
+  [I-Arity]    For each i, `(ys_i : Ys_i)` is a well-formed telescope under
+  `ps`, and s_i is a sort.
+
+  [I-Con]      For each constructor, T_ij has the form of 5.1 and is a
+  well-typed type under `ps`.
+
+  [I-Uniform]  Every occurrence of a family of the block in T_ij is applied
+  to exactly `ps` as its parameters.
+
+  [I-Index]    No family of the block occurs in the indices `us` of a
+  constructor.
+
+  [I-Pos]      Every argument type of every constructor is strictly positive
+  (5.3).
+
+  [I-Univ]     If s_i is `Type@{l}`, the sort of every argument type of every
+  C_ij is `<= Type@{l}`. If s_i is `Prop` there is no condition.
+
+5.3 Strict positivity
+--------------------------------------------------------------------------------
+
+An argument type Z, in weak head normal form, is strictly positive when one of
+the following holds.
+
+  [Pos-None]   No family of the block occurs in Z.
+
+  [Pos-Rec]    Z is `forall (ws : Ws), I_k ps vs`, and no family of the block
+  occurs in Ws or in vs.
+
+There is no other case. In particular a family MUST NOT occur
+
+  * to the left of an arrow inside an argument type,
+  * as an argument of another type constructor (nested occurrence),
+  * in an index of its own occurrence.
+
+5.4 Elimination sorts
+--------------------------------------------------------------------------------
+
+Elim(I_i) is the set of sorts that the return clause of a `match` on I_i may
+have.
+
+  [I-Elim-Type]   s_i is `Type@{l}`:  every sort.
+
+  [I-Elim-Sub]    s_i is `Prop`, the block has one family, and the family has
+  no constructor, or has one constructor all of whose arguments have a type of
+  sort `Prop`:  every sort.
+
+  [I-Elim-Prop]   s_i is `Prop`, otherwise:  `Prop` only.
+
+Parameters are not arguments. So `False`, `True`, `eq`, `and` and `Acc` fall
+under [I-Elim-Sub], while `or` and `ex` fall under [I-Elim-Prop].
+
+5.5 Examples
+--------------------------------------------------------------------------------
+
+  Declaration                                           Verdict
+  ----------------------------------------------------  -----------------------
+  nat, bool, list, eq, and, or, ex, vec, Acc             admitted
+  even / odd as one block of two families                admitted
+  bad := mk : (bad -> False) -> bad                      rejected by [I-Pos]
+  rose := node : list rose -> rose                       rejected by [I-Pos]
+  big : Set := mkbig : Set -> big                        rejected by [I-Univ]
+  t (A : Set) : Set := c : t (A -> A) -> t A             rejected by [I-Uniform]
+
+
+================================================================================
+Chapter 6. Match
+================================================================================
+
+  (M-Scrut)
+    E; G |- t : I_i qs vs
+  (M-Ret)
+    E; G, ys : Ys_i[ps := qs], x : I_i qs ys |- P : s
+  (M-Elim)
+    s is in Elim(I_i)
+  (M-Branch)
+    for each constructor C_ij : forall (ps : Ps) (zs : Zs_j), I_i ps us_j
+    of I_i, writing Zs' for Zs_j[ps := qs] and us' for us_j[ps := qs]:
+    E; G, zs : Zs' |- b_j : P[ys := us', x := C_ij qs zs]
+  (M-Cover)
+    there is exactly one branch for each constructor of I_i,
+    in declaration order, binding exactly its arguments
+  ----------------------------------------------------------------- [T-Match]
+  E; G |- match t as x in I_i _ ys return P with (| C_ij zs => b_j)* end
+        : P[ys := vs, x := t]
+
+Example. With `e : eq A x y`:
+
+  match e as h in eq _ _ z return eq B (f x) (f z) with
+  | eq_refl => eq_refl B (f x)
+  end
+
+  (M-Ret)
+    z : A, h : eq A x z |- eq B (f x) (f z) : Prop
+  (M-Elim)
+    Prop is in Elim(eq)
+  (M-Branch)
+    eq_refl has no argument and its index is x:
+    eq_refl B (f x) : eq B (f x) (f x)
+  result
+    eq B (f x) (f y)
+
+The kernel represents P as `fun (ys) (x) => P` and each branch as
+`fun (zs) => b`. That is a representation, not a different rule.
+
+
+================================================================================
+Chapter 7. Fix and the Guard Condition
+================================================================================
+
+7.1 Typing
+--------------------------------------------------------------------------------
+
+Write F_i for `forall (xs_i : As_i), B_i`, the type of f_i.
+
+  (F-Type)
+    for each i:  E; G |- F_i : s_i
+  (F-Struct)
+    for each i:  the type of the struct argument of f_i, in weak head
+    normal form, is `I qs vs` for an inductive family I
+  (F-Body)
+    for each i:  E; G, fs : Fs, xs_i : As_i |- t_i : B_i
+  (F-Guard)
+    for each i:  t_i is guarded (7.2)
+  ------------------------------------------------------------------ [T-Fix]
+  E; G |- fix f_k { f_i (xs_i : As_i) {struct x_i} : B_i := t_i } : F_k
+
+7.2 The guard condition
+--------------------------------------------------------------------------------
+
+Fix one body t_i and let x be its struct argument. The condition is checked on
+the term as written. No reduction is performed.
+
+S is a set of variables known to be strictly smaller than x. It starts empty.
+
+A term u is *strict* (relative to S) when:
+
+  [G-Var]   u is a variable in S; or
+  [G-Fun]   u is `u' v` and u' is strict.
+
+A term is *guarded* (relative to S) when one of the following applies.
+
+  [G-App]    The term is `f_j us` for a function f_j of the block, `us` has at
+  least n_j elements, the n_j-th element is strict, and every element of `us`
+  is guarded. A function of the block that is not applied to at least n_j
+  arguments is not guarded.
+
+  [G-Match]  The term is `match u as y in I _ ys return P with ...`, u is
+  guarded, and every branch `C zs => b` is guarded relative to S', where
+
+    S' = S + the recursive arguments among zs    if u is x or u is strict
+    S' = S                                       otherwise
+
+  [G-Type]   No function of the block occurs in the type of a binder
+  (`forall`, `fun`, `let`, the binders of a nested `fix`), in the return
+  clause of a `match`, or in any As_j or B_j.
+
+  [G-Sub]    In every other case the term is guarded when all of its
+  immediate subterms are guarded. A variable bound on the way is not added
+  to S.
+
+7.3 Examples
+--------------------------------------------------------------------------------
+
+  Body of `fix f (n : nat) {struct n}`                     Verdict
+  -------------------------------------------------------  --------------------
+  match n with O => a | S p => g (f p)                     guarded: p is in S
+  match n with O => a | S p =>
+    match p with O => b | S q => f q                       guarded: q is in S
+  f n                                                      rejected by [G-App]
+  match n with O => a | S p => f (pred n)                  rejected by [G-App]
+  match n with O => a | S p => h f                         rejected by [G-App]
+  match m with O => a | S p => f p    (m is not n)         rejected by [G-App]
+
+  Body of `fix F (x : A) (a : Acc A R x) {struct a}`
+  -------------------------------------------------------  --------------------
+  match a with Acc_intro h =>
+    g x (fun (y : A) (r : R y x) => F y (h y r))           guarded: h is in S,
+                                                          `h y r` by [G-Fun]
+
+`f (pred n)` is rejected although `pred n` reduces to `p`: the condition does
+not reduce.
+
+
+================================================================================
+Chapter 8. Declarations and Environments
+================================================================================
+
+  c not declared in E    E; . |- A : s
+  -------------------------------------- [D-Ax]
+  E |- Axiom c : A ok
+
+  c not declared in E    E; . |- A : s    E; . |- t : A
+  ------------------------------------------------------- [D-Def]
+  E |- Definition c : A := t ok
+
+  c not declared in E    E; . |- A : s    E; . |- t : A
+  ------------------------------------------------------- [D-Thm]
+  E |- Theorem c : A := t ok
+
+  the conditions of 5.2
+  ------------------------ [D-Ind]
+  E |- Inductive ... ok
+
+Consequences:
+
+  * A declaration is closed: it has no free variable and no hole.
+  * A declaration refers only to earlier declarations of E. A recursive
+  definition is a `Definition` whose body is a `fix`.
+  * `Definition` is transparent ([R-Delta]). `Theorem` is opaque: its body is
+  checked, stored, and never unfolded.
+  * A rejected declaration leaves E unchanged.
+
+Assumptions(c) is the set of axioms reachable from c through the types and
+bodies of the declarations it refers to, including the bodies of theorems.
+
+
+================================================================================
+Chapter 9. Universe Polymorphism (reserved)
+================================================================================
+
+Levels become expressions
+
+  l ::= n | u | l+1 | max(l, l)
+
+and a declaration may bind level variables that each use instantiates. `<=` on
+level expressions holds when it holds under every assignment of naturals to
+the variables. No rule of Chapters 2 through 8 changes shape. Until this
+chapter is written, a level is a numeral. This chapter is planned for LoL BETA.
+
+
+================================================================================
+Chapter 10. Relation to Rocq (informative)
+================================================================================
+
+10.1 Deliberate differences
+--------------------------------------------------------------------------------
+
+  Rocq                                    LoL Core
+  --------------------------------------  ------------------------------------
+  universe graph with named levels        numeral levels (Chapter 9 later)
+  `Set` is a sort                         `Set` abbreviates `Type@{0}`
+  SProp, primitive projections,
+  primitive integers, coinductive types   absent
+  nested inductive types                  rejected by [I-Pos]
+  non-uniform parameters                  rejected by [I-Uniform]
+  guard condition reduces terms and
+  tracks subterms through `match`         7.2 does neither
+  sub-singleton elimination in a mutual
+  block                                   one-family blocks only ([I-Elim-Sub])
+  modules, functors, sections             absent from the theory
+
+In each row LoL Core accepts no more than Rocq does.
+
+10.2 Cases checked against Rocq 9.0.0
+--------------------------------------------------------------------------------
+
+Run with `rocq compile -noinit`, with `Type@{0}` as `Set` and levels 1 and 2
+as global universes `Set < L1 < L2`.
+
+  Rule                  Case                                         Rocq
+  --------------------  -------------------------------------------  --------
+  [S-Prop], [S-Type]    Prop : Type@{L1},  Set : Type@{L1}           accepts
+  [C-Prop]              a proposition used at type Set               accepts
+  [S-Prop]              Prop : Set                                   rejects
+  [P-Max]               forall (A : Type@{L1}) (B : Set), Prop
+                          : Type@{L2}                                accepts
+  [P-Max]               forall (A : Type@{L1}), A : Type@{L1}        rejects
+  [P-Prop]              forall (A : Type@{L1}) (P : Prop), P : Prop  accepts
+  [S-Type]              Type@{L1} : Type@{L1}                        rejects
+  [I-Pos]               mk : (bad -> False) -> bad                   rejects
+  [I-Univ]              big : Set := mkbig : Set -> big              rejects
+  [I-Elim-Prop]         a proof of `or A B` eliminated into Set      rejects
+  [I-Elim-Sub]          a proof of `False` eliminated into Set       accepts
+  [G-App]               fix loop f b := loop f b                     rejects

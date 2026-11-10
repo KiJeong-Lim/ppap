@@ -73,6 +73,16 @@ appendArithStore (leftComparisons, leftFormulas) (rightComparisons, rightFormula
 nullArithStore :: ArithStore -> Bool
 nullArithStore (comparisons, formulas) = null comparisons && null formulas
 
+-- A comparison with a ground truth value needs no solver while no premise is
+-- in scope: a true one is entailed by every store, a false one by no
+-- consistent store. The solver represents a literal by that many successors.
+groundComparison :: ArithStore -> Either ErrMsg Bool -> Maybe Bool
+groundComparison premises result = case result of
+    Right True -> Just True
+    Right False
+        | nullArithStore premises -> Just False
+    _ -> Nothing
+
 bindArithStore :: VarBinding -> ArithStore -> ArithStore
 bindArithStore theta store@(comparisons, formulas)
     = assertVarBinding theta `seq`
@@ -1625,6 +1635,8 @@ runTransition env free_lvars stack = assertStack stack `seq` go stack where
     arithOpCheck source_call_id call_id premises ctx cells predicate args@[_, _] op
         = case addDefinitionConstraints boundArgs ctx of
             Nothing -> failure
+            Just definedCtx
+                | Just okay <- groundComparison premises groundResult -> if okay then success (definedCtx, cells) else failure
             Just definedCtx -> case liftConstraint candidate of
                 Nothing -> case groundResult of
                     Right okay -> if okay then success (definedCtx, cells) else failure

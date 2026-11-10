@@ -44,13 +44,13 @@ runService env premises ctx request = case request of
     Evaluate lhs rhs -> return (evaluateService premises ctx lhs rhs)
     Compare predicate args -> comparisonService env premises ctx predicate args
     EqualityDefinitions args -> return $ case args of
-        [typ, lhs, rhs]
-            | natType typ || mentionsArithmetic lhs || mentionsArithmetic rhs ->
+        [_, lhs, rhs]
+            | equalityUsesArithmetic args ->
                 maybe ServiceFailure (\defined -> ServiceContinue defined premises) (addDefinitionConstraints [bound lhs, bound rhs] ctx)
         _ -> ServiceContinue ctx premises
     EqualityDecision args -> return $ case args of
-        [typ, lhs, rhs]
-            | natType typ || mentionsArithmetic lhs || mentionsArithmetic rhs -> case arithmeticEquality (bound lhs) (bound rhs) of
+        [_, lhs, rhs]
+            | equalityUsesArithmetic args -> case arithmeticEquality (bound lhs) (bound rhs) of
                 ArithEqTrue -> ServiceEquality (Just True) ctx premises
                 ArithEqFalse -> ServiceEquality (Just False) ctx premises
                 ArithEqUnknown -> ServiceEquality Nothing ctx premises
@@ -94,6 +94,13 @@ primitiveArg :: [TermNode] -> Maybe TermNode
 primitiveArg [arg] = Just arg
 primitiveArg [_, arg] = Just arg
 primitiveArg _ = Nothing
+
+-- Every other equality is decided by the native search alone: its two
+-- service replies do not depend on the context.
+equalityUsesArithmetic :: [TermNode] -> Bool
+equalityUsesArithmetic args = case args of
+    [typ, lhs, rhs] -> natType typ || mentionsArithmetic lhs || mentionsArithmetic rhs
+    _ -> False
 
 natType :: TermNode -> Bool
 natType typ = case rewrite NF typ of
@@ -145,6 +152,8 @@ comparisonService env premises ctx predicate args = case (predicate, args) of
         candidate = arithmeticConstraintCandidate (_QueryCallId env) (_ContextThreadId ctx) predicate args boundArgs
         compareWith operator = case addDefinitionConstraints boundArgs ctx of
             Nothing -> return ServiceFailure
+            Just defined
+                | Just okay <- groundComparison premises (groundResult operator) -> return (if okay then ServiceContinue defined premises else ServiceFailure)
             Just defined -> case liftConstraint candidate of
                 Nothing -> case groundResult operator of
                     Right okay -> return (if okay then ServiceContinue defined premises else ServiceFailure)

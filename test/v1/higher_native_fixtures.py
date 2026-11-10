@@ -182,6 +182,18 @@ b.fact('eq', b.eq(b.const('a'), b.const('a')))
 add('yielded_equality_resume', b, b.eq(b.const('a'), b.const('a')), [[0]])
 
 # A rejected leaf resumes through many failed alternatives without blocking.
+# The second clause for p matches every call and fails only in its body.
+b = Builder()
+b.symbol('print', 19)
+b.fact('p', b.call('p', b.const('blue')))
+b.fact('p', b.call('if', b.call('p', b.const('blue')), b.call('absent')))
+b.fact('walk', b.call('if', b.call('walk', b.nat(0)), b.call('print', b.const('done'))))
+body = b.call('and', b.call('p', b.const('blue')), b.call('walk', b.idx(0)))
+b.fact('walk', b.pi(b.call('if', b.call('walk', b.app(b.const('s'), b.idx(0))), body)))
+add('yield_failed_backtracking', b, b.call('walk', b.nat(5000)), [[0]])
+
+# A clause whose argument has a different rigid head is never tried, so the
+# same walk leaves no choice point per level: rejection ends the search at once.
 b = Builder()
 b.symbol('print', 19)
 b.fact('p', b.call('p', b.const('blue')))
@@ -189,7 +201,28 @@ b.fact('p', b.call('p', b.const('red')))
 b.fact('walk', b.call('if', b.call('walk', b.nat(0)), b.call('print', b.const('done'))))
 body = b.call('and', b.call('p', b.const('blue')), b.call('walk', b.idx(0)))
 b.fact('walk', b.pi(b.call('if', b.call('walk', b.app(b.const('s'), b.idx(0))), body)))
-add('yield_failed_backtracking', b, b.call('walk', b.nat(5000)), [[0]])
+add('excluded_clause_choice', b, b.call('walk', b.nat(5000)), [[0]])
+
+# A deterministic descent leaves nothing behind: its heap stays near the size
+# of the program however long it runs.
+b = Builder()
+b.fact('descend', b.call('descend', b.nat(0)))
+b.fact('descend', b.pi(b.call('if', b.call('descend', b.app(b.const('s'), b.idx(0))), b.call('descend', b.idx(0)))))
+add('collected_descent', b, b.call('descend', b.nat(20000)), [[0]])
+
+# The exclusion looks only at rigid heads: a flexible or nominal argument and
+# a clause variable keep their clauses, in source order.
+b = Builder(1)
+b.fact('q', b.call('q', b.call('f', b.const('a')), b.const('one')))
+b.fact('q', b.call('q', b.call('g', b.const('a')), b.const('two')))
+b.fact('q', b.pi(b.call('q', b.idx(0), b.const('three'))))
+b.fact('q', b.call('q', b.call('g', b.const('b')), b.const('four')))
+add('excluded_clause_order', b, b.call('q', b.call('g', b.const('a')), b.var()), [b.answer('two'), b.answer('three')])
+b = Builder(1)
+b.fact('q', b.call('q', b.call('f', b.const('a')), b.const('one')))
+b.fact('q', b.call('q', b.call('g', b.const('a')), b.const('two')))
+query = b.sigma(b.call('q', b.idx(0), b.var()))
+add('excluded_clause_flexible', b, query, [b.answer('one'), b.answer('two')])
 
 # Only identities in normalized pending frames belong in compact metadata.
 b = Builder(1)
