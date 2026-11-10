@@ -37,7 +37,9 @@ enum HolV2Event {
 HolV2Machine *hol_v2_create(const int64_t *code, size_t length);
 void hol_v2_destroy(HolV2Machine *machine);
 const char *hol_v2_error(const HolV2Machine *machine);
-/* -1 error, 0 exhausted, 1 answer, 2 cancellation yield, 3 host service. */
+/* -1 error, 0 exhausted, 1 answer, 2 cancellation yield, 3 host service.
+    * Clause trials and failed-choice traversal share the scheduler budget;
+    * a yielded search can be cloned/restored before the next call. */
 int hol_v2_next(HolV2Machine *machine);
 
 /* Buffers are owned by the machine until its next mutating API call.
@@ -60,12 +62,18 @@ uint64_t hol_v2_host_state(const HolV2Machine *machine);
 
 size_t hol_v2_frames_size(HolV2Machine *machine);
 int hol_v2_frames(HolV2Machine *machine, int64_t *output, size_t capacity);
+/* Compact metadata from pending frames: [count, raw VAR/NOMINAL wires...].
+    * Preserves all occurrences in frame traversal order: repeated type-binder
+    * declarations can affect the metadata of later variables and nominals. */
+size_t hol_v2_declarations_size(HolV2Machine *machine);
+int hol_v2_declarations(HolV2Machine *machine, int64_t *output, size_t capacity);
 
 /* Bindings: [count, lhs-term-wire, rhs-term-wire, ...]. result=0 rejects this branch;
     * 1 continues. For EQUALITY use 2=true, 3=false, 4=unknown (after definitions);
     * matching local hypotheses take precedence over that result.
     * IMPLY returns a lexical premise token; other events retain the old token.
     * host state tokens are immutable host-owned values saved in choice points.
+    * Equality responses schedule clause search; search errors are reported by next.
     */
 int hol_v2_resume(HolV2Machine *machine, int result, uint64_t host_state,
     uint64_t premises, const int64_t *bindings, size_t length);

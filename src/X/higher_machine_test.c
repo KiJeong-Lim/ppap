@@ -1,4 +1,5 @@
 #include "higher_machine.h"
+#include "term.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -247,11 +248,152 @@ static void snapshot_allocations(const TestCase *test)
     printf("PASS snapshot allocation cleanup (%zu failure points)\n", allocations);
 }
 
+static void yielded_search(const TestCase *test, int equality)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    if (equality) {
+        assert(hol_v2_next(machine) == 3);
+        int64_t empty[] = { 0 };
+        assert(hol_v2_resume(machine, 4, 0, 0, empty, 1) == 1);
+    }
+    assert(hol_v2_next(machine) == 2);
+    HolV2Machine *during = hol_v2_clone(machine);
+    assert(during);
+    assert(next_answer(machine) == 1 && next_answer(machine) == 0);
+    assert(hol_v2_restore(machine, during) == 1);
+    assert(next_answer(machine) == 1 && next_answer(machine) == 0);
+    hol_v2_destroy(during);
+    hol_v2_destroy(machine);
+}
+
+static void yielded_backtracking(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    int status;
+    do { status = hol_v2_next(machine); } while (status == 2);
+    assert(status == 3);
+    int64_t info[6], empty[] = { 0 };
+    assert(hol_v2_event_info(machine, info, 6) == 1 && info[0] == HV2_EVENT_PRIMITIVE);
+    assert(hol_v2_resume(machine, 0, 0, 0, empty, 1) == 1);
+    assert(hol_v2_next(machine) == 2);
+    HolV2Machine *during = hol_v2_clone(machine);
+    assert(during);
+    assert(next_answer(machine) == 0);
+    assert(hol_v2_restore(machine, during) == 1);
+    assert(next_answer(machine) == 0);
+    hol_v2_destroy(during);
+    hol_v2_destroy(machine);
+}
+
+static void collect_term_declarations(const int64_t *wire, size_t length, size_t *offset, int64_t *output, size_t *used)
+{
+    size_t remaining = 1;
+    while (remaining) {
+        assert(*offset < length);
+        size_t start = (*offset)++;
+        int64_t tag = wire[start];
+        --remaining;
+        size_t fields;
+        switch (tag) {
+            case HT_VAR: fields = 4; break;
+            case HT_NOMINAL: fields = 3; break;
+            case HT_CONST: fields = 2; break;
+            case HT_APP: fields = 1; remaining += 2; break;
+            case HT_LAM: fields = 1; ++remaining; break;
+            case HT_INDEX: fields = 1; break;
+            case HT_WILD: fields = 0; break;
+            case HT_NAT:
+                assert(*offset < length && wire[*offset] > 0);
+                fields = 1 + (size_t) wire[*offset];
+                break;
+            default: assert(!"invalid term wire"); return;
+        }
+        assert(fields <= length - *offset);
+        *offset += fields;
+        if (tag == HT_VAR || tag == HT_NOMINAL) {
+            ++output[0];
+            for (size_t i = start; i < *offset; ++i) output[(*used)++] = wire[i];
+        }
+    }
+}
+
+static void compact_declarations(const TestCase *test)
+{
+    HolV2Machine *machine = hol_v2_create(test->code, test->length);
+    assert(machine);
+    for (;;) {
+        int status = hol_v2_next(machine);
+        if (status == 2) continue;
+        assert(status == 3);
+        int64_t info[6], empty[] = { 0 };
+        assert(hol_v2_event_info(machine, info, 6) == 1);
+        if (info[0] == HV2_EVENT_PRIMITIVE) break;
+        assert(hol_v2_resume(machine, 1, 0, 0, empty, 1) == 1);
+    }
+    HolV2Machine *before = hol_v2_clone(machine);
+    assert(before);
+    size_t frames = hol_v2_frames_size(machine);
+    int64_t *wire = malloc(frames * sizeof(*wire));
+    int64_t *expected = malloc(frames * sizeof(*expected));
+    int64_t *actual = malloc(frames * sizeof(*actual));
+    assert(wire && expected && actual);
+    assert(hol_v2_frames(machine, wire, frames) == 1);
+    expected[0] = 0;
+    size_t offset = 1, words = 1;
+    for (int64_t i = 0; i < wire[0]; ++i) {
+        assert(frames - offset >= 3);
+        size_t hypotheses = (size_t) wire[offset + 2];
+        offset += 3;
+        for (size_t j = 0; j <= hypotheses; ++j) {
+            collect_term_declarations(wire, frames, &offset, expected, &words);
+        }
+    }
+    assert(offset == frames && expected[0] == 8 && frames > words);
+    assert(hol_v2_declarations_size(machine) == words);
+    assert(hol_v2_declarations(machine, actual, words) == 1);
+    assert(!memcmp(actual, expected, words * sizeof(*expected)));
+    assert(hol_v2_restore(machine, before) == 1);
+    assert(hol_v2_declarations_size(machine) == words);
+    assert(hol_v2_declarations(machine, actual, words) == 1);
+    assert(!memcmp(actual, expected, words * sizeof(*expected)));
+    hol_v2_destroy(machine);
+    free(wire);
+    free(expected);
+    free(actual);
+
+    machine = hol_v2_clone(before);
+    assert(machine);
+    allocation_count = 0;
+    fail_at = SIZE_MAX;
+    assert(hol_v2_declarations_size(machine) == words);
+    size_t allocations = allocation_count;
+    fail_at = 0;
+    hol_v2_destroy(machine);
+    for (size_t i = 1; i <= allocations; ++i) {
+        machine = hol_v2_clone(before);
+        assert(machine);
+        allocation_count = 0;
+        fail_at = i;
+        assert(hol_v2_declarations_size(machine) == 0);
+        fail_at = 0;
+        assert(*hol_v2_error(machine));
+        hol_v2_destroy(machine);
+    }
+    hol_v2_destroy(before);
+    printf("PASS compact metadata allocation cleanup (%zu failure points)\n", allocations);
+}
+
 int main(void)
 {
     size_t count = sizeof(cases) / sizeof(*cases);
     for (size_t i = 0; i < count; ++i) {
         check(&cases[i], 0);
+        if (!strcmp(cases[i].name, "yielded_clause_search")) yielded_search(&cases[i], 0);
+        if (!strcmp(cases[i].name, "yielded_equality_resume")) yielded_search(&cases[i], 1);
+        if (!strcmp(cases[i].name, "yield_failed_backtracking")) yielded_backtracking(&cases[i]);
+        if (!strcmp(cases[i].name, "compact_frame_declarations")) compact_declarations(&cases[i]);
         printf("PASS %s\n", cases[i].name);
     }
     snapshots(&cases[count - 2]);

@@ -55,10 +55,12 @@
 
 1. `Hol V1` (바이트코드 실행 및 기존 기능 이식 완료):
    Hol 프로젝트의 첫 번째 정식 넘버링 (v1.0.0).
-   - `doc/HolV1.txt` 참고. Haskell 바이트코드 컴파일러와 C 실행기를 구현했다. 고차 통일, pi/sigma, 동적 가정, 백트래킹과 cut은 C에서 실행하며 BETA 인터프리터로 넘기는 경로는 없다. 산술·Presburger·입출력·디버거 UI는 Haskell 서비스를 재사용한다.
+   - `doc/HolV1.txt` 참고. Haskell 바이트코드 컴파일러와 C 실행기를 구현했다. 고차 통일, pi/sigma, 동적 가정, 백트래킹과 cut은 C에서 실행하며 BETA 인터프리터로 넘기는 경로는 없다. 등식의 호스트 판정과 산술·Presburger·입출력·디버거 UI는 Haskell 서비스를 재사용한다.
    - 바이트코드 생성 시 확정된 술어 별칭을 정적 CALL로 바꾸고, 도달 가능한 절이 1차 범위이면 자동으로 1차 전용 실행기를 선택한다. `--general`로 일반 실행기를 강제할 수 있다.
-   - `example/einstein-v1.sh`는 최적화 빌드 후 V1을 실행한다. `example/einstein-teyjus.sh`로 Teyjus v2.1.1과 비교했다. 절 머리 변수의 첫 등장에서는 기존 인자를 직접 참조하고, 남은 변수는 본문 진입 전에 준비하도록 개선했다. 같은 Einstein sigma 쿼리의 사전 컴파일·전체 탐색 중앙값은 Hol 자동 선택 0.00884초(직전 실행 파일 0.01377초), Teyjus 0.01151초다. 이 비교에서는 Hol의 실행 시간이 약 23% 짧다. 일반 경로 강제 실행은 여전히 2.138초로 별도 최적화가 필요하다. 조건과 측정값은 `doc/HolV1.txt`, `example/teyjus/environment-results.json`, `example/teyjus/environment-profile.json` 참고. 기존 result/profile JSON들은 이전 측정 기록으로 보존한다.
-   - 최적화된 native 배치 루프에서도 시간 제한과 Ctrl-C가 처리되도록 FFI가 배치 사이에 Haskell 스케줄러로 제어를 넘긴다. 1차·고차 취소 회귀 검사를 `-O2`로 실행한다.
+   - `example/einstein-v1.sh`는 최적화 빌드 후 V1을 실행한다. 감사 수정 후 `example/einstein-teyjus.sh`로 d927675 실행 파일 및 Teyjus v2.1.1과 다시 비교했다. CPU 0에서 예열 2회·측정 9회, 같은 Einstein sigma 쿼리의 사전 컴파일·전체 탐색 중앙값은 일반 경로 2.29326초 → 1.77747초(약 22.5% 단축), 자동 선택 경로 0.00896초 → 0.00907초다. Teyjus는 0.01216초였다. 자동 선택의 우위는 1차 특화 경로 기준이며, 일반 경로는 여전히 약 146배 느리다. 조건과 측정값은 `doc/HolV1.txt`, `example/teyjus/audit-results.json`, `example/teyjus/audit-profile.json` 참고. 이전 result/profile JSON들은 보존한다.
+   - 실패한 절 후보와 선택점 탐색도 native 배치 예산에 포함하며, FFI가 배치 사이에 Haskell 스케줄러로 제어를 넘긴다. 단일 항 연산은 여전히 원자적이므로 모든 입력에서 Ctrl-C 응답 시간의 고정 상한을 보장하지는 않는다. 1차·고차 취소 회귀 검사를 `-O2`로 실행한다.
+   - 감사 후 일반 실행기에 전역 술어 색인과 지역 절의 보수적인 머리 필터를 추가하고, 다음 후보가 없을 때 선택점을 생략했다. 비디버그 서비스에는 전체 프레임 대신 순서를 보존한 변수·명목 상수 선언을 전달한다. 전체 변수 상태 출력은 유지하므로 서비스 비용이 완전히 해결된 것은 아니다.
+   - 폐기된 UID는 구간으로 압축하고 살아 있는 UID만 해시에 남긴다. Haskell은 산술 양화 순서를 유지하도록 UID 간격을 구간 단위로 예약하며 실제 관찰한 UID만 개별 매핑한다. 불변인 ground 생성자 항의 재사용으로 리스트 꼬리 복사를 줄였다. 변수가 포함된 항·고차 항의 재귀와 raw wire import에는 깊이 제한이 남아 있다. 아티팩트의 모든 기계 정수 필드에는 범위 검사를 적용했고, 심볼 검색을 색인화했으나 모듈 컴파일 캐시는 아직 없다.
    - `LoL ALPHA1`을 위한 Haskell 세션 API는 `Hol.V1.FullRuntime`: 답 열거, 스냅샷 저장/복원, 대화형 할당과 실행 자원 제한을 제공한다. BETA의 내부 Stack 표현 대신 native Snapshot을 사용한다.
 
 1. `LoL ALPHA1` (승인 대기 중):

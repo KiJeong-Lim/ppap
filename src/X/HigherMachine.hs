@@ -8,6 +8,7 @@ module X.HigherMachine
     , closeMachine
     , withMachine
     , nextStep
+    , nextStepForHost
     , resume
     , setDebugging
     , ensureSymbol
@@ -56,6 +57,7 @@ data NativeRequest
         , requestTerms :: [Int64]
         , requestState :: [Int64]
         , requestFrames :: [Int64]
+        , requestDeclarations :: [Int64]
         }
     deriving (Eq, Show)
 
@@ -79,6 +81,8 @@ foreign import ccall safe "hol_v2_event" c_event :: Ptr CMachine -> Ptr Int64 ->
 foreign import ccall safe "hol_v2_event_info" c_eventInfo :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
 foreign import ccall safe "hol_v2_frames_size" c_framesSize :: Ptr CMachine -> IO CSize
 foreign import ccall safe "hol_v2_frames" c_frames :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
+foreign import ccall safe "hol_v2_declarations_size" c_declarationsSize :: Ptr CMachine -> IO CSize
+foreign import ccall safe "hol_v2_declarations" c_declarations :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
 foreign import ccall safe "hol_v2_host_state" c_hostState :: Ptr CMachine -> IO Word64
 foreign import ccall safe "hol_v2_resume" c_resume :: Ptr CMachine -> CInt -> Word64 -> Word64 -> Ptr Int64 -> CSize -> IO CInt
 foreign import ccall safe "hol_v2_assign" c_assign :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
@@ -137,13 +141,19 @@ copyBuffer pointer size copy = do
         if status < 0 then Left <$> readError pointer else Right <$> peekArray (fromIntegral count) output
 
 nextStep :: Machine -> IO (Either String NativeStep)
-nextStep (Machine _ state) = withPointer state $ \pointer -> do
+nextStep = nextStepWith False
+
+nextStepForHost :: Machine -> IO (Either String NativeStep)
+nextStepForHost = nextStepWith True
+
+nextStepWith :: Bool -> Machine -> IO (Either String NativeStep)
+nextStepWith compact (Machine _ state) = withPointer state $ \pointer -> do
     status <- nextStatus pointer
     case status of
         -1 -> Left <$> readError pointer
         0 -> return (Right Exhausted)
         1 -> do
-            answer <- copyBuffer pointer c_answerSize c_answer
+            answer <- if compact then return (Right []) else copyBuffer pointer c_answerSize c_answer
             current <- copyBuffer pointer c_stateSize c_state
             token <- c_hostState pointer
             return (Answer token <$> answer <*> current)
@@ -151,17 +161,22 @@ nextStep (Machine _ state) = withPointer state $ \pointer -> do
             info <- copyBuffer pointer (const (return 6)) c_eventInfo
             terms <- copyBuffer pointer c_eventSize c_event
             current <- copyBuffer pointer c_stateSize c_state
-            frames <- copyBuffer pointer c_framesSize c_frames
+            let debug = case info of
+                    Right (4 : _) -> True
+                    _ -> False
+            frames <- if compact && not debug then return (Right [0]) else copyBuffer pointer c_framesSize c_frames
+            declarations <- if compact && not debug then copyBuffer pointer c_declarationsSize c_declarations else return (Right [0])
             return $ do
                 fields <- info
                 roots <- terms
                 bindings <- current
                 remaining <- frames
+                metadata <- declarations
                 case fields of
                     [kind, host, premises, scope, callId, auxiliary]
                         | all (>= 0) [kind, host, premises, scope, callId]
                         , toInteger scope <= toInteger (maxBound :: Int) ->
-                            Right (Request (NativeRequest (fromIntegral kind) (fromIntegral host) (fromIntegral premises) (fromIntegral scope) (fromIntegral callId) auxiliary roots bindings remaining))
+                            Right (Request (NativeRequest (fromIntegral kind) (fromIntegral host) (fromIntegral premises) (fromIntegral scope) (fromIntegral callId) auxiliary roots bindings remaining metadata))
                     _ -> Left "Hol V1 native machine returned invalid event metadata"
         _ -> return (Left "Hol V1 native machine returned an invalid status")
     where

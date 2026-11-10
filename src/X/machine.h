@@ -15,7 +15,8 @@ typedef struct HolV1Machine HolV1Machine;
     * The machine owns a decoded copy. A non-NULL result may carry a validation
     * error, reported by next/error. NULL means allocation failed. */
 HolV1Machine *hol_v1_create(const int64_t *code, size_t length);
-/* 1: answer, 0: exhausted, -1: error, 2: instruction-budget yield.
+/* 1: answer, 0: exhausted, -1: error, 2: scheduler-budget yield.
+    * Instructions, clause trials and backtracking consume the same budget.
     * On 2 the caller may service cancellation and call next again. */
 int hol_v1_next(HolV1Machine *machine);
 /* An answer contains every query slot, in order, in prefix form:

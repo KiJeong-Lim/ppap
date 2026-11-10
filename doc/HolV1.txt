@@ -84,6 +84,11 @@ The version 1 artifact loader reads the emitted decimal word table directly
 with Int64 bounds checks. Other previously accepted Read notation uses a
 bounded fallback. Both paths retain the full bytecode and metadata validator;
 this changes neither the saved format nor the compiler's instruction set.
+Both artifact formats also read machine-sized metadata integers through
+Integer and reject values outside the destination type before conversion.
+This includes nested identities, type variables, source positions and numeric
+tags. Natural literals and Integer-valued Presburger fields retain arbitrary
+precision. Overflow cannot wrap a saved index or identity into a valid value.
 
 Version 2 uses a compact executable term graph. Its signed 64-bit word header:
 
@@ -103,6 +108,59 @@ APP/LAM children refer to earlier templates. The native EXEC loop interprets
 logical roles and predicate calls over instantiated graphs. Quantifier scopes,
 local clauses and continuations are native state, not Haskell AST evaluation.
 src/X/higher_machine.h and src/X/term.h specify the C ABI and prefix term wire.
+
+General search and host services
+-------------------------------
+Version 2 indexes global facts by their dense predicate-symbol IDs. Each call
+merges its symbol chain with the dynamically classified (-1) chain in original
+source order. Local hypotheses retain their lexical order; a conservative
+rigid-head hint skips unrelated heads before instantiation. Flexible,
+computational or unrecognized heads still take the ordinary matching path.
+This local filter avoids unnecessary instantiation but still scans the local
+hypothesis chain.
+
+Ordinary calls search global clauses before local hypotheses. Equality keeps
+its distinct local-first policy: once a local head matches, failure of its
+body does not enable the arithmetic/global fallback. Choices are omitted only
+when the remaining search phases have no candidate. Cut barriers, snapshots
+and answer order retain these rules. Equality still uses its host decision
+service and ordered clause search; it is not replaced by unconditional native
+unification.
+
+Nondebug host requests carry compact variable/nominal declarations from pending
+frames, preserving their identity, type and scope information without sending
+the complete frame trees to Haskell. Every declaration occurrence remains in
+the original frame traversal order, including repeated identities and shared
+hypothesis chains: re-enrolling type binders can affect later metadata decoding.
+Debug requests retain full frames. The host-facing
+answer path also omits the unused separate query-answer buffer; the public
+X.HigherMachine.nextStep interface retains its full output.
+
+Every service request still exports the complete variable-binding state and
+pending disagreements. Existing arithmetic constraints and callbacks require
+that context, including at SETTLE events with no event terms. Compact declaration
+collection still traverses normalized pending terms, and state export still
+scans the native heap. This reduces redundant transfer and decoding without
+eliminating all growth-dependent service costs.
+
+The term store's identity hash contains live identities. Retired UIDs are kept
+as exact merged intervals, so rollback removes hash entries without forgetting
+which identities have expired. Consecutive retirement histories compress well;
+sparse histories can still require multiple intervals. Authorized snapshot and
+assignment replay preserve these records. The host bridge reserves ordered
+Unique ranges for unseen native UID gaps instead of allocating a host map entry
+for every skipped UID. The built-in UniqueT reserves a range in constant time;
+observed identities retain native creation order and their existing mapping.
+
+Immutable, already-normal constructor trees can be reused during normalization,
+substitution and binding. The cache excludes variables, nominal constants,
+indices, lambdas, wildcards and opaque formula symbols; changing successor or
+opaque-symbol configuration refreshes it. In particular, binding a variable
+does not turn a term that contains that variable into an immutable cached tree.
+Equality and export traverse list tails iteratively. Native tests cover a
+10,000-element ground list without copying each suffix during binding.
+This does not remove recursive limits for raw term-wire import or every
+nonground traversal; large service payloads can still require substantial work.
 
 Embedding API
 -------------
@@ -154,6 +212,9 @@ rewinds logical state and assignments. Unique identities are never recycled.
 External IO is not rewound. Pending assignments are checked and retained across
 native alternatives until a snapshot restores the earlier assignment state.
 The current work-limit setting is configuration and survives restoration.
+Snapshots also retain a clause search or backtracking step paused at a batch
+boundary. Equality service responses schedule search; errors encountered while
+trying its clauses are reported by the subsequent native next call.
 
 RuntimeEnv's _StackRef provides the current native pending path for inspection,
 including hypotheses and types. C choice points are lazy, so this view does not
@@ -187,16 +248,29 @@ dynamic hypotheses, arithmetic and other unsupported reachable code retain
 the full engine. This is a conservative optimization, not a decision procedure
 for whether an arbitrary higher-order program will happen to run first-order.
 
+Compiler interning and host symbol registration use lookup maps. Source queries
+are still compiled separately, including compilation of their required clauses;
+there is no persistent compiled-module cache. Artifact replay avoids this
+per-query source compilation work.
+
 Ownership and resource limits
 -----------------------------
-All C and FFI code lives in src/X/. Safe FFI calls yield at answers, service
-requests and instruction batches, allowing interruption of unbounded search.
+All C and FFI code lives in src/X/. The executors return at answers, service
+requests and scheduler batches. Instructions, failed clause trials and failed
+choice traversal consume the batch budget, so a long run of rejected candidates
+also yields. General equality resume schedules its search rather than scanning
+the whole candidate table inside the service response.
 At batch boundaries the host explicitly yields to Haskell's scheduler before
 checking pending exceptions, so optimized loops also process timer and signal
 handlers. Cancellation regressions are compiled with -O2.
-Normalization/unification/import/export also have a per-operation work bound:
+The general term engine's normalization/unification/import/export also have a
+per-operation work bound:
 5,000,000 node visits by default, configurable with a positive setWorkLimit.
-Nested operations share the bound. Term nesting is limited to 8192 levels.
+Nested operations share the bound. Remaining recursive term traversals,
+including raw term-wire import, limit recursion to 8192 levels. Topological
+template loading and iterative ground-list equality/export do not impose that
+limit on list length. A single term operation remains atomic; batch cancellation
+does not promise a fixed Ctrl-C wall-clock latency for every possible term.
 Exceeding a resource bound is an explicit execution error, not logical failure;
 a caller may raise the work limit and restore an earlier snapshot to retry.
 
@@ -220,8 +294,22 @@ It removes backend banners and debugger inspection screens: the latter expose
 the intentionally different native continuation/choice-point representation.
 Separate API tests check the snapshot and assignment behavior behind that UI.
 
+Focused native regressions cover static/dynamic fact order, flexible and nominal
+local heads, equality fallback, cancellation during failed search and backtracking,
+and snapshots taken during a yielded search. Compact frame metadata is compared
+with the full bridge, including allocation failures. Identity tests distinguish
+retired UIDs from unused gaps and exercise authorized revival, hash deletion and
+snapshot restoration. Ground-term tests retain scope, opaque-term and rollback
+checks. Artifact tests reject overflowing nested metadata while preserving
+arbitrary-precision natural and Presburger values.
+
 Local performance (2026-11-10)
 ------------------------------
+The sections below record successive earlier revisions and their measurement
+protocols. Their present-tense comparisons describe those recorded runs, not a
+measurement of every later audit fix. The raw result files remain unchanged;
+new implementation claims above do not imply new benchmark numbers.
+
 Intel Core Ultra 9 275HX, GHC 9.6.7, optimized build, warm files:
 
     BETA executable, 3 runs:       median 1.852 s (1.842--1.912 s)
@@ -479,3 +567,96 @@ Raw timings and reproducible diagnostic/validation probes:
 Earlier result files remain historical records. Reproduce with the same
 benchmark command, using --output /tmp/environment-comparison.json and, when
 available, --baseline-ppap-bin pointing to the saved 06dd8ce executable.
+
+Audit repair diagnostics (2026-11-10)
+------------------------------------
+The audit's costs are addressed selectively without changing equality,
+quantifier ordering or flexible-variable scope semantics. In particular, an
+unapplied flexible head is not reused unconditionally: the original fresh-head
+operation can preserve dependencies that simple aliasing would restrict.
+Regression cases retain that distinction and the visible alias/type behavior.
+
+Deterministic probes compare d927675 with these changes:
+
+    100,000 create/restore iterations, identity/history payload capacity:
+        original 4,194,304 bytes; current 1,536 bytes.
+    Cloning that empty term store, identity/history payload capacity:
+        original 4,194,304 bytes; current 512 bytes.
+    1,200-element ground-list peeling, retained native heap nodes:
+        original 2,169,005; current 9,605.
+    10,000-element ground-list peeling:
+        current completes with 80,005 nodes.
+    512 unrelated global facts before a matching fact:
+        candidate descriptors inspected 513 -> 1; choices at answer 1 -> 0.
+    64 unrelated local hypotheses before a matching fact:
+        facts instantiated 65 -> 1; choices at answer 1 -> 0.
+
+The identity counts exclude allocator overhead and unrelated store buffers;
+they are not RSS measurements. Sparse retirement intervals, retained snapshots
+and observed host identities can still consume growing space. The ground-list
+probe constructs terms natively and peels them by unification; it is not a claim
+that arbitrary 10,000-element append queries now run in linear time. Exporting
+many bindings to overlapping list tails can still expand them quadratically.
+
+Runtime metadata membership also uses a symbol-identity set. A focused -O2
+probe with 800 existing type symbols reduced its three-sample median from
+50.130 ms to 1.418 ms. This times metadata enrichment only, not compilation or
+query execution. The exact probe sources, counts, commands and limitations are
+recorded in example/teyjus/audit-profile.json.
+
+Verification includes GHC 9.6.7 and 9.10.3 optimized builds, all 164 smoke checks,
+134 BETA conformance transcripts, 214 native/BETA HOPU cases, ASan/UBSan and
+allocation-failure tests. Further focused checks cover nested artifact overflow,
+UID creation order, repeated type declarations, snapshots during yielded search
+and cancellation in optimized first-order and general loops.
+
+Audit repair Einstein comparison (2026-11-10)
+--------------------------------------------
+The saved d927675 executable and the repaired executable were measured together
+on CPU 0, with 2 warmups and 9 measured rounds in shuffled order. Both use the
+same optimized GHC 9.6.7/C -O3 build settings. The saved executable's SHA256
+matches the ppap binary recorded in environment-results.json. Teyjus v2.1.1 was
+rebuilt from clean commit 5cb51538beee8b1ad6dbc47ee14d7491fefa6021 with OCaml
+4.14.1, Dune 3.23.1 and the release C -O2 flags; build details are in
+audit-profile.json.
+
+Every row uses sigma P\ P = answer, P Houses. and enumerates through exhaustion.
+Source timings include loading and compilation; replay timings exclude those
+steps but include process startup, artifact loading and captured output. Old
+and new Hol executables replay the same artifact emitted by the new compiler.
+
+                                      Source/query       Artifact replay
+    d927675, automatic selection       0.014090 s         0.008959 s
+    repaired, automatic selection      0.014265 s         0.009067 s
+    d927675, forced general             2.306223 s         2.293261 s
+    repaired, forced general            1.805920 s         1.777467 s
+    Teyjus, sigma query                       --          0.012160 s
+
+General replay is about 22.5% shorter in this paired comparison. Automatic
+replay remains similar: its median increased about 1.2%, with overlapping
+sample ranges. All 12 benchmark routes, including direct-call checks, produced
+the same complete answer sequence. The automatic route is first-order
+specialization; its advantage over Teyjus does not describe the general engine,
+which remains about 146 times slower on this query and above one second.
+
+Full service-state export, overlapping term expansion, remaining nonground
+recursive traversals and per-query compilation are still open costs. The audit
+fixes do not establish uniform memory bounds or linear fib_memo scaling: the
+total digits in its stored arbitrary-precision Fibonacci values already grow
+quadratically. Further measurements must distinguish that payload from runtime
+overhead. Raw samples, answer transcripts and code/binary hashes are in:
+
+    example/teyjus/audit-results.json
+    example/teyjus/audit-profile.json
+
+Reproduce with the optimized wrapper and the saved baseline executable:
+
+    bash example/einstein-teyjus.sh \
+        --teyjus-bin /tmp/ppap-teyjus-v2.1.1/_build/install/default/bin \
+        --teyjus-source /tmp/ppap-teyjus-v2.1.1 \
+        --baseline-ppap-bin /tmp/ppap-improve-20261110/baseline-ppap \
+        --baseline-label 'd927675 before audit fixes' \
+        --cpu 0 --runs 9 --warmups 2 --output /tmp/audit-comparison.json
+
+Supply --teyjus-build with the build command/flags used for the supplied tools.
+The /tmp paths above refer to the saved local measurement setup.

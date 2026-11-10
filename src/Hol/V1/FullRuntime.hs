@@ -49,10 +49,13 @@ data Bridge
         , bridgeConstants :: Map.Map Word64 Constant
         , bridgeConstantWires :: Map.Map Constant [Int64]
         , bridgeSymbols :: IntMap.IntMap FullSymbol
+        , bridgeSymbolIndices :: Map.Map String Int
         , bridgeLabeling :: Labeling
         , bridgeTypeBinders :: Map.Map MetaTVar MetaTVar
         , bridgeIdentities :: Map.Map Word64 Unique
+        , bridgeIdentityBlocks :: Map.Map Word64 UniqueBlock
         , bridgeNextIdentity :: Word64
+        , bridgeQuerySlots :: Word64
         }
     deriving ()
 
@@ -75,7 +78,9 @@ createSession env debugging program = do
                 Right (_, rows, _, _, _, _) -> rows
                 Left _ -> []
             wires = Map.fromList [(variable, [0, fromIntegral uid, 0, isType, meta]) | (uid, (variable, [isType, meta])) <- zip [0 :: Int ..] (zip (fullVariables program) slots)]
-            bridge = Bridge variables wires Map.empty Map.empty (fullSymbols program) (labelingWithRuntimeTypes env labeling) Map.empty Map.empty (fromIntegral (length (fullVariables program)))
+            indices = Map.fromList [(symbolIdentity symbol, index) | (index, symbol) <- IntMap.toList (fullSymbols program)]
+            querySlotCount = fromIntegral (length (fullVariables program))
+            bridge = Bridge variables wires Map.empty Map.empty (fullSymbols program) indices (labelingWithRuntimeTypes env labeling) Map.empty Map.empty Map.empty querySlotCount querySlotCount
             protected = env
                 { _PrintPrimitive = \ctx term -> _PrintPrimitive env ctx term `onException` Native.closeMachine machine
                 , _ReadPrimitive = \ctx term -> _ReadPrimitive env ctx term `onException` Native.closeMachine machine
@@ -146,7 +151,7 @@ nextSolutionActive session = do
     applyPending session
     debugging <- liftIO (readIORef (sessionDebugging session))
     liftIO (Native.setDebugging machine debugging) >>= nativeResult
-    result <- liftIO (Native.nextStep machine `onException` closeSession session) >>= nativeResult
+    result <- liftIO (Native.nextStepForHost machine `onException` closeSession session) >>= nativeResult
     case result of
         Native.Exhausted -> do
             liftIO (writeIORef (_StackRef env) [])
@@ -160,6 +165,7 @@ nextSolutionActive session = do
             (binding, disagreements) <- decodeState session (Native.requestState request)
             roots <- decodeRoots session (Native.requestTerms request)
             cells <- decodeFrames session (Native.requestFrames request)
+            void (decodeRoots session (Native.requestDeclarations request))
             ctx <- currentContext session (Native.requestHostState request) (Native.requestCallId request) binding disagreements
             premises <- lookupToken "arithmetic premise" (sessionPremises session) (Native.requestPremises request)
             if Native.requestKind request == 4 then do
@@ -479,17 +485,15 @@ encodeTerm session input = go (rewrite NF input) where
 internSymbol :: MonadIO m => Session -> FullSymbol -> ExceptT KernelErr m Int
 internSymbol session symbol = do
     bridge <- liftIO (readIORef (sessionBridge session))
-    case [index | (index, existing) <- IntMap.toList (bridgeSymbols bridge), same existing symbol] of
-        index : _ -> return index
-        [] -> do
+    case Map.lookup key (bridgeSymbolIndices bridge) of
+        Just index -> return index
+        Nothing -> do
             let index = IntMap.size (bridgeSymbols bridge)
             liftIO (Native.ensureSymbol (sessionMachine session) index (symbolRole symbol)) >>= nativeResult
-            liftIO (writeIORef (sessionBridge session) bridge { bridgeSymbols = IntMap.insert index symbol (bridgeSymbols bridge) })
+            liftIO (writeIORef (sessionBridge session) bridge { bridgeSymbols = IntMap.insert index symbol (bridgeSymbols bridge), bridgeSymbolIndices = Map.insert key index (bridgeSymbolIndices bridge) })
             return index
     where
-        same (ConstantSymbol lhs) (ConstantSymbol rhs) = lhs == rhs
-        same (PresburgerSymbol lhs names _) (PresburgerSymbol rhs names' _) = storeFormula lhs == storeFormula rhs && names == names'
-        same _ _ = False
+        key = symbolIdentity symbol
 
 instantiateMetadataType :: Map.Map MetaTVar MetaTVar -> MonoType Int -> MonoType Int
 instantiateMetadataType binders typ = case typ of
@@ -550,16 +554,30 @@ applyPending session = do
         liftIO (Native.assign (sessionMachine session) words) >>= nativeResult
         liftIO (writeIORef pendingRef mempty)
 
+-- Arithmetic quantifier order follows creation order, including unseen UID gaps.
 identityFor :: UniqueM m => Session -> Word64 -> ExceptT KernelErr m Unique
 identityFor session uid = do
     bridge <- liftIO (readIORef (sessionBridge session))
     case Map.lookup uid (bridgeIdentities bridge) of
         Just unique -> return unique
         Nothing
-            | uid < bridgeNextIdentity bridge -> throwE (BackendError "native identity collides with a query slot")
-            | otherwise -> reserve (bridgeNextIdentity bridge)
+            | uid < bridgeQuerySlots bridge -> throwE (BackendError "native identity collides with a query slot")
+            | uid < bridgeNextIdentity bridge -> case Map.lookupLE uid (bridgeIdentityBlocks bridge) of
+                Just (start, block) -> uniqueAt (uid - start) block >>= remember
+                Nothing -> throwE (BackendError "missing native identity reservation")
+            | otherwise -> do
+                let start = bridgeNextIdentity bridge
+                    count = toInteger uid - toInteger start + 1
+                when (count > toInteger (maxBound :: Int)) (throwE (BackendError "native identity reservation exceeds host range"))
+                reserved <- getUniqueBlock (fromInteger count)
+                block <- maybe (throwE (BackendError "native identity reservation exhausted")) return reserved
+                unique <- uniqueAt (uid - start) block
+                liftIO (modifyIORef' (sessionBridge session) (\current -> current { bridgeIdentityBlocks = if count > 1 then Map.insert start block (bridgeIdentityBlocks current) else bridgeIdentityBlocks current, bridgeNextIdentity = uid + 1 }))
+                remember unique
     where
-        reserve index = do
-            unique <- getUnique
-            liftIO (modifyIORef' (sessionBridge session) (\bridge -> bridge { bridgeIdentities = Map.insert index unique (bridgeIdentities bridge), bridgeNextIdentity = index + 1 }))
-            if index == uid then return unique else reserve (index + 1)
+        uniqueAt offset block
+            | toInteger offset > toInteger (maxBound :: Int) = throwE (BackendError "native identity offset exceeds host range")
+            | otherwise = maybe (throwE (BackendError "invalid native identity reservation")) return (lookupUniqueBlock (fromIntegral offset) block)
+        remember unique = do
+            liftIO (modifyIORef' (sessionBridge session) (\bridge -> bridge { bridgeIdentities = Map.insert uid unique (bridgeIdentities bridge) }))
+            return unique

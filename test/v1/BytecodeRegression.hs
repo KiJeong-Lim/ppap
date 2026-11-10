@@ -86,6 +86,21 @@ main = do
     forM_ ["-", "1,", "1,,2", "1 2", "0x", "1e2"] $ \table ->
         check "malformed artifact words must be rejected" (isNothing (readBytecodeArtifact (artifactWith "1" ("[" ++ table ++ "]"))))
     check "artifact missing closing bracket must be rejected" (isNothing (readBytecodeArtifact (artifactWith "1" "[0")))
+    let intOverflow = show (toInteger (maxBound :: Int) + 1)
+        intUnderflow = show (toInteger (minBound :: Int) - 1)
+        overflowingMetadata value =
+            [ "BytecodeArtifact 1 [] [] [] (" ++ value ++ ")"
+            , "BytecodeArtifact 1 [] [(" ++ value ++ ",Nil)] [] 0"
+            , "BytecodeArtifact 1 [] [] [TypeVariable (" ++ value ++ ")] 0"
+            , "BytecodeArtifact 1 [] [] [GeneratedVariable (" ++ value ++ ") Nothing] 0"
+            ]
+    forM_ [intOverflow, intUnderflow, "0x10000000000000000"] $ \value ->
+        forM_ (overflowingMetadata value) $ \source -> check "bounded artifact metadata must reject overflow" (isNothing (readBytecodeArtifact source))
+    let largeNatural = 10 ^ (100 :: Int) + 7
+        naturalArtifact = "BytecodeArtifact 1 [] [(0,Natural " ++ show largeNatural ++ ")] [] 0"
+    case readBytecodeArtifact naturalArtifact of
+        Just (BytecodeArtifact 1 [] [(0, Natural value)] [] 0) -> check "unbounded natural literals preserve exact values" (value == largeNatural)
+        _ -> ioError (userError "large natural metadata failed to parse")
     check "metadata mismatch must be rejected" (isLeft (validateBytecode (program { bytecodeQuerySlots = 0 })))
     check "negative natural metadata must be rejected" (isLeft (validateBytecode (program { bytecodeConstants = IntMap.insert 0 (DC (DC_NatL (-1))) (bytecodeConstants program) })))
     check "negative variable identity must be rejected" (isLeft (validateBytecode (program { bytecodeVariables = [LV_Unique (Unique (-1)) noHint] })))
@@ -106,6 +121,9 @@ main = do
             ]
         wrappedMagic = toInteger bytecodeMagic + 2 ^ (64 :: Int)
     check "overflow cannot wrap into a valid bytecode header" (isLeft (deserializeBytecode (artifactWith "1" (show (wrappedMagic : map toInteger (tail ret))))))
+    check "overflow cannot wrap into valid query slot metadata" (isLeft (deserializeBytecode ("BytecodeArtifact 1 " ++ show ret ++ " [] [] " ++ show (2 * (toInteger (maxBound :: Int) + 1)))))
+    natural <- right (deserializeBytecode (show (BytecodeArtifact 1 (change 7 1 ret) [(0, Natural largeNatural)] [] 0)))
+    check "validated natural metadata retains arbitrary precision" (IntMap.lookup 0 (bytecodeConstants natural) == Just (DC (DC_NatL largeNatural)))
     forM_ (zip [0 :: Int ..] malformed) $ \(index, code) -> do
         result <- Native.withMachine code Native.nextAnswer
         check ("invalid wordcode must report an error: " ++ show index) (isLeft result)

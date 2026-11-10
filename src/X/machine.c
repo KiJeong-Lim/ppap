@@ -48,7 +48,8 @@ struct HolV1Machine {
     size_t answer_count, answer_capacity;
     uint64_t visit;
     State state;
-    int answer_ready, resume, exhausted;
+    Choice search;
+    int answer_ready, resume, exhausted, pending_search, backtracking;
     char error[192];
 };
 
@@ -374,9 +375,20 @@ static int push_choice(HolV1Machine *m, Choice choice)
     return 1;
 }
 
-static int try_clauses(HolV1Machine *m, size_t goal, size_t clause, size_t continuation, size_t barrier, Checkpoint saved)
+static int try_clauses(HolV1Machine *m, size_t goal, size_t clause, size_t continuation, size_t barrier, Checkpoint saved, size_t *budget)
 {
     while (clause != NONE) {
+        if (!*budget) {
+            m->search = (Choice) { 0 };
+            m->search.goal = goal;
+            m->search.clause = clause;
+            m->search.continuation = continuation;
+            m->search.barrier = barrier;
+            m->search.checkpoint = saved;
+            m->pending_search = 1;
+            return 2;
+        }
+        --*budget;
         Clause current = m->clauses[clause];
         size_t env;
         if (!new_environment(m, current.slots, &env, 0)) {
@@ -414,17 +426,23 @@ static int try_clauses(HolV1Machine *m, size_t goal, size_t clause, size_t conti
     return 0;
 }
 
-static int backtrack(HolV1Machine *m)
+static int backtrack(HolV1Machine *m, size_t *budget)
 {
     while (m->choice_count) {
+        if (!*budget) {
+            m->backtracking = 1;
+            return 2;
+        }
+        --*budget;
         Choice choice = m->choices[--m->choice_count];
         restore(m, choice.checkpoint);
         if (choice.kind == CHOICE_CODE) {
             m->state = choice.state;
             return 1;
         }
-        if (try_clauses(m, choice.goal, choice.clause, choice.continuation, choice.barrier, choice.checkpoint)) {
-            return 1;
+        int result = try_clauses(m, choice.goal, choice.clause, choice.continuation, choice.barrier, choice.checkpoint, budget);
+        if (result) {
+            return result;
         }
         if (m->error[0]) {
             return 0;
@@ -433,7 +451,7 @@ static int backtrack(HolV1Machine *m)
     return 0;
 }
 
-static int call(HolV1Machine *m, Instruction instruction)
+static int call(HolV1Machine *m, Instruction instruction, size_t *budget)
 {
     size_t goal;
     if (!instantiate(m, instruction.a, m->state.env, m->state.slots, &goal)) {
@@ -455,7 +473,7 @@ static int call(HolV1Machine *m, Instruction instruction)
     next.pc = instruction.b;
     size_t continuation = m->work_count;
     m->work[m->work_count++] = next;
-    return try_clauses(m, goal, clause, continuation, m->choice_count, checkpoint(m));
+    return try_clauses(m, goal, clause, continuation, m->choice_count, checkpoint(m), budget);
 }
 
 static int serialize_answer(HolV1Machine *m)
@@ -698,12 +716,30 @@ int hol_v1_next(HolV1Machine *m)
     m->answer_ready = 0;
     if (m->resume) {
         m->resume = 0;
-        if (!backtrack(m)) {
+        m->backtracking = 1;
+    }
+    size_t budget = 32768;
+    if (m->pending_search) {
+        Choice search = m->search;
+        m->pending_search = 0;
+        int result = try_clauses(m, search.goal, search.clause, search.continuation, search.barrier, search.checkpoint, &budget);
+        if (result == 2) return 2;
+        if (!result) {
+            if (m->error[0]) return -1;
+            m->backtracking = 1;
+        }
+    }
+    if (m->backtracking) {
+        m->backtracking = 0;
+        int result = backtrack(m, &budget);
+        if (result == 2) return 2;
+        if (!result) {
             m->exhausted = 1;
             return m->error[0] ? -1 : 0;
         }
     }
-    for (size_t steps = 0; steps < 32768; ++steps) {
+    while (budget) {
+        --budget;
         Instruction instruction = m->instructions[m->state.pc];
         int success = 1;
         switch (instruction.op) {
@@ -721,7 +757,8 @@ int hol_v1_next(HolV1Machine *m)
                 success = 0;
                 break;
             case OP_CALL:
-                success = call(m, instruction);
+                success = call(m, instruction, &budget);
+                if (success == 2) return 2;
                 break;
             case OP_UNIFY: {
                 size_t left, right;
@@ -757,7 +794,9 @@ int hol_v1_next(HolV1Machine *m)
             if (m->error[0]) {
                 return -1;
             }
-            if (!backtrack(m)) {
+            int result = backtrack(m, &budget);
+            if (result == 2) return 2;
+            if (!result) {
                 m->exhausted = 1;
                 return m->error[0] ? -1 : 0;
             }

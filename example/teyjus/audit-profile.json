@@ -1,0 +1,488 @@
+{
+    "description": "Bounded diagnostic probes for the 2026-11-10 Hol V1 audit fixes; these structural and microbenchmark results are separate from the end-to-end Einstein benchmark in audit-results.json.",
+    "baseline_revision": "d9276759f23e0bd49b6950d3f75e4430a066e38d",
+    "identity_and_ground_list": {
+        "description": "F3 identity retirement and narrow F4 ground-constructor sharing before/after diagnostics. Baseline data reused from prior read-only audit; current probes run once. Deterministic buffer/node counts are primary evidence, not statistical performance benchmarks.",
+        "working_directory": "/home/lim/portfolio/ppap",
+        "baseline_revision": "d9276759f23e0bd49b6950d3f75e4430a066e38d",
+        "source_sha256": {
+            "/home/lim/portfolio/ppap/src/X/term.c": "5b3dd2d22f536ddd71a369a44062e6b96258790668f4c5dc94327351541a90eb",
+            "/home/lim/portfolio/ppap/src/X/term.h": "414199346e8418daddf2d712d89aedd6e7485993604543a5b9eeec6ebbd712de",
+            "/home/lim/portfolio/ppap/src/X/term_test.c": "6dd4ba7546299183e46b924e25e01d6157c4ba4861721f4c034f7725ccb3e43c",
+            "/tmp/ppap-improve-20261110/identity_probe.c": "6cb8a7f8b4b218f04b0480480980d2789e999f5f9e8f514ae565316332e194b1",
+            "/tmp/ppap-audit-20261110/list_probe.c": "bf28e4b895bf9e65e569988e5b4a38d32c7bf47c5f12bc248c3b0472c741bdac",
+            "/tmp/ppap-improve-20261110/term-baseline.c": "09c1f8112b70646eb9ad4915708dff027379fa00ad4ea9219e1d5a11900d818d"
+        },
+        "compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "build_commands": [
+            "cc -O1 -std=c11 -Wall -Wextra -Werror -Isrc/X /tmp/ppap-improve-20261110/identity_probe.c -o /tmp/ppap-improve-20261110/identity-current",
+            "gcc -O2 -std=c11 -Wall -Wextra -Isrc/X /tmp/ppap-audit-20261110/list_probe.c src/X/term.c -o /tmp/ppap-improve-20261110/list-probe",
+            "cc -std=c11 -Wall -Wextra -Wpedantic -Werror -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc/X src/X/term.c src/X/term_test.c -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc -o /tmp/ppap-improve-20261110/term-test-final"
+        ],
+        "identity": {
+            "baseline_artifact": "/tmp/ppap-audit-20261110/identity-results.json",
+            "baseline_stdout": "retirement: nodes=0 node_capacity=32 identity_count=100000 identity_capacity=262144 identity_bytes=4194304 next_uid=100000\nsnapshot: nodes=0 identity_capacity=262144 identity_bytes=4194304\nafter X c = Y, X: 0 3 0 0 -1\nafter X c = Y, Y: 2 -1 0 3 0 0 -1 5 2 1 -1\nscope_counterexample: first=1 second=1 pending=0 error=\nafter X = f Y, X: 2 -1 1 0 -1 0 2 0 0 -1\nafter X = f Y, Y: 0 2 0 0 -1\nmixed_type_flags: x=1 y=1\n",
+            "current_command": [
+                "/tmp/ppap-improve-20261110/identity-current"
+            ],
+            "current_stdout": "retirement: nodes=0 node_capacity=32 identity_count=0 identity_capacity=64 identity_bytes=1024 next_uid=100000\nhistory: ranges=1 capacity=32 bytes=512 term_node_size=56\nsnapshot: nodes=0 identity_capacity=0 identity_bytes=0\nsnapshot_history: ranges=1 capacity=32 bytes=512\nafter X c = Y, X: 0 3 0 0 -1\nafter X c = Y, Y: 2 -1 0 3 0 0 -1 5 2 1 -1\nscope_counterexample: first=1 second=1 pending=0 error=\nafter X = f Y, X: 2 -1 1 0 -1 0 2 0 0 -1\nafter X = f Y, Y: 0 2 0 0 -1\nmixed_type_flags: x=1 y=1\n",
+            "method": "Identical 100000 create-one-variable / restore-empty iterations, followed by cloning and unchanged scope/alias/type-flag cases. Current probe adds private retired-range storage and TermNode sizeof counters.",
+            "limit": "Only identity-array and retired-range payload capacities measured; allocator overhead and node/trail/store buffers are excluded. Live-table capacity follows peak live occupancy; reserved range capacity follows peak live occupancy plus range fragmentation. Arbitrarily sparse retirement may still grow with the number of intervals. No RSS or universally bounded-history claim."
+        },
+        "list": {
+            "baseline_artifact": "/tmp/ppap-audit-20261110/f4-f7-f8-results.json",
+            "baseline_rows": [
+                {
+                    "mode": "normalize",
+                    "length": 8188,
+                    "okay": 1,
+                    "completed": 0,
+                    "seconds": 0.000409,
+                    "heap_before": 24569,
+                    "heap_after": 24569,
+                    "error": "",
+                    "raw": "mode=normalize length=8188 okay=1 completed=0 seconds=0.000409 heap_before=24569 heap_after=24569 error="
+                },
+                {
+                    "mode": "normalize",
+                    "length": 8189,
+                    "okay": 1,
+                    "completed": 0,
+                    "seconds": 0.000449,
+                    "heap_before": 24572,
+                    "heap_after": 24572,
+                    "error": "",
+                    "raw": "mode=normalize length=8189 okay=1 completed=0 seconds=0.000449 heap_before=24572 heap_after=24572 error="
+                },
+                {
+                    "mode": "normalize",
+                    "length": 8190,
+                    "okay": 0,
+                    "completed": 0,
+                    "seconds": 0.000415,
+                    "heap_before": 24575,
+                    "heap_after": 24575,
+                    "error": "Term nesting exceeds the native work stack",
+                    "raw": "mode=normalize length=8190 okay=0 completed=0 seconds=0.000415 heap_before=24575 heap_after=24575 error=Term nesting exceeds the native work stack"
+                },
+                {
+                    "mode": "normalize",
+                    "length": 8191,
+                    "okay": 0,
+                    "completed": 0,
+                    "seconds": 0.00047,
+                    "heap_before": 24578,
+                    "heap_after": 24578,
+                    "error": "Term nesting exceeds the native work stack",
+                    "raw": "mode=normalize length=8191 okay=0 completed=0 seconds=0.000470 heap_before=24578 heap_after=24578 error=Term nesting exceeds the native work stack"
+                },
+                {
+                    "mode": "peel",
+                    "length": 200,
+                    "okay": 1,
+                    "completed": 200,
+                    "seconds": 0.005974,
+                    "heap_before": 605,
+                    "heap_after": 61505,
+                    "error": "",
+                    "raw": "mode=peel length=200 okay=1 completed=200 seconds=0.005974 heap_before=605 heap_after=61505 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 400,
+                    "okay": 1,
+                    "completed": 400,
+                    "seconds": 0.023721,
+                    "heap_before": 1205,
+                    "heap_after": 243005,
+                    "error": "",
+                    "raw": "mode=peel length=400 okay=1 completed=400 seconds=0.023721 heap_before=1205 heap_after=243005 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 800,
+                    "okay": 1,
+                    "completed": 800,
+                    "seconds": 0.096048,
+                    "heap_before": 2405,
+                    "heap_after": 966005,
+                    "error": "",
+                    "raw": "mode=peel length=800 okay=1 completed=800 seconds=0.096048 heap_before=2405 heap_after=966005 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 1200,
+                    "okay": 1,
+                    "completed": 1200,
+                    "seconds": 0.221192,
+                    "heap_before": 3605,
+                    "heap_after": 2169005,
+                    "error": "",
+                    "raw": "mode=peel length=1200 okay=1 completed=1200 seconds=0.221192 heap_before=3605 heap_after=2169005 error="
+                }
+            ],
+            "current_rows": [
+                {
+                    "mode": "normalize",
+                    "length": 8190,
+                    "okay": 1,
+                    "completed": 0,
+                    "seconds": 2e-06,
+                    "heap_before": 24575,
+                    "heap_after": 24575,
+                    "error": "",
+                    "command": [
+                        "/tmp/ppap-improve-20261110/list-probe",
+                        "normalize",
+                        "8190"
+                    ],
+                    "raw": "mode=normalize length=8190 okay=1 completed=0 seconds=0.000002 heap_before=24575 heap_after=24575 error="
+                },
+                {
+                    "mode": "normalize",
+                    "length": 10000,
+                    "okay": 1,
+                    "completed": 0,
+                    "seconds": 1e-06,
+                    "heap_before": 30005,
+                    "heap_after": 30005,
+                    "error": "",
+                    "command": [
+                        "/tmp/ppap-improve-20261110/list-probe",
+                        "normalize",
+                        "10000"
+                    ],
+                    "raw": "mode=normalize length=10000 okay=1 completed=0 seconds=0.000001 heap_before=30005 heap_after=30005 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 200,
+                    "okay": 1,
+                    "completed": 200,
+                    "seconds": 0.000179,
+                    "heap_before": 605,
+                    "heap_after": 1605,
+                    "error": "",
+                    "command": [
+                        "/tmp/ppap-improve-20261110/list-probe",
+                        "peel",
+                        "200"
+                    ],
+                    "raw": "mode=peel length=200 okay=1 completed=200 seconds=0.000179 heap_before=605 heap_after=1605 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 400,
+                    "okay": 1,
+                    "completed": 400,
+                    "seconds": 0.000228,
+                    "heap_before": 1205,
+                    "heap_after": 3205,
+                    "error": "",
+                    "command": [
+                        "/tmp/ppap-improve-20261110/list-probe",
+                        "peel",
+                        "400"
+                    ],
+                    "raw": "mode=peel length=400 okay=1 completed=400 seconds=0.000228 heap_before=1205 heap_after=3205 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 800,
+                    "okay": 1,
+                    "completed": 800,
+                    "seconds": 0.000349,
+                    "heap_before": 2405,
+                    "heap_after": 6405,
+                    "error": "",
+                    "command": [
+                        "/tmp/ppap-improve-20261110/list-probe",
+                        "peel",
+                        "800"
+                    ],
+                    "raw": "mode=peel length=800 okay=1 completed=800 seconds=0.000349 heap_before=2405 heap_after=6405 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 1200,
+                    "okay": 1,
+                    "completed": 1200,
+                    "seconds": 0.000576,
+                    "heap_before": 3605,
+                    "heap_after": 9605,
+                    "error": "",
+                    "command": [
+                        "/tmp/ppap-improve-20261110/list-probe",
+                        "peel",
+                        "1200"
+                    ],
+                    "raw": "mode=peel length=1200 okay=1 completed=1200 seconds=0.000576 heap_before=3605 heap_after=9605 error="
+                },
+                {
+                    "mode": "peel",
+                    "length": 10000,
+                    "okay": 1,
+                    "completed": 10000,
+                    "seconds": 0.00452,
+                    "heap_before": 30005,
+                    "heap_after": 80005,
+                    "error": "",
+                    "command": [
+                        "/tmp/ppap-improve-20261110/list-probe",
+                        "peel",
+                        "10000"
+                    ],
+                    "raw": "mode=peel length=10000 okay=1 completed=10000 seconds=0.004520 heap_before=30005 heap_after=80005 error="
+                }
+            ],
+            "method": "Build typed list using three APP nodes per cons (cons type item tail), typed nil=(nil type). Peeling allocates fresh x/xs, unifies cons type x xs with current list, then continues with dereferenced xs; no backtrack/restore until destruction.",
+            "measurement": "Baseline and current use same list_probe.c and -O2 compile. One bounded run per size, monotonic wall clock excludes construction/destruction. No affinity, warm-up, statistical inference or cross-engine comparison. Retained node counts are deterministic.",
+            "limit": "Fast path covers immutable pure rigid constructor trees only. Raw wire import and nonground/higher-order traversals retain depth limits; exporting many local variables each pointing into a long list can still expand overlapping tails quadratically."
+        },
+        "verification": {
+            "final_native_run_command": "env ASAN_OPTIONS=detect_leaks=1 /tmp/ppap-improve-20261110/term-test-final",
+            "result": "All 20 term test groups pass under ASan/UBSan/leak detection, with 31 allocation-failure paths. test/v1/ho_term.sh additionally passed 214 native/BETA HOPU differential cases. test/v1/higher_native.sh passed snapshot/native cases; root owns final broader regression runs.",
+            "review": "Independent F3 and F4 read-only reviews found no blocker. F5 variable reuse remains unchanged; scope-dependency, visible alias and mixed-type-flag counterexamples preserved."
+        }
+    },
+    "metadata_interning": {
+        "description": "F6 runtime metadata identity membership lookup, original repeated scan vs cached Set",
+        "compiler": "GHC9.6.7",
+        "cpu_affinity": [
+            0
+        ],
+        "build_command": "cabal exec -- ghc -O2 -w -isrc /tmp/ppap-improve-20261110/MetadataProfile.hs -odir /tmp/ppap-improve-20261110/metadata-obj -hidir /tmp/ppap-improve-20261110/metadata-obj -o /tmp/ppap-improve-20261110/metadata-profile",
+        "run_command": "taskset -c 0 /tmp/ppap-improve-20261110/metadata-profile",
+        "method": "Three paired sequential before/after samples per symbol count; already-present type constructors, empty type/query environments; force input map sizes and word-list length before timer, time forcing output symbol-map size. Old function copied verbatim, current function imported. No native search. Small diagnostic sample, not an end-to-end benchmark.",
+        "raw_rows": [
+            {
+                "variant": "before",
+                "count": 400,
+                "sample": 1,
+                "symbols": 402,
+                "milliseconds": 14.016533
+            },
+            {
+                "variant": "after",
+                "count": 400,
+                "sample": 1,
+                "symbols": 402,
+                "milliseconds": 0.797969
+            },
+            {
+                "variant": "before",
+                "count": 400,
+                "sample": 2,
+                "symbols": 402,
+                "milliseconds": 13.857363
+            },
+            {
+                "variant": "after",
+                "count": 400,
+                "sample": 2,
+                "symbols": 402,
+                "milliseconds": 1.029914
+            },
+            {
+                "variant": "before",
+                "count": 400,
+                "sample": 3,
+                "symbols": 402,
+                "milliseconds": 13.026854
+            },
+            {
+                "variant": "after",
+                "count": 400,
+                "sample": 3,
+                "symbols": 402,
+                "milliseconds": 0.898341
+            },
+            {
+                "variant": "before",
+                "count": 800,
+                "sample": 1,
+                "symbols": 802,
+                "milliseconds": 50.83679
+            },
+            {
+                "variant": "after",
+                "count": 800,
+                "sample": 1,
+                "symbols": 802,
+                "milliseconds": 1.418045
+            },
+            {
+                "variant": "before",
+                "count": 800,
+                "sample": 2,
+                "symbols": 802,
+                "milliseconds": 50.130375
+            },
+            {
+                "variant": "after",
+                "count": 800,
+                "sample": 2,
+                "symbols": 802,
+                "milliseconds": 1.329993
+            },
+            {
+                "variant": "before",
+                "count": 800,
+                "sample": 3,
+                "symbols": 802,
+                "milliseconds": 49.331983
+            },
+            {
+                "variant": "after",
+                "count": 800,
+                "sample": 3,
+                "symbols": 802,
+                "milliseconds": 1.691541
+            }
+        ],
+        "median_milliseconds": {
+            "400": {
+                "before": 13.857363,
+                "after": 0.898341
+            },
+            "800": {
+                "before": 50.130375,
+                "after": 1.418045
+            }
+        },
+        "source": "module Main where\n\nimport Control.Exception (evaluate)\nimport Control.Monad (forM_)\nimport GHC.Clock (getMonotonicTimeNSec)\nimport Hol.BETA.Constant\nimport Hol.BETA.Header\nimport Hol.BETA.TermNode (LogicVar)\nimport Hol.V1.FullBytecode\nimport qualified Data.IntMap.Strict as IntMap\nimport qualified Data.Map.Strict as Map\nimport Text.Printf (printf)\n\noldMetadata :: KindEnv -> TypeEnv -> Map.Map LogicVar (MonoType Int) -> FullProgram -> FullProgram\noldMetadata kinds types variables program = enriched { fullKindEnv = kinds, fullTypeEnv = types, fullQueryTypes = variables } where\n    wanted = map (ConstantSymbol . TC) (Map.keys kinds) ++ map (ConstantSymbol . DC) (Map.keys types)\n    symbols = foldl addSymbol (fullSymbols program) wanted\n    addSymbol current symbol\n        | any ((== symbolIdentity symbol) . symbolIdentity) (IntMap.elems current) = current\n        | otherwise = IntMap.insert (IntMap.size current) symbol current\n    enriched = case fullSections (fullWords program) of\n        Right ([magic, version, terms, _, facts, slots, root, metadata], slotRows, _, termRows, factRows, payload) -> program\n            { fullSymbols = symbols\n            , fullWords = [magic, version, terms, fromIntegral (IntMap.size symbols), facts, slots, root, metadata] ++ concat slotRows ++ map (fromIntegral . symbolRole) (IntMap.elems symbols) ++ concat termRows ++ concat factRows ++ payload\n            }\n        _ -> program\n\nmain :: IO ()\nmain = forM_ [400, 800] $ \\count -> forM_ [1 :: Int .. 3] $ \\sample -> forM_ [(\"before\", oldMetadata), (\"after\", withRuntimeMetadata)] $ \\(label, enrich) -> do\n    let names = [TC_Named (show sample ++ \"_type_\" ++ show index) | index <- [1 .. count]]\n        kinds = Map.fromList [(name, Star) | name <- names]\n        symbols = IntMap.fromList (zip [0 ..] (map ConstantSymbol ([DC (DC_LO LO_true), DC DC_Succ] ++ map TC names)))\n        words = [1213156401,2,1,fromIntegral count+2,0,0,0,0] ++ [3,21] ++ replicate count 0 ++ [1,0,0,0,0,-1]\n        program = FullProgram words symbols [] IntMap.empty Map.empty Map.empty Map.empty\n    _ <- evaluate (Map.size kinds + IntMap.size symbols + length words)\n    start <- getMonotonicTimeNSec\n    result <- evaluate (IntMap.size (fullSymbols (enrich kinds Map.empty Map.empty program)))\n    end <- getMonotonicTimeNSec\n    printf \"%s count=%d sample=%d symbols=%d milliseconds=%.6f\\n\" label count sample result (fromIntegral (end-start) / 1000000 :: Double)\n"
+    },
+    "predicate_index": {
+        "method": "Instrument the original and modified higher_machine.c on the same native fixtures. facts-512 has 512 unrelated global facts before one matching fact. localfacts-64 has 64 unrelated local hypotheses before one matching fact. Counters measure descriptors examined, facts instantiated and choices pushed; no wall-clock claim.",
+        "rows": [
+            {
+                "variant": "baseline",
+                "global_checks": 513,
+                "instantiations": 1,
+                "choice_pushes": 1,
+                "choices_at_answer": 1,
+                "fixture": "facts-512"
+            },
+            {
+                "variant": "indexed",
+                "global_checks": 1,
+                "instantiations": 1,
+                "choice_pushes": 0,
+                "choices_at_answer": 0,
+                "fixture": "facts-512"
+            },
+            {
+                "variant": "baseline",
+                "global_checks": 1,
+                "instantiations": 65,
+                "choice_pushes": 1,
+                "choices_at_answer": 1,
+                "fixture": "localfacts-64"
+            },
+            {
+                "variant": "indexed",
+                "global_checks": 0,
+                "instantiations": 1,
+                "choice_pushes": 0,
+                "choices_at_answer": 0,
+                "fixture": "localfacts-64"
+            }
+        ],
+        "regression_fixtures": "test/v1/higher_native_fixtures.py; src/X/higher_machine_test.c"
+    },
+    "limits": [
+        "The identity probe measures backing-array payload capacities, not process RSS; sparse retired intervals and observed host identities may still accumulate.",
+        "Ground list probes use native immutable constructor terms. They do not establish linear end-to-end append performance or remove raw import and nonground recursion limits.",
+        "All host service requests still include complete state. Compact pending-frame metadata preserves repeated declarations and their order.",
+        "Per-query source compilation remains; the metadata result measures identity lookup only."
+    ],
+    "probe_sources": {
+        "identity_probe.c": "#include <assert.h>\n#include <inttypes.h>\n#include <stdio.h>\n\n#ifndef TERM_IMPLEMENTATION\n#define TERM_IMPLEMENTATION \"/home/lim/portfolio/ppap/src/X/term.c\"\n#endif\n#include TERM_IMPLEMENTATION\n\nstatic void print_wire(HolTermStore *store, const char *label, HTerm term)\n{\n    int64_t *wire = NULL;\n    size_t count = 0;\n    assert(ht_export(store, ht_normalize(store, term, HT_NF), &wire, &count));\n    printf(\"%s:\", label);\n    for (size_t i = 0; i < count; ++i) {\n        printf(\" %\" PRId64, wire[i]);\n    }\n    putchar('\\n');\n    free(wire);\n}\n\nint main(void)\n{\n    HolTermStore *store = ht_create();\n    assert(store);\n    HTCheckpoint checkpoint = ht_checkpoint(store);\n    for (size_t i = 0; i < 100000; ++i) {\n        assert(ht_var(store, 0, 0, -1) != HT_NONE);\n        assert(ht_restore(store, checkpoint));\n    }\n    printf(\"retirement: nodes=%zu node_capacity=%zu identity_count=%zu identity_capacity=%zu identity_bytes=%zu next_uid=%\" PRIu64 \"\\n\",\n        store->count, store->capacity, store->identity_count, store->identity_capacity,\n        store->identity_capacity * sizeof(Identity), store->next_uid);\n    printf(\"history: ranges=%zu capacity=%zu bytes=%zu term_node_size=%zu\\n\",\n        store->retired_count, store->retired_capacity,\n        store->retired_capacity * sizeof(RetiredRange), sizeof(TermNode));\n    HolTermStore *snapshot = ht_clone(store);\n    assert(snapshot);\n    printf(\"snapshot: nodes=%zu identity_capacity=%zu identity_bytes=%zu\\n\",\n        snapshot->count, snapshot->identity_capacity, snapshot->identity_capacity * sizeof(Identity));\n    printf(\"snapshot_history: ranges=%zu capacity=%zu bytes=%zu\\n\",\n        snapshot->retired_count, snapshot->retired_capacity,\n        snapshot->retired_capacity * sizeof(RetiredRange));\n    ht_destroy(snapshot);\n    ht_destroy(store);\n\n    store = ht_create();\n    HTerm x = ht_var(store, 0, 0, -1);\n    HTerm y = ht_var(store, 1, 0, -1);\n    HTerm c = ht_nominal(store, 1, -1);\n    HTerm xc = ht_app(store, x, c, -1);\n    int first = ht_unify(store, xc, y);\n    assert(first == 1);\n    print_wire(store, \"after X c = Y, X\", x);\n    print_wire(store, \"after X c = Y, Y\", y);\n    int second = ht_unify(store, y, c);\n    printf(\"scope_counterexample: first=%d second=%d pending=%zu error=%s\\n\", first, second, ht_pending_count(store), ht_error(store));\n    ht_destroy(store);\n\n    store = ht_create();\n    x = ht_var(store, 0, 0, -1);\n    y = ht_var(store, 0, 0, 37);\n    HTerm f = ht_constant(store, 0, -1);\n    assert(ht_unify(store, x, ht_app(store, f, y, -1)) == 1);\n    print_wire(store, \"after X = f Y, X\", x);\n    print_wire(store, \"after X = f Y, Y\", y);\n    ht_destroy(store);\n\n    store = ht_create();\n    x = ht_var(store, 0, 1, -1);\n    y = ht_var(store, 0, 0, -1);\n    assert(ht_unify(store, x, y) == 1);\n    printf(\"mixed_type_flags: x=%d y=%d\\n\", ht_view(store, ht_deref(store, x)).is_type, ht_view(store, ht_deref(store, y)).is_type);\n    ht_destroy(store);\n    return 0;\n}\n",
+        "list_probe.c": "#define _POSIX_C_SOURCE 200809L\n#include \"term.h\"\n#include <inttypes.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <time.h>\n\nstatic double seconds(void)\n{\n    struct timespec t;\n    clock_gettime(CLOCK_MONOTONIC, &t);\n    return t.tv_sec + t.tv_nsec / 1e9;\n}\n\nstatic HTerm cons(HolTermStore *s, HTerm c, HTerm typ, HTerm item, HTerm tail)\n{\n    return ht_app(s, ht_app(s, ht_app(s, c, typ, -1), item, -1), tail, -1);\n}\n\nint main(int argc, char **argv)\n{\n    if (argc != 3) return 2;\n    size_t n = strtoull(argv[2], NULL, 10);\n    HolTermStore *s = ht_create();\n    HTerm c = ht_constant(s, 0, -1), typ = ht_constant(s, 1, -1);\n    HTerm item = ht_constant(s, 2, -1), nil = ht_constant(s, 3, -1);\n    HTerm list = ht_app(s, nil, typ, -1);\n    for (size_t i = 0; i < n; ++i) list = cons(s, c, typ, item, list);\n    size_t before = ht_heap_count(s), completed = 0;\n    double begin = seconds();\n    int okay = 1;\n    if (argv[1][0] == 'n') {\n        okay = ht_normalize(s, list, HT_NF) != HT_NONE;\n    } else {\n        for (size_t i = 0; i < n && okay; ++i) {\n            HTerm x = ht_var(s, 0, 0, -1), xs = ht_var(s, 0, 0, -1);\n            HTerm pattern = cons(s, c, typ, x, xs);\n            okay = ht_unify(s, pattern, list) == 1;\n            list = ht_deref(s, xs);\n            completed += okay;\n        }\n    }\n    printf(\"mode=%s length=%zu okay=%d completed=%zu seconds=%.6f heap_before=%zu heap_after=%zu error=%s\\n\", argv[1], n, okay, completed, seconds() - begin, before, ht_heap_count(s), ht_error(s));\n    ht_destroy(s);\n    return 0;\n}\n"
+    },
+    "teyjus_build": {
+        "source_url": "https://github.com/teyjus/teyjus.git",
+        "source_directory": "/tmp/ppap-teyjus-v2.1.1",
+        "commit": "5cb51538beee8b1ad6dbc47ee14d7491fefa6021",
+        "source_changes": "",
+        "clone_command": "git clone --branch v2.1.1 --depth 1 https://github.com/teyjus/teyjus.git /tmp/ppap-teyjus-v2.1.1",
+        "ocaml_switch": "/home/lim/.opam/cris-workshop",
+        "ocaml_version": "4.14.1",
+        "dune_version": "3.23.1",
+        "gcc_version": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+        "flex_version": "flex 2.6.4",
+        "bison_version": "bison (GNU Bison) 3.8.2",
+        "m4_version": "m4 (GNU M4) 1.4.19",
+        "local_tool_archives": {
+            "flex_2.6.4-8.2build1_amd64.deb": "c5604f55827b50e3f568b4731b7799f86b147454c867be02bc141d9d8ce561ff",
+            "bison_2%3a3.8.2+dfsg-1ubuntu0.24.04.1_amd64.deb": "9d75084d1293f68f3c1a2ee677dea5baa4e010bac2d4c455d8e23177e97aa353"
+        },
+        "local_tools_preparation": "apt-get download flex bison into /tmp/ppap-teyjus-build-tools/packages; dpkg-deb -x each archive into /tmp/ppap-teyjus-build-tools/root; local yacc shim invokes local bison -y. No package installation or system changes.",
+        "yacc_shim": "#!/bin/sh\nexec /tmp/ppap-teyjus-build-tools/root/usr/bin/bison -y \"$@\"\n",
+        "build_command": "env PATH=/tmp/ppap-teyjus-build-tools/bin:/tmp/ppap-teyjus-build-tools/root/usr/bin:/home/lim/.opam/cris-workshop/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin BISON_PKGDATADIR=/tmp/ppap-teyjus-build-tools/root/usr/share/bison dune build @install --profile release",
+        "build_cwd": "/tmp/ppap-teyjus-v2.1.1",
+        "build_exit_code": 0,
+        "simulator_c_flags": [
+            "-O2",
+            "-fno-strict-aliasing",
+            "-fwrapv",
+            "-pthread",
+            "-fPIC",
+            "-D_FILE_OFFSET_BITS=64",
+            "-Wall",
+            "-fdiagnostics-color=always",
+            "-g"
+        ],
+        "simulator_c_rule": "((deps\n  ((File (External /usr/bin/gcc))\n   (File (In_build_dir _build/default/source/simulator/abstmachine.h))\n   (File (In_build_dir _build/default/source/simulator/dataformats.h))\n   (File (In_build_dir _build/default/source/simulator/hnorm.h))\n   (File (In_build_dir _build/default/source/simulator/hnormlocal.h))\n   (File (In_build_dir _build/default/source/simulator/hopu.h))\n   (File (In_build_dir _build/default/source/simulator/instraccess.h))\n   (File (In_build_dir _build/default/source/simulator/io-datastructures.h))\n   (File (In_build_dir _build/default/source/simulator/mcstring.h))\n   (File (In_build_dir _build/default/source/simulator/mctypes.h))\n   (File (In_build_dir _build/default/source/simulator/printterm.h))\n   (File (In_build_dir _build/default/source/simulator/simdispatch.h))\n   (File (In_build_dir _build/default/source/simulator/siminit.h))\n   (File (In_build_dir _build/default/source/simulator/siminstr.c))\n   (File (In_build_dir _build/default/source/simulator/siminstr.h))\n   (File (In_build_dir _build/default/source/simulator/siminstrlocal.h))\n   (File (In_build_dir _build/default/source/simulator/simulator.h))\n   (File (In_build_dir _build/default/source/simulator/trail.h))\n   (File (In_build_dir _build/default/source/simulator/types.h))\n   (glob\n    ((dir (External /home/lim/.opam/cris-workshop/lib/ocaml/caml))\n     (predicate *.h)\n     (only_generated_files false)))\n   (glob\n    ((dir (In_build_dir _build/default/source/tables))\n     (predicate *.h)\n     (only_generated_files false)))\n   (glob\n    ((dir (In_build_dir _build/default/source/tables_gen/instrformats))\n     (predicate *.h)\n     (only_generated_files false)))\n   (glob\n    ((dir (In_build_dir _build/default/source/tables_gen/pervasives))\n     (predicate *.h)\n     (only_generated_files false)))\n   (glob\n    ((dir (In_build_dir _build/default/source/tables_gen/util))\n     (predicate *.h)\n     (only_generated_files false)))))\n (targets\n  ((files (_build/default/source/simulator/siminstr.o)) (directories ())))\n (context default)\n (action\n  (chdir\n   _build/default/source/simulator\n   (run\n    /usr/bin/gcc\n    -O2\n    -fno-strict-aliasing\n    -fwrapv\n    -pthread\n    -fPIC\n    -D_FILE_OFFSET_BITS=64\n    -Wall\n    -fdiagnostics-color=always\n    -g\n    -I\n    /home/lim/.opam/cris-workshop/lib/ocaml\n    -I\n    ../tables\n    -I\n    ../tables_gen/instrformats\n    -I\n    ../tables_gen/pervasives\n    -I\n    ../tables_gen/util\n    -o\n    siminstr.o\n    -c\n    siminstr.c))))\n",
+        "bin_directory": "/tmp/ppap-teyjus-v2.1.1/_build/install/default/bin",
+        "binary_sha256": {
+            "tjcc": "b07a43c8729724e823016a3a741672450dd01956a82a0dbfe1809d02390d60c6",
+            "tjlink": "59452edc5ab401408608e1d5e567906b23e23139621a0404e0a3e93d8f68572e",
+            "tjsim": "c5e5a405a5e168e1df2a2c77df8e4a841da0900f9f209a9b11c0142cb75b3676",
+            "tjdis": "5d7680638f67b7be7b90ca2b5e2c53fb5db334f19ecb45aa8f4095a3286ce041"
+        },
+        "version_output": "Teyjus version 2.1.1",
+        "smoke": {
+            "description": "Compile/link identical Einstein fixture, load module and run true.; functional smoke only, no benchmark timings collected.",
+            "steps": [
+                [
+                    "tjcc",
+                    "einstein"
+                ],
+                [
+                    "tjlink",
+                    "einstein"
+                ],
+                [
+                    "tjsim",
+                    "-b",
+                    "-e",
+                    "1",
+                    "-s",
+                    "true.",
+                    "einstein"
+                ]
+            ],
+            "cwd": "/tmp/ppap-teyjus-build-tools/smoke",
+            "all_exit_codes": 0
+        }
+    },
+    "verification": {
+        "optimized_builds": [
+            "GHC 9.6.7 Cabal",
+            "GHC 9.10.3 Stack"
+        ],
+        "full_smoke": {
+            "passed": 164,
+            "failed": 0,
+            "missing": 0
+        },
+        "beta_conformance_transcripts": 134,
+        "hopu_differential_cases": 214,
+        "native_checks": "AddressSanitizer, UndefinedBehaviorSanitizer, leak checks and allocation-failure injection for term and both executors",
+        "final_fo_loop_checks": "After the full smoke run, moving resume flag checks out of the first-order opcode loop was validated again by native.sh, optimized bytecode/cancellation regression, dispatch.sh, both optimized builds, and the 12-route benchmark.",
+        "final_artifact_check": "full_artifacts.sh passed after formatting the new nested metadata regression.",
+        "measured_source_hashes_verified": true,
+        "baseline_binary_matches_environment_results": true
+    }
+}

@@ -10,6 +10,7 @@ import Control.Monad.Trans.State.Strict
 import Control.Monad.Trans.Writer
 import Data.Function
 import Data.IORef
+import qualified Data.IntMap.Strict as IntMap
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -41,6 +42,13 @@ newtype Unique
     = Unique { unUnique :: Int }
     deriving (Eq, Ord)
 
+newtype UniqueBlock
+    = UniqueBlock (Int -> Maybe Unique)
+    deriving ()
+
+lookupUniqueBlock :: Int -> UniqueBlock -> Maybe Unique
+lookupUniqueBlock index (UniqueBlock lookup) = lookup index
+
 class OStreamTrain os where
     getHandleFrom :: os -> IO Handle
 
@@ -56,6 +64,13 @@ class HasAnnot f where
 
 class Monad m => MonadUnique m where
     getUnique :: m Unique
+    getUniqueBlock :: Int -> m (Maybe UniqueBlock)
+    getUniqueBlock count
+        | count <= 0 = return Nothing
+        | otherwise = do
+            values <- replicateM count getUnique
+            let indexed = IntMap.fromDistinctAscList (zip [0 ..] values)
+            return (Just (UniqueBlock (`IntMap.lookup` indexed)))
 
 class IsInt a where
     toInt :: a -> Int
@@ -246,6 +261,17 @@ instance MonadIO m => MonadUnique (UniqueT m) where
         let i' = i + 1
         i' `seq` writeIORef ref i'
         return (Unique i)
+    getUniqueBlock count
+        | count <= 0 = return Nothing
+        | otherwise = UniqueT $ ReaderT $ \ref -> liftIO (atomicModifyIORef' ref reserve)
+        where
+            reserve start
+                | start < 0 || count > maxBound - start = (start, Nothing)
+                | otherwise = (start + count, Just (UniqueBlock lookup))
+                where
+                    lookup index
+                        | index >= 0 && index < count = Just (Unique (start + index))
+                        | otherwise = Nothing
 
 instance MonadIO m => MonadIO (UniqueT m) where
     {-# INLINE liftIO #-}
@@ -258,14 +284,17 @@ instance MonadTrans UniqueT where
 instance MonadUnique m => MonadUnique (ExceptT e m) where
     {-# INLINE getUnique #-}
     getUnique = lift getUnique
+    getUniqueBlock = lift . getUniqueBlock
 
 instance MonadUnique m => MonadUnique (StateT s m) where
     {-# INLINE getUnique #-}
     getUnique = lift getUnique
+    getUniqueBlock = lift . getUniqueBlock
 
 instance (Monoid w, MonadUnique m) => MonadUnique (WriterT w m) where
     {-# INLINE getUnique #-}
     getUnique = lift getUnique
+    getUniqueBlock = lift . getUniqueBlock
 
 instance IsInt Int where
     toInt = id

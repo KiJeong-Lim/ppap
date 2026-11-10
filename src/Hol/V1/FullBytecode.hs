@@ -4,12 +4,14 @@ import qualified Calc.Presburger.Internal as P
 import Control.Monad
 import Data.Int
 import qualified Data.IntMap.Strict as IntMap
+import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
 import Hol.BETA.Constant
 import Hol.BETA.Header
 import Hol.BETA.TermNode
-import Text.Read (readMaybe)
+import Hol.V1.Bytecode (ArtifactNumber (..), readBounded, readConstructor)
+import Text.Read (Read (..), ReadPrec, pfail, readListPrecDefault, readMaybe, step)
 import Z.Utils (Unique (..))
 
 data FullSymbol
@@ -40,10 +42,14 @@ data FullProgram
 withRuntimeMetadata :: KindEnv -> TypeEnv -> Map.Map LogicVar (MonoType Int) -> FullProgram -> FullProgram
 withRuntimeMetadata kinds types variables program = enriched { fullKindEnv = kinds, fullTypeEnv = types, fullQueryTypes = variables } where
     wanted = map (ConstantSymbol . TC) (Map.keys kinds) ++ map (ConstantSymbol . DC) (Map.keys types)
-    symbols = foldl addSymbol (fullSymbols program) wanted
-    addSymbol current symbol
-        | any ((== symbolIdentity symbol) . symbolIdentity) (IntMap.elems current) = current
-        | otherwise = IntMap.insert (IntMap.size current) symbol current
+    existing = fullSymbols program
+    identities = Set.fromList (map symbolIdentity (IntMap.elems existing))
+    (symbols, _) = List.foldl' addSymbol (existing, identities) wanted
+    addSymbol (current, seen) symbol
+        | identity `Set.member` seen = (current, seen)
+        | otherwise = (IntMap.insert (IntMap.size current) symbol current, Set.insert identity seen)
+        where
+            identity = symbolIdentity symbol
     enriched = case fullSections (fullWords program) of
         Right ([magic, version, terms, _, facts, slots, root, metadata], slotRows, _, termRows, factRows, payload) -> program
             { fullSymbols = symbols
@@ -62,7 +68,20 @@ data StoredCon
     | SCLogical Int
     | SCChar Char
     | SCNat Integer
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Show)
+
+instance Read StoredCon where
+    readPrec = readConstructor $ \constructor -> case constructor of
+        "SCData" -> SCData <$> step readPrec
+        "SCType" -> SCType <$> step readPrec
+        "SCDataUnique" -> SCDataUnique <$> step readBounded <*> step readPrec
+        "SCTypeUnique" -> SCTypeUnique <$> step readBounded
+        "SCBuiltin" -> SCBuiltin <$> step readBounded
+        "SCLogical" -> SCLogical <$> step readBounded
+        "SCChar" -> SCChar <$> step readPrec
+        "SCNat" -> SCNat <$> step readPrec
+        _ -> pfail
+    readListPrec = readListPrecDefault
 
 data StoredKind
     = SKStar
@@ -74,13 +93,30 @@ data StoredType
     | STMeta Int
     | STCon StoredCon StoredKind
     | STApp StoredType StoredType
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Show)
+
+instance Read StoredType where
+    readPrec = readConstructor $ \constructor -> case constructor of
+        "STVar" -> STVar <$> step readBounded
+        "STMeta" -> STMeta <$> step readBounded
+        "STCon" -> STCon <$> step readPrec <*> step readPrec
+        "STApp" -> STApp <$> step readPrec <*> step readPrec
+        _ -> pfail
+    readListPrec = readListPrecDefault
 
 data StoredVar
     = SVNamed String
     | SVGenerated Int (Maybe String)
     | SVType Int
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Show)
+
+instance Read StoredVar where
+    readPrec = readConstructor $ \constructor -> case constructor of
+        "SVNamed" -> SVNamed <$> step readPrec
+        "SVGenerated" -> SVGenerated <$> step readBounded <*> step readPrec
+        "SVType" -> SVType <$> step readBounded
+        _ -> pfail
+    readListPrec = readListPrecDefault
 
 data StoredFormula
     = SFTruth Bool
@@ -89,7 +125,18 @@ data StoredFormula
     | SFNot StoredFormula
     | SFConnect Int StoredFormula StoredFormula
     | SFQuant Bool Integer StoredFormula
-    deriving (Eq, Ord, Read, Show)
+    deriving (Eq, Ord, Show)
+
+instance Read StoredFormula where
+    readPrec = readConstructor $ \constructor -> case constructor of
+        "SFTruth" -> SFTruth <$> step readPrec
+        "SFRelation" -> SFRelation <$> step readBounded <*> step readPrec <*> step readPrec
+        "SFModulo" -> SFModulo <$> step readPrec <*> step readPrec <*> step readPrec
+        "SFNot" -> SFNot <$> step readPrec
+        "SFConnect" -> SFConnect <$> step readBounded <*> step readPrec <*> step readPrec
+        "SFQuant" -> SFQuant <$> step readPrec <*> step readPrec <*> step readPrec
+        _ -> pfail
+    readListPrec = readListPrecDefault
 
 data StoredPterm
     = SPVar Integer
@@ -101,11 +148,40 @@ data StoredPterm
 data StoredSymbol
     = SSConstant StoredCon
     | SSPresburger StoredFormula [Integer] (Maybe ((Int, Int), (Int, Int)))
-    deriving (Read, Show)
+    deriving (Show)
+
+instance Read StoredSymbol where
+    readPrec = readConstructor $ \constructor -> case constructor of
+        "SSConstant" -> SSConstant <$> step readPrec
+        "SSPresburger" -> SSPresburger <$> step readPrec <*> step readPrec <*> step readArtifactLocation
+        _ -> pfail
+    readListPrec = readListPrecDefault
+
+type ArtifactLocation = Maybe ((ArtifactNumber Int, ArtifactNumber Int), (ArtifactNumber Int, ArtifactNumber Int))
+
+artifactLocation :: ArtifactLocation -> Maybe ((Int, Int), (Int, Int))
+artifactLocation = fmap (\((line1, column1), (line2, column2)) -> ((unArtifactNumber line1, unArtifactNumber column1), (unArtifactNumber line2, unArtifactNumber column2)))
+
+readArtifactLocation :: ReadPrec (Maybe ((Int, Int), (Int, Int)))
+readArtifactLocation = artifactLocation <$> readPrec
 
 data FullArtifact
     = FullArtifact Int [Int64] [StoredSymbol] [StoredVar] [(Maybe String, Maybe StoredType, Maybe ((Int, Int), (Int, Int)))] [(StoredCon, StoredKind)] [(StoredCon, [String], StoredType)] [(StoredVar, StoredType)]
-    deriving (Read, Show)
+    deriving (Show)
+
+instance Read FullArtifact where
+    readPrec = readConstructor $ \constructor -> do
+        guard (constructor == "FullArtifact")
+        version <- step readBounded
+        words <- map unArtifactNumber <$> step readPrec
+        symbols <- step readPrec
+        variables <- step readPrec
+        metadata <- step readPrec
+        kinds <- step readPrec
+        types <- step readPrec
+        queryTypes <- step readPrec
+        return (FullArtifact version words symbols variables [(hint, typ, artifactLocation location) | (hint, typ, location) <- metadata] kinds types queryTypes)
+    readListPrec = readListPrecDefault
 
 logicalOperators :: [LogicalOperator]
 logicalOperators = [LO_ty_pi, LO_if, LO_true, LO_fail, LO_cut, LO_and, LO_or, LO_imply, LO_pi, LO_sigma, LO_debug, LO_is]

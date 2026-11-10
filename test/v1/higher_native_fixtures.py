@@ -140,6 +140,66 @@ add('opaque_formula_not_constructor', b, b.sigma(b.call('and', b.eq(b.idx(0), fo
 b = Builder()
 b.symbol('formula', 20)
 add('opaque_formula_direct_service', b, b.const('formula'), [[0]])
+# Static and dynamically classified facts share their original source order.
+b = Builder(1)
+for name, dynamic in [('a', False), ('b', True), ('c', False), ('d', True)]:
+    root = b.call('p', b.const(name))
+    b.facts.append([-1 if dynamic else b.symbol('p'), root])
+add('indexed_dynamic_source_order', b, b.call('p', b.var()), [b.answer(name) for name in ['a', 'b', 'c', 'd']])
+b = Builder(1)
+b.fact('p', b.call('p', b.const('a')))
+b.facts.append([-1, b.call('if', b.call('p', b.const('b')), b.const('cut'))])
+b.fact('p', b.call('p', b.const('c')))
+add('indexed_dynamic_cut', b, b.call('p', b.var()), [b.answer('a'), b.answer('b')])
+b = Builder(2)
+b.facts.append([-1, b.app(b.var(0), b.const('a'))])
+query = b.call('and', b.eq(b.var(0), b.const('p')), b.call('p', b.var(1)))
+add('indexed_flexible_global_head', b, query, [[2, 1, b.symbol('p'), -1, 1, b.symbol('a'), -1]])
+
+# A flexible local head may become rigid after the implication is entered.
+b = Builder()
+assumption = b.app(b.idx(0), b.const('a'))
+body = b.call('and', b.eq(b.idx(0), b.const('p')), b.call('p', b.const('a')))
+add('local_flexible_head_after_binding', b, b.sigma(b.call('imply', assumption, body)), [[0]])
+b = Builder()
+goal = b.app(b.idx(0), b.const('a'))
+add('local_nominal_predicate_head', b, b.pi(b.call('imply', goal, goal)), [[0]])
+
+# Failed candidates must yield before the whole table has been inspected.
+b = Builder()
+b.facts = []
+wrong = b.call('p', b.const('wrong'))
+for _ in range(5000):
+    b.fact('p', wrong)
+b.fact('p', b.call('p', b.const('right')))
+add('yielded_clause_search', b, b.call('p', b.const('right')), [[0]])
+b = Builder()
+b.facts = []
+wrong = b.eq(b.const('a'), b.const('b'))
+for _ in range(5000):
+    b.fact('eq', wrong)
+b.fact('eq', b.eq(b.const('a'), b.const('a')))
+add('yielded_equality_resume', b, b.eq(b.const('a'), b.const('a')), [[0]])
+
+# A rejected leaf resumes through many failed alternatives without blocking.
+b = Builder()
+b.symbol('print', 19)
+b.fact('p', b.call('p', b.const('blue')))
+b.fact('p', b.call('p', b.const('red')))
+b.fact('walk', b.call('if', b.call('walk', b.nat(0)), b.call('print', b.const('done'))))
+body = b.call('and', b.call('p', b.const('blue')), b.call('walk', b.idx(0)))
+b.fact('walk', b.pi(b.call('if', b.call('walk', b.app(b.const('s'), b.idx(0))), body)))
+add('yield_failed_backtracking', b, b.call('walk', b.nat(5000)), [[0]])
+
+# Only identities in normalized pending frames belong in compact metadata.
+b = Builder(1)
+b.symbol('print', 19)
+normalized = b.app(b.lam(b.nat(123)), b.var())
+hyp = b.call('p', b.idx(1), b.idx(0), normalized, b.lam(b.idx(0)), b.term(6))
+body = b.call('and', b.call('and', b.call('print', b.const('done')), hyp), hyp)
+query = b.pi(b.sigma(b.call('imply', hyp, body)))
+add('compact_frame_declarations', b, query, [[1, 0, 0, 0, 0, -1]])
+
 b = Builder(1)
 add('unbound_query', b, b.const('true'), [[1, 0, 0, 0, 0, -1]])
 b = Builder(1)

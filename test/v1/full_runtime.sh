@@ -3,6 +3,11 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 tmp_dir=$(mktemp -d)
 trap 'rm -rf -- "$tmp_dir"' EXIT
+cabal exec -- ghc -O2 -w -isrc test/v1/UniqueBlockRegression.hs -odir "$tmp_dir/unique" -hidir "$tmp_dir/unique" -o "$tmp_dir/unique-regression" > "$tmp_dir/unique-build.log" 2>&1 || {
+    cat "$tmp_dir/unique-build.log"
+    exit 1
+}
+"$tmp_dir/unique-regression"
 cabal exec -- ghc -O2 -w -isrc test/v1/FullRuntimeRegression.hs src/X/term.c src/X/higher_machine.c -Isrc/X -odir "$tmp_dir" -hidir "$tmp_dir" -o "$tmp_dir/regression" > "$tmp_dir/build.log" 2>&1 || {
     cat "$tmp_dir/build.log"
     exit 1

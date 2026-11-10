@@ -8,7 +8,8 @@
 #define TERM_DEPTH_LIMIT 8192
 
 typedef struct {
-    int tag, is_type;
+    int tag;
+    unsigned char is_type, ground;
     HTerm a, b;
     uint64_t uid;
     size_t scope;
@@ -19,6 +20,7 @@ typedef struct {
 typedef struct { HTerm variable, binding; size_t scope; } Trail;
 typedef struct { HTerm left, right; size_t next; } Pending;
 typedef struct { uint64_t uid; HTerm term; } Identity;
+typedef struct { uint64_t first, end; } RetiredRange;
 
 struct HolTermStore {
     TermNode *nodes;
@@ -29,6 +31,8 @@ struct HolTermStore {
     size_t pending_count, pending_capacity, pending_head;
     Identity *identities;
     size_t identity_capacity, identity_count;
+    RetiredRange *retired;
+    size_t retired_count, retired_capacity;
     uint64_t next_uid;
     size_t successor;
     unsigned char *opaque;
@@ -41,6 +45,22 @@ struct HolTermStore {
 
 typedef struct { HTerm *items; size_t count, capacity; } Terms;
 typedef struct { int64_t *items; size_t count, capacity; } Words;
+
+/* Only immutable, already-normal rigid constructor trees qualify. In
+    * particular, a variable currently bound to such a tree does not qualify. */
+static int ground_node(const HolTermStore *s, TermNode n)
+{
+    if (n.tag == HT_NAT) return 1;
+    if (n.tag == HT_CONST) return n.a >= s->opaque_count || !s->opaque[n.a];
+    if (n.tag != HT_APP || !s->nodes[n.a].ground || !s->nodes[n.b].ground) return 0;
+    TermNode function = s->nodes[n.a], argument = s->nodes[n.b];
+    return function.tag != HT_CONST || function.a != s->successor || argument.tag != HT_NAT;
+}
+
+static void refresh_ground(HolTermStore *s)
+{
+    for (size_t i = 0; i < s->count; ++i) s->nodes[i].ground = ground_node(s, s->nodes[i]);
+}
 
 static int fail(HolTermStore *s, const char *message)
 {
@@ -107,6 +127,7 @@ static HTerm node(HolTermStore *s, TermNode value)
         return HT_NONE;
     }
     HTerm result = s->count++;
+    value.ground = ground_node(s, value);
     s->nodes[result] = value;
     return result;
 }
@@ -114,6 +135,64 @@ static HTerm node(HolTermStore *s, TermNode value)
 static size_t bucket(uint64_t uid, size_t capacity)
 {
     return (size_t) (uid * UINT64_C(11400714819323198485)) & (capacity - 1);
+}
+
+static int identity_retired(const HolTermStore *s, uint64_t uid)
+{
+    size_t first = 0, end = s->retired_count;
+    while (first < end) {
+        size_t middle = first + (end - first) / 2;
+        RetiredRange range = s->retired[middle];
+        if (uid < range.first) {
+            end = middle;
+        } else if (uid >= range.end) {
+            first = middle + 1;
+        } else {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Every live identity can add at most one range when rolled back. Reserving
+    * that space before allocation keeps retirement allocation-free. */
+static int reserve_retired(HolTermStore *s, size_t extra)
+{
+    if (s->identity_count > SIZE_MAX - s->retired_count || extra > SIZE_MAX - s->retired_count - s->identity_count) {
+        return fail(s, "Retired identity table overflow");
+    }
+    return reserve(s, (void **) &s->retired, &s->retired_capacity, s->retired_count + s->identity_count + extra, sizeof(*s->retired));
+}
+
+static int retire_range(HolTermStore *s, uint64_t first, uint64_t end)
+{
+    size_t low = 0, high = s->retired_count;
+    while (low < high) {
+        size_t middle = low + (high - low) / 2;
+        if (s->retired[middle].end < first) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    size_t after = low;
+    while (after < s->retired_count && s->retired[after].first <= end) {
+        RetiredRange range = s->retired[after++];
+        if (range.first < first) first = range.first;
+        if (range.end > end) end = range.end;
+    }
+    if (after == low) {
+        if (s->retired_count == s->retired_capacity) {
+            return fail(s, "Missing retired identity capacity");
+        }
+        memmove(s->retired + low + 1, s->retired + low, (s->retired_count - low) * sizeof(*s->retired));
+        ++s->retired_count;
+    } else {
+        memmove(s->retired + low + 1, s->retired + after, (s->retired_count - after) * sizeof(*s->retired));
+        s->retired_count -= after - low - 1;
+    }
+    s->retired[low] = (RetiredRange) { first, end };
+    return 1;
 }
 
 static int reserve_identities(HolTermStore *s)
@@ -151,16 +230,15 @@ static int reserve_identities(HolTermStore *s)
 
 static int insert_identity(HolTermStore *s, uint64_t uid, HTerm term, int restoring)
 {
-    if (!reserve_identities(s)) {
+    if (!restoring && identity_retired(s, uid)) {
+        return fail(s, "Term wire refers to an expired identity");
+    }
+    if (!reserve_identities(s) || !reserve_retired(s, 1)) {
         return 0;
     }
     size_t index = bucket(uid, s->identity_capacity);
     while (s->identities[index].uid != UID_EMPTY) {
         if (s->identities[index].uid == uid) {
-            if (restoring && s->identities[index].term == HT_NONE) {
-                s->identities[index].term = term;
-                return 1;
-            }
             return fail(s, "Duplicate term identity");
         }
         index = (index + 1) & (s->identity_capacity - 1);
@@ -178,7 +256,21 @@ static void remove_identity(HolTermStore *s, uint64_t uid)
     size_t index = bucket(uid, s->identity_capacity);
     while (s->identities[index].uid != UID_EMPTY) {
         if (s->identities[index].uid == uid) {
-            s->identities[index].term = HT_NONE;
+            if (!retire_range(s, uid, uid + 1)) {
+                return;
+            }
+            --s->identity_count;
+            size_t mask = s->identity_capacity - 1;
+            size_t next = (index + 1) & mask;
+            while (s->identities[next].uid != UID_EMPTY) {
+                size_t home = bucket(s->identities[next].uid, s->identity_capacity);
+                if (((next - home) & mask) >= ((index - home) & mask)) {
+                    s->identities[index] = s->identities[next];
+                    index = next;
+                }
+                next = (next + 1) & mask;
+            }
+            s->identities[index] = (Identity) { UID_EMPTY, HT_NONE };
             return;
         }
         index = (index + 1) & (s->identity_capacity - 1);
@@ -208,6 +300,7 @@ void ht_destroy(HolTermStore *s)
     free(s->trail);
     free(s->pending);
     free(s->identities);
+    free(s->retired);
     free(s->opaque);
     free(s);
 }
@@ -273,6 +366,12 @@ int ht_preserve_identity_history(HolTermStore *restored, const HolTermStore *liv
     if (restored == live) {
         return 1;
     }
+    for (size_t i = 0; i < live->retired_count; ++i) {
+        RetiredRange range = live->retired[i];
+        if (!reserve_retired(restored, 1) || !retire_range(restored, range.first, range.end)) {
+            return 0;
+        }
+    }
     for (size_t i = 0; i < live->identity_capacity; ++i) {
         Identity entry = live->identities[i];
         if (entry.uid == UID_EMPTY) {
@@ -289,7 +388,7 @@ int ht_preserve_identity_history(HolTermStore *restored, const HolTermStore *liv
                 index = (index + 1) & (restored->identity_capacity - 1);
             }
         }
-        if (!present && !insert_identity(restored, entry.uid, HT_NONE, 0)) {
+        if (!present && (!reserve_retired(restored, 1) || !retire_range(restored, entry.uid, entry.uid + 1))) {
             return 0;
         }
     }
@@ -299,6 +398,7 @@ int ht_preserve_identity_history(HolTermStore *restored, const HolTermStore *liv
 void ht_set_successor(HolTermStore *s, size_t symbol)
 {
     s->successor = symbol;
+    refresh_ground(s);
 }
 
 int ht_set_opaque_symbol(HolTermStore *s, size_t symbol)
@@ -315,6 +415,7 @@ int ht_set_opaque_symbol(HolTermStore *s, size_t symbol)
         s->opaque_count = count;
     }
     s->opaque[symbol] = 1;
+    refresh_ground(s);
     return 1;
 }
 
@@ -358,7 +459,7 @@ static HTerm identity_node(HolTermStore *s, int tag, uint64_t uid, size_t scope,
         fail(s, "Invalid term identity metadata");
         return HT_NONE;
     }
-    HTerm result = node(s, (TermNode) { tag, is_type, HT_NONE, HT_NONE, uid, scope, meta, NULL });
+    HTerm result = node(s, (TermNode) { tag, is_type, 0, HT_NONE, HT_NONE, uid, scope, meta, NULL });
     if (result == HT_NONE || !insert_identity(s, uid, result, restoring)) {
         return HT_NONE;
     }
@@ -384,7 +485,7 @@ HTerm ht_constant(HolTermStore *s, size_t symbol, int64_t meta)
         fail(s, "Invalid constant metadata");
         return HT_NONE;
     }
-    return node(s, (TermNode) { HT_CONST, 0, symbol, HT_NONE, 0, 0, meta, NULL });
+    return node(s, (TermNode) { HT_CONST, 0, 0, symbol, HT_NONE, 0, 0, meta, NULL });
 }
 
 HTerm ht_nat(HolTermStore *s, const char *digits)
@@ -409,7 +510,7 @@ HTerm ht_nat(HolTermStore *s, const char *digits)
         return HT_NONE;
     }
     memcpy(copy, digits, length + 1);
-    HTerm result = node(s, (TermNode) { HT_NAT, 0, HT_NONE, HT_NONE, 0, 0, -1, copy });
+    HTerm result = node(s, (TermNode) { HT_NAT, 0, 0, HT_NONE, HT_NONE, 0, 0, -1, copy });
     if (result == HT_NONE) {
         free(copy);
     }
@@ -458,7 +559,7 @@ HTerm ht_index(HolTermStore *s, size_t index)
         fail(s, "Bound variable index overflow");
         return HT_NONE;
     }
-    return node(s, (TermNode) { HT_INDEX, 0, index, HT_NONE, 0, 0, -1, NULL });
+    return node(s, (TermNode) { HT_INDEX, 0, 0, index, HT_NONE, 0, 0, -1, NULL });
 }
 
 HTerm ht_lam(HolTermStore *s, HTerm body, int64_t meta)
@@ -467,7 +568,7 @@ HTerm ht_lam(HolTermStore *s, HTerm body, int64_t meta)
         fail(s, "Invalid lambda term");
         return HT_NONE;
     }
-    return node(s, (TermNode) { HT_LAM, 0, body, HT_NONE, 0, 0, meta, NULL });
+    return node(s, (TermNode) { HT_LAM, 0, 0, body, HT_NONE, 0, 0, meta, NULL });
 }
 
 HTerm ht_app(HolTermStore *s, HTerm function, HTerm argument, int64_t meta)
@@ -481,12 +582,12 @@ HTerm ht_app(HolTermStore *s, HTerm function, HTerm argument, int64_t meta)
     if (s->nodes[f].tag == HT_CONST && s->nodes[f].a == s->successor && s->nodes[a].tag == HT_NAT) {
         return increment(s, a, 1);
     }
-    return node(s, (TermNode) { HT_APP, 0, function, argument, 0, 0, meta, NULL });
+    return node(s, (TermNode) { HT_APP, 0, 0, function, argument, 0, 0, meta, NULL });
 }
 
 HTerm ht_wildcard(HolTermStore *s)
 {
-    return node(s, (TermNode) { HT_WILD, 0, HT_NONE, HT_NONE, 0, 0, -1, NULL });
+    return node(s, (TermNode) { HT_WILD, 0, 0, HT_NONE, HT_NONE, 0, 0, -1, NULL });
 }
 
 HTerm ht_lookup_uid(const HolTermStore *s, uint64_t uid)
@@ -540,7 +641,7 @@ static HTerm shift(HolTermStore *s, HTerm term, size_t amount, size_t cutoff, si
     }
     term = ht_deref(s, term);
     TermNode n = s->nodes[term];
-    if (!amount) {
+    if (!amount || n.ground) {
         return term;
     }
     if (n.tag == HT_INDEX && n.a >= cutoff) {
@@ -569,6 +670,7 @@ static HTerm substitute(HolTermStore *s, HTerm term, HTerm argument, size_t bind
     }
     term = ht_deref(s, term);
     TermNode n = s->nodes[term];
+    if (n.ground) return term;
     if (n.tag == HT_INDEX) {
         if (n.a == binder) {
             return shift(s, argument, binder, 0, depth + 1);
@@ -598,6 +700,7 @@ static HTerm normalize(HolTermStore *s, HTerm term, enum HTNormalForm form, size
         return HT_NONE;
     }
     TermNode n = s->nodes[term];
+    if (n.ground) return term;
     if (n.tag == HT_APP) {
         HTerm function = normalize(s, n.a, HT_WHNF, depth + 1);
         if (function == HT_NONE) {
@@ -703,35 +806,42 @@ void ht_spine_free(HTSpine *spine)
 
 static int equal(HolTermStore *s, HTerm left, HTerm right, size_t depth)
 {
-    if (!depth_okay(s, depth)) {
-        return 0;
-    }
-    left = ht_deref(s, left);
-    right = ht_deref(s, right);
-    if (left == right) {
-        return 1;
-    }
-    TermNode a = s->nodes[left], b = s->nodes[right];
-    if (a.tag != b.tag) {
-        return 0;
-    }
-    switch (a.tag) {
-        case HT_VAR:
-        case HT_NOMINAL:
-            return a.uid == b.uid;
-        case HT_CONST:
-        case HT_INDEX:
-            return a.a == b.a;
-        case HT_NAT:
-            return !strcmp(a.digits, b.digits);
-        case HT_WILD:
-            return 1;
-        case HT_APP:
-            return equal(s, a.a, b.a, depth + 1) && equal(s, a.b, b.b, depth + 1);
-        case HT_LAM:
-            return equal(s, a.a, b.a, depth + 1);
-        default:
+    for (;;) {
+        if (!depth_okay(s, depth)) {
             return 0;
+        }
+        left = ht_deref(s, left);
+        right = ht_deref(s, right);
+        if (left == right) {
+            return 1;
+        }
+        TermNode a = s->nodes[left], b = s->nodes[right];
+        if (a.tag != b.tag) {
+            return 0;
+        }
+        switch (a.tag) {
+            case HT_VAR:
+            case HT_NOMINAL:
+                return a.uid == b.uid;
+            case HT_CONST:
+            case HT_INDEX:
+                return a.a == b.a;
+            case HT_NAT:
+                return !strcmp(a.digits, b.digits);
+            case HT_WILD:
+                return 1;
+            case HT_APP:
+                if (!equal(s, a.a, b.a, depth + 1)) return 0;
+                left = a.b;
+                right = b.b;
+                break;
+            case HT_LAM:
+                left = a.a;
+                right = b.a;
+                break;
+            default:
+                return 0;
+        }
     }
 }
 
@@ -796,6 +906,7 @@ static int occurs(HolTermStore *s, HTerm variable, HTerm term, size_t depth)
         return 1;
     }
     TermNode n = s->nodes[term];
+    if (n.ground) return 0;
     if (n.tag == HT_APP) {
         return occurs(s, variable, n.a, depth + 1) || occurs(s, variable, n.b, depth + 1);
     }
@@ -809,6 +920,7 @@ static int lower_scopes(HolTermStore *s, HTerm term, size_t scope, size_t depth)
     }
     term = ht_deref(s, term);
     TermNode n = s->nodes[term];
+    if (n.ground) return 1;
     if (n.tag == HT_VAR && n.scope > scope) {
         if (!trail_variable(s, term)) {
             return 0;
@@ -829,6 +941,7 @@ static int index_free(HolTermStore *s, HTerm term, size_t index, size_t depth)
     }
     term = ht_deref(s, term);
     TermNode n = s->nodes[term];
+    if (n.ground) return 0;
     if (n.tag == HT_INDEX) {
         return n.a == index;
     }
@@ -845,6 +958,7 @@ static HTerm remove_binder(HolTermStore *s, HTerm term, size_t index, size_t dep
     }
     term = ht_deref(s, term);
     TermNode n = s->nodes[term];
+    if (n.ground) return term;
     if (n.tag == HT_INDEX && n.a > index) {
         return ht_index(s, n.a - 1);
     }
@@ -867,6 +981,7 @@ static HTerm eta_reduce(HolTermStore *s, HTerm term, size_t depth)
     }
     term = ht_deref(s, term);
     TermNode n = s->nodes[term];
+    if (n.ground) return term;
     if (n.tag == HT_APP) {
         HTerm a = eta_reduce(s, n.a, depth + 1);
         HTerm b = eta_reduce(s, n.b, depth + 1);
@@ -1037,6 +1152,10 @@ static int bind_value(HolTermStore *s, HTerm variable, HTerm value, const HTerm 
         return -1;
     }
     TermNode n = s->nodes[value];
+    if (n.ground) {
+        *result = value;
+        return 1;
+    }
     if (n.tag == HT_LAM) {
         if (!push_word(s, bound, n.meta)) {
             return -1;
@@ -1303,7 +1422,7 @@ static int solve_pair(HolTermStore *s, HTerm left, HTerm right, Words *outer, Eq
         return s->error[0] ? -1 : 1;
     }
     TermNode l = s->nodes[left], r = s->nodes[right];
-    if (l.tag == HT_NAT && r.tag == HT_NAT) {
+    if (l.ground && r.ground) {
         return 0;
     }
     if (l.tag == HT_LAM && r.tag == HT_LAM) {
@@ -1452,6 +1571,7 @@ static int assignment_scope(HolTermStore *s, HTerm term, size_t scope, size_t bi
         return -1;
     }
     TermNode n = s->nodes[term];
+    if (n.ground) return 1;
     switch (n.tag) {
         case HT_VAR:
         case HT_NOMINAL:
@@ -1570,15 +1690,9 @@ static HTerm import_term(HolTermStore *s, const int64_t *words, size_t count, si
                 }
                 return previous;
             }
-            if (s->identity_capacity) {
-                size_t index = bucket((uint64_t) a, s->identity_capacity);
-                while (s->identities[index].uid != UID_EMPTY) {
-                    if (s->identities[index].uid == (uint64_t) a && !restoring) {
-                        fail(s, "Term wire refers to an expired identity");
-                        return HT_NONE;
-                    }
-                    index = (index + 1) & (s->identity_capacity - 1);
-                }
+            if (!restoring && identity_retired(s, (uint64_t) a)) {
+                fail(s, "Term wire refers to an expired identity");
+                return HT_NONE;
             }
             return identity_node(s, (int) tag, (uint64_t) a, (size_t) b, (int) c, d, restoring);
         }
@@ -1676,46 +1790,52 @@ HTerm ht_import_restored(HolTermStore *s, const int64_t *words, size_t count, si
 
 static int export_term(HolTermStore *s, HTerm term, Words *words, size_t depth)
 {
-    if (!depth_okay(s, depth)) {
-        return 0;
-    }
-    term = ht_deref(s, term);
-    if (term == HT_NONE) {
-        return fail(s, "Invalid term export reference");
-    }
-    TermNode n = s->nodes[term];
-    if (!push_word(s, words, n.tag)) {
-        return 0;
-    }
-    switch (n.tag) {
-        case HT_VAR:
-            return push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.is_type) && push_word(s, words, n.meta);
-        case HT_CONST:
-            return push_word(s, words, (int64_t) n.a) && push_word(s, words, n.meta);
-        case HT_APP:
-            return push_word(s, words, n.meta) && export_term(s, n.a, words, depth + 1) && export_term(s, n.b, words, depth + 1);
-        case HT_INDEX:
-            return push_word(s, words, (int64_t) n.a);
-        case HT_LAM:
-            return push_word(s, words, n.meta) && export_term(s, n.a, words, depth + 1);
-        case HT_NOMINAL:
-            return push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.meta);
-        case HT_NAT: {
-            size_t length = strlen(n.digits);
-            if (length > INT64_MAX || !push_word(s, words, (int64_t) length)) {
-                return fail(s, "Natural export length overflow");
-            }
-            for (size_t i = 0; i < length; ++i) {
-                if (!push_word(s, words, n.digits[i])) {
-                    return 0;
-                }
-            }
-            return 1;
+    for (;;) {
+        if (!depth_okay(s, depth)) {
+            return 0;
         }
-        case HT_WILD:
-            return 1;
-        default:
-            return fail(s, "Invalid term export tag");
+        term = ht_deref(s, term);
+        if (term == HT_NONE) {
+            return fail(s, "Invalid term export reference");
+        }
+        TermNode n = s->nodes[term];
+        if (!push_word(s, words, n.tag)) {
+            return 0;
+        }
+        switch (n.tag) {
+            case HT_VAR:
+                return push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.is_type) && push_word(s, words, n.meta);
+            case HT_CONST:
+                return push_word(s, words, (int64_t) n.a) && push_word(s, words, n.meta);
+            case HT_APP:
+                if (!push_word(s, words, n.meta) || !export_term(s, n.a, words, depth + 1)) return 0;
+                term = n.b;
+                break;
+            case HT_INDEX:
+                return push_word(s, words, (int64_t) n.a);
+            case HT_LAM:
+                if (!push_word(s, words, n.meta)) return 0;
+                term = n.a;
+                break;
+            case HT_NOMINAL:
+                return push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.meta);
+            case HT_NAT: {
+                size_t length = strlen(n.digits);
+                if (length > INT64_MAX || !push_word(s, words, (int64_t) length)) {
+                    return fail(s, "Natural export length overflow");
+                }
+                for (size_t i = 0; i < length; ++i) {
+                    if (!push_word(s, words, n.digits[i])) {
+                        return 0;
+                    }
+                }
+                return 1;
+            }
+            case HT_WILD:
+                return 1;
+            default:
+                return fail(s, "Invalid term export tag");
+        }
     }
 }
 
@@ -1780,16 +1900,21 @@ HolTermStore *ht_clone(const HolTermStore *source)
         }
         copy->nodes[copy->count++] = n;
     }
-    if (source->identity_capacity) {
-        copy->identities = malloc(source->identity_capacity * sizeof(*copy->identities));
-        if (!copy->identities) {
+    if (source->retired_count) {
+        if (!reserve(copy, (void **) &copy->retired, &copy->retired_capacity, source->retired_count, sizeof(*copy->retired))) {
             ht_destroy(copy);
             return NULL;
         }
-        memcpy(copy->identities, source->identities, source->identity_capacity * sizeof(*copy->identities));
-        copy->identity_capacity = source->identity_capacity;
-        copy->identity_count = source->identity_count;
+        memcpy(copy->retired, source->retired, source->retired_count * sizeof(*copy->retired));
+        copy->retired_count = source->retired_count;
+    }
+    for (size_t i = 0; i < source->identity_capacity; ++i) {
+        Identity entry = source->identities[i];
+        if (entry.uid != UID_EMPTY && !insert_identity(copy, entry.uid, entry.term, 1)) {
+            ht_destroy(copy);
+            return NULL;
         }
+    }
     if (source->trail_count) {
         memcpy(copy->trail, source->trail, source->trail_count * sizeof(*copy->trail));
     }

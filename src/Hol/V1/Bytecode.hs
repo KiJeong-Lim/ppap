@@ -8,7 +8,7 @@ import qualified Data.Set as Set
 import Hol.BETA.Constant
 import Hol.BETA.Header
 import Hol.BETA.TermNode (LogicVar (..))
-import Text.Read (Lexeme (Ident), Read (..), lexP, parens, pfail, prec, readListPrecDefault, readMaybe, step)
+import Text.Read (Lexeme (Ident), Read (..), ReadPrec, lexP, parens, pfail, prec, readListPrecDefault, readMaybe, step)
 import Z.Utils (Unique (..))
 
 data CompiledProgram
@@ -65,26 +65,51 @@ data StoredVariable
     = TypeVariable Int
     | NamedVariable String
     | GeneratedVariable Int (Maybe String)
-    deriving (Read, Show)
+    deriving (Show)
+
+instance Read StoredVariable where
+    readPrec = readConstructor $ \constructor -> case constructor of
+        "TypeVariable" -> TypeVariable <$> step readBounded
+        "NamedVariable" -> NamedVariable <$> step readPrec
+        "GeneratedVariable" -> GeneratedVariable <$> step readBounded <*> step readPrec
+        _ -> pfail
+    readListPrec = readListPrecDefault
+
+-- Read bounded fields through Integer, including fields inside tuples/lists.
+-- Integer-valued naturals and Presburger metadata retain arbitrary precision.
+newtype ArtifactNumber a
+    = ArtifactNumber { unArtifactNumber :: a }
+    deriving ()
+
+instance (Integral a, Bounded a) => Read (ArtifactNumber a) where
+    readPrec = ArtifactNumber <$> readBounded
+    readListPrec = readListPrecDefault
+
+readBounded :: (Integral a, Bounded a) => ReadPrec a
+readBounded = do
+    value <- readPrec
+    let result = fromInteger value
+    guard (value >= toInteger (minBound `asTypeOf` result) && value <= toInteger (maxBound `asTypeOf` result))
+    return result
+
+readConstructor :: (String -> ReadPrec a) -> ReadPrec a
+readConstructor fields = parens $ prec 10 $ do
+    Ident constructor <- lexP
+    fields constructor
 
 data BytecodeArtifact
     = BytecodeArtifact Int64 [Int64] [(Int, StoredConstant)] [StoredVariable] Int
     deriving (Show)
 
 instance Read BytecodeArtifact where
-    readPrec = parens $ prec 10 $ do
-        Ident constructor <- lexP
+    readPrec = readConstructor $ \constructor -> do
         guard (constructor == "BytecodeArtifact")
-        version <- step readPrec >>= bounded
-        words <- step readPrec >>= mapM bounded
+        version <- step readBounded
+        words <- map unArtifactNumber <$> step readPrec
         constants <- step readPrec
         variables <- step readPrec
-        slots <- step readPrec
-        return (BytecodeArtifact version words constants variables slots)
-        where
-            bounded value
-                | value >= toInteger (minBound :: Int64) && value <= toInteger (maxBound :: Int64) = return (fromInteger value)
-                | otherwise = pfail
+        slots <- step readBounded
+        return (BytecodeArtifact version words [(unArtifactNumber index, constant) | (index, constant) <- constants] variables slots)
     readListPrec = readListPrecDefault
 
 readBytecodeArtifact :: String -> Maybe BytecodeArtifact

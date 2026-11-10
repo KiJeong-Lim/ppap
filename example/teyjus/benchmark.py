@@ -83,7 +83,7 @@ def digest(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ppap-bin", required=True, type=Path)
-    parser.add_argument("--baseline-ppap-bin", type=Path, help="Optional previous Hol executable for interleaved before/after comparison")
+    parser.add_argument("--baseline-ppap-bin", type=Path, help="Previous Hol executable for interleaved automatic and forced-general source/bytecode comparison")
     parser.add_argument("--baseline-label", default="not recorded")
     parser.add_argument("--teyjus-bin", required=True, type=Path)
     parser.add_argument("--teyjus-source", type=Path)
@@ -122,13 +122,15 @@ def main():
         "source_sha256": {name: digest(ROOT / name) for name in
             ("example/einstein.hol", "example/teyjus/einstein.sig", "example/teyjus/einstein.mod")},
         "compiler_sources_sha256": {name: digest(ROOT / name) for name in
-            ("src/Hol/V1/Compiler.hs", "src/Hol/V1/Runtime.hs", "src/Hol/V1/Main.hs")},
+            ("src/Hol/V1/Compiler.hs", "src/Hol/V1/FullCompiler.hs", "src/Hol/V1/Runtime.hs", "src/Hol/V1/Main.hs")},
         "runtime_sources_sha256": {name: digest(ROOT / name) for name in
-            ("src/X/machine.c", "src/X/Machine.hs", "src/X/HigherMachine.hs", "src/Hol/V1/Bytecode.hs", "ppap.cabal")},
+            ("src/X/machine.c", "src/X/machine.h", "src/X/higher_machine.c", "src/X/higher_machine.h",
+            "src/X/term.c", "src/X/term.h", "src/X/Machine.hs", "src/X/HigherMachine.hs",
+            "src/Hol/V1/Bytecode.hs", "src/Hol/V1/FullBytecode.hs", "src/Hol/V1/FullRuntime.hs", "src/Z/Utils.hs", "ppap.cabal")},
         "queries": QUERIES,
         "selection": {"direct": "automatic dispatcher, direct call", "automatic": "automatic dispatcher, predicate alias", "general": "forced general engine via --general"},
         "method": "Fresh processes, all answers through exhaustion, stdout captured, fixed CPU, warm files, shuffled interleaving. Build/compilation excluded from replay timings.",
-        "runs": args.runs, "warmups": args.warmups, "cases": {},
+        "runs": args.runs, "warmups": args.warmups, "artifacts": {}, "cases": {},
     }
     if args.teyjus_source:
         report["teyjus_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"],
@@ -140,7 +142,9 @@ def main():
         if not os.access(baseline, os.X_OK):
             parser.error(f"not executable: {baseline}")
         report["baseline"] = {"path": baseline, "label": args.baseline_label,
-            "sha256": digest(Path(baseline))}
+            "sha256": digest(Path(baseline)),
+            "modes": ["automatic", "general"],
+            "bytecode_input": "Both executables replay the same artifact emitted by the current executable; source cases each compile their own input."}
     os.sched_setaffinity(0, {cpu})
     with tempfile.TemporaryDirectory(prefix="ppap-teyjus-") as temporary:
         work = Path(temporary)
@@ -164,6 +168,7 @@ def main():
             artifact_text = artifact.read_text()
             if not artifact_text.startswith(prefix):
                 raise RuntimeError(f"Unexpected bytecode format for {mode}")
+            report["artifacts"][mode] = {"sha256": digest(artifact), "bytes": artifact.stat().st_size, "format": prefix.strip()}
             source_input = f"{selection}\nexample/einstein.hol\n?- {query}\ny\n:q\n"
             cases.extend([
                 (f"hol_source_{mode}", [ppap], ROOT, source_input, False),
@@ -171,10 +176,10 @@ def main():
             ])
             if mode != "automatic":
                 cases.append((f"teyjus_bytecode_{mode}", [tools["tjsim"], "-b", "-e", "1", "-s", query, "einstein"], work, "", True))
-            elif args.baseline_ppap_bin:
+            if args.baseline_ppap_bin and mode in ("automatic", "general"):
                 cases.extend([
-                    ("hol_baseline_source_automatic", [baseline], ROOT, source_input, False),
-                    ("hol_baseline_bytecode_automatic", [baseline], ROOT, f"V1 --test --run-bytecode={artifact}\n", False),
+                    (f"hol_baseline_source_{mode}", [baseline], ROOT, source_input, False),
+                    (f"hol_baseline_bytecode_{mode}", [baseline], ROOT, f"V1 --test --run-bytecode={artifact}\n", False),
                 ])
         report["canonical_answers"] = expected
         for name, command, directory, stdin, teyjus in cases:

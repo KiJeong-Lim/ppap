@@ -6,6 +6,7 @@ import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
 import Data.IORef
+import qualified Data.IntMap.Strict as IntMap
 import Data.List (isInfixOf)
 import qualified Data.Map.Strict as Map
 import Hol.BETA.Constant
@@ -20,6 +21,7 @@ import Hol.V1.FullBytecode
 import Hol.V1.FullCompiler
 import qualified Hol.V1.FullRuntime as Full
 import System.Timeout (timeout)
+import qualified X.HigherMachine as Native
 import Z.Utils
 
 check :: String -> Bool -> IO ()
@@ -88,6 +90,17 @@ main = do
         value answer = fmap (\ctx -> bindVars (_TotalVarBinding ctx) variable) answer
         done = maybe True (const False)
     cutCode <- program base [clause (call (name "red")) (mkNCon LO_cut), call (name "blue")] (call variable)
+    withSession base cutCode $ \session -> execUniqueT $ do
+        high <- runExceptT (Full.identityFor session 100000) >>= liftIO . kernel
+        low <- runExceptT (Full.identityFor session 42) >>= liftIO . kernel
+        repeated <- runExceptT (Full.identityFor session 100000) >>= liftIO . kernel
+        bridge <- liftIO (readIORef (Full.sessionBridge session))
+        liftIO (check "native identity blocks preserve creation order without storing skipped IDs" (Map.size (Full.bridgeIdentities bridge) == 2 && Map.size (Full.bridgeIdentityBlocks bridge) == 1 && low < high && high == repeated))
+        collision <- runExceptT (Full.identityFor session 0)
+        liftIO (check "query identity collision boundary does not move with sparse IDs" (either (const True) (const False) collision))
+        firstSymbol <- runExceptT (Full.internSymbol session (ConstantSymbol (DC (DC_Unique (Unique 999) (mkHint (Just "first")))))) >>= liftIO . kernel
+        renamedSymbol <- runExceptT (Full.internSymbol session (ConstantSymbol (DC (DC_Unique (Unique 999) (mkHint (Just "renamed")))))) >>= liftIO . kernel
+        liftIO (check "runtime symbol indexing preserves identity despite display hints" (firstSymbol == renamedSymbol))
     withSession base cutCode $ \session -> execUniqueT $ do
         saved <- liftIO (Full.takeSnapshot session >>= right)
         first <- next session
@@ -158,6 +171,53 @@ main = do
         binder operator hint body = mkNApp (mkNCon operator) (mkNLamHintTy (Just hint) (LamType (Just mkTyNat)) body)
         forallExists = binder LO_pi "C" (binder LO_sigma "X" equality)
         existsForall = binder LO_sigma "X" (binder LO_pi "C" equality)
+        pendingCall = mkNApp (name "q") (mkNIdx 0)
+        metadataQuery = binder LO_pi "C" (conjunction (mkNApp (name "print") (nat 0)) (conjunction pendingCall pendingCall))
+    metadataCode <- program base [] metadataQuery
+    let inspectMetadata compact = withSession base metadataCode $ \session -> execUniqueT $ do
+            step <- liftIO ((if compact then Native.nextStepForHost else Native.nextStep) (Full.sessionMachine session) >>= right)
+            case step of
+                Native.Request request -> do
+                    _ <- runExceptT (Full.decodeState session (Native.requestState request)) >>= liftIO . kernel
+                    _ <- runExceptT (Full.decodeRoots session (Native.requestTerms request)) >>= liftIO . kernel
+                    _ <- runExceptT (Full.decodeFrames session (Native.requestFrames request)) >>= liftIO . kernel
+                    _ <- runExceptT (Full.decodeRoots session (Native.requestDeclarations request)) >>= liftIO . kernel
+                    bridge <- liftIO (readIORef (Full.sessionBridge session))
+                    let labeling = Full.bridgeLabeling bridge
+                    liftIO (check "compact requests retain frame-only nominal declarations" (not (Map.null (Full.bridgeConstants bridge))))
+                    liftIO (check "nondebug compact request avoids exporting full frames" (not compact || Native.requestFrames request == [0]))
+                    return (Full.bridgeVariables bridge, Full.bridgeConstants bridge, Full.bridgeIdentities bridge, _ConLabel labeling, _ConTypes labeling, _VarLabel labeling, _VarTypes labeling, _TyVarKeys labeling)
+                _ -> liftIO (ioError (userError "metadata fixture produced no primitive event"))
+    legacyMetadata <- inspectMetadata False
+    compactMetadata <- inspectMetadata True
+    check "compact frame metadata preserves identities, kinds, types and scopes" (legacyMetadata == compactMetadata)
+    metadataTemplate <- program base [] (mkNCon LO_true)
+    let originalType = Unique 900000
+        repeatedCode = metadataTemplate
+            { fullWords = take 7 (fullWords metadataTemplate) ++ [2] ++ drop 8 (fullWords metadataTemplate)
+            , fullMetadata = IntMap.fromList
+                [ (0, NodeMetadata (Just "T") (LamType (Just (TyMTV originalType))) Nothing)
+                , (1, NodeMetadata (Just "C") (LamType (Just (TyMTV originalType))) Nothing)
+                ]
+            }
+        firstType = [0, 10, 0, 1, 0]
+        laterType = [0, 11, 0, 1, 0]
+        nominal = [5, 12, 1, 1]
+        fullFrames = [2, 1, 0, 0, 2, -1] ++ firstType ++ nominal
+            ++ [1, 1, 0, 2, -1] ++ laterType ++ nominal
+        declarations = [4] ++ firstType ++ nominal ++ laterType ++ nominal
+        deduplicated = [3] ++ firstType ++ nominal ++ laterType
+        inspectRepeated frames words = withSession base repeatedCode $ \session -> execUniqueT $ do
+            if frames then void (runExceptT (Full.decodeFrames session words) >>= liftIO . kernel)
+            else void (runExceptT (Full.decodeRoots session words) >>= liftIO . kernel)
+            bridge <- liftIO (readIORef (Full.sessionBridge session))
+            return (Full.bridgeTypeBinders bridge, _ConTypes (Full.bridgeLabeling bridge))
+    repeatedFrames <- inspectRepeated True fullFrames
+    repeatedDeclarations <- inspectRepeated False declarations
+    uniqueDeclarations <- inspectRepeated False deduplicated
+    check "repeated declarations re-enroll nominal types after source type-binder changes"
+        (repeatedFrames == repeatedDeclarations && repeatedDeclarations /= uniqueDeclarations
+            && repeatedDeclarations == (Map.singleton originalType (Unique 11), IntMap.singleton 12 (TyMTV (Unique 11))))
     ordered <- program base [] forallExists
     reversed <- program base [] existsForall
     withSession base ordered $ \session -> execUniqueT $ do

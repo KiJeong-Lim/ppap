@@ -5,6 +5,7 @@
 `ppap` is a collection of Haskell research and experiment projects packaged behind one executable. The public-facing documentation focuses on the logic programming interpreter, lexer/parser generators, and calculation experiments.
 
 - `Hol`: a lambda Prolog-style logic programming interpreter. The default implementation is currently `Hol.BETA`.
+- `V1` or `Hol --v1`: the Hol bytecode compiler and C interpreter, sharing BETA's frontend and language.
 - `LGS`: a lexer generator.
 - `PGS`: a parser generator.
 - `Calc`: calculation experiments, including Presburger arithmetic and control-system diagrams.
@@ -30,6 +31,7 @@ You can also pass a one-shot dispatcher transcript through standard input.
 
 ```bash
 printf 'Hol --test\nexample/fibonacci\n?- main N.\n:q\n\n' | cabal run -v0 ppap
+printf 'V1 --test\nexample/fibonacci\n?- main N.\n:q\n\n' | cabal run -v0 ppap
 printf 'TEST\nholsmoke\n' | cabal run -v0 ppap
 ```
 
@@ -45,6 +47,7 @@ The basic build requires a Haskell toolchain.
 
 - Cabal or Stack
 - GHC
+- A C compiler for the native V1 runtimes
 
 ## Repository Layout
 
@@ -52,10 +55,11 @@ The basic build requires a Haskell toolchain.
 src/
   Main.hs                  top-level dispatcher
   Hol/BETA/               current Hol implementation
+  Hol/V1/                 bytecode compilers and host services
   LGS/, PGS/               lexer/parser generators
   Calc/                    arithmetic and control-system experiments
   Json/                    generated lexer/parser example
-  Z/, Y/, X/               shared utilities, pretty printing, C FFI helper
+  Z/, Y/, X/               shared utilities, pretty printing, native VMs and FFI
 
 test/                      Hol regression and smoke fixtures
 example/                   sample .hol programs and generator inputs
@@ -68,6 +72,9 @@ The executable accepts these dispatcher commands:
 
 ```text
 Hol [--pretty|--test]
+V1 [--pretty|--test] [--general] [--strict] [--dump-bytecode] [--emit-bytecode=PATH]
+V1 [--pretty|--test] [--dump-bytecode] --run-bytecode=PATH
+Hol --v1 [V1 options]
 Calc
 LGS
 PGS
@@ -98,6 +105,17 @@ Useful REPL commands:
 ```
 
 Examples live under `example/*.hol` and `test/**/*.hol`.
+
+Select `V1` or `Hol --v1` to run the same language through the native bytecode engine. It automatically selects a first-order path when the reachable program supports it; `--general` selects the higher-order engine. Neither path falls back to BETA's interpreter. Both support saving a compiled query with `--emit-bytecode=PATH` and replaying it with `--run-bytecode=PATH`; replay follows the saved format, so do not combine `--general` with `--run-bytecode`.
+
+```text
+ppap =<< Hol --v1 --test
+Hol =<< example/fibonacci.hol
+example.fibonacci> ?- main N.
+example.fibonacci> :q
+```
+
+The native engine preserves clause order, local hypotheses, equality precedence, cut and snapshots. Failed clause searches and backtracking participate in cancellation batches. See [doc/HolV1.txt](doc/HolV1.txt) for the embedding API, artifact validation, resource limits and recorded benchmarks.
 
 The final legacy Aladdin implementation (`086a9d1`) lives in `src/Hol/ALPHA1/`. Run it with the `ALPHA1` dispatcher command; it loads `.hol` files and retains the original Aladdin syntax, with natural-number arithmetic added explicitly.
 

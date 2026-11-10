@@ -40,6 +40,7 @@ size_t ht_heap_count(const HolTermStore *store);
 HTCheckpoint ht_checkpoint(const HolTermStore *store);
 int ht_restore(HolTermStore *store, HTCheckpoint checkpoint);
 uint64_t ht_next_uid(const HolTermStore *store);
+/* Advancing the fresh-UID frontier does not retire never-materialized gaps. */
 int ht_advance_uid(HolTermStore *store, uint64_t next_uid);
 /* Preserve retirement when replacing a live store with an older snapshot. */
 int ht_preserve_identity_history(HolTermStore *restored, const HolTermStore *live);

@@ -288,6 +288,29 @@ b.cs = [(0, 1, b.app(p, x), body), (0, 0, b.app(p, z), ret)]
 add("yield_continuation", b, b.i(2, b.app(p, x), ret), [[1, 1], [1, 2]])
 
 
+# Clause failures and exhausted alternatives participate in cancellation yields.
+b = Builder(0)
+p = b.c(0)
+red = b.c(1)
+blue = b.c(2)
+ret = b.i(0)
+wrong = b.app(p, red)
+right = b.app(p, blue)
+b.cs = [(0, 0, wrong, ret)] * 35000 + [(0, 0, right, ret)]
+add('yield_failed_clause_search', b, b.i(2, right, ret), [[]])
+b = Builder(0)
+p = b.c(0)
+red = b.c(1)
+blue = b.c(2)
+ret = b.i(0)
+goal = b.app(p, blue)
+b.cs = [(0, 0, goal, ret), (0, 0, b.app(p, red), ret)]
+entry = ret
+for _ in range(35000):
+    entry = b.i(2, goal, entry)
+add('yield_failed_backtracking', b, entry, [[]])
+
+
 def array(name, values, kind="int64_t"):
     values = values or [0]
     rows = [", ".join(map(str, values[start:start + 24])) for start in range(0, len(values), 24)]

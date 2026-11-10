@@ -3,6 +3,14 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 : "${PPAP_BIN:?smoke runner must provide PPAP_BIN}"
 
+artifact_tmp=$(mktemp -d)
+trap 'rm -rf -- "$artifact_tmp"' EXIT
+cabal exec -- ghc -O0 -w -isrc test/v1/FullArtifactRegression.hs -odir "$artifact_tmp" -hidir "$artifact_tmp" -o "$artifact_tmp/regression" > "$artifact_tmp/build.log" 2>&1 || {
+    cat "$artifact_tmp/build.log"
+    exit 1
+}
+"$artifact_tmp/regression"
+
 python3 - "$PPAP_BIN" <<'PY'
 from pathlib import Path
 import re

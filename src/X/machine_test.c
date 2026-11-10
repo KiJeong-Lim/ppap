@@ -136,10 +136,23 @@ static void check_allocation_failures(const TestCase *test)
     printf("PASS %s allocation cleanup (%zu failure points)\n", test->name, total);
 }
 
+static void check_failed_search_yield(const TestCase *test, int backtracking)
+{
+    HolV1Machine *machine = hol_v1_create(test->code, test->length);
+    assert(machine);
+    if (backtracking) assert(next_answer(machine) == 1);
+    assert(hol_v1_next(machine) == 2);
+    if (!backtracking) assert(next_answer(machine) == 1);
+    assert(next_answer(machine) == 0);
+    hol_v1_destroy(machine);
+}
+
 int main(void)
 {
     for (size_t i = 0; i < sizeof(cases) / sizeof(*cases); ++i) {
         check(&cases[i]);
+        if (!strcmp(cases[i].name, "yield_failed_clause_search")) check_failed_search_yield(&cases[i], 0);
+        if (!strcmp(cases[i].name, "yield_failed_backtracking")) check_failed_search_yield(&cases[i], 1);
         if (!strcmp(cases[i].name, "recursive_member") || !strcmp(cases[i].name, "deep_term") || !strcmp(cases[i].name, "clause_application_spine") || !strcmp(cases[i].name, "body_only_choice_rollback") || !strcmp(cases[i].name, "head_subtree_shared_variable")) {
             check_allocation_failures(&cases[i]);
         }

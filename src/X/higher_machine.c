@@ -15,8 +15,8 @@ typedef struct {
     uint64_t premises, call;
 } Frame;
 
-typedef struct { HTerm fact; size_t next; } Hypothesis;
-typedef struct { int64_t symbol; HTerm fact; } Fact;
+typedef struct { HTerm fact, rigid_head; size_t next; } Hypothesis;
+typedef struct { int64_t symbol; HTerm fact; size_t next; } Fact;
 typedef struct { uint64_t target; int64_t *wire; size_t length; } Assignment;
 typedef struct {
     HTCheckpoint terms;
@@ -25,7 +25,7 @@ typedef struct {
 } Checkpoint;
 typedef struct {
     HTerm goal, head;
-    size_t arity, global, local, barrier;
+    size_t arity, global, dynamic, local, barrier;
     Frame frame;
     int phase, fallback, equality;
 } Search;
@@ -36,7 +36,7 @@ typedef struct {
     Search search;
 } Choice;
 
-enum { ACTION_NEXT, ACTION_EXECUTE, ACTION_FAIL, ACTION_ANSWER };
+enum { ACTION_NEXT, ACTION_EXECUTE, ACTION_SEARCH, ACTION_FAIL, ACTION_ANSWER };
 enum { CONTINUE_WORK, CONTINUE_IMPLY, CONTINUE_EQUALITY, CONTINUE_DEBUG, CONTINUE_ANSWER };
 enum { SEARCH_GLOBAL, SEARCH_LOCAL, SEARCH_EQUAL_LOCAL, SEARCH_EQUAL_GLOBAL };
 
@@ -45,7 +45,10 @@ struct HolV2Machine {
     int64_t *roles;
     size_t symbol_count, meta_count;
     Fact *facts;
-    size_t fact_count;
+    size_t fact_count, fact_symbols, dynamic_first;
+    size_t *first_facts;
+    Search search;
+    Checkpoint search_checkpoint;
     HTerm *query;
     size_t query_count;
     Frame *work;
@@ -214,69 +217,85 @@ static int instantiate_fact(HolV2Machine *m, HTerm fact, size_t scope, HTerm *he
     }
 }
 
-static int try_search(HolV2Machine *m, Search search, Checkpoint saved)
+static int search_has_alternative(const Search *search)
 {
-    for (;;) {
-        if (!restore_checkpoint(m, saved)) return 0;
-        HTerm fact = HT_NONE;
-        if (search.phase == SEARCH_GLOBAL || search.phase == SEARCH_EQUAL_GLOBAL) {
-            HTView head = ht_view(m->terms, ht_deref(m->terms, search.head));
-            while (search.global < m->fact_count) {
-                Fact candidate = m->facts[search.global++];
-                if (candidate.symbol < 0 || (head.tag == HT_CONST && (uint64_t) candidate.symbol == head.symbol)) {
-                    fact = candidate.fact;
-                    break;
-                }
-            }
-            if (fact == HT_NONE) {
-                if (search.phase == SEARCH_EQUAL_GLOBAL) return 0;
-                search.phase = SEARCH_LOCAL;
-                continue;
-            }
-        } else {
-            if (search.local != NONE) {
-                Hypothesis candidate = m->hyps[search.local];
-                search.local = candidate.next;
-                fact = candidate.fact;
-            } else if (search.phase == SEARCH_EQUAL_LOCAL && search.fallback) {
-                if (search.equality == 2) {
-                    m->work_head = search.frame.next;
-                    m->action = ACTION_NEXT;
-                    return 1;
-                }
-                if (search.equality == 3) return 0;
-                search.phase = SEARCH_EQUAL_GLOBAL;
-                continue;
-            } else {
-                return 0;
-            }
+    if (search->phase == SEARCH_GLOBAL || search->phase == SEARCH_EQUAL_GLOBAL) {
+        return search->global != NONE || search->dynamic != NONE
+            || (search->phase == SEARCH_GLOBAL && search->local != NONE);
+    }
+    return search->local != NONE || (search->phase == SEARCH_EQUAL_LOCAL && search->fallback);
+}
+
+static void schedule_search(HolV2Machine *m, Search search, Checkpoint saved)
+{
+    m->search = search;
+    m->search_checkpoint = saved;
+    m->action = ACTION_SEARCH;
+}
+
+/* One candidate or phase transition per scheduler step permits cancellation. */
+static int search_step(HolV2Machine *m)
+{
+    Search *search = &m->search;
+    Checkpoint saved = m->search_checkpoint;
+    if (!restore_checkpoint(m, saved)) return 0;
+    HTerm fact;
+    if (search->phase == SEARCH_GLOBAL || search->phase == SEARCH_EQUAL_GLOBAL) {
+        size_t candidate = search->global < search->dynamic ? search->global : search->dynamic;
+        if (candidate == NONE) {
+            if (search->phase == SEARCH_EQUAL_GLOBAL) return 0;
+            search->phase = SEARCH_LOCAL;
+            return 1;
         }
-        HTerm head, body;
-        if (!instantiate_fact(m, fact, search.frame.scope, &head, &body)) return 0;
-        HTSpine spine;
-        if (!normalized_spine(m, head, &spine)) return fail(m, ht_error(m->terms));
-        int matches = same_head(m, search.head, spine.head);
-        size_t arity = spine.count;
-        ht_spine_free(&spine);
-        if (!matches) continue;
-        if (arity != search.arity) return fail(m, "V2 clause head has inconsistent arity");
-        int unified = ht_unify(m->terms, search.goal, head);
-        if (unified < 0) return fail(m, ht_error(m->terms));
-        if (!unified) continue;
-        Search alternative = search;
-        if (alternative.phase == SEARCH_EQUAL_LOCAL) alternative.fallback = 0;
+        fact = m->facts[candidate].fact;
+        if (candidate == search->global) search->global = m->facts[candidate].next;
+        else search->dynamic = m->facts[candidate].next;
+    } else {
+        if (search->local != NONE) {
+            Hypothesis candidate = m->hyps[search->local];
+            search->local = candidate.next;
+            if (candidate.rigid_head != HT_NONE && !same_head(m, search->head, candidate.rigid_head)) return 1;
+            fact = candidate.fact;
+        } else if (search->phase == SEARCH_EQUAL_LOCAL && search->fallback) {
+            if (search->equality == 2) {
+                m->work_head = search->frame.next;
+                m->action = ACTION_NEXT;
+                return 1;
+            }
+            if (search->equality == 3) return 0;
+            search->phase = SEARCH_EQUAL_GLOBAL;
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+    HTerm head, body;
+    if (!instantiate_fact(m, fact, search->frame.scope, &head, &body)) return 0;
+    HTSpine spine;
+    if (!normalized_spine(m, head, &spine)) return fail(m, ht_error(m->terms));
+    int matches = same_head(m, search->head, spine.head);
+    size_t arity = spine.count;
+    ht_spine_free(&spine);
+    if (!matches) return 1;
+    if (arity != search->arity) return fail(m, "V2 clause head has inconsistent arity");
+    int unified = ht_unify(m->terms, search->goal, head);
+    if (unified < 0) return fail(m, ht_error(m->terms));
+    if (!unified) return 1;
+    Search alternative = *search;
+    if (alternative.phase == SEARCH_EQUAL_LOCAL) alternative.fallback = 0;
+    if (search_has_alternative(&alternative)) {
         Choice choice = { 0 };
         choice.kind = 1;
         choice.checkpoint = saved;
         choice.search = alternative;
         if (!push_choice(m, choice)) return 0;
-        Frame environment = search.frame;
-        environment.barrier = search.barrier;
-        if (!schedule(m, body, environment, environment.next)) return 0;
-        m->current = environment;
-        if (m->host_state) event(m, HV2_EVENT_SETTLE, HT_NONE, CONTINUE_WORK, 0);
-        return 1;
     }
+    Frame environment = search->frame;
+    environment.barrier = search->barrier;
+    if (!schedule(m, body, environment, environment.next)) return 0;
+    m->current = environment;
+    if (m->host_state) event(m, HV2_EVENT_SETTLE, HT_NONE, CONTINUE_WORK, 0);
+    return 1;
 }
 
 static int begin_search(HolV2Machine *m, int equality)
@@ -296,6 +315,8 @@ static int begin_search(HolV2Machine *m, int equality)
     search.goal = m->current.goal;
     search.head = spine.head;
     search.arity = spine.count;
+    search.global = view.tag == HT_CONST && view.symbol < m->fact_symbols ? m->first_facts[view.symbol] : NONE;
+    search.dynamic = m->dynamic_first;
     search.local = m->current.hyps;
     search.barrier = m->choice_count;
     search.frame = m->current;
@@ -304,29 +325,60 @@ static int begin_search(HolV2Machine *m, int equality)
     search.fallback = equality != 0;
     search.equality = equality;
     ht_spine_free(&spine);
-    return try_search(m, search, checkpoint(m));
+    schedule_search(m, search, checkpoint(m));
+    return 1;
 }
 
-static int backtrack(HolV2Machine *m)
+static int backtrack_step(HolV2Machine *m)
 {
     m->event_kind = 0;
     m->end_debugged = 0;
-    while (m->choice_count) {
-        Choice choice = m->choices[--m->choice_count];
-        if (!restore_checkpoint(m, choice.checkpoint)) {
-            if (m->error[0]) return 0;
-            continue;
-        }
-        if (choice.kind == 0) {
-            m->work_head = choice.work_head;
-            m->action = ACTION_NEXT;
-            return 1;
-        }
-        if (try_search(m, choice.search, choice.checkpoint)) return 1;
-        if (m->error[0]) return 0;
+    if (!m->choice_count) {
+        m->exhausted = 1;
+        return 0;
     }
-    m->exhausted = 1;
-    return 0;
+    Choice choice = m->choices[--m->choice_count];
+    if (!restore_checkpoint(m, choice.checkpoint)) return !m->error[0];
+    if (choice.kind == 0) {
+        m->work_head = choice.work_head;
+        m->action = ACTION_NEXT;
+    } else {
+        schedule_search(m, choice.search, choice.checkpoint);
+    }
+    return 1;
+}
+
+/* Unknown or computational heads retain ordinary matching, without a hint. */
+static HTerm rigid_fact_head(const HolV2Machine *m, HTerm fact)
+{
+    size_t budget = 128;
+    while (budget) {
+        size_t arity = 0;
+        HTerm first = HT_NONE, head = fact;
+        HTView view;
+        for (;;) {
+            if (!budget) return HT_NONE;
+            --budget;
+            view = ht_view(m->terms, head);
+            if (view.tag != HT_APP) break;
+            first = view.b;
+            head = view.a;
+            ++arity;
+        }
+        if (view.tag == HT_NOMINAL) return head;
+        if (view.tag != HT_CONST) return HT_NONE;
+        int operation = role(m, head);
+        if ((operation == HV2_PI || operation == HV2_TY_PI) && arity == 1) {
+            HTView binder = ht_view(m->terms, first);
+            if (binder.tag != HT_LAM) return HT_NONE;
+            fact = binder.a;
+        } else if (operation == HV2_IF && arity == 2) {
+            fact = first;
+        } else {
+            return head;
+        }
+    }
+    return HT_NONE;
 }
 
 /* Expand under binders and multi-head conclusions without freshening captures. */
@@ -383,7 +435,7 @@ static int enter_implication(HolV2Machine *m, uint64_t premises)
     for (size_t i = count; success && i > 0; --i) {
         success = reserve(m, (void **) &m->hyps, &m->hyp_capacity, m->hyp_count + 1, sizeof(*m->hyps));
         if (success) {
-            m->hyps[m->hyp_count] = (Hypothesis) { expanded[i - 1], hyps };
+            m->hyps[m->hyp_count] = (Hypothesis) { expanded[i - 1], rigid_fact_head(m, expanded[i - 1]), hyps };
             hyps = m->hyp_count++;
         }
     }
@@ -512,6 +564,7 @@ HolV2Machine *hol_v2_create(const int64_t *code, size_t length)
     HolV2Machine *m = calloc(1, sizeof(*m));
     if (!m) return NULL;
     m->work_head = NONE;
+    m->dynamic_first = NONE;
     m->next_call = 1;
     m->origin = atomic_fetch_add(&next_origin, 1);
     if (!m->origin) { fail(m, "V2 runtime identity exhausted"); return m; }
@@ -632,7 +685,22 @@ HolV2Machine *hol_v2_create(const int64_t *code, size_t length)
     for (size_t i = 0; !m->error[0] && i < m->fact_count; ++i) {
         int64_t symbol = facts[2 * i], root = facts[2 * i + 1];
         if ((symbol != -1 && !valid_index(symbol, m->symbol_count)) || !valid_index(root, term_count)) fail(m, "Invalid V2 fact descriptor");
-        else m->facts[i] = (Fact) { symbol, roots[root] };
+        else m->facts[i] = (Fact) { symbol, roots[root], NONE };
+    }
+    if (!m->error[0]) {
+        m->fact_symbols = m->symbol_count;
+        m->first_facts = m->fact_symbols <= SIZE_MAX / sizeof(*m->first_facts)
+            ? malloc(m->fact_symbols * sizeof(*m->first_facts)) : NULL;
+        if (!m->first_facts) fail(m, "V2 predicate index allocation failed");
+        else {
+            for (size_t i = 0; i < m->fact_symbols; ++i) m->first_facts[i] = NONE;
+            for (size_t i = m->fact_count; i > 0; --i) {
+                Fact *fact = &m->facts[i - 1];
+                size_t *first = fact->symbol < 0 ? &m->dynamic_first : &m->first_facts[fact->symbol];
+                fact->next = *first;
+                *first = i - 1;
+            }
+        }
     }
     if (!m->error[0]) {
         Frame initial = { roots[code[6]], NONE, 0, NONE, 0, 0, 0 };
@@ -656,9 +724,18 @@ int hol_v2_next(HolV2Machine *m)
     }
     for (size_t budget = 0; budget < 4096; ++budget) {
         if (m->action == ACTION_FAIL) {
-            if (!backtrack(m)) return m->error[0] ? -1 : 0;
+            if (!backtrack_step(m)) return m->error[0] ? -1 : 0;
             if (m->event_kind) return 3;
         }
+        if (m->action == ACTION_SEARCH) {
+            if (!search_step(m)) {
+                if (m->error[0]) return -1;
+                m->action = ACTION_FAIL;
+            }
+            if (m->event_kind) return 3;
+            continue;
+        }
+        if (m->action == ACTION_FAIL) continue;
         if (m->action == ACTION_ANSWER) {
             m->answer_ready = 1;
             m->resume_answer = 1;
@@ -833,6 +910,56 @@ int hol_v2_frames(HolV2Machine *m, int64_t *output, size_t capacity)
     return copy_buffer(m, output, capacity);
 }
 
+static int term_declarations(HolV2Machine *m, HTerm term, size_t *count)
+{
+    int64_t *wire = NULL;
+    size_t length = 0;
+    if (!ht_export(m->terms, term, &wire, &length)) return fail(m, ht_error(m->terms));
+    int success = 1;
+    for (size_t at = 0; success && at < length;) {
+        size_t start = at++;
+        int64_t tag = wire[start];
+        size_t payload = tag == HT_VAR ? 4 : tag == HT_NOMINAL ? 3 : tag == HT_CONST ? 2 : tag == HT_WILD ? 0 : 1;
+        if (payload > length - at) { success = fail(m, "Truncated V2 declaration source"); break; }
+        if (tag == HT_VAR || tag == HT_NOMINAL) {
+            ++*count;
+            for (size_t i = start; success && i < at + payload; ++i) success = push_word(m, wire[i]);
+        } else if (tag == HT_NAT) {
+            if (wire[at] < 0 || (uint64_t) wire[at] > length - at - 1) { success = fail(m, "Invalid V2 declaration natural"); break; }
+            payload += (size_t) wire[at];
+        } else if (tag != HT_CONST && tag != HT_APP && tag != HT_INDEX && tag != HT_LAM && tag != HT_WILD) {
+            success = fail(m, "Invalid V2 declaration source tag");
+            break;
+        }
+        at += payload;
+    }
+    free(wire);
+    return success;
+}
+
+size_t hol_v2_declarations_size(HolV2Machine *m)
+{
+    if (!m || m->error[0]) return 0;
+    m->buffer_count = 0;
+    size_t count = 0;
+    int success = push_word(m, 0);
+    for (size_t at = m->work_head; success && at != NONE; at = m->work[at].next) {
+        Frame frame = m->work[at];
+        for (size_t h = frame.hyps; success && h != NONE; h = m->hyps[h].next) {
+            success = term_declarations(m, m->hyps[h].fact, &count);
+        }
+        if (success) success = term_declarations(m, frame.goal, &count);
+    }
+    if (!success) return 0;
+    m->buffer[0] = (int64_t) count;
+    return m->buffer_count;
+}
+
+int hol_v2_declarations(HolV2Machine *m, int64_t *output, size_t capacity)
+{
+    return copy_buffer(m, output, capacity);
+}
+
 int hol_v2_resume(HolV2Machine *m, int result, uint64_t host_state, uint64_t premises, const int64_t *bindings, size_t length)
 {
     if (!m || m->error[0] || !m->event_kind) return -1;
@@ -918,6 +1045,7 @@ static void release_fields(HolV2Machine *m)
     ht_destroy(m->terms);
     free(m->roles);
     free(m->facts);
+    free(m->first_facts);
     free(m->query);
     free(m->work);
     free(m->hyps);
@@ -949,6 +1077,7 @@ HolV2Machine *hol_v2_clone(const HolV2Machine *source)
     copy->terms = ht_clone(source->terms);
     copy->roles = copy_array(source->roles, source->symbol_count, sizeof(*source->roles));
     copy->facts = copy_array(source->facts, source->fact_count, sizeof(*source->facts));
+    copy->first_facts = copy_array(source->first_facts, source->fact_symbols, sizeof(*source->first_facts));
     copy->query = copy_array(source->query, source->query_count, sizeof(*source->query));
     copy->work = copy_array(source->work, source->work_count, sizeof(*source->work));
     copy->hyps = copy_array(source->hyps, source->hyp_count, sizeof(*source->hyps));
@@ -959,6 +1088,7 @@ HolV2Machine *hol_v2_clone(const HolV2Machine *source)
     copy->choice_capacity = copy->choice_count;
     copy->buffer_capacity = copy->buffer_count;
     if (!copy->terms || (source->assignment_count && !copy->assignments) || (copy->symbol_count && !copy->roles) || (copy->fact_count && !copy->facts)
+        || (copy->fact_symbols && !copy->first_facts)
         || (copy->query_count && !copy->query) || (copy->work_count && !copy->work)
         || (copy->hyp_count && !copy->hyps) || (copy->choice_count && !copy->choices)
         || (copy->buffer_count && !copy->buffer)) {
