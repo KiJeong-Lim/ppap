@@ -1,0 +1,5 @@
+# [T-Lam] without the check that the domain is a type.
+- infer (lam A F) T :- !,
+-     sort_of "T-Lam" A _,
++ infer (lam A F) T :- !,
+kills pts "T-Lam: the domain is not a type"

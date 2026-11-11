@@ -1,0 +1,54 @@
+% test/lol/kernel/holes.hol
+%
+% The kernel on terms with holes (LoLALPHA1, 5.4, rule K4). A hole is a logic
+% variable. No ground run meets one; the elaborator does.
+
+import lol.hol.kernel.
+
+type test (string -> o).
+
+% absent G: the goal G has no answer.
+type absent (o -> o).
+
+absent G :- G, !, fail.
+absent G.
+
+%! admit
+test "K4: infer fails on a hole" :- absent (infer X T).
+
+%! admit
+test "K4: check fails on a hole" :- absent (check X prop).
+
+%! admit
+test "K4: infer fails on a hole in the head of an application" :-
+    absent (infer (app X prop) T).
+
+%! admit
+test "K4: whnf returns a hole unchanged" :- whnf X W, flex W.
+
+%! admit
+test "K4: whnf does not reduce an application of a hole" :-
+    whnf (app X prop) W, W = app Y prop, flex Y.
+
+%! admit
+test "K4: whnf reduces around a hole" :-
+    whnf (app (lam prop (p\ app X p)) prop) W, W = app Y prop, flex Y.
+
+%! admit
+test "K4: conv solves a hole" :- conv X prop, absent (flex X), whnf X prop.
+
+%! admit
+test "K4: conv solves a hole on the right" :- conv (typ lz) X, whnf X (typ lz).
+
+%! admit
+test "K4: conv solves a hole under a binder" :-
+    conv (prod prop (p\ X)) (prod prop (p\ prod prop (q\ q))), absent (flex X).
+
+%! admit
+test "K4: conv solves a hole applied to a bound variable" :-
+    conv (prod prop (p\ F p)) (prod prop (p\ prod p (h\ p))),
+    conv (F prop) (prod prop (h\ prop)).
+
+%! admit
+test "K4: a hole does not escape its binder" :-
+    absent (conv (prod prop (p\ X)) (prod prop (p\ p))).

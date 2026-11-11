@@ -349,6 +349,12 @@ isRigidAtom term = assertNonnegativeIndices term `seq` case term of
     NIdx _ -> True
     _ -> False
 
+hasFlexibleHead :: TermNode -> Bool
+hasFlexibleHead term = case fst (unfoldlNApp (snd (viewNestedNLam (rewrite HNF term)))) of
+    LVar _ -> True
+    NCon (DC DC_wc) _ -> True
+    _ -> False
+
 {-# INLINE isTyLVar #-}
 isTyLVar :: LogicVar -> Bool
 isTyLVar (LV_ty_var {}) = True

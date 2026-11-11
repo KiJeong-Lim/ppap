@@ -5,22 +5,48 @@
 #include <string.h>
 
 #define UID_EMPTY UINT64_MAX
-#define TERM_DEPTH_LIMIT 8192
+#define WORK_LIMIT UINT64_C(5000000)
+
+/* A stable node has no variable, wildcard or opaque constant below it, so no
+    * binding can change it. Its summary is exact: whether it is beta-normal,
+    * whether it is eta-normal, whether an arithmetic constant occurs in it, the
+    * largest scope of its nominals (scope), one more than its largest loose index
+    * (open), and its loose indices below 32 that certainly occur (mask). */
+enum { HS_STABLE = 1, HS_BETA = 2, HS_ETA = 4, HS_ARITHMETIC = 8 };
+/* A form of normalize alone: the full normal form of a term that is known to
+    * be weak-head normal and no abstraction. */
+enum { FORM_SPINE = HT_NF + 1 };
+enum { MARK_OPAQUE = 1, MARK_ARITHMETIC = 2 };
+#define HS_NORMAL (HS_STABLE | HS_BETA | HS_ETA)
+#define OPEN_UNKNOWN UINT32_MAX
 
 typedef struct {
     int tag;
-    unsigned char is_type, ground, pinned;
+    unsigned char is_type, ground, pinned, summary;
     HTerm a, b;
     uint64_t uid;
     size_t scope;
     int64_t meta;
     char *digits;
+    uint32_t open, mask;
 } TermNode;
+
+/* One pending step of a traversal (see enter). */
+typedef struct {
+    HTerm term, left;
+    size_t level;
+    unsigned char stage, form;
+} Frame;
 
 typedef struct { HTerm variable, binding; size_t scope; } Trail;
 typedef struct { HTerm left, right; size_t next; } Pending;
 typedef struct { uint64_t uid; HTerm term; } Identity;
 typedef struct { uint64_t first, end; } RetiredRange;
+typedef struct { HTerm left, right; } Equation;
+typedef struct { Equation *items; size_t count, capacity; } Equations;
+typedef struct { int64_t *items; size_t count, capacity; } Words;
+/* An argument pair that waits while the pairs before it are solved. */
+typedef struct { HTerm left, right; size_t binders; uint64_t known; } Pair;
 
 struct HolTermStore {
     TermNode *nodes;
@@ -30,36 +56,109 @@ struct HolTermStore {
     Pending *pending;
     size_t pending_count, pending_capacity, pending_head;
     Identity *identities;
-    size_t identity_capacity, identity_count;
+    size_t identity_capacity, identity_count, identity_peak;
     RetiredRange *retired;
     size_t retired_count, retired_capacity;
     uint64_t next_uid;
-    size_t successor;
-    unsigned char *opaque;
-    size_t opaque_count, opaque_capacity;
+    size_t successor, sealed;
+    unsigned char *marks;
+    size_t mark_count, mark_capacity;
     uint64_t work, work_limit;
     size_t operations;
+    Frame *frames;
+    size_t frame_count, frame_capacity;
+    Pair *pairs;
+    size_t pair_count, pair_capacity;
+    /* The buffers of the unifier, kept between two unifications. */
+    Equations solving, delayed;
+    Words binders;
+    int unifying;
     uint64_t changes;
     char error[192];
 };
 
 typedef struct { HTerm *items; size_t count, capacity; } Terms;
-typedef struct { int64_t *items; size_t count, capacity; } Words;
+
+static int marked(const HolTermStore *s, size_t symbol, unsigned char mark)
+{
+    return symbol < s->mark_count && (s->marks[symbol] & mark);
+}
 
 /* Only immutable, already-normal rigid constructor trees qualify. In
     * particular, a variable currently bound to such a tree does not qualify. */
 static int ground_node(const HolTermStore *s, TermNode n)
 {
     if (n.tag == HT_NAT) return 1;
-    if (n.tag == HT_CONST) return n.a >= s->opaque_count || !s->opaque[n.a];
+    if (n.tag == HT_CONST) return !marked(s, n.a, MARK_OPAQUE);
     if (n.tag != HT_APP || !s->nodes[n.a].ground || !s->nodes[n.b].ground) return 0;
     TermNode function = s->nodes[n.a], argument = s->nodes[n.b];
     return function.tag != HT_CONST || function.a != s->successor || argument.tag != HT_NAT;
 }
 
-static void refresh_ground(HolTermStore *s)
+/* The children of a node precede it, so their summaries are already known. A
+    * variable or a nominal keeps its own scope. */
+static void summarize(const HolTermStore *s, TermNode *n)
 {
-    for (size_t i = 0; i < s->count; ++i) s->nodes[i].ground = ground_node(s, s->nodes[i]);
+    n->ground = ground_node(s, *n);
+    n->summary = 0;
+    n->open = 0;
+    n->mask = 0;
+    if (n->tag == HT_VAR) return;
+    if (n->tag == HT_NOMINAL) {
+        n->summary = HS_NORMAL;
+        return;
+    }
+    n->scope = 0;
+    if (n->tag == HT_CONST) {
+        if (marked(s, n->a, MARK_OPAQUE)) return;
+        n->summary = HS_NORMAL | (n->a == s->successor || marked(s, n->a, MARK_ARITHMETIC) ? HS_ARITHMETIC : 0);
+    } else if (n->tag == HT_NAT) {
+        n->summary = HS_NORMAL;
+    } else if (n->tag == HT_INDEX) {
+        n->summary = HS_NORMAL;
+        n->open = n->a < OPEN_UNKNOWN - 1 ? (uint32_t) n->a + 1 : OPEN_UNKNOWN;
+        n->mask = n->a < 32 ? UINT32_C(1) << n->a : 0;
+    } else if (n->tag == HT_APP) {
+        TermNode f = s->nodes[n->a], x = s->nodes[n->b];
+        if (!(f.summary & x.summary & HS_STABLE)) return;
+        int redex = f.tag == HT_LAM || (f.tag == HT_CONST && f.a == s->successor && x.tag == HT_NAT);
+        n->summary = (unsigned char) (HS_STABLE | (f.summary & x.summary & (HS_BETA | HS_ETA)) | ((f.summary | x.summary) & HS_ARITHMETIC));
+        if (redex) n->summary &= (unsigned char) ~HS_BETA;
+        n->scope = f.scope > x.scope ? f.scope : x.scope;
+        n->open = f.open > x.open ? f.open : x.open;
+        n->mask = f.mask | x.mask;
+    } else if (n->tag == HT_LAM) {
+        TermNode body = s->nodes[n->a];
+        if (!(body.summary & HS_STABLE)) return;
+        /* body = f #0 is an eta-redex unless #0 certainly occurs in f */
+        int redex = body.tag == HT_APP && s->nodes[body.b].tag == HT_INDEX && !s->nodes[body.b].a && !(s->nodes[body.a].mask & 1);
+        n->summary = body.summary;
+        if (redex) n->summary &= (unsigned char) ~HS_ETA;
+        n->scope = body.scope;
+        n->open = body.open == OPEN_UNKNOWN ? OPEN_UNKNOWN : body.open ? body.open - 1 : 0;
+        n->mask = body.mask >> 1;
+    }
+}
+
+static void refresh_summaries(HolTermStore *s)
+{
+    for (size_t i = 0; i < s->count; ++i) summarize(s, &s->nodes[i]);
+}
+
+static int stable(TermNode n)
+{
+    return n.summary & HS_STABLE;
+}
+
+static int normal(TermNode n)
+{
+    return (n.summary & HS_NORMAL) == HS_NORMAL;
+}
+
+/* A stable node all of whose loose indices are below limit. */
+static int closed_below(TermNode n, size_t limit)
+{
+    return (n.summary & HS_STABLE) && n.open != OPEN_UNKNOWN && n.open <= limit;
 }
 
 static int fail(HolTermStore *s, const char *message)
@@ -75,11 +174,15 @@ static int fail(HolTermStore *s, const char *message)
     return 0;
 }
 
-static int reserve(HolTermStore *s, void **pointer, size_t *capacity, size_t count, size_t width)
+static int grow(HolTermStore *s, void **pointer, size_t *capacity, size_t count, size_t width);
+
+static inline int reserve(HolTermStore *s, void **pointer, size_t *capacity, size_t count, size_t width)
 {
-    if (count <= *capacity) {
-        return 1;
-    }
+    return count <= *capacity || grow(s, pointer, capacity, count, width);
+}
+
+static int grow(HolTermStore *s, void **pointer, size_t *capacity, size_t count, size_t width)
+{
     if (!width || count > SIZE_MAX / width) {
         return fail(s, "Term allocation size overflow");
     }
@@ -127,7 +230,7 @@ static HTerm node(HolTermStore *s, TermNode value)
         return HT_NONE;
     }
     HTerm result = s->count++;
-    value.ground = ground_node(s, value);
+    summarize(s, &value);
     s->nodes[result] = value;
     return result;
 }
@@ -140,6 +243,9 @@ static size_t bucket(uint64_t uid, size_t capacity)
 static int identity_retired(const HolTermStore *s, uint64_t uid)
 {
     size_t first = 0, end = s->retired_count;
+    if (!end || uid >= s->retired[end - 1].end) {
+        return 0;
+    }
     while (first < end) {
         size_t middle = first + (end - first) / 2;
         RetiredRange range = s->retired[middle];
@@ -249,11 +355,51 @@ static int insert_identity(HolTermStore *s, uint64_t uid, HTerm term, int restor
         index = (index + 1) & (s->identity_capacity - 1);
     }
     s->identities[index] = (Identity) { uid, term };
-    ++s->identity_count;
+    if (++s->identity_count > s->identity_peak) {
+        s->identity_peak = s->identity_count;
+    }
     return 1;
 }
 
-static void remove_identity(HolTermStore *s, uint64_t uid)
+/* The uids are sorted. Every one of them is live, so the ranges have room for
+    * them (reserve_retired); a pass from the largest down merges them in place.
+    * Retiring them one by one would move the ranges above each of them. */
+static void retire_sorted(HolTermStore *s, const uint64_t *uids, size_t count)
+{
+    RetiredRange *ranges = s->retired;
+    size_t total = s->retired_count + count, write = total, i = s->retired_count, j = count;
+    if (!count) {
+        return;
+    }
+    while (i || j) {
+        RetiredRange next;
+        if (j && (!i || uids[j - 1] >= ranges[i - 1].first)) {
+            --j;
+            next = (RetiredRange) { uids[j], uids[j] + 1 };
+        } else {
+            next = ranges[--i];
+        }
+        if (write < total && next.end >= ranges[write].first) {
+            ranges[write].first = next.first;
+            if (next.end > ranges[write].end) {
+                ranges[write].end = next.end;
+            }
+        } else {
+            ranges[--write] = next;
+        }
+    }
+    memmove(ranges, ranges + write, (total - write) * sizeof(*ranges));
+    s->retired_count = total - write;
+}
+
+static int ascending(const void *left, const void *right)
+{
+    uint64_t a = *(const uint64_t *) left, b = *(const uint64_t *) right;
+    return a < b ? -1 : a > b;
+}
+
+/* retire is 0 when the caller retires the uid itself (retire_sorted). */
+static void remove_identity(HolTermStore *s, uint64_t uid, int retire)
 {
     if (!s->identity_capacity) {
         return;
@@ -261,7 +407,7 @@ static void remove_identity(HolTermStore *s, uint64_t uid)
     size_t index = bucket(uid, s->identity_capacity);
     while (s->identities[index].uid != UID_EMPTY) {
         if (s->identities[index].uid == uid) {
-            if (!retire_range(s, uid, uid + 1)) {
+            if (retire && !retire_range(s, uid, uid + 1)) {
                 return;
             }
             --s->identity_count;
@@ -288,7 +434,7 @@ HolTermStore *ht_create(void)
     if (s) {
         s->successor = HT_NONE;
         s->pending_head = HT_NONE;
-        s->work_limit = UINT64_C(5000000);
+        s->work_limit = WORK_LIMIT;
     }
     return s;
 }
@@ -306,7 +452,12 @@ void ht_destroy(HolTermStore *s)
     free(s->pending);
     free(s->identities);
     free(s->retired);
-    free(s->opaque);
+    free(s->marks);
+    free(s->frames);
+    free(s->pairs);
+    free(s->solving.items);
+    free(s->delayed.items);
+    free(s->binders.items);
     free(s);
 }
 
@@ -338,13 +489,87 @@ int ht_restore(HolTermStore *s, HTCheckpoint saved)
     while (s->count > saved.heap) {
         TermNode old = s->nodes[--s->count];
         if (old.tag == HT_VAR || old.tag == HT_NOMINAL) {
-            remove_identity(s, old.uid);
+            remove_identity(s, old.uid, 1);
         }
         free(old.digits);
+    }
+    if (s->sealed > s->count) {
+        s->sealed = s->count;
     }
     s->pending_count = saved.pending;
     s->pending_head = saved.pending_head;
     return 1;
+}
+
+static void release_spare(void **pointer, size_t *capacity, size_t count, size_t limit)
+{
+    if (!count && *capacity > limit) {
+        free(*pointer);
+        *pointer = NULL;
+        *capacity = 0;
+    }
+}
+
+int ht_reset(HolTermStore *s, size_t heap, uint64_t next_uid, size_t symbols)
+{
+    if (!s || s->error[0] || s->operations || next_uid > s->next_uid) {
+        return fail(s, "Invalid term store reset");
+    }
+    if (!ht_restore(s, (HTCheckpoint) { heap, 0, 0, HT_NONE })) {
+        return 0;
+    }
+    while (s->retired_count && s->retired[s->retired_count - 1].first >= next_uid) {
+        --s->retired_count;
+    }
+    if (s->retired_count && s->retired[s->retired_count - 1].end > next_uid) {
+        s->retired[s->retired_count - 1].end = next_uid;
+    }
+    s->next_uid = next_uid;
+    if (s->mark_count > symbols) {
+        s->mark_count = symbols;
+    }
+    s->work_limit = WORK_LIMIT;
+    s->work = 0;
+    s->frame_count = 0;
+    if (s->capacity / 4 > s->count && s->capacity > 1024) {
+        size_t capacity = s->count * 2 > 1024 ? s->count * 2 : 1024;
+        TermNode *smaller = realloc(s->nodes, capacity * sizeof(*smaller));
+        if (smaller) {
+            s->nodes = smaller;
+            s->capacity = capacity;
+        }
+    }
+    s->identity_peak = s->identity_count;
+    if (s->identity_capacity / 8 > s->identity_count && s->identity_capacity > 64) {
+        size_t capacity = 64;
+        while (capacity / 4 < s->identity_count) {
+            capacity *= 2;
+        }
+        rehash_identities(s, capacity);
+    }
+    release_spare((void **) &s->trail, &s->trail_capacity, s->trail_count, 4096);
+    release_spare((void **) &s->pending, &s->pending_capacity, s->pending_count, 4096);
+    release_spare((void **) &s->retired, &s->retired_capacity, s->retired_count, 4096);
+    release_spare((void **) &s->frames, &s->frame_capacity, s->frame_count, 4096);
+    s->pair_count = 0;
+    release_spare((void **) &s->pairs, &s->pair_capacity, 0, 4096);
+    release_spare((void **) &s->solving.items, &s->solving.capacity, 0, 4096);
+    release_spare((void **) &s->delayed.items, &s->delayed.capacity, 0, 4096);
+    release_spare((void **) &s->binders.items, &s->binders.capacity, 0, 4096);
+    return 1;
+}
+
+size_t ht_seal(HolTermStore *s)
+{
+    while (s->sealed < s->count && s->nodes[s->sealed].tag != HT_VAR) {
+        ++s->sealed;
+    }
+    return s->sealed;
+}
+
+size_t ht_sealed(const HolTermStore *s)
+{
+    return s->sealed;
 }
 
 uint64_t ht_next_uid(const HolTermStore *s)
@@ -403,25 +628,37 @@ int ht_preserve_identity_history(HolTermStore *restored, const HolTermStore *liv
 void ht_set_successor(HolTermStore *s, size_t symbol)
 {
     s->successor = symbol;
-    refresh_ground(s);
+    refresh_summaries(s);
+}
+
+static int mark_symbol(HolTermStore *s, size_t symbol, unsigned char mark, const char *invalid)
+{
+    if (!s || s->error[0] || symbol >= INT64_MAX || symbol == SIZE_MAX) {
+        return fail(s, invalid);
+    }
+    size_t count = symbol + 1;
+    if (!reserve(s, (void **) &s->marks, &s->mark_capacity, count, sizeof(*s->marks))) {
+        return 0;
+    }
+    if (count > s->mark_count) {
+        memset(s->marks + s->mark_count, 0, count - s->mark_count);
+        s->mark_count = count;
+    }
+    if (!(s->marks[symbol] & mark)) {
+        s->marks[symbol] |= mark;
+        refresh_summaries(s);
+    }
+    return 1;
 }
 
 int ht_set_opaque_symbol(HolTermStore *s, size_t symbol)
 {
-    if (!s || s->error[0] || symbol >= INT64_MAX || symbol == SIZE_MAX) {
-        return fail(s, "Invalid opaque symbol");
-    }
-    size_t count = symbol + 1;
-    if (!reserve(s, (void **) &s->opaque, &s->opaque_capacity, count, sizeof(*s->opaque))) {
-        return 0;
-    }
-    if (count > s->opaque_count) {
-        memset(s->opaque + s->opaque_count, 0, count - s->opaque_count);
-        s->opaque_count = count;
-    }
-    s->opaque[symbol] = 1;
-    refresh_ground(s);
-    return 1;
+    return mark_symbol(s, symbol, MARK_OPAQUE, "Invalid opaque symbol");
+}
+
+int ht_set_arithmetic_symbol(HolTermStore *s, size_t symbol)
+{
+    return mark_symbol(s, symbol, MARK_ARITHMETIC, "Invalid arithmetic symbol");
 }
 
 int ht_set_work_limit(HolTermStore *s, uint64_t visits)
@@ -464,7 +701,7 @@ static HTerm identity_node(HolTermStore *s, int tag, uint64_t uid, size_t scope,
         fail(s, "Invalid term identity metadata");
         return HT_NONE;
     }
-    HTerm result = node(s, (TermNode) { tag, is_type, 0, 0, HT_NONE, HT_NONE, uid, scope, meta, NULL });
+    HTerm result = node(s, (TermNode) { tag, is_type, 0, 0, 0, HT_NONE, HT_NONE, uid, scope, meta, NULL, 0, 0 });
     if (result == HT_NONE || !insert_identity(s, uid, result, restoring)) {
         return HT_NONE;
     }
@@ -490,7 +727,7 @@ HTerm ht_constant(HolTermStore *s, size_t symbol, int64_t meta)
         fail(s, "Invalid constant metadata");
         return HT_NONE;
     }
-    return node(s, (TermNode) { HT_CONST, 0, 0, 0, symbol, HT_NONE, 0, 0, meta, NULL });
+    return node(s, (TermNode) { HT_CONST, 0, 0, 0, 0, symbol, HT_NONE, 0, 0, meta, NULL, 0, 0 });
 }
 
 HTerm ht_nat(HolTermStore *s, const char *digits)
@@ -515,7 +752,7 @@ HTerm ht_nat(HolTermStore *s, const char *digits)
         return HT_NONE;
     }
     memcpy(copy, digits, length + 1);
-    HTerm result = node(s, (TermNode) { HT_NAT, 0, 0, 0, HT_NONE, HT_NONE, 0, 0, -1, copy });
+    HTerm result = node(s, (TermNode) { HT_NAT, 0, 0, 0, 0, HT_NONE, HT_NONE, 0, 0, -1, copy, 0, 0 });
     if (result == HT_NONE) {
         free(copy);
     }
@@ -564,7 +801,7 @@ HTerm ht_index(HolTermStore *s, size_t index)
         fail(s, "Bound variable index overflow");
         return HT_NONE;
     }
-    return node(s, (TermNode) { HT_INDEX, 0, 0, 0, index, HT_NONE, 0, 0, -1, NULL });
+    return node(s, (TermNode) { HT_INDEX, 0, 0, 0, 0, index, HT_NONE, 0, 0, -1, NULL, 0, 0 });
 }
 
 HTerm ht_lam(HolTermStore *s, HTerm body, int64_t meta)
@@ -573,7 +810,7 @@ HTerm ht_lam(HolTermStore *s, HTerm body, int64_t meta)
         fail(s, "Invalid lambda term");
         return HT_NONE;
     }
-    return node(s, (TermNode) { HT_LAM, 0, 0, 0, body, HT_NONE, 0, 0, meta, NULL });
+    return node(s, (TermNode) { HT_LAM, 0, 0, 0, 0, body, HT_NONE, 0, 0, meta, NULL, 0, 0 });
 }
 
 HTerm ht_app(HolTermStore *s, HTerm function, HTerm argument, int64_t meta)
@@ -587,12 +824,12 @@ HTerm ht_app(HolTermStore *s, HTerm function, HTerm argument, int64_t meta)
     if (s->nodes[f].tag == HT_CONST && s->nodes[f].a == s->successor && s->nodes[a].tag == HT_NAT) {
         return increment(s, a, 1);
     }
-    return node(s, (TermNode) { HT_APP, 0, 0, 0, function, argument, 0, 0, meta, NULL });
+    return node(s, (TermNode) { HT_APP, 0, 0, 0, 0, function, argument, 0, 0, meta, NULL, 0, 0 });
 }
 
 HTerm ht_wildcard(HolTermStore *s)
 {
-    return node(s, (TermNode) { HT_WILD, 0, 0, 0, HT_NONE, HT_NONE, 0, 0, -1, NULL });
+    return node(s, (TermNode) { HT_WILD, 0, 0, 0, 0, HT_NONE, HT_NONE, 0, 0, -1, NULL, 0, 0 });
 }
 
 HTerm ht_lookup_uid(const HolTermStore *s, uint64_t uid)
@@ -637,95 +874,156 @@ static int unchanged(const HolTermStore *s, HTerm result, HTerm original)
     return result == original || (result != HT_NONE && result == ht_deref(s, original));
 }
 
-static int depth_okay(HolTermStore *s, size_t depth)
+static int work_okay(HolTermStore *s)
 {
     if (s->work >= s->work_limit) {
         return fail(s, "Native term work limit exceeded");
     }
     ++s->work;
-    return depth < TERM_DEPTH_LIMIT || fail(s, "Term nesting exceeds the native work stack");
+    return 1;
 }
 
-static HTerm shift(HolTermStore *s, HTerm term, size_t amount, size_t cutoff, size_t depth)
+/* The traversals below keep their pending steps in s->frames instead of the C
+    * stack, so that the depth of a term is bounded by memory alone. An operation
+    * owns the frames above the count it found, and a nested operation stacks its
+    * own on top. A frame is read by value: entering a term can move the array. */
+static int enter(HolTermStore *s, HTerm term, size_t level, int form)
 {
-    if (!depth_okay(s, depth) || term == HT_NONE) {
-        return HT_NONE;
+    if (term == HT_NONE || !reserve(s, (void **) &s->frames, &s->frame_capacity, s->frame_count + 1, sizeof(*s->frames))) {
+        return 0;
     }
-    term = ht_deref(s, term);
-    TermNode n = s->nodes[term];
-    if (!amount || n.ground) {
-        return term;
-    }
-    if (n.tag == HT_INDEX && n.a >= cutoff) {
-        if (n.a > INT64_MAX - amount) {
-            fail(s, "Bound variable shift overflow");
-            return HT_NONE;
-        }
-        return ht_index(s, n.a + amount);
-    }
-    if (n.tag == HT_APP) {
-        HTerm left = shift(s, n.a, amount, cutoff, depth + 1);
-        HTerm right = shift(s, n.b, amount, cutoff, depth + 1);
-        return unchanged(s, left, n.a) && unchanged(s, right, n.b) ? term : ht_app(s, left, right, n.meta);
-    }
-    if (n.tag == HT_LAM) {
-        HTerm body = shift(s, n.a, amount, cutoff + 1, depth + 1);
-        return unchanged(s, body, n.a) ? term : ht_lam(s, body, n.meta);
-    }
-    return term;
+    s->frames[s->frame_count++] = (Frame) { term, HT_NONE, level, 0, (unsigned char) form };
+    return 1;
 }
 
-static HTerm substitute(HolTermStore *s, HTerm term, HTerm argument, size_t binder, size_t depth)
+/* The four rewritings of loose indices. level is the number of binders above
+    * the node: an index below it is bound inside the term and stays. */
+enum { MAP_SHIFT, MAP_SUBSTITUTE, MAP_INSTANTIATE, MAP_REMOVE };
+
+typedef struct {
+    int kind;
+    size_t amount;
+    HTerm argument;
+    const HTerm *values;
+    size_t count;
+} IndexMap;
+
+static HTerm map_indices(HolTermStore *s, HTerm root, size_t level, const IndexMap *map);
+
+static HTerm shift(HolTermStore *s, HTerm term, size_t amount, size_t cutoff)
 {
-    if (!depth_okay(s, depth) || term == HT_NONE || argument == HT_NONE) {
+    IndexMap map = { MAP_SHIFT, amount, HT_NONE, NULL, 0 };
+    if (!amount) {
+        return term != HT_NONE && work_okay(s) ? ht_deref(s, term) : HT_NONE;
+    }
+    return map_indices(s, term, cutoff, &map);
+}
+
+static HTerm map_index(HolTermStore *s, HTerm term, size_t index, size_t level, const IndexMap *map)
+{
+    switch (map->kind) {
+        case MAP_SHIFT:
+            if (index < level) {
+                return term;
+            }
+            if (index > INT64_MAX - map->amount) {
+                fail(s, "Bound variable shift overflow");
+                return HT_NONE;
+            }
+            return ht_index(s, index + map->amount);
+        case MAP_SUBSTITUTE:
+            if (index == level) {
+                return shift(s, map->argument, level, 0);
+            }
+            return index > level ? ht_index(s, index - 1) : term;
+        case MAP_INSTANTIATE:
+            if (index < level) {
+                return term;
+            }
+            return index - level < map->count ? map->values[map->count - 1 - (index - level)] : ht_index(s, index - map->count);
+        default:
+            return index > level ? ht_index(s, index - 1) : term;
+    }
+}
+
+/* Stages of a frame: 0 not visited yet; 1 an application whose function is
+    * being rewritten; 2 its argument; 3 an abstraction whose body is. */
+static HTerm map_indices(HolTermStore *s, HTerm root, size_t level, const IndexMap *map)
+{
+    size_t base = s->frame_count;
+    HTerm result = HT_NONE;
+    if (root != HT_NONE && closed_below(s->nodes[ht_deref(s, root)], level + (map->kind == MAP_REMOVE))) {
+        return work_okay(s) ? ht_deref(s, root) : HT_NONE;
+    }
+    if (!enter(s, root, level, 0)) {
         return HT_NONE;
     }
-    term = ht_deref(s, term);
-    TermNode n = s->nodes[term];
-    if (n.ground) return term;
-    if (n.tag == HT_INDEX) {
-        if (n.a == binder) {
-            return shift(s, argument, binder, 0, depth + 1);
+    while (s->frame_count > base) {
+        Frame frame = s->frames[s->frame_count - 1];
+        if (frame.stage == 0) {
+            if (!work_okay(s)) {
+                break;
+            }
+            HTerm term = ht_deref(s, frame.term);
+            TermNode n = s->nodes[term];
+            if (closed_below(n, frame.level + (map->kind == MAP_REMOVE))) {
+                result = term;
+            } else if (n.tag == HT_INDEX) {
+                result = map_index(s, term, n.a, frame.level, map);
+            } else if (n.tag == HT_APP || n.tag == HT_LAM) {
+                s->frames[s->frame_count - 1].term = term;
+                s->frames[s->frame_count - 1].stage = n.tag == HT_APP ? 1 : 3;
+                if (!enter(s, n.a, frame.level + (n.tag == HT_LAM), 0)) {
+                    break;
+                }
+                continue;
+            } else {
+                result = term;
+            }
+        } else if (frame.stage == 1) {
+            s->frames[s->frame_count - 1].left = result;
+            s->frames[s->frame_count - 1].stage = 2;
+            if (!enter(s, s->nodes[frame.term].b, frame.level, 0)) {
+                break;
+            }
+            continue;
+        } else {
+            TermNode n = s->nodes[frame.term];
+            if (frame.stage == 2) {
+                result = unchanged(s, frame.left, n.a) && unchanged(s, result, n.b) ? frame.term : ht_app(s, frame.left, result, n.meta);
+            } else {
+                result = unchanged(s, result, n.a) ? frame.term : ht_lam(s, result, n.meta);
+            }
         }
-        return n.a > binder ? ht_index(s, n.a - 1) : term;
+        if (result == HT_NONE) {
+            break;
+        }
+        --s->frame_count;
     }
-    if (n.tag == HT_APP) {
-        HTerm left = substitute(s, n.a, argument, binder, depth + 1);
-        HTerm right = substitute(s, n.b, argument, binder, depth + 1);
-        return unchanged(s, left, n.a) && unchanged(s, right, n.b) ? term : ht_app(s, left, right, n.meta);
+    if (s->frame_count > base) {
+        s->frame_count = base;
+        return HT_NONE;
     }
-    if (n.tag == HT_LAM) {
-        HTerm body = substitute(s, n.a, argument, binder + 1, depth + 1);
-        return unchanged(s, body, n.a) ? term : ht_lam(s, body, n.meta);
-    }
-    return term;
+    return result;
+}
+
+static HTerm substitute(HolTermStore *s, HTerm term, HTerm argument, size_t binder)
+{
+    IndexMap map = { MAP_SUBSTITUTE, 0, argument, NULL, 0 };
+    return argument == HT_NONE ? HT_NONE : map_indices(s, term, binder, &map);
 }
 
 /* Index i of the body of count nested binders denotes values[count - 1 - i]. */
-static HTerm instantiate(HolTermStore *s, HTerm term, const HTerm *values, size_t count, size_t binders, size_t depth)
+static HTerm instantiate(HolTermStore *s, HTerm term, const HTerm *values, size_t count, size_t binders)
 {
-    if (!depth_okay(s, depth) || term == HT_NONE) {
-        return HT_NONE;
-    }
-    term = ht_deref(s, term);
-    TermNode n = s->nodes[term];
-    if (n.ground) return term;
-    if (n.tag == HT_INDEX) {
-        if (n.a < binders) {
-            return term;
-        }
-        return n.a - binders < count ? values[count - 1 - (n.a - binders)] : ht_index(s, n.a - count);
-    }
-    if (n.tag == HT_APP) {
-        HTerm left = instantiate(s, n.a, values, count, binders, depth + 1);
-        HTerm right = instantiate(s, n.b, values, count, binders, depth + 1);
-        return unchanged(s, left, n.a) && unchanged(s, right, n.b) ? term : ht_app(s, left, right, n.meta);
-    }
-    if (n.tag == HT_LAM) {
-        HTerm body = instantiate(s, n.a, values, count, binders + 1, depth + 1);
-        return unchanged(s, body, n.a) ? term : ht_lam(s, body, n.meta);
-    }
-    return term;
+    IndexMap map = { MAP_INSTANTIATE, 0, HT_NONE, values, count };
+    return map_indices(s, term, binders, &map);
+}
+
+static HTerm remove_binder(HolTermStore *s, HTerm term, size_t index)
+{
+    IndexMap map = { MAP_REMOVE, 0, HT_NONE, NULL, 0 };
+    return map_indices(s, term, index, &map);
 }
 
 HTerm ht_instantiate(HolTermStore *s, HTerm body, const HTerm *values, size_t count)
@@ -739,7 +1037,7 @@ HTerm ht_instantiate(HolTermStore *s, HTerm body, const HTerm *values, size_t co
         closed = values[i] < s->count && (s->nodes[values[i]].tag == HT_VAR || s->nodes[values[i]].tag == HT_NOMINAL);
     }
     if (closed) {
-        result = instantiate(s, body, values, count, 0, 0);
+        result = instantiate(s, body, values, count, 0);
     } else {
         fail(s, "Invalid simultaneous instantiation");
     }
@@ -747,45 +1045,106 @@ HTerm ht_instantiate(HolTermStore *s, HTerm body, const HTerm *values, size_t co
     return result;
 }
 
-static HTerm normalize(HolTermStore *s, HTerm term, enum HTNormalForm form, size_t depth)
+/* Stages of a frame: 0 not visited yet; 1 an application whose function is
+    * being brought to weak head normal form; 2 the same function in the form
+    * asked for; 3 its argument; 4 an abstraction whose body is being normalized.
+    * A beta step visits the same frame again with the contracted term. */
+static HTerm normalize(HolTermStore *s, HTerm root, enum HTNormalForm form)
 {
-    if (!depth_okay(s, depth) || term == HT_NONE || s->error[0]) {
+    size_t base = s->frame_count;
+    HTerm result = HT_NONE;
+    if (s->error[0] || root == HT_NONE) {
         return HT_NONE;
     }
-    term = ht_deref(s, term);
-    if (term == HT_NONE) {
-        fail(s, "Invalid term reference");
+    if ((s->nodes[ht_deref(s, root)].summary & (HS_STABLE | HS_BETA)) == (HS_STABLE | HS_BETA)) {
+        return work_okay(s) ? ht_deref(s, root) : HT_NONE;
+    }
+    if (!enter(s, root, 0, form)) {
         return HT_NONE;
     }
-    TermNode n = s->nodes[term];
-    if (n.ground) return term;
-    if (n.tag == HT_APP) {
-        HTerm function = normalize(s, n.a, HT_WHNF, depth + 1);
-        if (function == HT_NONE) {
-            return HT_NONE;
-        }
-        TermNode f = s->nodes[function];
-        if (f.tag == HT_LAM) {
-            HTerm body = substitute(s, f.a, n.b, 0, depth + 1);
-            return normalize(s, body, form, depth + 1);
-        }
-        if (form != HT_WHNF) {
-            function = normalize(s, function, form, depth + 1);
-        }
-        HTerm argument = form == HT_NF ? normalize(s, n.b, HT_NF, depth + 1) : n.b;
-        if (unchanged(s, function, n.a) && unchanged(s, argument, n.b)) {
-            HTerm arg = ht_deref(s, argument);
-            if (arg == HT_NONE || s->nodes[function].tag != HT_CONST || s->nodes[function].a != s->successor || s->nodes[arg].tag != HT_NAT) {
-                return term;
+    while (s->frame_count > base) {
+        Frame frame = s->frames[s->frame_count - 1];
+        if (frame.stage == 0) {
+            if (!work_okay(s)) {
+                break;
             }
+            HTerm term = ht_deref(s, frame.term);
+            if (term == HT_NONE) {
+                fail(s, "Invalid term reference");
+                break;
+            }
+            TermNode n = s->nodes[term];
+            int settled = (n.summary & (HS_STABLE | HS_BETA)) == (HS_STABLE | HS_BETA);
+            if (!settled && n.tag == HT_APP) {
+                /* An application on a weak-head normal spine has no redex at
+                    * its head: its function part is on the same spine. */
+                int spine = frame.form == FORM_SPINE;
+                s->frames[s->frame_count - 1] = (Frame) { term, HT_NONE, 0, spine ? 2 : 1, (unsigned char) (spine ? HT_NF : frame.form) };
+                if (!enter(s, n.a, 0, spine ? FORM_SPINE : HT_WHNF)) {
+                    break;
+                }
+                continue;
+            }
+            if (!settled && n.tag == HT_LAM && frame.form != HT_WHNF) {
+                int form = frame.form == FORM_SPINE ? HT_NF : frame.form;
+                s->frames[s->frame_count - 1] = (Frame) { term, HT_NONE, 0, 4, (unsigned char) form };
+                if (!enter(s, n.a, 0, form)) {
+                    break;
+                }
+                continue;
+            }
+            result = term;
+        } else if (frame.stage == 4) {
+            TermNode n = s->nodes[frame.term];
+            result = unchanged(s, result, n.a) ? frame.term : ht_lam(s, result, n.meta);
+        } else {
+            TermNode n = s->nodes[frame.term];
+            HTerm function = frame.stage == 3 ? frame.left : result;
+            HTerm argument = frame.stage == 3 ? result : n.b;
+            if (frame.stage == 1 && s->nodes[function].tag == HT_LAM) {
+                HTerm body = substitute(s, s->nodes[function].a, n.b, 0);
+                if (body == HT_NONE) {
+                    break;
+                }
+                s->frames[s->frame_count - 1].term = body;
+                s->frames[s->frame_count - 1].stage = 0;
+                continue;
+            }
+            /* The function part is weak-head normal and no abstraction, so
+                * it is head normal as well. Its full normal form has the
+                * arguments along its spine normalized, and nothing else. */
+            if (frame.stage == 1 && frame.form == HT_NF) {
+                s->frames[s->frame_count - 1].stage = 2;
+                if (!enter(s, function, 0, FORM_SPINE)) {
+                    break;
+                }
+                continue;
+            }
+            if (frame.stage != 3 && frame.form == HT_NF) {
+                s->frames[s->frame_count - 1].left = function;
+                s->frames[s->frame_count - 1].stage = 3;
+                if (!enter(s, n.b, 0, HT_NF)) {
+                    break;
+                }
+                continue;
+            }
+            int same = unchanged(s, function, n.a) && unchanged(s, argument, n.b);
+            if (same) {
+                HTerm arg = ht_deref(s, argument);
+                same = arg == HT_NONE || s->nodes[function].tag != HT_CONST || s->nodes[function].a != s->successor || s->nodes[arg].tag != HT_NAT;
+            }
+            result = same ? frame.term : ht_app(s, function, argument, n.meta);
         }
-        return ht_app(s, function, argument, n.meta);
+        if (result == HT_NONE) {
+            break;
+        }
+        --s->frame_count;
     }
-    if (n.tag == HT_LAM && form != HT_WHNF) {
-        HTerm body = normalize(s, n.a, form, depth + 1);
-        return unchanged(s, body, n.a) ? term : ht_lam(s, body, n.meta);
+    if (s->frame_count > base) {
+        s->frame_count = base;
+        return HT_NONE;
     }
-    return term;
+    return result;
 }
 
 HTerm ht_normalize(HolTermStore *s, HTerm term, enum HTNormalForm form)
@@ -793,7 +1152,7 @@ HTerm ht_normalize(HolTermStore *s, HTerm term, enum HTNormalForm form)
     if (!operation_begin(s)) {
         return HT_NONE;
     }
-    HTerm result = normalize(s, term, form, 0);
+    HTerm result = normalize(s, term, form);
     operation_end(s);
     return result;
 }
@@ -803,51 +1162,104 @@ HTerm ht_apply(HolTermStore *s, HTerm function, HTerm argument)
     return ht_normalize(s, ht_app(s, function, argument, -1), HT_HNF);
 }
 
+static int mentions_arithmetic(HolTermStore *s, HTerm term)
+{
+    size_t base = s->frame_count;
+    int found = 0;
+    for (;;) {
+        if (!work_okay(s)) {
+            found = 1;
+            break;
+        }
+        term = ht_deref(s, term);
+        TermNode n = s->nodes[term];
+        if (!stable(n) && n.tag == HT_APP) {
+            if (!enter(s, n.b, 0, 0)) {
+                found = 1;
+                break;
+            }
+            term = n.a;
+            continue;
+        }
+        if (!stable(n) && n.tag == HT_LAM) {
+            term = n.a;
+            continue;
+        }
+        found = stable(n) ? (n.summary & HS_ARITHMETIC) != 0 : n.tag == HT_CONST;
+        if (found || s->frame_count == base) {
+            break;
+        }
+        term = s->frames[--s->frame_count].term;
+    }
+    s->frame_count = base;
+    return found;
+}
+
+int ht_mentions_arithmetic(HolTermStore *s, HTerm term)
+{
+    if (!operation_begin(s)) {
+        return -1;
+    }
+    int result = -1;
+    if (term >= s->count) {
+        fail(s, "Invalid term reference");
+    } else {
+        result = mentions_arithmetic(s, term);
+    }
+    operation_end(s);
+    return s->error[0] ? -1 : result;
+}
+
 static int spine_view(HolTermStore *s, HTerm term, HTSpine *spine)
 {
-    *spine = (HTSpine) { HT_NONE, NULL, 0 };
-    Terms arguments = { 0 };
-    term = ht_deref(s, term);
-    while (term != HT_NONE && s->nodes[term].tag == HT_APP) {
-        if (!depth_okay(s, 0)) {
-            free(arguments.items);
+    *spine = (HTSpine) { HT_NONE, NULL, 0, { 0 } };
+    HTerm top = ht_deref(s, term), head = top;
+    size_t count = 0;
+    while (head != HT_NONE && s->nodes[head].tag == HT_APP) {
+        if (!work_okay(s)) {
             return 0;
         }
-        TermNode n = s->nodes[term];
-        if (!push_term(s, &arguments, n.b)) {
-            free(arguments.items);
-            return 0;
-        }
-        term = ht_deref(s, n.a);
+        ++count;
+        head = ht_deref(s, s->nodes[head].a);
     }
-    if (term == HT_NONE) {
-        free(arguments.items);
+    if (head == HT_NONE) {
         return fail(s, "Invalid term spine");
     }
-    if (s->nodes[term].tag == HT_NAT && strcmp(s->nodes[term].digits, "0")) {
+    HTerm predecessor = HT_NONE;
+    if (s->nodes[head].tag == HT_NAT && strcmp(s->nodes[head].digits, "0")) {
         if (s->successor == HT_NONE) {
-            free(arguments.items);
             return fail(s, "Natural successor symbol is not configured");
         }
-        HTerm predecessor = increment(s, term, -1);
-        if (!push_term(s, &arguments, predecessor)) {
-            free(arguments.items);
+        predecessor = increment(s, head, -1);
+        head = ht_constant(s, s->successor, -1);
+        if (predecessor == HT_NONE || head == HT_NONE) {
             return 0;
         }
-        term = ht_constant(s, s->successor, -1);
+        ++count;
     }
-    for (size_t i = 0; i < arguments.count / 2; ++i) {
-        HTerm swap = arguments.items[i];
-        arguments.items[i] = arguments.items[arguments.count - i - 1];
-        arguments.items[arguments.count - i - 1] = swap;
+    HTerm *arguments = spine->few;
+    if (count > sizeof(spine->few) / sizeof(*spine->few)) {
+        arguments = count <= SIZE_MAX / sizeof(*arguments) ? malloc(count * sizeof(*arguments)) : NULL;
+        if (!arguments) {
+            return fail(s, "Term allocation failed");
+        }
     }
-    *spine = (HTSpine) { term, arguments.items, arguments.count };
-    return term != HT_NONE;
+    size_t at = count;
+    for (HTerm node = top; s->nodes[node].tag == HT_APP; node = ht_deref(s, s->nodes[node].a)) {
+        arguments[--at] = s->nodes[node].b;
+    }
+    if (predecessor != HT_NONE) {
+        arguments[--at] = predecessor;
+    }
+    spine->head = head;
+    spine->args = arguments;
+    spine->count = count;
+    return 1;
 }
 
 int ht_spine(HolTermStore *s, HTerm term, HTSpine *spine)
 {
-    *spine = (HTSpine) { HT_NONE, NULL, 0 };
+    *spine = (HTSpine) { HT_NONE, NULL, 0, { 0 } };
     if (!operation_begin(s)) {
         return 0;
     }
@@ -858,55 +1270,70 @@ int ht_spine(HolTermStore *s, HTerm term, HTSpine *spine)
 
 void ht_spine_free(HTSpine *spine)
 {
-    free(spine->args);
-    *spine = (HTSpine) { HT_NONE, NULL, 0 };
+    if (spine->args != spine->few) {
+        free(spine->args);
+    }
+    *spine = (HTSpine) { HT_NONE, NULL, 0, { 0 } };
 }
 
-static int equal(HolTermStore *s, HTerm left, HTerm right, size_t depth)
+/* The function parts are compared before the arguments, which wait in frames. */
+static int equal(HolTermStore *s, HTerm left, HTerm right)
 {
-    for (;;) {
-        if (!depth_okay(s, depth)) {
-            return 0;
+    size_t base = s->frame_count;
+    int same = 1;
+    while (same) {
+        if (!work_okay(s)) {
+            same = 0;
+            break;
         }
         left = ht_deref(s, left);
         right = ht_deref(s, right);
-        if (left == right) {
-            return 1;
-        }
-        TermNode a = s->nodes[left], b = s->nodes[right];
-        if (a.tag != b.tag) {
-            return 0;
-        }
-        switch (a.tag) {
-            case HT_VAR:
-            case HT_NOMINAL:
-                return a.uid == b.uid;
-            case HT_CONST:
-            case HT_INDEX:
-                return a.a == b.a;
-            case HT_NAT:
-                return !strcmp(a.digits, b.digits);
-            case HT_WILD:
-                return 1;
-            case HT_APP:
-                if (!equal(s, a.a, b.a, depth + 1)) return 0;
-                left = a.b;
-                right = b.b;
+        if (left != right) {
+            TermNode a = s->nodes[left], b = s->nodes[right];
+            if (a.tag != b.tag || (stable(a) && stable(b) && (a.scope != b.scope || a.open != b.open || a.mask != b.mask))) {
+                same = 0;
                 break;
-            case HT_LAM:
+            }
+            if (a.tag == HT_APP) {
+                if (!enter(s, a.b, 0, 0)) {
+                    same = 0;
+                    break;
+                }
+                s->frames[s->frame_count - 1].left = b.b;
                 left = a.a;
                 right = b.a;
-                break;
-            default:
-                return 0;
+                continue;
+            }
+            if (a.tag == HT_LAM) {
+                left = a.a;
+                right = b.a;
+                continue;
+            }
+            if (a.tag == HT_VAR || a.tag == HT_NOMINAL) {
+                same = a.uid == b.uid;
+            } else if (a.tag == HT_CONST || a.tag == HT_INDEX) {
+                same = a.a == b.a;
+            } else if (a.tag == HT_NAT) {
+                same = !strcmp(a.digits, b.digits);
+            } else {
+                same = a.tag == HT_WILD;
+            }
         }
+        if (!same || s->frame_count == base) {
+            break;
+        }
+        Frame frame = s->frames[--s->frame_count];
+        left = frame.term;
+        right = frame.left;
     }
+    s->frame_count = base;
+    return same;
 }
 
 static int rigid(HolTermStore *s, HTerm term)
 {
     TermNode n = s->nodes[ht_deref(s, term)];
-    if (n.tag == HT_CONST && n.a < s->opaque_count && s->opaque[n.a]) {
+    if (n.tag == HT_CONST && marked(s, n.a, MARK_OPAQUE)) {
         return 0;
     }
     return n.tag == HT_CONST || n.tag == HT_NOMINAL || n.tag == HT_INDEX || n.tag == HT_NAT;
@@ -926,7 +1353,7 @@ static size_t level(HolTermStore *s, HTerm term)
 static size_t position(HolTermStore *s, HTerm term, const HTerm *terms, size_t count)
 {
     for (size_t i = 0; i < count; ++i) {
-        if (equal(s, term, terms[i], 0)) {
+        if (equal(s, term, terms[i])) {
             return i;
         }
     }
@@ -954,132 +1381,233 @@ static int trail_variable(HolTermStore *s, HTerm variable)
     return 1;
 }
 
-static int occurs(HolTermStore *s, HTerm variable, HTerm term, size_t depth)
+/* 1 also when the store fails: the caller then finds the error. */
+static int occurs(HolTermStore *s, HTerm variable, HTerm term)
 {
-    if (!depth_okay(s, depth)) {
-        return 1;
-    }
-    term = ht_deref(s, term);
-    if (term == variable) {
-        return 1;
-    }
-    TermNode n = s->nodes[term];
-    if (n.ground) return 0;
-    if (n.tag == HT_APP) {
-        return occurs(s, variable, n.a, depth + 1) || occurs(s, variable, n.b, depth + 1);
-    }
-    return n.tag == HT_LAM && occurs(s, variable, n.a, depth + 1);
-}
-
-static int lower_scopes(HolTermStore *s, HTerm term, size_t scope, size_t depth)
-{
-    if (!depth_okay(s, depth)) {
-        return 0;
-    }
-    term = ht_deref(s, term);
-    TermNode n = s->nodes[term];
-    if (n.ground) return 1;
-    if (n.tag == HT_VAR && n.scope > scope) {
-        if (!trail_variable(s, term)) {
-            return 0;
+    size_t base = s->frame_count;
+    int found = 0;
+    for (;;) {
+        if (!work_okay(s)) {
+            found = 1;
+            break;
         }
-        s->nodes[term].scope = scope;
-    } else if (n.tag == HT_APP) {
-        return lower_scopes(s, n.a, scope, depth + 1) && lower_scopes(s, n.b, scope, depth + 1);
-    } else if (n.tag == HT_LAM) {
-        return lower_scopes(s, n.a, scope, depth + 1);
-    }
-    return 1;
-}
-
-static int index_free(HolTermStore *s, HTerm term, size_t index, size_t depth)
-{
-    if (!depth_okay(s, depth)) {
-        return 1;
-    }
-    term = ht_deref(s, term);
-    TermNode n = s->nodes[term];
-    if (n.ground) return 0;
-    if (n.tag == HT_INDEX) {
-        return n.a == index;
-    }
-    if (n.tag == HT_APP) {
-        return index_free(s, n.a, index, depth + 1) || index_free(s, n.b, index, depth + 1);
-    }
-    return n.tag == HT_LAM && index_free(s, n.a, index + 1, depth + 1);
-}
-
-static HTerm remove_binder(HolTermStore *s, HTerm term, size_t index, size_t depth)
-{
-    if (!depth_okay(s, depth)) {
-        return HT_NONE;
-    }
-    term = ht_deref(s, term);
-    TermNode n = s->nodes[term];
-    if (n.ground) return term;
-    if (n.tag == HT_INDEX && n.a > index) {
-        return ht_index(s, n.a - 1);
-    }
-    if (n.tag == HT_APP) {
-        HTerm a = remove_binder(s, n.a, index, depth + 1);
-        HTerm b = remove_binder(s, n.b, index, depth + 1);
-        return unchanged(s, a, n.a) && unchanged(s, b, n.b) ? term : ht_app(s, a, b, n.meta);
-    }
-    if (n.tag == HT_LAM) {
-        HTerm body = remove_binder(s, n.a, index + 1, depth + 1);
-        return unchanged(s, body, n.a) ? term : ht_lam(s, body, n.meta);
-    }
-    return term;
-}
-
-static HTerm eta_reduce(HolTermStore *s, HTerm term, size_t depth)
-{
-    if (!depth_okay(s, depth) || term == HT_NONE) {
-        return HT_NONE;
-    }
-    term = ht_deref(s, term);
-    TermNode n = s->nodes[term];
-    if (n.ground) return term;
-    if (n.tag == HT_APP) {
-        HTerm a = eta_reduce(s, n.a, depth + 1);
-        HTerm b = eta_reduce(s, n.b, depth + 1);
-        return unchanged(s, a, n.a) && unchanged(s, b, n.b) ? term : ht_app(s, a, b, n.meta);
-    }
-    if (n.tag == HT_LAM) {
-        HTerm body = eta_reduce(s, n.a, depth + 1);
-        if (body == HT_NONE) {
-            return HT_NONE;
+        term = ht_deref(s, term);
+        if (term == variable) {
+            found = 1;
+            break;
         }
-        TermNode b = s->nodes[body];
-        if (b.tag == HT_APP) {
-            HTerm argument = ht_deref(s, b.b);
-            if (s->nodes[argument].tag == HT_INDEX && s->nodes[argument].a == 0 && !index_free(s, b.a, 0, depth + 1)) {
-                return eta_reduce(s, remove_binder(s, b.a, 0, depth + 1), depth + 1);
+        TermNode n = s->nodes[term];
+        if (!stable(n) && n.tag == HT_APP) {
+            if (!enter(s, n.b, 0, 0)) {
+                found = 1;
+                break;
+            }
+            term = n.a;
+            continue;
+        }
+        if (!stable(n) && n.tag == HT_LAM) {
+            term = n.a;
+            continue;
+        }
+        if (s->frame_count == base) {
+            break;
+        }
+        term = s->frames[--s->frame_count].term;
+    }
+    s->frame_count = base;
+    return found;
+}
+
+static int lower_scopes(HolTermStore *s, HTerm term, size_t scope)
+{
+    size_t base = s->frame_count;
+    int okay = 1;
+    for (;;) {
+        if (!work_okay(s)) {
+            okay = 0;
+            break;
+        }
+        term = ht_deref(s, term);
+        TermNode n = s->nodes[term];
+        if (!stable(n) && n.tag == HT_APP) {
+            if (!enter(s, n.b, 0, 0)) {
+                okay = 0;
+                break;
+            }
+            term = n.a;
+            continue;
+        }
+        if (!stable(n) && n.tag == HT_LAM) {
+            term = n.a;
+            continue;
+        }
+        if (n.tag == HT_VAR && n.scope > scope) {
+            if (!trail_variable(s, term)) {
+                okay = 0;
+                break;
+            }
+            s->nodes[term].scope = scope;
+        }
+        if (s->frame_count == base) {
+            break;
+        }
+        term = s->frames[--s->frame_count].term;
+    }
+    s->frame_count = base;
+    return okay;
+}
+
+/* 1 also when the store fails: the caller then finds the error. */
+static int index_free(HolTermStore *s, HTerm term, size_t index)
+{
+    size_t base = s->frame_count;
+    int found = 0;
+    for (;;) {
+        if (!work_okay(s)) {
+            found = 1;
+            break;
+        }
+        term = ht_deref(s, term);
+        TermNode n = s->nodes[term];
+        if (!closed_below(n, index)) {
+            if (stable(n) && index < 32 && (n.mask >> index & 1)) {
+                found = 1;
+                break;
+            }
+            if (n.tag == HT_APP) {
+                if (!enter(s, n.b, index, 0)) {
+                    found = 1;
+                    break;
+                }
+                term = n.a;
+                continue;
+            }
+            if (n.tag == HT_LAM) {
+                term = n.a;
+                ++index;
+                continue;
+            }
+            if (n.tag == HT_INDEX && n.a == index) {
+                found = 1;
+                break;
             }
         }
-        return unchanged(s, body, n.a) ? term : ht_lam(s, body, n.meta);
+        if (s->frame_count == base) {
+            break;
+        }
+        Frame frame = s->frames[--s->frame_count];
+        term = frame.term;
+        index = frame.level;
     }
-    return term;
+    s->frame_count = base;
+    return found;
+}
+
+/* Stages of a frame: 0 not visited yet; 1 an application whose function is
+    * being reduced; 2 its argument; 3 an abstraction whose body is. An eta step
+    * visits the same frame again with the contracted term. */
+static HTerm eta_reduce(HolTermStore *s, HTerm root)
+{
+    size_t base = s->frame_count;
+    HTerm result = HT_NONE;
+    if (root != HT_NONE && (s->nodes[ht_deref(s, root)].summary & (HS_STABLE | HS_ETA)) == (HS_STABLE | HS_ETA)) {
+        return work_okay(s) ? ht_deref(s, root) : HT_NONE;
+    }
+    if (!enter(s, root, 0, 0)) {
+        return HT_NONE;
+    }
+    while (s->frame_count > base) {
+        Frame frame = s->frames[s->frame_count - 1];
+        if (frame.stage == 0) {
+            if (!work_okay(s)) {
+                break;
+            }
+            HTerm term = ht_deref(s, frame.term);
+            TermNode n = s->nodes[term];
+            int settled = (n.summary & (HS_STABLE | HS_ETA)) == (HS_STABLE | HS_ETA);
+            if (!settled && (n.tag == HT_APP || n.tag == HT_LAM)) {
+                s->frames[s->frame_count - 1].term = term;
+                s->frames[s->frame_count - 1].stage = n.tag == HT_APP ? 1 : 3;
+                if (!enter(s, n.a, 0, 0)) {
+                    break;
+                }
+                continue;
+            }
+            result = term;
+        } else if (frame.stage == 1) {
+            s->frames[s->frame_count - 1].left = result;
+            s->frames[s->frame_count - 1].stage = 2;
+            if (!enter(s, s->nodes[frame.term].b, 0, 0)) {
+                break;
+            }
+            continue;
+        } else if (frame.stage == 2) {
+            TermNode n = s->nodes[frame.term];
+            result = unchanged(s, frame.left, n.a) && unchanged(s, result, n.b) ? frame.term : ht_app(s, frame.left, result, n.meta);
+        } else {
+            TermNode n = s->nodes[frame.term], body = s->nodes[result];
+            if (body.tag == HT_APP) {
+                TermNode argument = s->nodes[ht_deref(s, body.b)];
+                if (argument.tag == HT_INDEX && !argument.a && !index_free(s, body.a, 0)) {
+                    HTerm reduced = remove_binder(s, body.a, 0);
+                    if (reduced == HT_NONE) {
+                        break;
+                    }
+                    s->frames[s->frame_count - 1].term = reduced;
+                    s->frames[s->frame_count - 1].stage = 0;
+                    continue;
+                }
+                if (s->error[0]) {
+                    break;
+                }
+            }
+            result = unchanged(s, result, n.a) ? frame.term : ht_lam(s, result, n.meta);
+        }
+        if (result == HT_NONE) {
+            break;
+        }
+        --s->frame_count;
+    }
+    if (s->frame_count > base) {
+        s->frame_count = base;
+        return HT_NONE;
+    }
+    return result;
 }
 
 static int assign(HolTermStore *s, HTerm variable, HTerm value)
 {
-    value = eta_reduce(s, ht_normalize(s, value, HT_NF), 0);
+    value = eta_reduce(s, ht_normalize(s, value, HT_NF));
     if (value == HT_NONE) {
         return -1;
     }
     if (ht_deref(s, variable) == value) {
         return 1;
     }
-    if (occurs(s, variable, value, 0)) {
+    if (occurs(s, variable, value)) {
         return s->error[0] ? -1 : 0;
     }
-    if (!lower_scopes(s, value, s->nodes[variable].scope, 0) || !trail_variable(s, variable)) {
+    if (!lower_scopes(s, value, s->nodes[variable].scope) || !trail_variable(s, variable)) {
         return -1;
     }
     s->nodes[variable].a = value;
     ++s->changes;
     return 1;
+}
+
+/* Whether term is literally head applied to these arguments. A bound variable
+    * in between does not count: building the value again removes it, so that a
+    * value whose variables are all bound becomes stable. */
+static int same_applications(const HolTermStore *s, HTerm term, HTerm head, const HTerm *arguments, size_t count)
+{
+    while (count) {
+        TermNode n = s->nodes[term];
+        if (n.tag != HT_APP || n.b != arguments[--count]) {
+            return 0;
+        }
+        term = n.a;
+    }
+    return term == head;
 }
 
 static HTerm applications(HolTermStore *s, HTerm head, const HTerm *arguments, size_t count)
@@ -1123,7 +1651,7 @@ static int parameter_hints(HolTermStore *s, const HTerm *parameters, size_t coun
 static int lhs_arguments(HolTermStore *s, const HTerm *parameters, size_t count, size_t binders, Terms *result)
 {
     for (size_t i = 0; i < count; ++i) {
-        if (!push_term(s, result, shift(s, parameters[i], binders, 0, 0))) {
+        if (!push_term(s, result, shift(s, parameters[i], binders, 0))) {
             return 0;
         }
     }
@@ -1199,42 +1727,30 @@ static int visible_constants(HolTermStore *s, const HTerm *arguments, size_t cou
     return 1;
 }
 
-/* 2 means that a non-pattern equation must be delayed. */
-static int bind_value(HolTermStore *s, HTerm variable, HTerm value, const HTerm *parameters, size_t arity, const Words *outer, Words *bound, HTerm *result, size_t depth)
+/* A value whose parts are still being bound: an abstraction waiting for its
+    * body, or a rigid head waiting for the arguments from next on. */
+typedef struct {
+    HTerm value, head;
+    HTerm *args;
+    size_t count, next;
+    Terms results;
+    int lambda;
+    int64_t meta;
+} Binding;
+
+typedef struct { Binding *items; size_t count, capacity; } Bindings;
+
+/* The value is an application or an atom in head normal form. A rigid head
+    * leaves its arguments in *pending, to be bound next; without arguments, and
+    * for a flexible head, *result is the bound value.
+    * 2 means that a non-pattern equation must be delayed. */
+static int bind_spine(HolTermStore *s, HTerm variable, HTerm value, const HTerm *parameters, size_t arity, const Words *outer, const Words *bound, Binding *pending, HTerm *result)
 {
-    if (!depth_okay(s, depth)) {
-        return -1;
-    }
-    value = ht_normalize(s, value, HT_HNF);
-    if (value == HT_NONE) {
-        return -1;
-    }
-    TermNode n = s->nodes[value];
-    if (n.ground) {
-        *result = value;
-        return 1;
-    }
-    if (n.tag == HT_LAM) {
-        if (!push_word(s, bound, n.meta)) {
-            return -1;
-        }
-        HTerm body = HT_NONE;
-        int status = bind_value(s, variable, n.a, parameters, arity, outer, bound, &body, depth + 1);
-        --bound->count;
-        if (status == 1) {
-            *result = ht_lam(s, body, n.meta);
-            return *result == HT_NONE ? -1 : 1;
-        }
-        return status;
-    }
-    if (n.tag == HT_NAT) {
-        *result = value;
-        return 1;
-    }
     HTSpine rhs = { 0 };
     Terms lhs = { 0 }, common = { 0 }, lhs_args = { 0 }, rhs_args = { 0 };
     Words hints = { 0 }, rhs_hints = { 0 };
     int status = -1;
+    *pending = (Binding) { value, HT_NONE, NULL, 0, 0, { 0 }, 0, -1 };
     if (!ht_spine(s, value, &rhs) || !lhs_arguments(s, parameters, arity, bound->count, &lhs)) {
         goto finish;
     }
@@ -1255,20 +1771,23 @@ static int bind_value(HolTermStore *s, HTerm variable, HTerm value, const HTerm 
                 status = 0;
                 goto finish;
             }
-            output_head = ht_index(s, lhs.count - index - 1);
+            output_head = h.tag == HT_INDEX && h.a == lhs.count - index - 1 ? head : ht_index(s, lhs.count - index - 1);
         }
-        for (size_t i = 0; i < rhs.count; ++i) {
-            HTerm argument;
-            status = bind_value(s, variable, rhs.args[i], parameters, arity, outer, bound, &argument, depth + 1);
-            if (status != 1 || !push_term(s, &lhs_args, argument)) {
-                if (s->error[0]) {
-                    status = -1;
-                }
+        pending->head = output_head;
+        if (rhs.args != rhs.few) {
+            pending->args = rhs.args;
+            rhs.args = NULL;
+        } else if (rhs.count) {
+            pending->args = malloc(rhs.count * sizeof(*pending->args));
+            if (!pending->args) {
+                fail(s, "Term allocation failed");
                 goto finish;
             }
+            memcpy(pending->args, rhs.few, rhs.count * sizeof(*pending->args));
         }
-        *result = applications(s, output_head, lhs_args.items, lhs_args.count);
-        status = *result == HT_NONE ? -1 : 1;
+        pending->count = rhs.count;
+        *result = output_head;
+        status = output_head == HT_NONE ? -1 : 1;
         goto finish;
     }
     if (h.tag != HT_VAR || head == variable) {
@@ -1357,6 +1876,85 @@ finish:
     return s->error[0] ? -1 : status;
 }
 
+/* The value of the variable applied to the parameters: value with every
+    * parameter and every binder of its own replaced by an index. The pending
+    * parts are kept in an array, not on the C stack.
+    * 2 means that a non-pattern equation must be delayed. */
+static int bind_value(HolTermStore *s, HTerm variable, HTerm value, const HTerm *parameters, size_t arity, const Words *outer, Words *bound, HTerm *result)
+{
+    Bindings pending = { NULL, 0, 0 };
+    size_t hints = bound->count;
+    int status = 1, descending = 1;
+    while (status == 1) {
+        if (descending) {
+            status = -1;
+            if (!work_okay(s)) {
+                break;
+            }
+            value = ht_normalize(s, value, HT_HNF);
+            if (value == HT_NONE) {
+                break;
+            }
+            TermNode n = s->nodes[value];
+            /* nothing below is a parameter, a variable or out of the variable's scope */
+            if ((stable(n) && n.scope <= s->nodes[variable].scope && closed_below(n, bound->count)) || n.tag == HT_NAT) {
+                *result = value;
+                status = 1;
+                descending = 0;
+                continue;
+            }
+            Binding part = { value, HT_NONE, NULL, 0, 0, { 0 }, 1, n.meta };
+            if (n.tag != HT_LAM) {
+                status = bind_spine(s, variable, value, parameters, arity, outer, bound, &part, result);
+                if (status != 1 || !part.count) {
+                    free(part.args);
+                    descending = 0;
+                    continue;
+                }
+                status = -1;
+            }
+            if ((part.lambda && !push_word(s, bound, n.meta)) || !reserve(s, (void **) &pending.items, &pending.capacity, pending.count + 1, sizeof(*pending.items))) {
+                free(part.args);
+                break;
+            }
+            pending.items[pending.count++] = part;
+            value = part.lambda ? n.a : part.args[0];
+            status = 1;
+        } else if (!pending.count) {
+            break;
+        } else {
+            Binding *top = &pending.items[pending.count - 1];
+            if (top->lambda) {
+                --bound->count;
+                *result = *result == s->nodes[top->value].a ? top->value : ht_lam(s, *result, top->meta);
+            } else if (!push_term(s, &top->results, *result)) {
+                status = -1;
+                break;
+            } else if (++top->next < top->count) {
+                value = top->args[top->next];
+                descending = 1;
+                continue;
+            } else {
+                *result = same_applications(s, top->value, top->head, top->results.items, top->results.count) ? top->value : applications(s, top->head, top->results.items, top->results.count);
+                free(top->args);
+                free(top->results.items);
+            }
+            --pending.count;
+            if (*result == HT_NONE) {
+                status = -1;
+            }
+        }
+    }
+    while (pending.count) {
+        Binding *top = &pending.items[--pending.count];
+        free(top->args);
+        free(top->results.items);
+    }
+    free(pending.items);
+    bound->count = hints;
+    return s->error[0] ? -1 : status;
+}
+
 static int make_substitution(HolTermStore *s, HTerm variable, HTerm rhs, const HTerm *parameters, size_t arity, const Words *outer)
 {
     HTCheckpoint checkpoint = ht_checkpoint(s);
@@ -1395,7 +1993,7 @@ static int make_substitution(HolTermStore *s, HTerm variable, HTerm rhs, const H
         }
         int identical = 1;
         for (size_t i = 0; i < lhs.count; ++i) {
-            if (equal(s, lhs.items[i], body_spine.args[i], 0)) {
+            if (equal(s, lhs.items[i], body_spine.args[i])) {
                 if (!push_term(s, &common, ht_index(s, lhs.count - i - 1))) {
                     goto finish;
                 }
@@ -1427,8 +2025,8 @@ static int make_substitution(HolTermStore *s, HTerm variable, HTerm rhs, const H
             status = 2;
             goto finish;
         }
-        HTerm replacement;
-        status = bind_value(s, variable, rhs, normalized.items, normalized.count, outer, &bound, &replacement, 0);
+        HTerm replacement = HT_NONE;
+        status = bind_value(s, variable, rhs, normalized.items, normalized.count, outer, &bound, &replacement);
         if (status != 1) {
             goto finish;
         }
@@ -1454,9 +2052,6 @@ finish:
     return s->error[0] ? -1 : status;
 }
 
-typedef struct { HTerm left, right; } Equation;
-typedef struct { Equation *items; size_t count, capacity; } Equations;
-
 static int add_equation(HolTermStore *s, Equations *equations, HTerm left, HTerm right)
 {
     if (left == HT_NONE || right == HT_NONE || !reserve(s, (void **) &equations->items, &equations->capacity, equations->count + 1, sizeof(*equations->items))) {
@@ -1466,71 +2061,119 @@ static int add_equation(HolTermStore *s, Equations *equations, HTerm left, HTerm
     return 1;
 }
 
-static int solve_pair(HolTermStore *s, HTerm left, HTerm right, Words *outer, Equations *delayed, size_t depth)
+/* known is the value of s->changes at which left and right were in normal
+    * form; they are still in normal form while nothing has been bound since. The
+    * body of an abstraction and the first argument of a rigid term are solved
+    * next; the other arguments wait in s->pairs, each with the number of binders
+    * above it, so neither a long list nor a deep argument nests. */
+static int solve_pair(HolTermStore *s, HTerm left, HTerm right, Words *outer, Equations *delayed)
 {
-    if (!depth_okay(s, depth)) {
-        return -1;
-    }
-    left = ht_normalize(s, left, HT_NF);
-    right = ht_normalize(s, right, HT_NF);
-    if (left == HT_NONE || right == HT_NONE) {
-        return -1;
-    }
-    if (equal(s, left, right, 0)) {
-        return s->error[0] ? -1 : 1;
-    }
-    TermNode l = s->nodes[left], r = s->nodes[right];
-    if (l.ground && r.ground) {
-        return 0;
-    }
-    if (l.tag == HT_LAM && r.tag == HT_LAM) {
-        if (!push_word(s, outer, l.meta)) {
-            return -1;
-        }
-        int result = solve_pair(s, l.a, r.a, outer, delayed, depth + 1);
-        --outer->count;
-        return result;
-    }
     HTSpine lhs = { 0 }, rhs = { 0 };
-    int status = -1;
-    if (!ht_spine(s, left, &lhs) || !ht_spine(s, right, &rhs)) {
-        goto finish;
-    }
-    HTerm lh = ht_deref(s, lhs.head), rh = ht_deref(s, rhs.head);
-    if ((l.tag == HT_LAM && rigid(s, rh)) || (r.tag == HT_LAM && rigid(s, lh))) {
-        int left_lambda = l.tag == HT_LAM;
-        HTerm expansion = shift(s, left_lambda ? right : left, 1, 0, 0);
-        HTerm index = ht_index(s, 0);
-        expansion = ht_app(s, expansion, index, -1);
-        if (expansion == HT_NONE || !push_word(s, outer, left_lambda ? l.meta : r.meta)) {
-            goto finish;
+    size_t base = s->pair_count, binders = outer->count;
+    uint64_t known = 0;
+    int reduced = 0, status;
+    for (;;) {
+        for (;;) {
+            status = -1;
+            if (!work_okay(s)) {
+                break;
+            }
+            if (reduced && s->changes == known) {
+                left = ht_deref(s, left);
+                right = ht_deref(s, right);
+            } else {
+                left = ht_normalize(s, left, HT_NF);
+                right = ht_normalize(s, right, HT_NF);
+                known = s->changes;
+            }
+            reduced = 1;
+            if (left == HT_NONE || right == HT_NONE) {
+                break;
+            }
+            if (left == right) {
+                status = 1;
+                break;
+            }
+            TermNode l = s->nodes[left], r = s->nodes[right];
+            if (normal(l) && normal(r)) {
+                status = equal(s, left, right);
+                break;
+            }
+            if (l.tag == HT_LAM && r.tag == HT_LAM) {
+                if (!push_word(s, outer, l.meta)) {
+                    break;
+                }
+                left = l.a;
+                right = r.a;
+                continue;
+            }
+            ht_spine_free(&lhs);
+            ht_spine_free(&rhs);
+            if (!spine_view(s, left, &lhs) || !spine_view(s, right, &rhs)) {
+                break;
+            }
+            HTerm lh = ht_deref(s, lhs.head), rh = ht_deref(s, rhs.head);
+            if ((l.tag == HT_LAM && rigid(s, rh)) || (r.tag == HT_LAM && rigid(s, lh))) {
+                int left_lambda = l.tag == HT_LAM;
+                HTerm expansion = shift(s, left_lambda ? right : left, 1, 0);
+                HTerm index = ht_index(s, 0);
+                expansion = ht_app(s, expansion, index, -1);
+                if (expansion == HT_NONE || !push_word(s, outer, left_lambda ? l.meta : r.meta)) {
+                    break;
+                }
+                left = left_lambda ? l.a : expansion;
+                right = left_lambda ? expansion : r.a;
+                continue;
+            }
+            if (rigid(s, lh) && rigid(s, rh)) {
+                if (!equal(s, lh, rh) || lhs.count != rhs.count) {
+                    status = 0;
+                    break;
+                }
+                status = 1;
+                if (!lhs.count) {
+                    break;
+                }
+                if (lhs.count - 1 > SIZE_MAX - s->pair_count || !reserve(s, (void **) &s->pairs, &s->pair_capacity, s->pair_count + lhs.count - 1, sizeof(*s->pairs))) {
+                    status = -1;
+                    break;
+                }
+                for (size_t i = lhs.count; i > 1; --i) {
+                    s->pairs[s->pair_count++] = (Pair) { lhs.args[i - 1], rhs.args[i - 1], outer->count, known };
+                }
+                left = lhs.args[0];
+                right = rhs.args[0];
+                continue;
+            }
+            if (equal(s, left, right)) {
+                status = 1;
+            } else if (s->nodes[lh].tag == HT_VAR && pattern(s, lh, lhs.args, lhs.count)) {
+                status = make_substitution(s, lh, right, lhs.args, lhs.count, outer);
+            } else if (s->nodes[rh].tag == HT_VAR && pattern(s, rh, rhs.args, rhs.count)) {
+                status = make_substitution(s, rh, left, rhs.args, rhs.count, outer);
+            } else if (s->nodes[lh].tag == HT_WILD || s->nodes[rh].tag == HT_WILD) {
+                status = 1;
+            } else {
+                status = 2;
+            }
+            if (status == 2) {
+                HTerm a = abstractions(s, left, outer->items, outer->count);
+                HTerm b = abstractions(s, right, outer->items, outer->count);
+                status = add_equation(s, delayed, a, b) ? 1 : -1;
+            }
+            break;
         }
-        status = solve_pair(s, left_lambda ? l.a : expansion, left_lambda ? expansion : r.a, outer, delayed, depth + 1);
-        --outer->count;
-    } else if (rigid(s, lh) && rigid(s, rh)) {
-        if (!equal(s, lh, rh, 0) || lhs.count != rhs.count) {
-            status = 0;
-            goto finish;
+        if (status != 1 || s->error[0] || s->pair_count == base) {
+            break;
         }
-        status = 1;
-        for (size_t i = 0; i < lhs.count && status == 1; ++i) {
-            status = solve_pair(s, lhs.args[i], rhs.args[i], outer, delayed, depth + 1);
-        }
-    } else if (s->nodes[lh].tag == HT_VAR && pattern(s, lh, lhs.args, lhs.count)) {
-        status = make_substitution(s, lh, right, lhs.args, lhs.count, outer);
-    } else if (s->nodes[rh].tag == HT_VAR && pattern(s, rh, rhs.args, rhs.count)) {
-        status = make_substitution(s, rh, left, rhs.args, rhs.count, outer);
-    } else if (s->nodes[lh].tag == HT_WILD || s->nodes[rh].tag == HT_WILD) {
-        status = 1;
-    } else {
-        status = 2;
+        Pair next = s->pairs[--s->pair_count];
+        left = next.left;
+        right = next.right;
+        known = next.known;
+        outer->count = next.binders;
     }
-    if (status == 2) {
-        HTerm a = abstractions(s, left, outer->items, outer->count);
-        HTerm b = abstractions(s, right, outer->items, outer->count);
-        status = add_equation(s, delayed, a, b) ? 1 : -1;
-    }
-finish:
+    s->pair_count = base;
+    outer->count = binders;
     ht_spine_free(&lhs);
     ht_spine_free(&rhs);
     return s->error[0] ? -1 : status;
@@ -1543,8 +2186,19 @@ static int unify_equations(HolTermStore *s, HTerm left, HTerm right, int add_new
     }
     HTCheckpoint checkpoint = ht_checkpoint(s);
     uint64_t initial_changes = s->changes;
+    /* The buffers of the store are borrowed unless a unification is running. */
+    int borrowed = !s->unifying;
     Equations input = { 0 }, output = { 0 };
     Words outer = { 0 };
+    if (borrowed) {
+        input = s->solving;
+        output = s->delayed;
+        outer = s->binders;
+        input.count = 0;
+        output.count = 0;
+        outer.count = 0;
+        s->unifying = 1;
+    }
     int status = -1;
     if (add_new && !add_equation(s, &input, left, right)) {
         goto finish;
@@ -1560,7 +2214,7 @@ static int unify_equations(HolTermStore *s, HTerm left, HTerm right, int add_new
         output.count = 0;
         status = 1;
         for (size_t i = 0; i < input.count && status == 1; ++i) {
-            status = solve_pair(s, input.items[i].left, input.items[i].right, &outer, &output, 0);
+            status = solve_pair(s, input.items[i].left, input.items[i].right, &outer, &output);
         }
         if (status != 1) {
             goto finish;
@@ -1583,9 +2237,16 @@ static int unify_equations(HolTermStore *s, HTerm left, HTerm right, int add_new
         s->pending_head = s->pending_count++;
     }
 finish:
-    free(input.items);
-    free(output.items);
-    free(outer.items);
+    if (borrowed) {
+        s->solving = input;
+        s->delayed = output;
+        s->binders = outer;
+        s->unifying = 0;
+    } else {
+        free(input.items);
+        free(output.items);
+        free(outer.items);
+    }
     if (status != 1) {
         ht_restore(s, checkpoint);
         s->changes = initial_changes;
@@ -1618,33 +2279,51 @@ int ht_retry(HolTermStore *s)
     return result;
 }
 
-static int assignment_scope(HolTermStore *s, HTerm term, size_t scope, size_t binders, size_t depth)
+/* 1: every variable and nominal of the term is within scope and every loose
+    * index is below binders; 0: not so; -1: store error. */
+static int assignment_scope(HolTermStore *s, HTerm term, size_t scope, size_t binders)
 {
-    if (!depth_okay(s, depth)) {
-        return -1;
-    }
-    term = ht_deref(s, term);
-    if (term == HT_NONE) {
-        fail(s, "Invalid checked assignment term");
-        return -1;
-    }
-    TermNode n = s->nodes[term];
-    if (n.ground) return 1;
-    switch (n.tag) {
-        case HT_VAR:
-        case HT_NOMINAL:
-            return n.scope <= scope;
-        case HT_INDEX:
-            return n.a < binders;
-        case HT_LAM:
-            return assignment_scope(s, n.a, scope, binders + 1, depth + 1);
-        case HT_APP: {
-            int left = assignment_scope(s, n.a, scope, binders, depth + 1);
-            return left == 1 ? assignment_scope(s, n.b, scope, binders, depth + 1) : left;
+    size_t base = s->frame_count;
+    int status = 1;
+    for (;;) {
+        if (!work_okay(s)) {
+            status = -1;
+            break;
         }
-        default:
-            return 1;
+        term = ht_deref(s, term);
+        if (term == HT_NONE) {
+            fail(s, "Invalid checked assignment term");
+            status = -1;
+            break;
+        }
+        TermNode n = s->nodes[term];
+        if (stable(n) && n.open != OPEN_UNKNOWN) {
+            status = n.scope <= scope && n.open <= binders;
+        } else if (n.tag == HT_APP) {
+            if (!enter(s, n.b, binders, 0)) {
+                status = -1;
+                break;
+            }
+            term = n.a;
+            continue;
+        } else if (n.tag == HT_LAM) {
+            term = n.a;
+            ++binders;
+            continue;
+        } else if (n.tag == HT_VAR || n.tag == HT_NOMINAL) {
+            status = n.scope <= scope;
+        } else if (n.tag == HT_INDEX) {
+            status = n.a < binders;
+        }
+        if (status != 1 || s->frame_count == base) {
+            break;
+        }
+        Frame frame = s->frames[--s->frame_count];
+        term = frame.term;
+        binders = frame.level;
     }
+    s->frame_count = base;
+    return status;
 }
 
 int ht_assign_checked(HolTermStore *s, HTerm variable, HTerm value)
@@ -1664,7 +2343,7 @@ int ht_assign_checked(HolTermStore *s, HTerm variable, HTerm value)
         } else {
             value = ht_normalize(s, value, HT_NF);
             if (value != HT_NONE) {
-                status = assignment_scope(s, value, s->nodes[target].scope, 0, 0);
+                status = assignment_scope(s, value, s->nodes[target].scope, 0);
                 if (status == 1) {
                     status = assign(s, target, value);
                 }
@@ -1715,12 +2394,10 @@ static int read_word(HolTermStore *s, const int64_t *words, size_t count, size_t
     return 1;
 }
 
-static HTerm import_term(HolTermStore *s, const int64_t *words, size_t count, size_t *offset, size_t depth, int restoring)
+/* One term without subterms; HT_NONE with the store in error. */
+static HTerm import_leaf(HolTermStore *s, int64_t tag, const int64_t *words, size_t count, size_t *offset, int restoring)
 {
-    int64_t tag, a, b, c, d;
-    if (!depth_okay(s, depth) || !read_word(s, words, count, offset, &tag)) {
-        return HT_NONE;
-    }
+    int64_t a, b, c, d;
     switch (tag) {
         case HT_VAR:
         case HT_NOMINAL: {
@@ -1765,29 +2442,12 @@ static HTerm import_term(HolTermStore *s, const int64_t *words, size_t count, si
                 return HT_NONE;
             }
             return ht_constant(s, (size_t) a, b);
-        case HT_APP: {
-            if (!read_word(s, words, count, offset, &a) || a < -1) {
-                fail(s, "Invalid application wire");
-                return HT_NONE;
-            }
-            HTerm function = import_term(s, words, count, offset, depth + 1, restoring);
-            HTerm argument = import_term(s, words, count, offset, depth + 1, restoring);
-            return ht_app(s, function, argument, a);
-        }
         case HT_INDEX:
             if (!read_word(s, words, count, offset, &a) || a < 0 || (uint64_t) a > SIZE_MAX) {
                 fail(s, "Invalid bound variable wire");
                 return HT_NONE;
             }
             return ht_index(s, (size_t) a);
-        case HT_LAM: {
-            if (!read_word(s, words, count, offset, &a) || a < -1) {
-                fail(s, "Invalid lambda wire");
-                return HT_NONE;
-            }
-            HTerm body = import_term(s, words, count, offset, depth + 1, restoring);
-            return ht_lam(s, body, a);
-        }
         case HT_NAT: {
             if (!read_word(s, words, count, offset, &a) || a <= 0 || (uint64_t) a > count - *offset) {
                 fail(s, "Invalid natural wire size");
@@ -1821,6 +2481,46 @@ static HTerm import_term(HolTermStore *s, const int64_t *words, size_t count, si
     }
 }
 
+/* A frame is an application or an abstraction whose parts are still being
+    * read: stage 0 an abstraction, 1 an application without its function, 2 one
+    * with it (term). level is the annotation plus one. */
+static HTerm import_term(HolTermStore *s, const int64_t *words, size_t count, size_t *offset, int restoring)
+{
+    size_t base = s->frame_count;
+    HTerm value = HT_NONE;
+    for (;;) {
+        int64_t tag, meta;
+        if (!work_okay(s) || !read_word(s, words, count, offset, &tag)) {
+            break;
+        }
+        if (tag == HT_APP || tag == HT_LAM) {
+            if (!read_word(s, words, count, offset, &meta) || meta < -1) {
+                fail(s, tag == HT_APP ? "Invalid application wire" : "Invalid lambda wire");
+                break;
+            }
+            if (!reserve(s, (void **) &s->frames, &s->frame_capacity, s->frame_count + 1, sizeof(*s->frames))) {
+                break;
+            }
+            s->frames[s->frame_count++] = (Frame) { HT_NONE, HT_NONE, (size_t) (meta + 1), tag == HT_APP, 0 };
+            continue;
+        }
+        value = import_leaf(s, tag, words, count, offset, restoring);
+        while (value != HT_NONE && s->frame_count > base && s->frames[s->frame_count - 1].stage != 1) {
+            Frame frame = s->frames[--s->frame_count];
+            int64_t annotation = (int64_t) frame.level - 1;
+            value = frame.stage ? ht_app(s, frame.term, value, annotation) : ht_lam(s, value, annotation);
+        }
+        if (value == HT_NONE || s->frame_count == base) {
+            break;
+        }
+        s->frames[s->frame_count - 1].term = value;
+        s->frames[s->frame_count - 1].stage = 2;
+        value = HT_NONE;
+    }
+    s->frame_count = base;
+    return s->error[0] ? HT_NONE : value;
+}
+
 static HTerm import_wire(HolTermStore *s, const int64_t *words, size_t count, size_t *offset, int restoring)
 {
     if (!s || s->error[0] || !offset || *offset > count || (count && !words)) {
@@ -1832,7 +2532,7 @@ static HTerm import_wire(HolTermStore *s, const int64_t *words, size_t count, si
     }
     HTCheckpoint checkpoint = ht_checkpoint(s);
     size_t previous = *offset;
-    HTerm term = import_term(s, words, count, offset, 0, restoring);
+    HTerm term = import_term(s, words, count, offset, restoring);
     if (term == HT_NONE) {
         ht_restore(s, checkpoint);
         *offset = previous;
@@ -1851,57 +2551,66 @@ HTerm ht_import_restored(HolTermStore *s, const int64_t *words, size_t count, si
     return import_wire(s, words, count, offset, 1);
 }
 
-static int export_term(HolTermStore *s, HTerm term, Words *words, size_t depth)
+/* The wire is the term in prefix order: the frames hold the subterms that
+    * are still to be written, the next one on top. */
+static int export_term(HolTermStore *s, HTerm root, Words *words)
 {
-    for (;;) {
-        if (!depth_okay(s, depth)) {
-            return 0;
+    size_t base = s->frame_count;
+    int written = enter(s, root, 0, 0);
+    while (written && s->frame_count > base) {
+        HTerm term = ht_deref(s, s->frames[--s->frame_count].term);
+        if (!work_okay(s)) {
+            written = 0;
+            break;
         }
-        term = ht_deref(s, term);
         if (term == HT_NONE) {
-            return fail(s, "Invalid term export reference");
+            written = fail(s, "Invalid term export reference");
+            break;
         }
         TermNode n = s->nodes[term];
-        if (!push_word(s, words, n.tag)) {
-            return 0;
-        }
-        switch (n.tag) {
+        written = push_word(s, words, n.tag);
+        switch (written ? n.tag : -1) {
+            case -1:
+                break;
             case HT_VAR:
                 s->nodes[term].pinned = 1;
-                return push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.is_type) && push_word(s, words, n.meta);
+                written = push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.is_type) && push_word(s, words, n.meta);
+                break;
             case HT_CONST:
-                return push_word(s, words, (int64_t) n.a) && push_word(s, words, n.meta);
+                written = push_word(s, words, (int64_t) n.a) && push_word(s, words, n.meta);
+                break;
             case HT_APP:
-                if (!push_word(s, words, n.meta) || !export_term(s, n.a, words, depth + 1)) return 0;
-                term = n.b;
+                written = push_word(s, words, n.meta) && enter(s, n.b, 0, 0) && enter(s, n.a, 0, 0);
                 break;
             case HT_INDEX:
-                return push_word(s, words, (int64_t) n.a);
+                written = push_word(s, words, (int64_t) n.a);
+                break;
             case HT_LAM:
-                if (!push_word(s, words, n.meta)) return 0;
-                term = n.a;
+                written = push_word(s, words, n.meta) && enter(s, n.a, 0, 0);
                 break;
             case HT_NOMINAL:
                 s->nodes[term].pinned = 1;
-                return push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.meta);
+                written = push_word(s, words, (int64_t) n.uid) && push_word(s, words, (int64_t) n.scope) && push_word(s, words, n.meta);
+                break;
             case HT_NAT: {
                 size_t length = strlen(n.digits);
                 if (length > INT64_MAX || !push_word(s, words, (int64_t) length)) {
-                    return fail(s, "Natural export length overflow");
+                    written = fail(s, "Natural export length overflow");
                 }
-                for (size_t i = 0; i < length; ++i) {
-                    if (!push_word(s, words, n.digits[i])) {
-                        return 0;
-                    }
+                for (size_t i = 0; written && i < length; ++i) {
+                    written = push_word(s, words, n.digits[i]);
                 }
-                return 1;
+                break;
             }
             case HT_WILD:
-                return 1;
+                break;
             default:
-                return fail(s, "Invalid term export tag");
+                written = fail(s, "Invalid term export tag");
+                break;
         }
     }
+    s->frame_count = base;
+    return written;
 }
 
 int ht_export(HolTermStore *s, HTerm term, int64_t **words, size_t *count)
@@ -1916,7 +2625,7 @@ int ht_export(HolTermStore *s, HTerm term, int64_t **words, size_t *count)
     }
     Words output = { 0 };
     term = ht_normalize(s, term, HT_NF);
-    if (term == HT_NONE || !export_term(s, term, &output, 0)) {
+    if (term == HT_NONE || !export_term(s, term, &output)) {
         free(output.items);
         operation_end(s);
         return 0;
@@ -1934,22 +2643,36 @@ void ht_pin(HolTermStore *s, HTerm term)
     }
 }
 
+/* The nodes below base are sealed and kept: they are live, stay where they
+    * are, and refer to nothing above base. live and forward describe the nodes
+    * from base on. */
 struct HTCollection {
     HolTermStore *store;
     unsigned char *live;
     size_t *forward, *trail_forward;
     HTerm *stack;
-    size_t stack_count, stack_capacity;
+    size_t base, stack_count, stack_capacity;
     int failed;
 };
+
+static int collected_live(const HTCollection *c, HTerm term)
+{
+    return term < c->base || c->live[term - c->base];
+}
+
+/* The new place of a live node, or of a heap position up to the count. */
+static size_t collected_at(const HTCollection *c, size_t at)
+{
+    return at < c->base ? at : c->forward[at - c->base];
+}
 
 void ht_collect_mark(HTCollection *c, HTerm term)
 {
     HolTermStore *s = c->store;
     size_t base = c->stack_count;
     for (;;) {
-        while (term < s->count && !c->live[term]) {
-            c->live[term] = 1;
+        while (term < s->count && !collected_live(c, term)) {
+            c->live[term - c->base] = 1;
             TermNode n = s->nodes[term];
             if (n.tag == HT_APP) {
                 if (c->stack_count == c->stack_capacity) {
@@ -1980,12 +2703,12 @@ void ht_collect_mark(HTCollection *c, HTerm term)
 
 HTerm ht_collect_term(const HTCollection *c, HTerm term)
 {
-    return term < c->store->count && c->live[term] ? c->forward[term] : HT_NONE;
+    return term < c->store->count && collected_live(c, term) ? collected_at(c, term) : HT_NONE;
 }
 
 size_t ht_collect_heap(const HTCollection *c, size_t heap)
 {
-    return c->forward[heap < c->store->count ? heap : c->store->count];
+    return collected_at(c, heap < c->store->count ? heap : c->store->count);
 }
 
 size_t ht_collect_trail(const HTCollection *c, size_t trail)
@@ -1998,14 +2721,21 @@ int ht_collect(HolTermStore *s, size_t keep, const HTCollector *collector, void 
     if (!s || s->error[0] || s->operations || !collector || keep > s->count) {
         return 0;
     }
-    HTCollection c = { s, NULL, NULL, NULL, NULL, 0, 0, 0 };
-    c.live = calloc(s->count ? s->count : 1, 1);
-    c.forward = s->count < SIZE_MAX / sizeof(*c.forward) ? malloc((s->count + 1) * sizeof(*c.forward)) : NULL;
+    if (s->sealed > keep) {
+        s->sealed = keep;
+    }
+    HTCollection c = { s, NULL, NULL, NULL, NULL, s->sealed, 0, 0, 0 };
+    size_t span = s->count - c.base;
+    c.live = calloc(span ? span : 1, 1);
+    c.forward = span < SIZE_MAX / sizeof(*c.forward) ? malloc((span + 1) * sizeof(*c.forward)) : NULL;
     c.trail_forward = s->trail_count < SIZE_MAX / sizeof(*c.trail_forward) ? malloc((s->trail_count + 1) * sizeof(*c.trail_forward)) : NULL;
-    if (!c.live || !c.forward || !c.trail_forward) {
+    size_t expired_capacity = s->identity_count, expired_count = 0;
+    uint64_t *expired = malloc((expired_capacity ? expired_capacity : 1) * sizeof(*expired));
+    int sorted = 1;
+    if (!c.live || !c.forward || !c.trail_forward || !expired) {
         c.failed = 1;
     }
-    for (size_t i = 0; !c.failed && i < s->count; ++i) {
+    for (size_t i = c.base; !c.failed && i < s->count; ++i) {
         if (i < keep || s->nodes[i].pinned) {
             ht_collect_mark(&c, i);
         }
@@ -2022,7 +2752,7 @@ int ht_collect(HolTermStore *s, size_t keep, const HTCollector *collector, void 
         changed = 0;
         for (size_t i = 0; !c.failed && i < s->trail_count; ++i) {
             HTerm binding = s->trail[i].binding;
-            if (c.live[s->trail[i].variable] && binding != HT_NONE && !c.live[binding]) {
+            if (collected_live(&c, s->trail[i].variable) && binding != HT_NONE && !collected_live(&c, binding)) {
                 ht_collect_mark(&c, binding);
                 changed = 1;
             }
@@ -2033,53 +2763,61 @@ int ht_collect(HolTermStore *s, size_t keep, const HTCollector *collector, void 
         free(c.forward);
         free(c.trail_forward);
         free(c.stack);
+        free(expired);
         return 0;
     }
-    size_t kept = 0;
-    for (size_t i = 0; i < s->count; ++i) {
+    size_t kept = c.base;
+    for (size_t i = 0; i < span; ++i) {
         c.forward[i] = kept;
         kept += c.live[i];
     }
-    c.forward[s->count] = kept;
+    c.forward[span] = kept;
     size_t entries = 0;
     for (size_t i = 0; i < s->trail_count; ++i) {
         c.trail_forward[i] = entries;
-        entries += c.live[s->trail[i].variable];
+        entries += collected_live(&c, s->trail[i].variable);
     }
     c.trail_forward[s->trail_count] = entries;
-    for (size_t i = 0; i < s->count; ++i) {
+    for (size_t i = c.base; i < s->count; ++i) {
         TermNode n = s->nodes[i];
-        if (!c.live[i]) {
-            if (n.tag == HT_VAR || n.tag == HT_NOMINAL) {
-                remove_identity(s, n.uid);
+        if (!c.live[i - c.base]) {
+            if ((n.tag == HT_VAR || n.tag == HT_NOMINAL) && expired_count < expired_capacity) {
+                sorted = sorted && (!expired_count || expired[expired_count - 1] < n.uid);
+                expired[expired_count++] = n.uid;
+                remove_identity(s, n.uid, 0);
             }
             free(n.digits);
             continue;
         }
         if (n.tag == HT_APP) {
-            n.a = c.forward[n.a];
-            n.b = c.forward[n.b];
+            n.a = collected_at(&c, n.a);
+            n.b = collected_at(&c, n.b);
         } else if (n.tag == HT_LAM || (n.tag == HT_VAR && n.a != HT_NONE)) {
-            n.a = c.forward[n.a];
+            n.a = collected_at(&c, n.a);
         }
-        s->nodes[c.forward[i]] = n;
+        s->nodes[c.forward[i - c.base]] = n;
     }
+    if (!sorted) {
+        qsort(expired, expired_count, sizeof(*expired), ascending);
+    }
+    retire_sorted(s, expired, expired_count);
+    free(expired);
     for (size_t i = 0; i < s->identity_capacity; ++i) {
         if (s->identities[i].uid != UID_EMPTY) {
-            s->identities[i].term = c.forward[s->identities[i].term];
+            s->identities[i].term = collected_at(&c, s->identities[i].term);
         }
     }
     for (size_t i = 0; i < s->trail_count; ++i) {
         Trail entry = s->trail[i];
-        if (c.live[entry.variable]) {
-            entry.variable = c.forward[entry.variable];
-            entry.binding = entry.binding == HT_NONE ? HT_NONE : c.forward[entry.binding];
+        if (collected_live(&c, entry.variable)) {
+            entry.variable = collected_at(&c, entry.variable);
+            entry.binding = entry.binding == HT_NONE ? HT_NONE : collected_at(&c, entry.binding);
             s->trail[c.trail_forward[i]] = entry;
         }
     }
     for (size_t i = 0; i < s->pending_count; ++i) {
-        s->pending[i].left = c.forward[s->pending[i].left];
-        s->pending[i].right = c.forward[s->pending[i].right];
+        s->pending[i].left = collected_at(&c, s->pending[i].left);
+        s->pending[i].right = collected_at(&c, s->pending[i].right);
     }
     if (collector->relocate) {
         collector->relocate(&c, context);
@@ -2094,9 +2832,13 @@ int ht_collect(HolTermStore *s, size_t keep, const HTCollector *collector, void 
             s->capacity = capacity;
         }
     }
-    if (s->identity_capacity / 8 > s->identity_count && s->identity_capacity > 64) {
+    /* The table keeps the size that the identities needed since the previous
+        * collection: a run that creates as many again does not grow it again. */
+    size_t peak = s->identity_peak;
+    s->identity_peak = s->identity_count;
+    if (s->identity_capacity / 8 > peak && s->identity_capacity > 64) {
         size_t capacity = 64;
-        while (capacity / 4 < s->identity_count) {
+        while (capacity / 4 < peak) {
             capacity *= 2;
         }
         rehash_identities(s, capacity);
@@ -2119,14 +2861,15 @@ HolTermStore *ht_clone(const HolTermStore *source)
     }
     copy->next_uid = source->next_uid;
     copy->successor = source->successor;
+    copy->sealed = source->sealed;
     copy->work_limit = source->work_limit;
-    if (source->opaque_count) {
-        if (!reserve(copy, (void **) &copy->opaque, &copy->opaque_capacity, source->opaque_count, sizeof(*copy->opaque))) {
+    if (source->mark_count) {
+        if (!reserve(copy, (void **) &copy->marks, &copy->mark_capacity, source->mark_count, sizeof(*copy->marks))) {
             ht_destroy(copy);
             return NULL;
         }
-        memcpy(copy->opaque, source->opaque, source->opaque_count);
-        copy->opaque_count = source->opaque_count;
+        memcpy(copy->marks, source->marks, source->mark_count);
+        copy->mark_count = source->mark_count;
     }
     copy->changes = source->changes;
     if (!reserve(copy, (void **) &copy->nodes, &copy->capacity, source->count, sizeof(*copy->nodes)) || !reserve(copy, (void **) &copy->trail, &copy->trail_capacity, source->trail_count, sizeof(*copy->trail)) || !reserve(copy, (void **) &copy->pending, &copy->pending_capacity, source->pending_count, sizeof(*copy->pending))) {

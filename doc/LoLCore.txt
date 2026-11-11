@@ -49,8 +49,8 @@ Chapter 0. Notation
 A name ending in `s` is a finite sequence: `xs` is `x1 ... xn`.
 
   (xs : As)                 the telescope (x1 : A1) ... (xn : An)
-  forall (xs : As), B       forall (x1 : A1), ... forall (xn : An), B
-  fun (xs : As) => t        fun (x1 : A1) => ... fun (xn : An) => t
+  forall (xs : As), B       forall x1 : A1, ... forall xn : An, B
+  fun (xs : As) => t        fun x1 : A1 => ... fun xn : An => t
   t us                      t u1 ... un
   t[xs := us]               simultaneous capture-avoiding substitution
 
@@ -78,8 +78,8 @@ Chapter 1. Syntax
   s ::= Prop | Type@{l}
 
   t ::= x | s | c | I | C
-      | forall (x : A), B
-      | fun (x : A) => t
+      | forall x : A, B
+      | fun x : A => t
       | let x := t : A in u
       | t u
       | match t as x in I _ ys return P with (| C zs => b)* end
@@ -97,7 +97,7 @@ Chapter 1. Syntax
 
 Conventions:
 
-  * `Set` abbreviates `Type@{0}`. `A -> B` abbreviates `forall (_ : A), B`.
+  * `Set` abbreviates `Type@{0}`. `A -> B` abbreviates `forall _ : A, B`.
   * In `match`, the `_` stands for the parameters of I; they are not bound.
   `x` and `ys` are bound in P only. `zs` are bound in b only.
   * A `fix` is a block of m >= 1 mutually recursive functions; the index k
@@ -118,7 +118,7 @@ Axioms:
   Prop     : Type@{1}                               [S-Prop]
   Type@{l} : Type@{l+1}                             [S-Type]
 
-Products. R(s1, s2) is the sort of `forall (x : A), B` when A : s1 and B : s2.
+Products. R(s1, s2) is the sort of `forall x : A, B` when A : s1 and B : s2.
 
   R(s, Prop)               = Prop                   [P-Prop]
   R(Prop, Type@{l})        = Type@{l}               [P-Type]
@@ -178,15 +178,15 @@ Chapter 3. Typing
   E; G |- C_ij : forall (ps : Ps), T_ij
 
   E; G |- A : s1    E; G, x : A |- B : s2
-  ------------------------------------------ [T-Pi]
-  E; G |- forall (x : A), B : R(s1, s2)
+  ----------------------------------------- [T-Pi]
+  E; G |- forall x : A, B : R(s1, s2)
 
   E; G |- A : s    E; G, x : A |- t : B
-  ----------------------------------------------- [T-Lam]
-  E; G |- fun (x : A) => t : forall (x : A), B
+  ------------------------------------------ [T-Lam]
+  E; G |- fun x : A => t : forall x : A, B
 
-  E; G |- t : forall (x : A), B    E; G |- u : A
-  ------------------------------------------------- [T-App]
+  E; G |- t : forall x : A, B    E; G |- u : A
+  ----------------------------------------------- [T-App]
   E; G |- t u : B[x := u]
 
   E; G |- A : s    E; G |- t : A    E; G, x := t : A |- u : B
@@ -224,7 +224,7 @@ Chapter 4. Reduction, Conversion and Cumulativity
 4.1 Reduction
 --------------------------------------------------------------------------------
 
-  (fun (x : A) => t) u   ~>   t[x := u]                         [R-Beta]
+  (fun x : A => t) u     ~>   t[x := u]                         [R-Beta]
 
   let x := t : A in u    ~>   u[x := t]                         [R-Zeta]
 
@@ -258,7 +258,7 @@ every term constructor and satisfies:
 
   E; G, x : A |- t == u x      x not free in u
   ---------------------------------------------- [Eq-Eta]
-  E; G |- fun (x : A) => t == u
+  E; G |- fun x : A => t == u
 
 Conversion does not include proof irrelevance and does not include eta for
 values of an inductive family.
@@ -274,9 +274,9 @@ values of an inductive family.
   ------------------------------------------------- [C-Sort]
   E; G |- A <= B
 
-  E; G |- A == forall (x : A1), A2    E; G |- B == forall (x : B1), B2
-  E; G |- A1 == B1                    E; G, x : A1 |- A2 <= B2
-  --------------------------------------------------------------------- [C-Pi]
+  E; G |- A == forall x : A1, A2    E; G |- B == forall x : B1, B2
+  E; G |- A1 == B1                  E; G, x : A1 |- A2 <= B2
+  ------------------------------------------------------------------ [C-Pi]
   E; G |- A <= B
 
 The domain of a product is compared by conversion, not by cumulativity.
@@ -324,11 +324,11 @@ Examples in surface syntax:
 
   Inductive vec (A : Set) : nat -> Set :=
   | vnil : vec A O
-  | vcons : forall (n : nat), A -> vec A n -> vec A (S n).
+  | vcons : forall n : nat, A -> vec A n -> vec A (S n).
     parameter A; one index; the third argument of vcons is recursive
 
   Inductive Acc (A : Set) (R : A -> A -> Prop) (x : A) : Prop :=
-  | Acc_intro : (forall (y : A), R y x -> Acc A R y) -> Acc A R x.
+  | Acc_intro : (forall y : A, R y x -> Acc A R y) -> Acc A R x.
     the argument of Acc_intro is recursive, with ws = y and a proof of R y x
 
 5.2 Admissibility
@@ -431,7 +431,7 @@ Chapter 6. Match
 
 Example. With `e : eq A x y`:
 
-  match e as h in eq _ _ z return eq B (f x) (f z) with
+  match e as h in eq _ z return eq B (f x) (f z) with
   | eq_refl => eq_refl B (f x)
   end
 
@@ -445,8 +445,8 @@ Example. With `e : eq A x y`:
   result
     eq B (f x) (f y)
 
-The kernel represents P as `fun (ys) (x) => P` and each branch as
-`fun (zs) => b`. That is a representation, not a different rule.
+The kernel represents P as `fun ys x => P` and each branch as `fun zs => b`.
+That is a representation, not a different rule.
 
 
 ================================================================================
@@ -513,7 +513,7 @@ A term is *guarded* (relative to S) when one of the following applies.
   match n with O => a | S p =>
     match p with O => b | S q => f q                       guarded: q is in S
   f n                                                      rejected by [G-App]
-  match n with O => a | S p => f (pred n)                  rejected by [G-App]
+  match n with O => a | S p => f (pred (S p))              rejected by [G-App]
   match n with O => a | S p => h f                         rejected by [G-App]
   match m with O => a | S p => f p    (m is not n)         rejected by [G-App]
 
@@ -523,8 +523,44 @@ A term is *guarded* (relative to S) when one of the following applies.
     g x (fun (y : A) (r : R y x) => F y (h y r))           guarded: h is in S,
                                                           `h y r` by [G-Fun]
 
-`f (pred n)` is rejected although `pred n` reduces to `p`: the condition does
-not reduce.
+`f (pred (S p))` is rejected although `pred (S p)` reduces to `p`: the
+condition does not reduce. Rocq accepts this body (7.4).
+
+7.4 Planned strengthening
+--------------------------------------------------------------------------------
+
+The condition of 7.2 is deliberately narrower than Rocq's. It will not stay so.
+A later version of LoL Core MUST replace 7.2 by a condition as strong as the
+guard condition of the reference Rocq (9.0 today): among the terms of LoL Core
+it accepts every `fix` that Rocq accepts, and no other. Which version of LoL
+does this is not decided here.
+
+The replacement has at least the following parts. Each example is the body of
+the branch `S p` in `fix f (n : nat) {struct n}`. Rocq 9.0.0 accepts every one
+of them, and 7.2 rejects every one of them.
+
+  * The body is reduced while it is checked.
+
+      f (pred (S p))                        beta, delta, iota
+      f (id p)                              delta, beta
+      let q := p : nat in f q               zeta
+      (fun q : nat => f q) p                beta
+      app1 f p                              where `app1 h x` unfolds to `h x`
+
+  * "Strictly smaller" is carried through the result of a `match`.
+
+      f (match p with O => p | S q => q end)
+
+  * It is carried into a nested `fix` through the struct argument.
+
+      (fix g (m : nat) {struct m} : nat :=
+        match m with O => O | S k => f k end) p
+
+Rocq rejects `f (pred n)` and `f (pred p)`, and so will the replacement: the
+branch `O => O` of `pred` does not return a smaller term.
+
+Until rules replace this section, 7.2 is the condition. The design constraint
+of this document binds the replacement as it binds 7.2.
 
 
 ================================================================================
@@ -590,7 +626,7 @@ Chapter 10. Relation to Rocq (informative)
   nested inductive types                  rejected by [I-Pos]
   non-uniform parameters                  rejected by [I-Uniform]
   guard condition reduces terms and
-  tracks subterms through `match`         7.2 does neither
+  tracks subterms through `match`         7.2 does neither; planned in 7.4
   sub-singleton elimination in a mutual
   block                                   one-family blocks only ([I-Elim-Sub])
   modules, functors, sections             absent from the theory
@@ -610,7 +646,7 @@ as global universes `Set < L1 < L2`.
   [S-Prop]              Prop : Set                                   rejects
   [P-Max]               forall (A : Type@{L1}) (B : Set), Prop
                           : Type@{L2}                                accepts
-  [P-Max]               forall (A : Type@{L1}), A : Type@{L1}        rejects
+  [P-Max]               forall A : Type@{L1}, A : Type@{L1}          rejects
   [P-Prop]              forall (A : Type@{L1}) (P : Prop), P : Prop  accepts
   [S-Type]              Type@{L1} : Type@{L1}                        rejects
   [I-Pos]               mk : (bad -> False) -> bad                   rejects

@@ -1,0 +1,4 @@
+# [R-Delta] removed: no constant reduces.
+- whnf_cst N W :- cst_body N T, !, whnf T W.
+kills church "R-Delta: 2 + 2 is 4"
+kills church "R-Delta in a type"

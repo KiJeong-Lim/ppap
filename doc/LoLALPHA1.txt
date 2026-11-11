@@ -14,6 +14,9 @@ exported, stored, reported and tested (Chapters 6 through 9).
 Chapters 0 through 9 are normative. Chapter 10 and Appendix A are informative.
 Examples are informative.
 
+A Korean version is in `doc/LoLALPHA1_ko.txt`. The two are kept in step; where
+they differ, this one holds until the difference is repaired.
+
 
 ================================================================================
 Chapter 0. Parts and Boundaries
@@ -131,19 +134,30 @@ Whitespace separates tokens. A comment is `(* ... *)`; comments do not nest.
   qualid    ::= ident ('.' ident)*
   numeral   ::= digit+
   string    ::= '"' (any character except '"')* '"'
+  operator  ::= symchar+
+  symchar   ::= one of  ! # $ % & * + - / < = > ? ^ ~ \ | :
+
+`_` alone is not an `ident`; it is a reserved symbol. Inside a `qualid` no
+whitespace surrounds the `.`. A `.` followed by whitespace or by the end of the
+file ends a command.
 
 Keywords:
 
   Arguments Axiom Check Compute Definition Fixpoint Import Inductive Infix
-  Lemma Numerals Print Prop Set Theorem Type as at end fix for forall fun in
-  let level match return struct with
+  Lemma Numerals Print Prop Set Theorem Type as end fix for forall fun in let
+  match return struct with
+
+The following words are not keywords. They are ordinary identifiers, and the
+grammar of 2.2 recognises them at fixed positions:
+
+  Assumptions associativity at left level no right
 
 Punctuation and reserved symbols:
 
   ( ) { } : := , . | => -> @ _ @{
 
-Any other sequence of symbol characters is an operator token and has a meaning
-only after an `Infix` command declares it.
+An `operator` that is not a reserved symbol has a meaning only after an `Infix`
+command declares it.
 
 
 ================================================================================
@@ -153,8 +167,8 @@ Chapter 2. Surface Syntax
 2.1 Terms
 --------------------------------------------------------------------------------
 
-  term    ::= 'forall' binder+ ',' term
-            | 'fun' binder+ '=>' term
+  term    ::= 'forall' binders ',' term
+            | 'fun' binders '=>' term
             | 'let' ident (':' term)? ':=' term 'in' term
             | 'match' term ('as' ident)? ('in' pattern)? ('return' term)?
               'with' branch* 'end'
@@ -169,12 +183,14 @@ Chapter 2. Surface Syntax
 
   sort    ::= 'Prop' | 'Set' | 'Type' '@{' numeral '}'
 
-  binder  ::= ident | '_'
-            | '(' ident+ ':' term ')'
-            | '{' ident+ ':' term '}'
+  name    ::= ident | '_'
+  binders ::= binder+ | name+ ':' term
+  binder  ::= name
+            | '(' name+ ':' term ')'
+            | '{' name+ ':' term '}'
 
   branch  ::= '|' pattern '=>' term
-  pattern ::= qualid (ident | '_')* | '_'
+  pattern ::= '@'? qualid name* | '_'
 
   fixbody ::= ident binder+ ('{' 'struct' ident '}')? ':' term ':=' term
 
@@ -210,15 +226,17 @@ extend as far to the right as possible.
 
 A term is *explicit* when all of the following hold.
 
-  (X1) It contains no `_`, no numeral and no operator.
-  (X2) Every binder has a type and is written `(x : A)`.
+  (X1) It contains no `_` in the place of a term, no numeral and no operator.
+  (X2) Every binder binds one variable and has a type: `forall x : A, B`,
+  `fun x : A => t`, and `(x : A)` in a `fix`.
   (X3) A constant that has implicit arguments is written with `@` and applied
   to all of them.
   (X4) Every `match` has a `return` clause, with `as` and `in` whenever the
   clause mentions the scrutinee or an index.
   (X5) Every `fix` and `Fixpoint` has `{struct x}`.
-  (X6) Every pattern lists the constructor's parameters as `_` and binds all of
-  its arguments. Branches are in declaration order.
+  (X6) Every pattern gives `_` for each parameter of the constructor and a
+  variable for each of its arguments. (X3) applies to the constructor of a
+  pattern too. Branches are in declaration order.
 
 An explicit term denotes one Core term. No rule of Chapter 3 applies to it.
 
@@ -229,11 +247,12 @@ Each step is a rewriting of syntax. None looks at a type.
 
   [H-Name]     An identifier becomes a bound variable or a global constant. An
   unknown or ambiguous name is an error.
-  [H-Arrow]    `A -> B` becomes `forall (_ : A), B`.
-  [H-Binders]  `forall (x y : A), B` becomes
-  `forall (x : A), forall (y : A), B`. Likewise for `fun`, and for the binders
-  of a command, which move into the type as `forall` and into the body as
-  `fun`.
+  [H-Arrow]    `A -> B` becomes `forall _ : A, B`.
+  [H-Binders]  A group of binders is split into single binders:
+  `forall (x y : A) (z : B), C` becomes
+  `forall x : A, forall y : A, forall z : B, C`. Likewise for `fun`, and for
+  the binders of a command, which move into the type as `forall` and into the
+  body as `fun`.
   [H-Infix]    Operators are grouped by the declared levels and associativity
   and become applications of the declared constant.
   [H-Numeral]  A numeral `n` becomes `S (... (S O))` with n applications, for
@@ -308,9 +327,9 @@ implicit argument. Written with `@`, it gets none.
   a `forall` when an argument remains is `E-NotFunction`.
 
 [E-Lam]  In check mode, `fun x => e` against a type whose weak head normal
-form is `forall (x : A), B` elaborates e against B with x : A. If the binder
-is annotated, the annotation is unified with A. In infer mode the annotation
-is required; without it the error is `E-NeedAnnotation`.
+form is `forall x : A, B` elaborates e against B with x : A. If the binder is
+annotated, the annotation is unified with A. In infer mode the annotation is
+required; without it the error is `E-NeedAnnotation`.
 
 [E-Pi], [E-Let], [E-Annot]  The components are elaborated in order. A type
 position is checked to be a sort. `(e : A)` checks e against A.
@@ -326,8 +345,11 @@ in check mode against T, with scrutinee `t : I qs vs`:
 
   In infer mode a `match` without `return` is `E-NeedReturn`. Branches may be
   written in any order. A last branch `| _ => b` stands for every constructor
-  not listed. A pattern names a constructor and gives a variable or `_` for
-  each argument that is not a parameter.
+  not listed. A pattern names a constructor and gives one item for each of its
+  positions that is not implicit: `_` for a parameter, a variable or `_` for
+  an argument. With `@` it gives an item for every position. The pattern of an
+  `in` clause names the family in the same way, with a variable or `_` for
+  each index.
 
 [E-Fix]  With `{struct x}`, as written. Without it, the elaborator tries the
 arguments whose type is an inductive family, from left to right, and keeps the
@@ -343,6 +365,14 @@ Elaboration is one pass, depth first, left to right. Nothing is postponed and
 nothing is retried. This is why [E-App] checks the written arguments before it
 compares the resulting type: the written arguments are what determines the
 holes.
+
+A failure is final. Elaboration of the command stops with that error, and no
+other way of elaborating the term is tried. Nothing has to be undone: an
+elaboration run starts from the environment and changes nothing outside
+itself, and the environment changes only after the ground run has succeeded
+(Chapter 4). The candidates of [E-Fix] are the one place where an attempt may
+fail and elaboration goes on; Hol backtracking undoes whatever the failed
+attempt bound.
 
 3.5 Unification
 --------------------------------------------------------------------------------
@@ -421,7 +451,10 @@ Chapter 4. Commands
                         available
 
 A binder `{x : A}` in a declaration makes that argument implicit. `Arguments`
-overrides it. A command that fails changes nothing.
+overrides it.
+
+A command that fails changes nothing: declarations, notations and the implicit
+status of arguments are as they were before it.
 
 
 ================================================================================
@@ -452,8 +485,8 @@ Chapter 5. The Kernel Program
   cst N                 constant number N
   ind B I               family I of inductive block B
   con B I J             constructor J of that family
-  prod A (x\ B)         forall (x : A), B
-  lam A (x\ t)          fun (x : A) => t
+  prod A (x\ B)         forall x : A, B
+  lam A (x\ t)          fun x : A => t
   letin t A (x\ u)      let x := t : A in u
   cas (ind B I) P t Bs  match; P and the branches are functions (LoLCore,
                         Chapter 6)
@@ -461,9 +494,13 @@ Chapter 5. The Kernel Program
                         types, `f J` the J-th function inside the bodies Ts
 
 Binders are Hol abstractions. A local variable is a constant introduced by
-`pi`, and its type is a hypothesis installed by `=>`. Levels are unary so that
-comparing them needs no arithmetic. Global names are numbers; the host keeps
-the table of names.
+`pi`. Its type is the hypothesis `var_type x A`, installed by `=>`; a variable
+bound by `let` has the hypothesis `var_body x t` as well. Global names are
+numbers; the host keeps the table of names.
+
+Levels are unary so that comparing them needs no arithmetic. Hol's `=<`, `+`
+and Presburger constraints are for level expressions with variables, which
+arrive in LoL BETA (LoLCore, Chapter 9).
 
 5.2 The environment as facts
 --------------------------------------------------------------------------------
@@ -479,8 +516,12 @@ The host generates these facts from admitted declarations only. The contents
 of `ind_info` are computed by the kernel when it admits the block; the host
 stores what the kernel returned.
 
-A run receives the kernel clauses and the facts of the declarations that the
-checked declaration depends on.
+A run sees the kernel clauses and the facts of one environment: the facts of
+every declaration of that environment, and of no other declaration. The host
+may keep those facts loaded between the runs on one environment, or give a
+run only the facts of the declarations that the checked declaration depends
+on. The kernel looks a constant up by its number, so a run reaches the same
+facts either way, and its result is the same.
 
 5.3 Ground runs
 --------------------------------------------------------------------------------
@@ -504,19 +545,25 @@ checked declaration depends on.
 --------------------------------------------------------------------------------
 
   (K1) Every clause is preceded by a comment naming the rule of LoLCore that it
-  implements.
+  implements, or saying what it computes when it implements no single rule.
+  One comment may cover consecutive clauses.
   (K2) No arithmetic, no Presburger goal, no `read`, no `sigma`, no `;`, no
   `debug`. `print` occurs only inside `expect`.
   (K3) A cut occurs only right after the clause has recognised its case: after
-  the head, or after a `flex` test.
+  the head, after a `flex` test, or after the lookup of a fact that selects
+  the case (`cst_body`, `var_body`). The one other cut is in `expect` (5.5).
   (K4) Every predicate that looks at the shape of a term starts with a `flex`
   clause for the case where that term is a hole. `infer` and `check` fail on a
-  hole. `whnf` returns a hole unchanged. `conv` unifies.
+  hole. `whnf` returns a hole unchanged. `conv` unifies. A helper predicate
+  whose callers have already excluded the hole needs no such clause.
   (K5) Local variables are introduced by `pi` and typed by hypotheses.
 
 In a ground run no `flex` clause fires, because there is no hole. The `flex`
 clauses exist so that the elaborator can call `whnf` and `conv` on terms with
 holes without the engine enumerating candidate terms.
+
+`flex` is a builtin of Hol (HolBETA, 3.6): it holds when the head of its
+argument is an unbound logic variable, and it binds nothing.
 
 5.5 Reporting a rejection
 --------------------------------------------------------------------------------
@@ -524,31 +571,34 @@ holes without the engine enumerating candidate terms.
   expect G E :- G, !.
   expect G E :- print E, fail.
 
-A check that can fail is written `expect Goal Report`. The report names the
-rule and carries the terms involved. The host turns the first report of a
-rejected run into a diagnostic (Chapter 8).
+A check that can fail is written `expect Goal Report`. A report is a term
+`rep L Ts`: L is the label of the rule as a string, without the brackets, and
+Ts is the list of the terms involved. A premise `E; G |- A : s` that fails is
+reported under the label of the rule it is a premise of. The host turns the
+first report of a rejected run into a diagnostic (Chapter 8).
 
 5.6 Example clauses
 --------------------------------------------------------------------------------
 
   % (K4)
   infer M A :- flex M, !, fail.
-  whnf M M :- flex M, !.
+  whnf M W :- flex M, !, W = M.
 
   % [T-App]
-  infer (app M N) T :-
+  infer (app M N) T :- !,
       infer M TM, whnf TM W,
-      expect (W = prod A B) (not_a_function M TM),
+      expect (W = prod A B) (rep "T-App" (M :: TM :: [])),
       check N A,
       T = B N.
 
   % [T-Lam]
-  infer (lam A F) (prod A G) :-
-      sort_of A S,
-      pi x\ var_type x A => infer (F x) (G x).
+  infer (lam A F) T :- !,
+      sort_of "T-Lam" A _,
+      (pi x\ var_type x A => infer (F x) (G x)),
+      T = prod A G.
 
-  % [T-Conv], as used by `check`
-  check M A :- infer M B, expect (sub B A) (type_mismatch M B A).
+  % [T-Conv], as `check` uses it
+  check M A :- infer M B, expect (sub B A) (rep "T-Conv" (M :: B :: A :: [])).
 
 
 ================================================================================
@@ -558,7 +608,7 @@ Chapter 6. Export to Rocq
 The export of a file is a `.v` file for `rocq compile -noinit` (Rocq 9.0).
 
   [R-Term]     Every declaration is printed in the explicit fragment.
-  [R-Arrow]    `forall (_ : A), B` is printed as such. `->` is not available
+  [R-Arrow]    `forall _ : A, B` is printed as such. `->` is not available
   under `-noinit`.
   [R-Sort]     `Type@{0}` is printed `Set`. `Type@{n}` for n >= 1 is printed
   `Type@{Ln}`, with a preamble `Universe L1 ... Lk.`, `Constraint Set < L1.`,
@@ -580,10 +630,14 @@ A source file has the extension `.lol`. A file is a module; its name is its
 path relative to the project root, with `.` for the separator. `Import M.`
 loads M once, in dependency order. A cycle is an error.
 
+The commands of a file are processed in order. Processing stops at the first
+command that fails.
+
 An object file has the extension `.lolo`. It is versioned text and contains,
 for each declaration of the module in order: its name, its kind, its type and
 body as explicit Core terms, and the names it depends on. It contains no mark
-saying that a declaration was checked.
+saying that a declaration was checked. It is written only when every command
+of the file has succeeded.
 
   LoL --check-only F.lolo   runs a ground run for every declaration of F,
                             without the front end and the elaborator
@@ -615,6 +669,14 @@ uses for located errors.
 Chapter 9. Tests
 ================================================================================
 
+  test/lol/kernel/    Hol modules that query the kernel directly, without
+                      the host: each test MUST be admitted, or rejected with
+                      a given rule label
+  test/lol/kernel.sh  runs kernel/ and paradox/ on the Hol BETA interpreter
+                      and on the V1 engine, and the kernel patches on V1
+  test/lol/host.sh    the host against the kernel: Core terms to Hol terms
+                      and back, declarations through ground runs, and the
+                      protocol of 5.3
   test/lol/pos/       files that MUST be admitted
   test/lol/neg/L/     files that MUST be rejected with rule label or code L
   test/lol/paradox/   for a soundness check: a derivation of `False` that the
@@ -627,7 +689,13 @@ Chapter 9. Tests
   test/lol/budget.sh  checks (B6), and for (B2) that nothing under src/LoL
                       is named `whnf`, `conv`, `infer`, `check` or `unify`
 
-A test is a `.lol` file with a sidecar `.expected.txt`, as in `test/smoke.sh`.
+A kernel test is a clause `test "name" :- goal.` preceded by a line
+`%! admit` or `%! reject L`. A patch to the kernel is a mutation file (`.mut`):
+the lines of `kernel.hol` to replace, their replacement, and the tests that
+MUST then fail to meet their expectation (`kills`) or be admitted (`admits`).
+
+Any other test is a `.lol` file with a sidecar `.expected.txt`, as in
+`test/smoke.sh`.
 A negative test checks the reported label or code, not only the failure.
 Every rule label of LoLCore has at least one file under pos/ and one under
 neg/. Every run has a time limit and a memory limit.
@@ -660,7 +728,7 @@ A session on the probe elaborator (measured on the Hol BETA interpreter,
   R := eq_refl                                `apply eq_refl`; its implicit
                                               arguments are filled by 3.3
 
-  M := fun (n : nat) => @eq_refl nat (add O n)
+  M := fun n : nat => @eq_refl nat (add O n)
 
 The terms are shown here in surface syntax; the probe used Hol terms. The
 kernel admits the final term in a separate ground run.
@@ -670,7 +738,10 @@ What this gives BETA:
   * A proof state is a stopped session. No separate goal structure exists.
   * A tactic is a rule that chooses R. `exact t` gives t, `intro x` gives
   `fun x => _`, `apply f` gives `f _ ... _`.
-  * Undo is a snapshot taken before each step.
+  * The host takes a snapshot of the session before each step. A step that
+  fails restores it: the proof state is as it was before the step, and the
+  error is reported. Without the snapshot a wrong R would end the proof,
+  because the query fails as a whole. Undo restores an earlier snapshot.
   * `Qed` is a ground run on the finished term, so tactics need no trust.
 
 

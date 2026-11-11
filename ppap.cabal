@@ -187,6 +187,10 @@ executable ppap
     LGS.Alpha1
     LGS.Alpha2
     LGS.Main
+    LoL.Core
+    LoL.Env
+    LoL.Hol.Embed
+    LoL.Hol.Session
     PGS.Alpha1
     PGS.LALR
     PGS.Main

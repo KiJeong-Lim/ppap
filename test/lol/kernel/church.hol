@@ -1,0 +1,156 @@
+% test/lol/kernel/church.hol
+%
+% Constants: [T-Const], [R-Delta], and constants that do not reduce. The
+% declarations are Church numerals over Type@{0}.
+%
+%   cnat   : Type@{1} := forall a : Type@{0}, (a -> a) -> a -> a
+%   zero   : cnat := fun a f x => x
+%   succ   : cnat -> cnat := fun n a f x => f (n a f x)
+%   add    : cnat -> cnat -> cnat := fun m n a f x => m a f (n a f x)
+%   mul    : cnat -> cnat -> cnat := fun m n a f => m a (n a f)
+%   two    : cnat := succ (succ zero)
+%   four   : cnat := succ (succ (succ (succ zero)))
+%   opaque : cnat                    no body
+%   myprop : Type@{1} := Prop
+%   mytype : Type@{1}                no body
+
+import lol.hol.kernel.
+
+type test (string -> o).
+
+% decl N: the kernel admits declaration N of this module as a definition.
+% ax N: the kernel admits declaration N of this module as an axiom.
+type decl (nat -> o).
+type ax (nat -> o).
+
+decl N :- cst_type N A, cst_body N T, admit_def A T.
+ax N :- cst_type N A, admit_ax A.
+
+% same T A B: the identity proves `forall P : T -> Prop, P A -> P B`. The kernel
+% admits this exactly when A : T, B : T and A == B.
+type same (tm -> tm -> tm -> o).
+
+same T A B :-
+    admit_def
+        (prod (prod T (x\ prop)) (q\ prod (app q A) (h\ app q B)))
+        (lam (prod T (x\ prop)) (q\ lam (app q A) (h\ h))).
+
+% 0: cnat
+cst_type 0 (typ (ls lz)).
+cst_body 0 (prod (typ lz) (a\ prod (prod a (h2\ a)) (h1\ prod a (h3\ a)))).
+
+% 1: zero
+cst_type 1 (cst 0).
+cst_body 1 (lam (typ lz) (a\ lam (prod a (h1\ a)) (f\ lam a (x\ x)))).
+
+% 2: succ
+cst_type 2 (prod (cst 0) (h1\ cst 0)).
+cst_body 2
+    (lam (cst 0) (n\
+        lam (typ lz) (a\
+            lam (prod a (h5\ a)) (f\
+                lam a (x\ app f (app (app (app n a) f) x)))))).
+
+% 3: add
+cst_type 3 (prod (cst 0) (h1\ prod (cst 0) (h2\ cst 0))).
+cst_body 3
+    (lam (cst 0) (m\
+        lam (cst 0) (n\
+            lam (typ lz) (a\
+                lam (prod a (h7\ a)) (f\
+                    lam a (x\ app (app (app m a) f) (app (app (app n a) f) x))))))).
+
+% 4: mul
+cst_type 4 (prod (cst 0) (h1\ prod (cst 0) (h2\ cst 0))).
+cst_body 4
+    (lam (cst 0) (m\
+        lam (cst 0) (n\
+            lam (typ lz) (a\
+                lam (prod a (h6\ a)) (f\ app (app m a) (app (app n a) f)))))).
+
+% 5: two
+cst_type 5 (cst 0).
+cst_body 5 (app (cst 2) (app (cst 2) (cst 1))).
+
+% 6: four
+cst_type 6 (cst 0).
+cst_body 6 (app (cst 2) (app (cst 2) (app (cst 2) (app (cst 2) (cst 1))))).
+
+% 7: opaque
+cst_type 7 (cst 0).
+
+% 8: myprop
+cst_type 8 (typ (ls lz)).
+cst_body 8 prop.
+
+% 9: mytype
+cst_type 9 (typ (ls lz)).
+%! admit
+test "cnat" :- decl 0.
+
+%! admit
+test "zero" :- decl 1.
+
+%! admit
+test "succ" :- decl 2.
+
+%! admit
+test "add" :- decl 3.
+
+%! admit
+test "mul" :- decl 4.
+
+%! admit
+test "two" :- decl 5.
+
+%! admit
+test "four" :- decl 6.
+
+%! admit
+test "opaque" :- ax 7.
+
+%! admit
+test "myprop" :- decl 8.
+
+%! admit
+test "mytype" :- ax 9.
+
+%! admit
+test "R-Delta: 2 + 2 is 4" :- same (cst 0) (app (app (cst 3) (cst 5)) (cst 5)) (cst 6).
+
+%! admit
+test "R-Delta: 2 * 2 is 4" :- same (cst 0) (app (app (cst 4) (cst 5)) (cst 5)) (cst 6).
+
+%! reject T-Conv
+test "2 is not 4" :- same (cst 0) (cst 5) (cst 6).
+
+%! reject T-Conv
+test "a constant without a body does not reduce" :- same (cst 0) (cst 7) (cst 5).
+
+%! admit
+test "a constant without a body is convertible with itself" :-
+    same (cst 0) (app (cst 2) (cst 7)) (app (cst 2) (cst 7)).
+
+%! admit
+test "R-Delta in a type" :- admit_def (prod (cst 8) (p\ prop)) (lam (cst 8) (p\ p)).
+
+%! admit
+test "R-Delta: a defined sort" :- admit_ax (prod (cst 8) (p\ p)).
+
+%! reject T-Pi
+test "a declared type is not a sort" :- admit_ax (prod (cst 9) (p\ p)).
+
+%! admit
+test "norm: 2" :-
+    norm (cst 5)
+        (lam (typ lz) (a\ lam (prod a (x\ a)) (f\ lam a (x\ app f (app f x))))).
+
+%! admit
+test "norm: 2 + 2 and 4" :- norm (app (app (cst 3) (cst 5)) (cst 5)) N, norm (cst 6) N.
+
+%! admit
+test "norm: 2 * 2 and 4" :- norm (app (app (cst 4) (cst 5)) (cst 5)) N, norm (cst 6) N.
+
+%! reject T-Conv
+test "T-App: a numeral is not a type argument" :-
+    admit_def (cst 0) (app (cst 2) (cst 0)).

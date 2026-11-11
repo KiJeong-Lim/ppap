@@ -1,0 +1,136 @@
+% test/lol/paradox/hurkens.hol
+%
+% Hurkens' paradox (A. J. C. Hurkens, A simplification of Girard's paradox,
+% TLCA 1995): a derivation of `forall p : Prop, p` that is well typed when
+% Type@{0} : Type@{0}. Every `Type` below is Type@{0}.
+%
+%   bot  : Prop := forall p : Prop, p
+%   pw   : Type -> Type := fun a => a -> Type
+%   uu   : Type := forall a : Type, (pw (pw a) -> a) -> pw (pw a)
+%   tau  : pw (pw uu) -> uu := fun t a f p => t (fun x => p (f (x a f)))
+%   sig  : uu -> pw (pw uu) := fun u => u uu tau
+%   del  : pw uu
+%       := fun y => (forall p : pw uu, sig y p -> p (tau (sig y))) -> bot
+%   omg  : uu := tau (fun p => forall x : uu, sig x p -> p x)
+%   lemr : forall p : pw uu, (forall x : uu, sig x p -> p x) -> p omg
+%       := fun p one => one omg (fun x => one (tau (sig x)))
+%   lemm : forall x : uu, sig x del -> del x
+%       := fun x two three =>
+%            three del two (fun p => three (fun y => p (tau (sig y))))
+%   leml : (forall p : pw uu, (forall x : uu, sig x p -> p x) -> p omg) -> bot
+%       := fun zero => zero del lemm (fun p => zero (fun y => p (tau (sig y))))
+%   false : bot := leml lemr
+%
+% The kernel rejects the derivation at `pw`. Under hurkens.mut it admits all of
+% it. Rocq 9.0.0 agrees on both counts: it rejects the derivation, and admits it
+% after `Unset Universe Checking`.
+
+import lol.hol.kernel.
+
+type test (string -> o).
+
+% decl N: the kernel admits declaration N of this module as a definition.
+% ax N: the kernel admits declaration N of this module as an axiom.
+type decl (nat -> o).
+type ax (nat -> o).
+
+decl N :- cst_type N A, cst_body N T, admit_def A T.
+ax N :- cst_type N A, admit_ax A.
+
+% 0: bot
+cst_type 0 prop.
+cst_body 0 (prod prop (p\ p)).
+
+% 1: pw
+cst_type 1 (prod (typ lz) (h1\ typ lz)).
+cst_body 1 (lam (typ lz) (a\ prod a (h2\ typ lz))).
+
+% 2: uu
+cst_type 2 (typ lz).
+cst_body 2
+    (prod (typ lz) (a\
+        prod (prod (app (cst 1) (app (cst 1) a)) (h4\ a)) (h3\
+            app (cst 1) (app (cst 1) a)))).
+
+% 3: tau
+cst_type 3 (prod (app (cst 1) (app (cst 1) (cst 2))) (h1\ cst 2)).
+cst_body 3
+    (lam (app (cst 1) (app (cst 1) (cst 2))) (t\
+        lam (typ lz) (a\
+            lam (prod (app (cst 1) (app (cst 1) a)) (h5\ a)) (f\
+                lam (app (cst 1) a) (p\
+                    app t (lam (cst 2) (x\ app p (app f (app (app x a) f))))))))).
+
+% 4: sig
+cst_type 4 (prod (cst 2) (h1\ app (cst 1) (app (cst 1) (cst 2)))).
+cst_body 4 (lam (cst 2) (u\ app (app u (cst 2)) (cst 3))).
+
+% 5: del
+cst_type 5 (app (cst 1) (cst 2)).
+cst_body 5
+    (lam (cst 2) (y\
+        prod (prod (app (cst 1) (cst 2)) (p\
+                 prod (app (app (cst 4) y) p) (h6\
+                     app p (app (cst 3) (app (cst 4) y))))) (h3\
+            cst 0))).
+
+% 6: omg
+cst_type 6 (cst 2).
+cst_body 6
+    (app (cst 3)
+        (lam (app (cst 1) (cst 2)) (p\
+            prod (cst 2) (x\ prod (app (app (cst 4) x) p) (h3\ app p x))))).
+
+% 7: lemr
+cst_type 7
+    (prod (app (cst 1) (cst 2)) (p\
+        prod (prod (cst 2) (x\ prod (app (app (cst 4) x) p) (h4\ app p x))) (h3\
+            app p (cst 6)))).
+cst_body 7
+    (lam (app (cst 1) (cst 2)) (p\
+        lam (prod (cst 2) (x\ prod (app (app (cst 4) x) p) (h7\ app p x))) (one\
+            app (app one
+                (cst 6))
+                (lam (cst 2) (x\ app one (app (cst 3) (app (cst 4) x))))))).
+
+% 8: lemm
+cst_type 8
+    (prod (cst 2) (x\ prod (app (app (cst 4) x) (cst 5)) (h1\ app (cst 5) x))).
+cst_body 8
+    (lam (cst 2) (x\
+        lam (app (app (cst 4) x) (cst 5)) (two\
+            lam (prod (app (cst 1) (cst 2)) (p\
+                    prod (app (app (cst 4) x) p) (h7\
+                        app p (app (cst 3) (app (cst 4) x))))) (three\
+                app (app (app three
+                    (cst 5))
+                    two)
+                    (lam (app (cst 1) (cst 2)) (p\
+                        app three
+                            (lam (cst 2) (y\
+                                app p (app (cst 3) (app (cst 4) y)))))))))).
+
+% 9: leml
+cst_type 9
+    (prod (prod (app (cst 1) (cst 2)) (p\
+             prod (prod (cst 2) (x\ prod (app (app (cst 4) x) p) (h6\ app p x))) (h5\
+                 app p (cst 6)))) (h2\
+        cst 0)).
+cst_body 9
+    (lam (prod (app (cst 1) (cst 2)) (p\
+            prod (prod (cst 2) (x\ prod (app (app (cst 4) x) p) (h11\ app p x))) (h10\
+                app p (cst 6)))) (zero\
+        app (app (app zero
+            (cst 5))
+            (cst 8))
+            (lam (app (cst 1) (cst 2)) (p\
+                app zero
+                    (lam (cst 2) (y\ app p (app (cst 3) (app (cst 4) y)))))))).
+
+% 10: false
+cst_type 10 (cst 0).
+cst_body 10 (app (cst 9) (cst 7)).
+%! reject T-Conv
+test "False" :-
+    decl 0, decl 1, decl 2, decl 3, decl 4, decl 5, decl 6, decl 7, decl 8,
+    decl 9, decl 10.

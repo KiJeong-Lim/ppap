@@ -6,6 +6,9 @@
 # output against the sibling *.expected.txt. Exits 0 iff every case
 # matches byte-for-byte.
 #
+# The modules under test/lol are not transcript cases: test/lol/kernel.sh
+# runs them, and this runner runs that script with the other test/*/*.sh.
+#
 # Invocation:
 #  ./test/smoke.sh          (runs from project root)
 #  ./test/smoke.sh --update (rewrites successful *.expected.txt files.)
@@ -76,7 +79,7 @@ fi
 CASES=()
 while IFS= read -r hol; do
     CASES+=("$hol")
-done < <(find test -name '*.hol' | sort)
+done < <(find test -name '*.hol' -not -path 'test/lol/*' | sort)
 if [ ${#CASES[@]} -eq 0 ]; then
     echo "smoke.sh: no test/**/*.hol cases found"
     exit 2

@@ -358,6 +358,107 @@ static void sparse_identity_history(void)
     puts("PASS sparse_retirement_ranges_gaps_and_snapshot_union");
 }
 
+static void mark_roots(HTCollection *collection, void *context)
+{
+    for (const HTerm *root = context; *root != HT_NONE; ++root) ht_collect_mark(collection, *root);
+}
+
+static void relocate_roots(const HTCollection *collection, void *context)
+{
+    for (HTerm *root = context; *root != HT_NONE; ++root) *root = ht_collect_term(collection, *root);
+}
+
+/* A collection retires every identity it frees, in one pass over the ranges. */
+static void collected_identity_retirement(void)
+{
+    static const HTCollector collector = { mark_roots, relocate_roots };
+    HolTermStore *s = store();
+    HTerm variables[64];
+    uint64_t first = ht_next_uid(s);
+    assert(ht_collect(s, 0, &collector, (HTerm[]) { HT_NONE }) == 1);
+    for (size_t i = 0; i < 64; ++i) variables[i] = ht_var(s, 0, 0, -1);
+    HTerm roots[] = { variables[5], variables[6], variables[20], variables[63], HT_NONE };
+    assert(ht_collect(s, 0, &collector, roots) == 1 && ht_heap_count(s) == 4);
+    for (uint64_t i = 0; i < 64; ++i) {
+        int kept = i == 5 || i == 6 || i == 20 || i == 63;
+        assert((ht_lookup_uid(s, first + i) != HT_NONE) == kept);
+        if (!kept) expired_on_copy(s, first + i);
+    }
+    assert(ht_view(s, roots[2]).uid == first + 20);
+    roots[0] = roots[1];
+    roots[1] = HT_NONE;
+    assert(ht_collect(s, 0, &collector, roots) == 1 && ht_heap_count(s) == 1);
+    for (uint64_t i = 0; i < 64; ++i) {
+        assert((ht_lookup_uid(s, first + i) != HT_NONE) == (i == 6));
+        if (i != 6) expired_on_copy(s, first + i);
+    }
+    assert(ht_view(s, ht_var(s, 0, 0, -1)).uid == first + 64);
+    assert(import_variable(s, first + 1000, 0) != HT_NONE);
+    ht_destroy(s);
+    puts("PASS a_collection_retires_the_identities_it_frees");
+}
+
+/* A reset gives the state between two runs: the heap and the bindings of the
+    * program, and the identities, symbol marks and work limit it had. A run after
+    * it numbers its variables as the run before it did. */
+static void reset_between_runs(void)
+{
+    static const HTCollector collector = { mark_roots, relocate_roots };
+    HolTermStore *s = store();
+    HTerm constant = ht_constant(s, 3, -1), kept = ht_var(s, 0, 0, -1);
+    size_t heap = ht_heap_count(s);
+    uint64_t frontier = ht_next_uid(s);
+    for (int round = 0; round < 3; ++round) {
+        HTerm variables[40];
+        for (size_t i = 0; i < 40; ++i) variables[i] = ht_var(s, 0, 0, -1);
+        assert(ht_view(s, variables[0]).uid == frontier && ht_view(s, variables[39]).uid == frontier + 39);
+        HTerm formula = ht_constant(s, 9, -1);
+        assert(ht_unify(s, kept, constant) == 1 && ht_unify(s, variables[1], app(s, constant, variables[2])) == 1);
+        assert(ht_mentions_arithmetic(s, formula) == 0);
+        assert(ht_set_work_limit(s, 77) && ht_set_opaque_symbol(s, 9) && ht_mentions_arithmetic(s, formula) == 1);
+        HTerm roots[] = { variables[7], variables[30], HT_NONE };
+        assert(ht_collect(s, heap, &collector, roots) == 1 && ht_lookup_uid(s, frontier + 3) == HT_NONE);
+        expired_on_copy(s, frontier + 3);
+        assert(ht_reset(s, heap, frontier, 5) == 1);
+        assert(ht_heap_count(s) == heap && ht_next_uid(s) == frontier && ht_work_limit(s) == 5000000);
+        assert(ht_deref(s, kept) == kept && ht_view(s, kept).uid == frontier - 1 && ht_lookup_uid(s, frontier - 1) == kept);
+        assert(ht_lookup_uid(s, frontier) == HT_NONE && ht_lookup_uid(s, frontier + 30) == HT_NONE && ht_pending_count(s) == 0);
+    }
+    assert(ht_reset(s, heap, frontier + 1, 5) == 0 && strstr(ht_error(s), "reset"));
+    ht_destroy(s);
+    puts("PASS a_reset_returns_to_the_state_between_two_runs");
+}
+
+/* The nodes before the first variable are sealed. A collection that keeps
+    * them allocates and works in proportion to the rest of the heap, and leaves
+    * every reference into them as it was. */
+static void sealed_program(void)
+{
+    static const HTCollector collector = { mark_roots, relocate_roots };
+    HolTermStore *s = store();
+    HTerm constant = ht_constant(s, 3, -1), program = constant;
+    for (size_t i = 0; i < 200000; ++i) program = app(s, constant, program);
+    size_t kept = ht_heap_count(s);
+    assert(ht_sealed(s) == 0 && ht_seal(s) == kept);
+    HTerm variable = ht_var(s, 0, 0, -1);
+    for (size_t i = 0; i < 100; ++i) assert(app(s, program, constant) != HT_NONE);
+    HTerm value = app(s, program, constant);
+    assert(ht_unify(s, variable, value) == 1 && ht_seal(s) == kept);
+    HTerm roots[] = { variable, HT_NONE };
+    largest_allocation = 0;
+    assert(ht_collect(s, kept, &collector, roots) == 1);
+    assert(largest_allocation < 16384 && ht_heap_count(s) == kept + 2 && ht_sealed(s) == kept);
+    HTView bound = ht_view(s, ht_deref(s, roots[0]));
+    assert(roots[0] == kept && bound.tag == HT_APP && bound.a == program && bound.b == constant);
+    assert(normal(s, program).tag == HT_APP && ht_view(s, constant).symbol == 3);
+    roots[0] = program;
+    assert(ht_collect(s, 1, &collector, roots) == 1 && ht_sealed(s) == 1 && ht_heap_count(s) == kept && roots[0] == program);
+    roots[0] = constant;
+    assert(ht_collect(s, 0, &collector, roots) == 1 && ht_sealed(s) == 0 && ht_heap_count(s) == 1 && roots[0] == 0);
+    ht_destroy(s);
+    puts("PASS a_collection_leaves_the_sealed_program_alone");
+}
+
 static void identity_hash_deletion(void)
 {
     HolTermStore *s = store();
@@ -431,6 +532,201 @@ static void ground_list_sharing(void)
     free(wire);
     ht_destroy(s);
     puts("PASS ten_thousand_element_ground_list_sharing_equality_and_export");
+}
+
+/* A term with nominals and bound indices but no variable is stable: binding
+    * it, normalizing it and substituting around it do not visit or copy it. */
+static void stable_term_sharing(void)
+{
+    HolTermStore *s = store();
+    HTerm cons = ht_constant(s, 1, -1), nil = ht_constant(s, 2, -1);
+    HTerm a = ht_nominal(s, 1, -1), b = ht_nominal(s, 2, -1);
+    HTerm head = app(s, cons, a), other = app(s, cons, b);
+    HTerm list = nil, copy = nil, mismatch = nil;
+    for (size_t i = 0; i < 10000; ++i) {
+        list = app(s, head, list);
+        copy = app(s, head, copy);
+        mismatch = app(s, i ? head : other, mismatch);
+    }
+    assert(ht_unify(s, list, copy) == 1);
+    assert(ht_set_work_limit(s, 64));
+    assert(ht_normalize(s, list, HT_NF) == list);
+    assert(ht_unify(s, list, mismatch) == 0 && !*ht_error(s));
+    for (HTerm tail = list; tail != nil; tail = ht_view(s, tail).b) {
+        HTerm variable = ht_var(s, 1, 0, -1);
+        size_t allocated = ht_heap_count(s);
+        assert(ht_unify(s, variable, tail) == 1);
+        assert(ht_deref(s, variable) == tail && ht_heap_count(s) == allocated);
+    }
+    HTerm low = ht_var(s, 0, 0, -1);
+    assert(ht_unify(s, low, list) == 0 && !*ht_error(s) && ht_view(s, low).a == HT_NONE);
+    HTerm function = ht_var(s, 1, 0, -1), fresh = ht_nominal(s, 2, -1);
+    size_t allocated = ht_heap_count(s);
+    assert(ht_unify(s, app(s, function, fresh), list) == 1);
+    assert(ht_heap_count(s) <= allocated + 8);
+    HTView constant = normal(s, function);
+    assert(constant.tag == HT_LAM && ht_deref(s, constant.a) == list);
+    HTerm body = app(s, app(s, cons, ht_index(s, 0)), list);
+    HTView applied = normal(s, ht_apply(s, ht_lam(s, body, -1), b));
+    assert(applied.tag == HT_APP && applied.b == list);
+    HTerm inside = ht_var(s, 2, 0, -1);
+    HTerm holder = app(s, app(s, cons, inside), list);
+    assert(ht_unify(s, inside, a) == 1);
+    HTerm settled = ht_var(s, 2, 0, -1);
+    allocated = ht_heap_count(s);
+    assert(ht_unify(s, settled, holder) == 1);
+    assert(ht_deref(s, settled) != holder && ht_heap_count(s) == allocated + 2);
+    HTerm again = ht_var(s, 2, 0, -1);
+    allocated = ht_heap_count(s);
+    assert(ht_unify(s, again, settled) == 1);
+    assert(ht_deref(s, again) == ht_deref(s, settled) && ht_heap_count(s) == allocated);
+    assert(!*ht_error(s));
+    ht_destroy(s);
+    puts("PASS ten_thousand_element_stable_list_binding_scope_and_substitution");
+}
+
+/* Whether an abstraction is an eta-redex is known from its summary, also when
+    * the bound variable occurs only below another binder. */
+static void stable_eta_summary(void)
+{
+    HolTermStore *s = store();
+    HTerm g = ht_constant(s, 7, -1), h = ht_constant(s, 8, -1);
+    HTerm inner = ht_lam(s, app(s, app(s, g, ht_index(s, 0)), ht_index(s, 1)), -1);
+    HTerm used = ht_lam(s, app(s, app(s, h, inner), ht_index(s, 0)), -1);
+    HTerm variable = ht_var(s, 0, 0, -1);
+    size_t allocated = ht_heap_count(s);
+    assert(ht_unify(s, variable, used) == 1);
+    assert(ht_deref(s, variable) == used && ht_heap_count(s) == allocated);
+    HTerm outer = ht_lam(s, app(s, app(s, g, ht_index(s, 0)), ht_index(s, 2)), -1);
+    HTerm redex = ht_lam(s, ht_lam(s, app(s, app(s, h, outer), ht_index(s, 0)), -1), -1);
+    HTerm reduced = ht_var(s, 0, 0, -1);
+    assert(ht_unify(s, reduced, redex) == 1);
+    HTView abstraction = normal(s, reduced);
+    assert(abstraction.tag == HT_LAM);
+    HTView application = normal(s, abstraction.a);
+    assert(application.tag == HT_APP && normal(s, application.a).symbol == 8);
+    HTView kept = normal(s, application.b);
+    assert(kept.tag == HT_LAM && normal(s, normal(s, kept.a).b).a == 1);
+    HTerm twice = ht_lam(s, app(s, app(s, g, ht_index(s, 0)), ht_index(s, 0)), -1);
+    HTerm same = ht_var(s, 0, 0, -1);
+    assert(ht_unify(s, same, twice) == 1 && ht_deref(s, same) == twice);
+    HTerm expanded = ht_lam(s, app(s, g, ht_index(s, 0)), -1);
+    assert(ht_unify(s, expanded, g) == 1);
+    assert(!*ht_error(s));
+    ht_destroy(s);
+    puts("PASS eta_redexes_are_known_from_the_summary_of_a_stable_term");
+}
+
+/* The depth of a term is bounded by memory, not by the C stack: a chain of
+    * 200,000 applications is substituted into, abstracted, normalized through
+    * its variable links, searched and compared. */
+static void deep_terms(void)
+{
+    enum { DEPTH = 200000 };
+    HolTermStore *s = store();
+    HTerm f = ht_constant(s, 7, -1), a = ht_nominal(s, 1, -1), b = ht_nominal(s, 1, -1);
+    HTerm open = ht_index(s, 0), over_a = a, linked = ht_var(s, 1, 0, -1), hole = linked;
+    for (size_t i = 0; i < DEPTH; ++i) {
+        open = app(s, f, open);
+        over_a = app(s, f, over_a);
+    }
+    HTerm lambda = ht_lam(s, open, -1);
+    HTerm applied = ht_normalize(s, app(s, lambda, a), HT_NF);
+    assert(applied != HT_NONE && ht_unify(s, applied, over_a) == 1);
+    HTerm function = ht_var(s, 0, 0, -1);
+    assert(ht_unify(s, app(s, function, a), over_a) == 1);
+    assert(ht_unify(s, function, lambda) == 1);
+    HTerm over_b = ht_normalize(s, app(s, function, b), HT_NF);
+    assert(over_b != HT_NONE && ht_unify(s, over_b, over_a) == 0 && !*ht_error(s));
+    for (size_t i = 0; i < DEPTH; ++i) {
+        HTerm tail = ht_var(s, 1, 0, -1);
+        assert(ht_unify(s, hole, app(s, f, tail)) == 1);
+        hole = tail;
+    }
+    HTerm occurring = ht_var(s, 1, 0, -1);
+    HTCheckpoint before = ht_checkpoint(s);
+    assert(ht_unify(s, hole, occurring) == 1);
+    assert(ht_unify(s, occurring, linked) == 0 && !*ht_error(s));
+    assert(ht_restore(s, before));
+    assert(ht_unify(s, linked, over_a) == 1 && ht_deref(s, hole) == a);
+    assert(ht_normalize(s, linked, HT_NF) != HT_NONE);
+    HTerm expanded = ht_lam(s, app(s, app(s, f, over_a), ht_index(s, 0)), -1);
+    HTerm reduced = ht_var(s, 1, 0, -1);
+    assert(ht_unify(s, reduced, expanded) == 1 && normal(s, reduced).tag == HT_APP);
+    int64_t *wire = NULL;
+    size_t count = 0;
+    assert(ht_export(s, linked, &wire, &count) && count == 5 * (size_t) DEPTH + 4);
+    free(wire);
+    assert(!*ht_error(s));
+    ht_destroy(s);
+    puts("PASS two_hundred_thousand_deep_terms_do_not_use_the_c_stack");
+}
+
+/* A wire is written and read, and two rigid terms are unified, however deep
+    * the terms are on the function side and in an argument that is not the last:
+    * a pair nested 200000 times in its first component, and a constant applied
+    * to 200000 arguments. */
+static void deep_function_sides(void)
+{
+    enum { DEPTH = 200000 };
+    HolTermStore *s = store();
+    assert(ht_set_work_limit(s, 100000000));
+    HTerm pair = ht_constant(s, 5, -1), a = ht_constant(s, 6, -1), b = ht_constant(s, 7, -1);
+    HTerm hole = ht_var(s, 0, 0, -1), first = ht_var(s, 0, 0, -1);
+    HTerm open = hole, closed = a, wide = app(s, pair, first), full = app(s, pair, b);
+    for (size_t i = 0; i < DEPTH; ++i) {
+        open = app(s, app(s, pair, open), b);
+        closed = app(s, app(s, pair, closed), b);
+        wide = app(s, wide, a);
+        full = app(s, full, a);
+    }
+    int64_t *wire = NULL, *again = NULL;
+    size_t count = 0, repeated = 0, offset = 0;
+    assert(ht_export(s, closed, &wire, &count) && count == 10 * (size_t) DEPTH + 3);
+    HTerm read = ht_import(s, wire, count, &offset);
+    assert(read != HT_NONE && offset == count && read != closed);
+    assert(ht_export(s, read, &again, &repeated) && repeated == count && !memcmp(wire, again, count * sizeof(*wire)));
+    free(wire);
+    free(again);
+    assert(ht_unify(s, open, read) == 1 && ht_view(s, ht_deref(s, hole)).tag == HT_CONST && ht_view(s, ht_deref(s, hole)).symbol == 6);
+    assert(ht_unify(s, wide, full) == 1 && ht_deref(s, first) == b);
+    assert(ht_export(s, wide, &wire, &count) && count == 5 * (size_t) DEPTH + 8);
+    offset = 0;
+    read = ht_import(s, wire, count, &offset);
+    assert(read != HT_NONE && offset == count && ht_unify(s, read, full) == 1);
+    free(wire);
+    HTerm other = app(s, app(s, pair, closed), a);
+    assert(ht_unify(s, other, app(s, app(s, pair, open), b)) == 0 && !*ht_error(s));
+    ht_destroy(s);
+    puts("PASS wires_and_rigid_terms_are_deep_on_the_function_side");
+}
+
+static void arithmetic_mentions(void)
+{
+    HolTermStore *s = store();
+    HTerm plus = ht_constant(s, 5, -1), f = ht_constant(s, 7, -1);
+    HTerm a = ht_nominal(s, 1, -1), two = ht_nat(s, "2");
+    HTerm sum = app(s, app(s, plus, a), two);
+    HTerm variable = ht_var(s, 1, 0, -1);
+    HTerm holder = ht_lam(s, app(s, app(s, f, variable), ht_index(s, 0)), -1);
+    assert(ht_mentions_arithmetic(s, sum) == 0 && ht_mentions_arithmetic(s, holder) == 0);
+    assert(ht_set_arithmetic_symbol(s, 5));
+    assert(ht_mentions_arithmetic(s, sum) == 1 && ht_mentions_arithmetic(s, holder) == 0);
+    assert(ht_mentions_arithmetic(s, two) == 0 && ht_mentions_arithmetic(s, app(s, f, two)) == 0);
+    HTCheckpoint before = ht_checkpoint(s);
+    assert(ht_unify(s, variable, sum) == 1);
+    assert(ht_mentions_arithmetic(s, holder) == 1);
+    assert(ht_restore(s, before));
+    assert(ht_mentions_arithmetic(s, holder) == 0);
+    assert(ht_mentions_arithmetic(s, app(s, ht_constant(s, 0, -1), variable)) == 1);
+    assert(ht_mentions_arithmetic(s, app(s, ht_constant(s, 0, -1), two)) == 0);
+    HTerm formula = app(s, ht_constant(s, 9, -1), a);
+    assert(ht_mentions_arithmetic(s, formula) == 0);
+    assert(ht_set_opaque_symbol(s, 9));
+    assert(ht_mentions_arithmetic(s, formula) == 1);
+    assert(!ht_set_arithmetic_symbol(s, SIZE_MAX) && strstr(ht_error(s), "arithmetic"));
+    ht_destroy(s);
+    puts("PASS arithmetic_mentions_follow_marks_bindings_and_rollback");
 }
 
 static void ground_cache_invalidation(void)
@@ -653,8 +949,16 @@ int main(void)
     compact_identity_retirement();
     sparse_identity_history();
     identity_hash_deletion();
+    collected_identity_retirement();
+    reset_between_runs();
+    sealed_program();
     unapplied_flex_dependencies();
     ground_list_sharing();
+    stable_term_sharing();
+    stable_eta_summary();
+    deep_terms();
+    deep_function_sides();
+    arithmetic_mentions();
     ground_cache_invalidation();
     allocation_failures();
     return 0;

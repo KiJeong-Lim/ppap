@@ -1,0 +1,6 @@
+# [Eq-Eta] removed.
+- conv_whnf (lam A F) N :- !, pi x\ conv (F x) (app N x).
+- % [Eq-Eta]
+- conv_whnf M (lam A F) :- !, pi x\ conv (app M x) (F x).
+kills pts "Eq-Eta: abstraction on the right"
+kills pts "Eq-Eta: abstraction on the left"

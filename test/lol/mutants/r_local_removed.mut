@@ -1,0 +1,3 @@
+# [R-Local] removed: a variable defined by `let` does not reduce.
+- whnf X W :- var_body X T, !, whnf T W.
+kills pts "T-Let: the body needs the definition"

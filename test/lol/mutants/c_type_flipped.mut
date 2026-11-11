@@ -1,0 +1,5 @@
+# [C-Type] with the comparison of the levels flipped.
+- sub_whnf (typ L1) (typ L2) :- !, lle L1 L2.
++ sub_whnf (typ L1) (typ L2) :- !, lle L2 L1.
+kills pts "Type@{1} : Type@{0}"
+kills pts "S-Type at a higher level"

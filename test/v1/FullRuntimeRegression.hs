@@ -5,6 +5,7 @@ import Control.Exception (IOException, try)
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Trans.Except
+import Data.Either (isLeft)
 import Data.IORef
 import qualified Data.IntMap.Strict as IntMap
 import Data.List (isInfixOf)
@@ -315,4 +316,42 @@ main = do
         runs <- liftIO (Native.collections (Full.sessionMachine session) >>= right)
         heap <- liftIO (Native.heapCount (Full.sessionMachine session) >>= right)
         liftIO (check "a deterministic descent of 300000 calls keeps a bounded native heap" (not (done answer) && runs > 0 && heap < 200000))
+
+    -- An engine keeps its program. Facts are added to it, and every query
+    -- answers as a fresh machine with the same facts does.
+    writeIORef (_PendingSubst base) mempty
+    let collect session = next session >>= maybe (return []) (\ctx -> (bindVars (_TotalVarBinding ctx) variable :) <$> collect session)
+        fresh facts goal = program base facts goal >>= \code -> withSession base code (execUniqueT . collect)
+        kept engine goal = Full.withQuery base (_DebuggingRef base) engine Map.empty goal (execUniqueT . collect) >>= right
+        colours = [call (name "red"), call (name "blue")]
+        more = [clause (call (nat 3)) (mkNCon LO_cut), call (name "green")]
+    engine <- right (prepareFullProgram (_ProgramKindEnv base) (_ProgramTypeEnv base) colours) >>= Full.createEngine >>= right
+    idle <- Native.heapCount (Full.engineMachine engine) >>= right
+    before <- kept engine (call variable)
+    expected <- fresh colours (call variable)
+    check "an engine answers as a fresh machine does" (before == expected && before == [name "red", name "blue"])
+    absent <- kept engine (call (name "pink"))
+    other <- kept engine (conjunction (call (name "mauve")) (call variable))
+    Full.leaveEngine engine >>= right
+    released <- Native.heapCount (Full.engineMachine engine) >>= right
+    check "a query with a symbol of its own leaves nothing in the engine" (null absent && null other && released == idle)
+    refused <- Full.extendEngine engine [call variable]
+    check "a fact with a logic variable is not loaded" (isLeft refused)
+    Full.extendEngine engine (more ++ [call (name "pink")]) >>= right
+    after <- kept engine (call variable)
+    expected <- fresh (colours ++ more ++ [call (name "pink")]) (call variable)
+    check "an extended engine answers as a fresh machine with all the facts does" (after == expected && after == [name "red", name "blue", nat 3])
+    present <- kept engine (call (name "pink"))
+    missing <- kept engine (call (name "mauve"))
+    check "a symbol that a query introduced is a new symbol to a later fact" (present == [variable] && null missing)
+    stale <- Full.withQuery base (_DebuggingRef base) engine Map.empty (call variable) Full.takeSnapshot >>= right >>= right
+    crossed <- Full.withQuery base (_DebuggingRef base) engine Map.empty (call variable) (\session -> Full.restoreSnapshot session stale) >>= right
+    Full.closeSnapshot stale
+    check "a snapshot does not outlive the run it was taken in" (isLeft crossed)
+    again <- kept engine (call variable)
+    check "the engine is usable after a refused snapshot" (again == after)
+    Full.closeEngine engine
+    closed <- Full.leaveEngine engine
+    check "a closed engine reports that it is unusable" (isLeft closed)
     putStrLn "V1 full runtime: snapshots, assignment, host state, I/O, work limits, exception cleanup, request scaling and compaction passed"
+    putStrLn "V1 full runtime: a persistent engine answers as fresh machines do, before and after its program grows"

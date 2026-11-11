@@ -224,6 +224,7 @@ override precedence. The principal built-in term forms and their types are:
   +, -, *, /                   : nat -> nat -> nat
   presburger                   : string -> o
   print, read                  : A -> o
+  flex                         : A -> o
 
 A fact `h.` is a unit clause. `h :- b.` is a clause with conclusion `h` and
 body `b`. A global clause conclusion must ultimately be an application of a
@@ -571,6 +572,23 @@ other goals.
 
 User names, display hints, notation folds, and `SLoc`s do not participate in
 kernel equality.
+
+3.6 `flex`
+--------------------------------------------------------------------------------
+
+`flex T` succeeds exactly when the head of `T` is an unbound logic variable.
+The current substitution is applied and `T` is brought to head normal form
+first; leading abstractions are skipped. So `flex X`, `flex (F a)` and
+`flex (x\ F x)` succeed while `X` and `F` are unbound, and fail once they are
+bound to terms with a rigid head. A constant, a bound variable, a constant
+introduced by `pi`, a literal, and an application of any of these are not
+flexible. The wildcard `_` is flexible.
+
+`flex` binds nothing, leaves no residual constraint, and has no effect other
+than success or failure. It is the test a program makes before it matches on
+the shape of a term that may still be unknown, where matching would
+instantiate the variable instead. Like `print` and `read`, `flex` cannot be the
+head of a program clause.
 
 
 ================================================================================
@@ -1354,3 +1372,15 @@ binder, use before textual declaration, terminating nested identity notation
 and abbreviation folds, round-tripping a quoted reserved named constructor,
 rejecting an upper-case declaration name, and reparsing a displayed Presburger
 residual as both Hol string syntax and Presburger formula syntax.
+
+10.6 `flex`
+--------------------------------------------------------------------------------
+
+Required cases are:
+
+  F1  an unbound variable is flexible and a constant is not;
+  F2  the current substitution is applied before the head is inspected;
+  F3  only the head counts, whatever the arguments are;
+  F4  leading abstractions are skipped;
+  F5  a `pi`-bound constant, a literal and an arithmetic term are not flexible;
+  F6  `flex` binds nothing.

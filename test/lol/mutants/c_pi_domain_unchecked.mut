@@ -1,0 +1,6 @@
+# [C-Pi] without the comparison of the domains.
+- sub_whnf (prod A1 B1) (prod A2 B2) :- !,
+-     conv A1 A2, pi x\ sub (B1 x) (B2 x).
++ sub_whnf (prod A1 B1) (prod A2 B2) :- !,
++     pi x\ sub (B1 x) (B2 x).
+kills pts "C-Pi: the domain is compared by conversion"

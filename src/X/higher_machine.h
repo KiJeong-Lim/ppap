@@ -23,8 +23,19 @@ enum HolV2Role {
     HV2_ORDINARY, HV2_TY_PI, HV2_IF, HV2_TRUE, HV2_FAIL, HV2_CUT,
     HV2_AND, HV2_OR, HV2_IMPLY, HV2_PI, HV2_SIGMA, HV2_DEBUG,
     HV2_IS, HV2_EQ, HV2_LE, HV2_LT, HV2_GE, HV2_GT,
-    HV2_READ, HV2_PRINT, HV2_PRESBURGER, HV2_SUCCESSOR
+    HV2_READ, HV2_PRINT, HV2_PRESBURGER, HV2_SUCCESSOR, HV2_FLEX,
+    HV2_ARITHMETIC, HV2_NATURAL
 };
+/* HV2_FLEX is decided by the machine itself: `flex T` succeeds exactly when the
+    * head of T, below its leading abstractions and after dereferencing, is an
+    * unbound variable. It binds nothing and raises no host event.
+    * HV2_ARITHMETIC marks a function that the host evaluates (+, -, *, /) and
+    * HV2_NATURAL the type of naturals. They are ordinary constants to the search.
+    * An equality whose type is not HV2_NATURAL and whose sides, as bound now,
+    * contain no HV2_ARITHMETIC, HV2_SUCCESSOR or HV2_PRESBURGER symbol raises no
+    * host event: the host would answer "unknown" (4) without reading a state.
+    * An implication whose antecedent is a conjunction of atoms and clauses with
+    * ordinary heads raises none either: the host would add no premise. */
 
 enum HolV2Event {
     HV2_EVENT_PRIMITIVE = 1,
@@ -35,6 +46,21 @@ enum HolV2Event {
 };
 
 HolV2Machine *hol_v2_create(const int64_t *code, size_t length);
+/* A machine keeps its program across runs. A fragment is wordcode whose symbol
+    * count is the total after it and whose symbol section lists the roles of the
+    * symbols the machine does not have yet; its templates, clauses and digits
+    * are its own, numbered from zero.
+    *   extend: no query slot, query root -1. Its symbols and clauses join the
+    *     program, after the ones already there.
+    *   query: no clause. Its symbols and its query last for one run.
+    *   idle: leaves the run and releases what it allocated.
+    * extend and query leave the current run first. After leaving a run the
+    * machine numbers variables, calls and host states as the created machine
+    * did, and no snapshot of that run can be restored. 1, or -1 with the
+    * machine in error. */
+int hol_v2_extend(HolV2Machine *machine, const int64_t *code, size_t length);
+int hol_v2_query(HolV2Machine *machine, const int64_t *code, size_t length);
+int hol_v2_idle(HolV2Machine *machine);
 void hol_v2_destroy(HolV2Machine *machine);
 const char *hol_v2_error(const HolV2Machine *machine);
 /* -1 error, 0 exhausted, 1 answer, 2 cancellation yield, 3 host service.

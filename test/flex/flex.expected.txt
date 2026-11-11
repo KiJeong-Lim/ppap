@@ -1,0 +1,41 @@
+ppap> Copyright (c) 2021-2026, Kijeong Lim
+ppap> All rights reserved
+ppap =<< 
+ppap >>= exec (Hol.main "test")
+Hol =<< 
+Hol> Compiling test.flex.flex ( test/flex/flex.hol, interpreted )
+test.flex.flex> Ok, one module loaded.
+test.flex.flex> 
+test.flex.flex> yes.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> yes.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> yes.
+test.flex.flex> 
+test.flex.flex> yes.
+test.flex.flex> 
+test.flex.flex> yes.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> no.
+test.flex.flex> 
+test.flex.flex> yes.
+test.flex.flex> 
+test.flex.flex> yes.
+test.flex.flex> 
+Hol >>= quit

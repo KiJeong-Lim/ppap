@@ -1,0 +1,5 @@
+# [T-Let] without the check of the definition.
+-     sort_of "T-Let" A _,
+-     check T A,
++     sort_of "T-Let" A _,
+kills pts "T-Let: the definition has another type"

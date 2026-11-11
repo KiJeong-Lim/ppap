@@ -1,0 +1,38 @@
+% test/flex/flex.hol
+%
+% `flex T` (HolBETA 3.6): the head of T is an unbound logic variable.
+
+kind tm type.
+
+type c tm.
+type f (tm -> tm).
+type t (nat -> o).
+
+% F1: an unbound variable is flexible; a constant is not.
+t 1 :- flex X.
+t 2 :- flex c.
+
+% F2: the current substitution is applied first.
+t 3 :- X = c, flex X.
+t 4 :- F = (x\ x), flex (F c).
+t 5 :- F = (x\ X), flex (F c).
+
+% F3: only the head counts.
+t 6 :- flex (f X).
+t 7 :- flex (F c).
+t 8 :- pi x\ flex (F x).
+
+% F4: leading abstractions are skipped.
+t 9 :- flex (x\ F x).
+t 10 :- flex (x\ f x).
+t 11 :- flex (x\ x).
+
+% F5: a `pi`-bound constant, a literal and an arithmetic term are not flexible;
+% the wildcard is.
+t 12 :- pi x\ flex x.
+t 13 :- flex 3.
+t 14 :- flex (N + 1).
+t 15 :- flex _.
+
+% F6: `flex` binds nothing.
+t 16 :- flex X, X = c, flex Y, Y = f X.

@@ -1,0 +1,5 @@
+# [P-Max] takes the level of the codomain: Type@{l} becomes impredicative.
+- prod_sort (typ L1) (typ L2) (typ L) :- lmax L1 L2 L.
++ prod_sort (typ L1) (typ L2) (typ L2).
+kills pts "P-Max: predicative"
+kills pts "P-Max: not the codomain level"

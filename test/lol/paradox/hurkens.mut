@@ -1,0 +1,6 @@
+# [S-Type] weakened to Type@{l} : Type@{l}. Under it the kernel admits the
+# derivation of `False` in hurkens.hol.
+- infer (typ L) A :- !, A = typ (ls L).
++ infer (typ L) A :- !, A = typ L.
+admits hurkens "False"
+kills pts "Type@{0} : Type@{0}"

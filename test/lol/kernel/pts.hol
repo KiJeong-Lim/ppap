@@ -1,0 +1,285 @@
+% test/lol/kernel/pts.hol
+%
+% Sorts, products, abstraction, application, let and the judgments on closed
+% terms: LoLCore, Chapters 2, 3, 4 and 8. No constant is declared here.
+
+import lol.hol.kernel.
+
+type test (string -> o).
+
+% same T A B: the identity proves `forall P : T -> Prop, P A -> P B`. The kernel
+% admits this exactly when A : T, B : T and A == B.
+type same (tm -> tm -> tm -> o).
+
+same T A B :-
+    admit_def
+        (prod (prod T (x\ prop)) (q\ prod (app q A) (h\ app q B)))
+        (lam (prod T (x\ prop)) (q\ lam (app q A) (h\ h))).
+
+% ------------------------------------------------------------------------------
+% [S-Prop], [S-Type], [C-Prop], [C-Type]
+% ------------------------------------------------------------------------------
+
+%! admit
+test "S-Prop" :- admit_def (typ (ls lz)) prop.
+
+%! admit
+test "S-Prop at a higher level" :- admit_def (typ (ls (ls lz))) prop.
+
+%! reject T-Conv
+test "Prop : Type@{0}" :- admit_def (typ lz) prop.
+
+%! admit
+test "S-Type" :- admit_def (typ (ls lz)) (typ lz).
+
+%! admit
+test "S-Type at a higher level" :- admit_def (typ (ls (ls (ls lz)))) (typ lz).
+
+%! reject T-Conv
+test "Type@{0} : Type@{0}" :- admit_def (typ lz) (typ lz).
+
+%! reject T-Conv
+test "Type@{1} : Type@{1}" :- admit_def (typ (ls lz)) (typ (ls lz)).
+
+%! reject T-Conv
+test "Type@{1} : Type@{0}" :- admit_def (typ lz) (typ (ls lz)).
+
+%! reject T-Conv
+test "Type@{0} : Prop" :- admit_def prop (typ lz).
+
+%! admit
+test "C-Prop: a proposition at Type@{0}" :- admit_def (typ lz) (prod prop (p\ p)).
+
+%! reject T-Conv
+test "a type at Prop" :- admit_def prop (prod prop (p\ prop)).
+
+% ------------------------------------------------------------------------------
+% [P-Prop], [P-Type], [P-Max]
+% ------------------------------------------------------------------------------
+
+%! admit
+test "P-Prop: impredicative" :- admit_def prop (prod prop (p\ p)).
+
+%! admit
+test "P-Prop: over Type@{1}" :-
+    admit_def prop (prod (typ (ls lz)) (a\ prod prop (p\ p))).
+
+%! admit
+test "P-Type" :- admit_def (typ (ls lz)) (prod (prod prop (p\ p)) (h\ typ lz)).
+
+%! reject T-Conv
+test "P-Type: not lower" :- admit_def (typ lz) (prod (prod prop (p\ p)) (h\ typ lz)).
+
+%! admit
+test "P-Max" :-
+    admit_def (typ (ls (ls lz))) (prod (typ (ls lz)) (a\ prod (typ lz) (b\ prop))).
+
+%! reject T-Conv
+test "P-Max: not the codomain level" :- admit_def (typ (ls lz)) (prod (typ (ls lz)) (a\ a)).
+
+%! reject T-Conv
+test "P-Max: predicative" :- admit_def (typ lz) (prod (typ lz) (a\ a)).
+
+%! admit
+test "P-Max: predicative, one level up" :- admit_def (typ (ls lz)) (prod (typ lz) (a\ a)).
+
+% ------------------------------------------------------------------------------
+% [T-Pi], [T-Lam], [T-App], [T-Let], [T-Var], [T-Const], [T-Conv]
+% ------------------------------------------------------------------------------
+
+%! admit
+test "identity over Type@{0}" :-
+    admit_def
+        (prod (typ lz) (a\ prod a (x\ a)))
+        (lam (typ lz) (a\ lam a (x\ x))).
+
+%! admit
+test "identity over Prop" :-
+    admit_def
+        (prod prop (p\ prod p (h\ p)))
+        (lam prop (p\ lam p (h\ h))).
+
+%! admit
+test "composition" :-
+    admit_def
+        (prod (typ lz) (a\ prod (typ lz) (b\ prod (typ lz) (c\
+            prod (prod b (y\ c)) (g\ prod (prod a (x\ b)) (f\ prod a (x\ c)))))))
+        (lam (typ lz) (a\ lam (typ lz) (b\ lam (typ lz) (c\
+            lam (prod b (y\ c)) (g\ lam (prod a (x\ b)) (f\ lam a (x\
+                app g (app f x)))))))).
+
+%! admit
+test "the identity applied to itself" :-
+    admit_def
+        (prod prop (p\ prod p (h\ p)))
+        (app (app (lam prop (p\ lam p (h\ h))) (prod prop (p\ prod p (h\ p))))
+            (lam prop (p\ lam p (h\ h)))).
+
+%! admit
+test "a dependent codomain" :-
+    admit_def
+        (prod (prod prop (x\ prop)) (f\ prod prop (p\ prod (app f p) (h\ app f p))))
+        (lam (prod prop (x\ prop)) (f\ lam prop (p\ lam (app f p) (h\ h)))).
+
+%! reject T-App
+test "T-App: the head is not a function" :- admit_def prop (app prop prop).
+
+%! reject T-Conv
+test "T-App: the argument has another type" :-
+    admit_def (typ (ls lz)) (app (lam prop (p\ p)) (typ lz)).
+
+%! reject T-Pi
+test "T-Pi: the domain is not a type" :-
+    admit_ax (prod (lam prop (p\ p)) (x\ prop)).
+
+%! reject T-Pi
+test "T-Pi: the codomain is not a type" :-
+    admit_ax (prod prop (p\ lam p (h\ h))).
+
+%! reject T-Lam
+test "T-Lam: the domain is not a type" :-
+    admit_def prop (lam (lam prop (p\ p)) (x\ x)).
+
+%! reject T-Conv
+test "T-Lam: the body has another type" :-
+    admit_def (prod prop (p\ p)) (lam prop (p\ p)).
+
+%! admit
+test "T-Let" :-
+    admit_def (prod prop (x\ prop)) (letin prop (typ (ls lz)) (a\ lam a (x\ x))).
+
+%! admit
+test "T-Let: the body needs the definition" :-
+    admit_def (typ (ls lz)) (letin prop (typ (ls lz)) (a\ prod a (p\ p))).
+
+%! reject T-Pi
+test "an assumption is not a definition" :-
+    admit_def
+        (prod (typ (ls lz)) (a\ typ (ls lz)))
+        (lam (typ (ls lz)) (a\ prod a (p\ p))).
+
+%! reject T-Let
+test "T-Let: the annotation is not a type" :-
+    admit_def prop (letin prop (lam prop (p\ p)) (x\ x)).
+
+%! reject T-Conv
+test "T-Let: the definition has another type" :-
+    admit_def (typ (ls lz)) (letin (typ lz) prop (x\ x)).
+
+%! reject T-Const
+test "T-Const: no such constant" :- admit_def prop (cst 7).
+
+%! reject T-Var
+test "T-Var: a variable outside the context" :- pi x\ check x prop.
+
+% ------------------------------------------------------------------------------
+% [D-Ax], [D-Def]
+% ------------------------------------------------------------------------------
+
+%! admit
+test "D-Ax" :- admit_ax (prod prop (p\ p)).
+
+%! reject D-Ax
+test "D-Ax: not a type" :- admit_ax (lam prop (p\ p)).
+
+%! reject D-Def
+test "D-Def: not a type" :- admit_def (lam prop (p\ p)) prop.
+
+% ------------------------------------------------------------------------------
+% [R-Beta], [R-Zeta], [Eq-Red], [Eq-Eta]
+% ------------------------------------------------------------------------------
+
+%! admit
+test "R-Beta" :-
+    same (typ (ls lz))
+        (app (lam (typ (ls lz)) (a\ a)) (prod prop (p\ p)))
+        (prod prop (p\ p)).
+
+%! admit
+test "R-Beta under a binder" :-
+    same (prod prop (x\ prop))
+        (lam prop (p\ app (lam prop (q\ q)) p))
+        (lam prop (p\ p)).
+
+%! admit
+test "R-Zeta" :-
+    same (typ lz)
+        (letin (prod prop (p\ p)) prop (x\ prod x (h\ x)))
+        (prod (prod prop (p\ p)) (h\ prod prop (p\ p))).
+
+%! reject T-Conv
+test "different sorts are not convertible" :- same (typ (ls (ls lz))) prop (typ lz).
+
+%! reject T-Conv
+test "different products are not convertible" :-
+    same (typ (ls lz)) (prod prop (p\ p)) (prod prop (p\ prop)).
+
+%! admit
+test "Eq-Eta: abstraction on the right" :-
+    admit_def
+        (prod (prod prop (x\ prop)) (f\
+            prod (prod (prod prop (x\ prop)) (g\ prop)) (q\
+                prod (app q f) (h\ app q (lam prop (x\ app f x))))))
+        (lam (prod prop (x\ prop)) (f\
+            lam (prod (prod prop (x\ prop)) (g\ prop)) (q\
+                lam (app q f) (h\ h)))).
+
+%! admit
+test "Eq-Eta: abstraction on the left" :-
+    admit_def
+        (prod (prod prop (x\ prop)) (f\
+            prod (prod (prod prop (x\ prop)) (g\ prop)) (q\
+                prod (app q (lam prop (x\ app f x))) (h\ app q f))))
+        (lam (prod prop (x\ prop)) (f\
+            lam (prod (prod prop (x\ prop)) (g\ prop)) (q\
+                lam (app q (lam prop (x\ app f x))) (h\ h)))).
+
+%! reject T-Conv
+test "Eq-Eta does not identify different functions" :-
+    admit_def
+        (prod (prod prop (x\ prop)) (f\
+            prod (prod (prod prop (x\ prop)) (g\ prop)) (q\
+                prod (app q f) (h\ app q (lam prop (x\ x))))))
+        (lam (prod prop (x\ prop)) (f\
+            lam (prod (prod prop (x\ prop)) (g\ prop)) (q\
+                lam (app q f) (h\ h)))).
+
+% ------------------------------------------------------------------------------
+% [C-Pi], [C-Conv]
+% ------------------------------------------------------------------------------
+
+%! admit
+test "C-Pi: the codomain is cumulative" :-
+    admit_def (prod (typ lz) (a\ typ (ls (ls lz)))) (lam (typ lz) (a\ prop)).
+
+%! reject T-Conv
+test "C-Pi: the codomain is not lower" :-
+    admit_def (prod (typ lz) (a\ prop)) (lam (typ lz) (a\ typ lz)).
+
+%! reject T-Conv
+test "C-Pi: the domain is compared by conversion" :-
+    admit_def
+        (prod (prod (typ lz) (x\ prop)) (f\ prod prop (x\ prop)))
+        (lam (prod (typ lz) (x\ prop)) (f\ f)).
+
+%! reject T-Conv
+test "C-Pi: the domain is compared by conversion, other way" :-
+    admit_def
+        (prod (prod prop (x\ prop)) (f\ prod (typ lz) (x\ prop)))
+        (lam (prod prop (x\ prop)) (f\ f)).
+
+% ------------------------------------------------------------------------------
+% Normal forms
+% ------------------------------------------------------------------------------
+
+%! admit
+test "norm: beta" :-
+    norm (app (lam (typ (ls lz)) (a\ a)) (prod prop (p\ p))) (prod prop (p\ p)).
+
+%! admit
+test "norm: under a binder" :-
+    norm (lam prop (p\ app (lam prop (q\ q)) p)) (lam prop (p\ p)).
+
+%! admit
+test "norm: zeta" :-
+    norm (letin prop (typ (ls lz)) (a\ prod a (x\ a))) (prod prop (x\ prop)).

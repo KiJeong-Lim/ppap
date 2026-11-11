@@ -1,0 +1,4 @@
+# [S-Prop] one level too low: Prop : Type@{0}.
+- infer prop A :- !, A = typ (ls lz).
++ infer prop A :- !, A = typ lz.
+kills pts "Prop : Type@{0}"

@@ -474,7 +474,7 @@ validateAnchoredGoal anchors goal = case unfoldlNApp goal of
     _ -> Left goal
 
 primitivePredicateNames :: [SmallId]
-primitivePredicateNames = ["print", "read"]
+primitivePredicateNames = ["print", "read", "flex"]
 
 checkOwnFixityAgainstImports :: NotationDB -> [DeclRep] -> Either FixityError ()
 checkOwnFixityAgainstImports imported = mapM_ checkDecl where

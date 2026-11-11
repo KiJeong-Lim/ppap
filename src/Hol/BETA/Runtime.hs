@@ -1694,6 +1694,11 @@ runTransition env free_lvars stack = assertStack stack `seq` go stack where
             liftIO (_PrintPrimitive env ctx (bindVars (_TotalVarBinding ctx) arg))
             return ((ctx, cells) : stack)
     primitivePrint _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "print")) args))
+    primitiveFlex :: Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
+    primitiveFlex ctx args cells stack
+        | Just arg <- onePrimitiveArg args
+        = return (if hasFlexibleHead (bindVars (_TotalVarBinding ctx) arg) then (ctx, cells) : stack else stack)
+    primitiveFlex _ args _ _ = throwE (BadGoalGiven (foldlNApp (mkNCon (DC_Named "flex")) args))
     primitiveRead :: [Fact] -> Context -> [TermNode] -> [Cell] -> Stack -> ExceptT KernelErr m Stack
     primitiveRead hyps ctx args cells stack
         | Just arg <- onePrimitiveArg args
@@ -1807,6 +1812,10 @@ runTransition env free_lvars stack = assertStack stack `seq` go stack where
         | predicate == DC (DC_Named "read")
         = do
             stack' <- primitiveRead hyps ctx args cells stack
+            go stack'
+        | predicate == DC (DC_Named "flex")
+        = do
+            stack' <- primitiveFlex ctx args cells stack
             go stack'
         | otherwise
         = do

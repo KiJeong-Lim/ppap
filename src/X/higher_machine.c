@@ -17,7 +17,18 @@ typedef struct {
 } Frame;
 
 typedef struct { HTerm fact, rigid_head; size_t next; } Hypothesis;
-typedef struct { int64_t symbol; HTerm fact; size_t next; } Fact;
+/* next: the following fact of the same predicate, or of the dynamic facts.
+    * peer: the following fact with the same first-argument key, or, for a fact
+    * without a key, the following fact of the predicate without a key.
+    * rigid is the head constant of a fact that has the literal clause shape and
+    * a rigid head; head, body, binders and arity then describe that shape. No
+    * binding reaches it, so it is read once, when the fact is loaded. */
+typedef struct { int64_t symbol; HTerm fact; size_t next, peer; HTerm head, body, rigid; size_t binders, arity; } Fact;
+typedef struct { size_t first, last, plain_first, plain_last, arity; unsigned char kinds, mixed; } Predicate;
+/* literal == HT_NONE: the key is a constant symbol; otherwise the key is the
+    * hash of the digits of that natural literal. */
+typedef struct { size_t symbol, key; HTerm literal; size_t first, last; } Bucket;
+typedef struct { int kind; size_t symbol; HTerm literal; } Key;
 typedef struct { uint64_t target; int64_t *wire; size_t length; } Assignment;
 typedef struct {
     HTCheckpoint terms;
@@ -26,7 +37,7 @@ typedef struct {
 } Checkpoint;
 typedef struct {
     HTerm goal, head;
-    size_t arity, global, dynamic, local, barrier;
+    size_t arity, global, keyed, unkeyed, dynamic, local, barrier;
     Frame frame;
     int phase, fallback, equality, plain;
 } Search;
@@ -40,14 +51,21 @@ typedef struct {
 enum { ACTION_NEXT, ACTION_EXECUTE, ACTION_SEARCH, ACTION_FAIL, ACTION_ANSWER };
 enum { CONTINUE_WORK, CONTINUE_IMPLY, CONTINUE_EQUALITY, CONTINUE_DEBUG, CONTINUE_ANSWER };
 enum { SEARCH_GLOBAL, SEARCH_LOCAL, SEARCH_EQUAL_LOCAL, SEARCH_EQUAL_GLOBAL };
+enum { KEY_NONE, KEY_NATURAL, KEY_CONSTANT, KEY_NOMINAL };
+enum { LOAD_CREATE, LOAD_EXTEND, LOAD_QUERY };
 
 struct HolV2Machine {
     HolTermStore *terms;
     int64_t *roles;
     size_t symbol_count, meta_count;
     Fact *facts;
-    size_t fact_count, fact_symbols, dynamic_first;
-    size_t *first_facts;
+    size_t fact_count, fact_capacity, dynamic_first, dynamic_last;
+    Predicate *predicates;
+    size_t predicate_count;
+    Bucket *buckets;
+    size_t bucket_count, bucket_capacity;
+    size_t program_symbols, program_meta;
+    uint64_t idle_uid;
     Search search;
     Checkpoint search_checkpoint;
     HTerm *query;
@@ -88,9 +106,15 @@ static int term_ok(HolV2Machine *m, HTerm term)
     return term != HT_NONE || fail(m, ht_error(m->terms));
 }
 
-static int reserve(HolV2Machine *m, void **data, size_t *capacity, size_t count, size_t width)
+static int grow(HolV2Machine *m, void **data, size_t *capacity, size_t count, size_t width);
+
+static inline int reserve(HolV2Machine *m, void **data, size_t *capacity, size_t count, size_t width)
 {
-    if (count <= *capacity) return 1;
+    return count <= *capacity || grow(m, data, capacity, count, width);
+}
+
+static int grow(HolV2Machine *m, void **data, size_t *capacity, size_t count, size_t width)
+{
     if (count > SIZE_MAX / width) return fail(m, "V2 arena size overflow");
     size_t next = *capacity ? *capacity : 32;
     while (next < count) {
@@ -156,6 +180,12 @@ static int role(const HolV2Machine *m, HTerm head)
     return view.tag == HT_CONST && view.symbol < m->symbol_count ? (int) m->roles[view.symbol] : HV2_ORDINARY;
 }
 
+/* A role that only describes a constant. */
+static int ordinary(int operation)
+{
+    return operation == HV2_ORDINARY || operation == HV2_ARITHMETIC || operation == HV2_NATURAL;
+}
+
 static int same_head(const HolV2Machine *m, HTerm left, HTerm right)
 {
     HTView lhs = ht_view(m->terms, ht_deref(m->terms, left));
@@ -189,6 +219,24 @@ static int normalized_spine(HolV2Machine *m, HTerm term, HTSpine *spine)
 {
     HTerm normalized = ht_normalize(m->terms, term, HT_HNF);
     return normalized != HT_NONE && ht_spine(m->terms, normalized, spine);
+}
+
+/* 1: the head of term, below its leading abstractions, is an unbound variable;
+    * 0: it is anything else; -1: store error. Nothing is bound. */
+static int flexible_head(HolV2Machine *m, HTerm term)
+{
+    HTerm body = ht_normalize(m->terms, term, HT_HNF);
+    if (body == HT_NONE) return -1;
+    for (;;) {
+        HTView view = ht_view(m->terms, ht_deref(m->terms, body));
+        if (view.tag != HT_LAM) break;
+        body = view.a;
+    }
+    HTSpine spine;
+    if (!ht_spine(m->terms, body, &spine)) return -1;
+    int tag = ht_view(m->terms, ht_deref(m->terms, spine.head)).tag;
+    ht_spine_free(&spine);
+    return tag == HT_VAR || tag == HT_WILD;
 }
 
 #define PREFIX_LIMIT 32
@@ -243,21 +291,41 @@ static void clause_shape(const HolV2Machine *m, HTerm fact, Clause *clause)
         clause->body = outer.b;
     } else {
         HTerm head = rigid_head_of(m, term, &arity);
-        if (head != HT_NONE && (ht_view(m->terms, head).tag == HT_NOMINAL || role(m, head) == HV2_ORDINARY)) clause->head = term;
+        if (head != HT_NONE && (ht_view(m->terms, head).tag == HT_NOMINAL || ordinary(role(m, head)))) clause->head = term;
     }
 }
 
-/* Two arguments whose rigid heads differ cannot unify. Naturals, successors
-    * and opaque formulas are compared by the unifier alone. */
+/* Two arguments whose rigid heads differ cannot unify, and neither can two
+    * different naturals. A natural against a successor term, and an opaque
+    * formula, are compared by the unifier alone. */
 static int rigid_clash(const HolV2Machine *m, HTerm goal, HTerm pattern)
 {
     size_t arity;
+    HTView number = ht_view(m->terms, ht_deref(m->terms, goal)), other = ht_view(m->terms, ht_deref(m->terms, pattern));
+    if (number.tag == HT_NAT && other.tag == HT_NAT) return strcmp(number.digits, other.digits) != 0;
     HTerm left = rigid_head_of(m, goal, &arity), right = rigid_head_of(m, pattern, &arity);
     if (left == HT_NONE || right == HT_NONE) return 0;
     HTView lhs = ht_view(m->terms, left), rhs = ht_view(m->terms, right);
-    if ((lhs.tag == HT_CONST && role(m, left) != HV2_ORDINARY) || (rhs.tag == HT_CONST && role(m, right) != HV2_ORDINARY)) return 0;
+    if ((lhs.tag == HT_CONST && !ordinary(role(m, left))) || (rhs.tag == HT_CONST && !ordinary(role(m, right)))) return 0;
     if (lhs.tag != rhs.tag) return 1;
     return lhs.tag == HT_CONST ? lhs.symbol != rhs.symbol : lhs.uid != rhs.uid;
+}
+
+/* Whether a literal clause head, with the rigid head and the arity it has, is
+    * certain not to match the goal of a plain search. */
+static int shape_clash(const HolV2Machine *m, const Search *search, HTerm clause_head, HTerm head, size_t arity)
+{
+    if (!same_head(m, search->head, head)) return 1;
+    if (arity != search->arity) return 0;
+    HTerm goal = ht_deref(m->terms, search->goal), pattern = ht_deref(m->terms, clause_head);
+    while (arity--) {
+        HTView left = ht_view(m->terms, goal), right = ht_view(m->terms, pattern);
+        if (left.tag != HT_APP || right.tag != HT_APP) return 0;
+        if (rigid_clash(m, left.b, right.b)) return 1;
+        goal = ht_deref(m->terms, left.a);
+        pattern = ht_deref(m->terms, right.a);
+    }
+    return 0;
 }
 
 /* Whether a clause head of this literal shape is certain not to match. */
@@ -269,18 +337,159 @@ static int head_clash(const HolV2Machine *m, const Search *search, HTerm fact)
     if (clause.head == HT_NONE) return 0;
     size_t arity;
     HTerm head = rigid_head_of(m, clause.head, &arity);
-    if (head == HT_NONE) return 0;
-    if (!same_head(m, search->head, head)) return 1;
-    if (arity != search->arity) return 0;
-    HTerm goal = ht_deref(m->terms, search->goal), pattern = ht_deref(m->terms, clause.head);
-    while (arity--) {
-        HTView left = ht_view(m->terms, goal), right = ht_view(m->terms, pattern);
-        if (left.tag != HT_APP || right.tag != HT_APP) return 0;
-        if (rigid_clash(m, left.b, right.b)) return 1;
-        goal = ht_deref(m->terms, left.a);
-        pattern = ht_deref(m->terms, right.a);
+    return head != HT_NONE && shape_clash(m, search, clause.head, head, arity);
+}
+
+static int fact_clash(const HolV2Machine *m, const Search *search, const Fact *fact)
+{
+    if (fact->rigid == HT_NONE) return head_clash(m, search, fact->fact);
+    return search->plain && shape_clash(m, search, fact->head, fact->rigid, fact->arity);
+}
+
+/* What an argument shows without being reduced: a natural literal, or the
+    * rigid head of an application. rigid_clash decides by exactly these. */
+static Key argument_key(const HolV2Machine *m, HTerm argument)
+{
+    HTerm term = ht_deref(m->terms, argument);
+    if (ht_view(m->terms, term).tag == HT_NAT) return (Key) { KEY_NATURAL, 0, term };
+    size_t arity;
+    HTerm head = rigid_head_of(m, term, &arity);
+    if (head == HT_NONE) return (Key) { KEY_NONE, 0, HT_NONE };
+    HTView view = ht_view(m->terms, head);
+    if (view.tag == HT_NOMINAL) return (Key) { KEY_NOMINAL, 0, HT_NONE };
+    return ordinary(role(m, head)) ? (Key) { KEY_CONSTANT, view.symbol, HT_NONE } : (Key) { KEY_NONE, 0, HT_NONE };
+}
+
+/* The first argument of a literal application with arity >= 1 arguments. */
+static HTerm first_argument(const HolV2Machine *m, HTerm term, size_t arity)
+{
+    term = ht_deref(m->terms, term);
+    while (arity-- > 1) term = ht_deref(m->terms, ht_view(m->terms, term).a);
+    return ht_view(m->terms, term).b;
+}
+
+static size_t key_value(const HolV2Machine *m, Key key)
+{
+    if (key.kind != KEY_NATURAL) return key.symbol;
+    uint64_t hash = UINT64_C(1469598103934665603);
+    for (const char *digit = ht_view(m->terms, key.literal).digits; *digit; ++digit) hash = (hash ^ (unsigned char) *digit) * UINT64_C(1099511628211);
+    return (size_t) hash;
+}
+
+static size_t bucket_home(size_t symbol, size_t value, int natural, size_t capacity)
+{
+    uint64_t hash = ((uint64_t) symbol + 1) * UINT64_C(0x9E3779B97F4A7C15) ^ ((uint64_t) value + (natural ? UINT64_C(0x632BE59BD9B4E019) : 0));
+    return (size_t) ((hash * UINT64_C(11400714819323198485)) >> 20) & (capacity - 1);
+}
+
+/* The bucket of a natural or constant key under a predicate, or the empty
+    * slot (first == NONE) where it belongs. NULL: there is no table yet. */
+static Bucket *find_bucket(const HolV2Machine *m, size_t symbol, Key key)
+{
+    if (!m->bucket_capacity) return NULL;
+    const char *digits = key.kind == KEY_NATURAL ? ht_view(m->terms, key.literal).digits : NULL;
+    size_t value = key_value(m, key);
+    for (size_t at = bucket_home(symbol, value, digits != NULL, m->bucket_capacity);; at = (at + 1) & (m->bucket_capacity - 1)) {
+        Bucket *bucket = &m->buckets[at];
+        if (bucket->first == NONE) return bucket;
+        if (bucket->symbol != symbol || bucket->key != value || (bucket->literal == HT_NONE) != (digits == NULL)) continue;
+        if (!digits || !strcmp(ht_view(m->terms, bucket->literal).digits, digits)) return bucket;
     }
-    return 0;
+}
+
+static int reserve_buckets(HolV2Machine *m)
+{
+    if (m->bucket_capacity && m->bucket_count < m->bucket_capacity / 2) return 1;
+    size_t capacity = m->bucket_capacity ? m->bucket_capacity * 2 : 64;
+    if (capacity < m->bucket_capacity || capacity > SIZE_MAX / sizeof(Bucket)) return fail(m, "V2 fact index overflow");
+    Bucket *table = malloc(capacity * sizeof(*table));
+    if (!table) return fail(m, "V2 fact index allocation failed");
+    for (size_t i = 0; i < capacity; ++i) table[i] = (Bucket) { 0, 0, HT_NONE, NONE, NONE };
+    for (size_t i = 0; i < m->bucket_capacity; ++i) {
+        Bucket bucket = m->buckets[i];
+        if (bucket.first == NONE) continue;
+        size_t at = bucket_home(bucket.symbol, bucket.key, bucket.literal != HT_NONE, capacity);
+        while (table[at].first != NONE) at = (at + 1) & (capacity - 1);
+        table[at] = bucket;
+    }
+    free(m->buckets);
+    m->buckets = table;
+    m->bucket_capacity = capacity;
+    return 1;
+}
+
+/* Files the newest fact under its predicate, after the older ones. A fact
+    * whose head is literally the predicate applied to arguments has the key of
+    * its first argument when that is a natural or has an ordinary constant head.
+    * A predicate whose keyed facts differ in arity, or have keys of both kinds,
+    * is searched without the index. */
+static int index_fact(HolV2Machine *m, size_t at)
+{
+    Fact *fact = &m->facts[at];
+    Clause clause;
+    size_t arity = 0;
+    clause_shape(m, fact->fact, &clause);
+    HTerm head = clause.head == HT_NONE ? HT_NONE : rigid_head_of(m, clause.head, &arity);
+    fact->next = NONE;
+    fact->peer = NONE;
+    fact->rigid = head;
+    if (head != HT_NONE) {
+        fact->head = clause.head;
+        fact->body = clause.body;
+        fact->binders = clause.count;
+        fact->arity = arity;
+    }
+    if (fact->symbol < 0) {
+        if (m->dynamic_last == NONE) m->dynamic_first = at;
+        else m->facts[m->dynamic_last].next = at;
+        m->dynamic_last = at;
+        return 1;
+    }
+    Predicate *predicate = &m->predicates[fact->symbol];
+    if (predicate->last == NONE) predicate->first = at;
+    else m->facts[predicate->last].next = at;
+    predicate->last = at;
+    Key key = { KEY_NONE, 0, HT_NONE };
+    if (head != HT_NONE && arity) {
+        HTView view = ht_view(m->terms, head);
+        if (view.tag == HT_CONST && view.symbol == (size_t) fact->symbol) key = argument_key(m, first_argument(m, clause.head, arity));
+    }
+    if (key.kind != KEY_NATURAL && key.kind != KEY_CONSTANT) {
+        if (predicate->plain_last == NONE) predicate->plain_first = at;
+        else m->facts[predicate->plain_last].peer = at;
+        predicate->plain_last = at;
+        return 1;
+    }
+    if (predicate->arity == NONE) predicate->arity = arity;
+    else if (predicate->arity != arity) predicate->mixed = 1;
+    predicate->kinds |= key.kind == KEY_NATURAL ? 1 : 2;
+    if (predicate->kinds == 3) predicate->mixed = 1;
+    if (!reserve_buckets(m)) return 0;
+    Bucket *bucket = find_bucket(m, (size_t) fact->symbol, key);
+    if (bucket->first == NONE) {
+        *bucket = (Bucket) { (size_t) fact->symbol, key_value(m, key), key.literal, at, at };
+        ++m->bucket_count;
+    } else {
+        m->facts[bucket->last].peer = at;
+        bucket->last = at;
+    }
+    return 1;
+}
+
+/* The candidates of a search come from up to four chains in source order. */
+static size_t next_fact(const Search *search)
+{
+    size_t candidate = search->global < search->dynamic ? search->global : search->dynamic;
+    if (search->keyed < candidate) candidate = search->keyed;
+    return search->unkeyed < candidate ? search->unkeyed : candidate;
+}
+
+static void advance_fact(const HolV2Machine *m, Search *search, size_t candidate)
+{
+    if (candidate == search->global) search->global = m->facts[candidate].next;
+    else if (candidate == search->keyed) search->keyed = m->facts[candidate].peer;
+    else if (candidate == search->unkeyed) search->unkeyed = m->facts[candidate].peer;
+    else search->dynamic = m->facts[candidate].next;
 }
 
 static int instantiate_head(HolV2Machine *m, HTerm fact, size_t scope, Clause *clause, HTerm *head)
@@ -292,6 +501,24 @@ static int instantiate_head(HolV2Machine *m, HTerm fact, size_t scope, Clause *c
         if (!term_ok(m, clause->values[i])) return -1;
     }
     *head = clause->count ? ht_instantiate(m->terms, clause->head, clause->values, clause->count) : clause->head;
+    return term_ok(m, *head) ? 1 : -1;
+}
+
+/* instantiate_head for a fact whose shape was read when it was loaded. */
+static int instantiate_known(HolV2Machine *m, const Fact *fact, size_t scope, Clause *clause, HTerm *head)
+{
+    clause->count = fact->binders;
+    clause->head = fact->head;
+    clause->body = fact->body;
+    HTerm term = ht_deref(m->terms, fact->fact);
+    for (size_t i = 0; i < fact->binders; ++i) {
+        HTView application = ht_view(m->terms, term);
+        HTView function = ht_view(m->terms, ht_deref(m->terms, application.b));
+        clause->values[i] = ht_var(m->terms, scope, role(m, application.a) == HV2_TY_PI, function.meta);
+        if (!term_ok(m, clause->values[i])) return -1;
+        term = ht_deref(m->terms, function.a);
+    }
+    *head = fact->binders ? ht_instantiate(m->terms, fact->head, clause->values, fact->binders) : fact->head;
     return term_ok(m, *head) ? 1 : -1;
 }
 
@@ -327,8 +554,7 @@ static int instantiate_fact(HolV2Machine *m, HTerm fact, size_t scope, HTerm *he
 static int search_has_alternative(const Search *search)
 {
     if (search->phase == SEARCH_GLOBAL || search->phase == SEARCH_EQUAL_GLOBAL) {
-        return search->global != NONE || search->dynamic != NONE
-            || (search->phase == SEARCH_GLOBAL && search->local != NONE);
+        return next_fact(search) != NONE || (search->phase == SEARCH_GLOBAL && search->local != NONE);
     }
     return search->local != NONE || (search->phase == SEARCH_EQUAL_LOCAL && search->fallback);
 }
@@ -349,13 +575,12 @@ static int skip_excluded(HolV2Machine *m, Search *search)
     if (!search->plain) return 1;
     if (search->phase == SEARCH_GLOBAL || search->phase == SEARCH_EQUAL_GLOBAL) {
         for (;;) {
-            size_t candidate = search->global < search->dynamic ? search->global : search->dynamic;
+            size_t candidate = next_fact(search);
             if (candidate == NONE) break;
             if (m->batch >= BATCH) return 0;
-            if (!head_clash(m, search, m->facts[candidate].fact)) return 1;
+            if (!fact_clash(m, search, &m->facts[candidate])) return 1;
             ++m->batch;
-            if (candidate == search->global) search->global = m->facts[candidate].next;
-            else search->dynamic = m->facts[candidate].next;
+            advance_fact(m, search, candidate);
         }
         if (search->phase == SEARCH_EQUAL_GLOBAL) return 1;
     }
@@ -378,16 +603,17 @@ static int search_step(HolV2Machine *m)
     if (!restore_checkpoint(m, saved)) return 0;
     if (!skip_excluded(m, search)) return 1;
     HTerm fact;
+    const Fact *known = NULL;
     if (search->phase == SEARCH_GLOBAL || search->phase == SEARCH_EQUAL_GLOBAL) {
-        size_t candidate = search->global < search->dynamic ? search->global : search->dynamic;
+        size_t candidate = next_fact(search);
         if (candidate == NONE) {
             if (search->phase == SEARCH_EQUAL_GLOBAL) return 0;
             search->phase = SEARCH_LOCAL;
             return 1;
         }
         fact = m->facts[candidate].fact;
-        if (candidate == search->global) search->global = m->facts[candidate].next;
-        else search->dynamic = m->facts[candidate].next;
+        if (m->facts[candidate].rigid != HT_NONE) known = &m->facts[candidate];
+        advance_fact(m, search, candidate);
     } else {
         if (search->local != NONE) {
             Hypothesis candidate = m->hyps[search->local];
@@ -409,14 +635,24 @@ static int search_step(HolV2Machine *m)
     }
     skip_excluded(m, search);
     Clause clause;
-    HTerm head, body = HT_NONE;
-    int literal = instantiate_head(m, fact, search->frame.scope, &clause, &head);
-    if (literal < 0 || (!literal && !instantiate_fact(m, fact, search->frame.scope, &head, &body))) return 0;
-    HTSpine spine;
-    if (!normalized_spine(m, head, &spine)) return fail(m, ht_error(m->terms));
-    int matches = same_head(m, search->head, spine.head);
-    size_t arity = spine.count;
-    ht_spine_free(&spine);
+    HTerm head = HT_NONE, body = HT_NONE;
+    int literal, matches;
+    size_t arity;
+    if (known) {
+        /* the head is the rigid application that the fact was loaded with */
+        literal = instantiate_known(m, known, search->frame.scope, &clause, &head);
+        if (literal < 0) return 0;
+        matches = same_head(m, search->head, known->rigid);
+        arity = known->arity;
+    } else {
+        literal = instantiate_head(m, fact, search->frame.scope, &clause, &head);
+        if (literal < 0 || (!literal && !instantiate_fact(m, fact, search->frame.scope, &head, &body))) return 0;
+        HTSpine spine;
+        if (!normalized_spine(m, head, &spine)) return fail(m, ht_error(m->terms));
+        matches = same_head(m, search->head, spine.head);
+        arity = spine.count;
+        ht_spine_free(&spine);
+    }
     if (!matches) return 1;
     if (arity != search->arity) return fail(m, "V2 clause head has inconsistent arity");
     int unified = ht_unify(m->terms, search->goal, head);
@@ -443,24 +679,40 @@ static int search_step(HolV2Machine *m)
     return 1;
 }
 
-static int begin_search(HolV2Machine *m, int equality)
+/* goal is the spine of the current goal when the caller has it. */
+static int begin_search(HolV2Machine *m, int equality, const HTSpine *goal)
 {
     HTSpine spine;
-    if (!normalized_spine(m, m->current.goal, &spine)) return fail(m, ht_error(m->terms));
-    HTView view = ht_view(m->terms, ht_deref(m->terms, spine.head));
-    if (view.tag != HT_CONST && view.tag != HT_NOMINAL) {
-        ht_spine_free(&spine);
-        return fail(m, "Bad V2 goal: predicate head is not rigid");
-    }
-    if (m->next_call >= INT64_MAX) {
-        ht_spine_free(&spine);
-        return fail(m, "V2 call identity exhausted");
-    }
+    if (!goal && !normalized_spine(m, m->current.goal, &spine)) return fail(m, ht_error(m->terms));
+    HTerm head = goal ? goal->head : spine.head;
+    size_t arity = goal ? goal->count : spine.count;
+    if (!goal) ht_spine_free(&spine);
+    HTView view = ht_view(m->terms, ht_deref(m->terms, head));
+    if (view.tag != HT_CONST && view.tag != HT_NOMINAL) return fail(m, "Bad V2 goal: predicate head is not rigid");
+    if (m->next_call >= INT64_MAX) return fail(m, "V2 call identity exhausted");
     Search search = { 0 };
     search.goal = m->current.goal;
-    search.head = spine.head;
-    search.arity = spine.count;
-    search.global = view.tag == HT_CONST && view.symbol < m->fact_symbols ? m->first_facts[view.symbol] : NONE;
+    search.head = head;
+    search.arity = arity;
+    size_t plain_arity;
+    search.plain = rigid_head_of(m, search.goal, &plain_arity) != HT_NONE && plain_arity == search.arity;
+    search.global = NONE;
+    search.keyed = NONE;
+    search.unkeyed = NONE;
+    if (view.tag == HT_CONST && view.symbol < m->predicate_count) {
+        /* A keyed fact that the index leaves out has a first argument that
+            * clashes with the goal's, so head_clash would have skipped it. */
+        const Predicate *predicate = &m->predicates[view.symbol];
+        Key key = { KEY_NONE, 0, HT_NONE };
+        if (search.plain && predicate->kinds && !predicate->mixed && search.arity == predicate->arity) key = argument_key(m, first_argument(m, search.goal, search.arity));
+        if ((predicate->kinds == 1 && key.kind == KEY_NATURAL) || (predicate->kinds == 2 && (key.kind == KEY_CONSTANT || key.kind == KEY_NOMINAL))) {
+            const Bucket *bucket = key.kind == KEY_NOMINAL ? NULL : find_bucket(m, view.symbol, key);
+            if (bucket) search.keyed = bucket->first;
+            search.unkeyed = predicate->plain_first;
+        } else {
+            search.global = predicate->first;
+        }
+    }
     search.dynamic = m->dynamic_first;
     search.local = m->current.hyps;
     search.barrier = m->choice_count;
@@ -469,9 +721,6 @@ static int begin_search(HolV2Machine *m, int equality)
     search.phase = equality ? SEARCH_EQUAL_LOCAL : SEARCH_GLOBAL;
     search.fallback = equality != 0;
     search.equality = equality;
-    size_t plain_arity;
-    search.plain = rigid_head_of(m, search.goal, &plain_arity) != HT_NONE && plain_arity == search.arity;
-    ht_spine_free(&spine);
     schedule_search(m, search, checkpoint(m));
     return 1;
 }
@@ -597,6 +846,38 @@ static int enter_implication(HolV2Machine *m, uint64_t premises)
     return success;
 }
 
+/* 1: the host would leave the equality to the search without reading a state;
+    * 0: the host decides; -1: store error. */
+static int plain_equality(HolV2Machine *m, const HTSpine *spine)
+{
+    HTerm type = ht_normalize(m->terms, spine->args[0], HT_HNF);
+    if (type == HT_NONE) return -1;
+    if (role(m, type) == HV2_NATURAL) return 0;
+    for (size_t i = 1; i < 3; ++i) {
+        int arithmetic = ht_mentions_arithmetic(m->terms, spine->args[i]);
+        if (arithmetic) return arithmetic < 0 ? -1 : 0;
+    }
+    return 1;
+}
+
+/* 1: the antecedent is a conjunction of atoms and clauses with ordinary heads,
+    * to which the host would add no premise; 0: the host decides; -1: store error. */
+static int plain_antecedent(HolV2Machine *m, HTerm fact, size_t depth)
+{
+    HTSpine spine;
+    if (depth > 64) return 0;
+    if (!normalized_spine(m, fact, &spine)) return -1;
+    int tag = ht_view(m->terms, ht_deref(m->terms, spine.head)).tag;
+    int operation = role(m, spine.head);
+    int plain = tag == HT_NOMINAL || (tag == HT_CONST && (operation == HV2_ORDINARY || operation == HV2_IF));
+    if (tag == HT_CONST && operation == HV2_AND && spine.count == 2) {
+        plain = plain_antecedent(m, spine.args[0], depth + 1);
+        if (plain == 1) plain = plain_antecedent(m, spine.args[1], depth + 1);
+    }
+    ht_spine_free(&spine);
+    return plain;
+}
+
 static int execute_current(HolV2Machine *m)
 {
     HTSpine spine;
@@ -657,11 +938,21 @@ static int execute_current(HolV2Machine *m)
             break;
         case HV2_IMPLY:
             if (arity != 2) success = fail(m, "Malformed V2 implication");
-            else success = event(m, HV2_EVENT_IMPLY, spine.args[0], CONTINUE_IMPLY, 0);
+            else {
+                int plain = plain_antecedent(m, spine.args[0], 0);
+                if (plain < 0) success = fail(m, ht_error(m->terms));
+                else if (plain) success = enter_implication(m, m->current.premises);
+                else success = event(m, HV2_EVENT_IMPLY, spine.args[0], CONTINUE_IMPLY, 0);
+            }
             break;
         case HV2_EQ:
             if (arity != 3) success = fail(m, "Malformed V2 equality");
-            else success = event(m, HV2_EVENT_EQUALITY, m->current.goal, CONTINUE_EQUALITY, 0);
+            else {
+                int plain = plain_equality(m, &spine);
+                if (plain < 0) success = fail(m, ht_error(m->terms));
+                else if (plain) success = begin_search(m, 4, &spine);
+                else success = event(m, HV2_EVENT_EQUALITY, m->current.goal, CONTINUE_EQUALITY, 0);
+            }
             break;
         case HV2_IS:
         case HV2_LE:
@@ -674,12 +965,20 @@ static int execute_current(HolV2Machine *m)
         case HV2_PRESBURGER:
             success = event(m, HV2_EVENT_PRIMITIVE, m->current.goal, CONTINUE_WORK, 0);
             break;
+        case HV2_FLEX:
+            /* arguments: the type instance, then the term */
+            if (arity != 2) success = fail(m, "Malformed V2 flex goal");
+            else {
+                int flexible = flexible_head(m, spine.args[1]);
+                success = flexible < 0 ? fail(m, ht_error(m->terms)) : flexible;
+            }
+            break;
         case HV2_TY_PI:
         case HV2_IF:
             success = fail(m, "A V2 clause operator appeared as a goal");
             break;
         default:
-            success = begin_search(m, 0);
+            success = begin_search(m, 0, &spine);
             break;
     }
     ht_spine_free(&spine);
@@ -705,162 +1004,261 @@ static void *copy_array(const void *source, size_t count, size_t width)
     return copy;
 }
 
+static _Atomic uint64_t next_origin = 1;
+
+static int add_symbols(HolV2Machine *m, const int64_t *roles, size_t total)
+{
+    if (total == m->symbol_count) return 1;
+    int64_t *grown = total <= SIZE_MAX / sizeof(*grown) ? realloc(m->roles, total * sizeof(*grown)) : NULL;
+    if (!grown) return fail(m, "V2 symbol allocation failed");
+    m->roles = grown;
+    for (size_t first = m->symbol_count, i = first; i < total; ++i) {
+        int64_t operation = roles[i - first];
+        if (operation < HV2_ORDINARY || operation > HV2_NATURAL) return fail(m, "Invalid V2 symbol role");
+        if (operation == HV2_SUCCESSOR && m->truth != HT_NONE) return fail(m, "A V2 fragment declares another successor symbol");
+        m->roles[i] = operation;
+        m->symbol_count = i + 1;
+        if (operation == HV2_PRESBURGER && !ht_set_opaque_symbol(m->terms, i)) return fail(m, ht_error(m->terms));
+        if (operation == HV2_ARITHMETIC && !ht_set_arithmetic_symbol(m->terms, i)) return fail(m, ht_error(m->terms));
+        if (operation == HV2_SUCCESSOR) ht_set_successor(m->terms, i);
+    }
+    return 1;
+}
+
+static int grow_predicates(HolV2Machine *m, size_t count)
+{
+    if (count <= m->predicate_count) return 1;
+    Predicate *grown = count <= SIZE_MAX / sizeof(*grown) ? realloc(m->predicates, count * sizeof(*grown)) : NULL;
+    if (!grown) return fail(m, "V2 predicate index allocation failed");
+    m->predicates = grown;
+    while (m->predicate_count < count) m->predicates[m->predicate_count++] = (Predicate) { NONE, NONE, NONE, NONE, NONE, 0, 0 };
+    return 1;
+}
+
+static HTerm template_term(HolV2Machine *m, const int64_t *row, size_t at, const HTerm *roots, const int64_t *digits, size_t remaining)
+{
+    if (row[3] || row[4] || !valid_meta(row[5], m->meta_count)) {
+        fail(m, "Invalid V2 template metadata or reserved operand");
+        return HT_NONE;
+    }
+    HTerm value = HT_NONE;
+    switch (row[0]) {
+        case 0:
+            if (valid_index(row[1], m->query_count) && row[2] == 0) value = m->query[row[1]];
+            break;
+        case 1:
+            if (valid_index(row[1], m->symbol_count) && row[2] == 0) value = ht_constant(m->terms, (size_t) row[1], row[5]);
+            break;
+        case 2:
+            if (valid_index(row[1], at) && valid_index(row[2], at)) value = ht_app(m->terms, roots[row[1]], roots[row[2]], row[5]);
+            break;
+        case 3:
+            if (row[1] >= 0 && (uint64_t) row[1] <= SIZE_MAX && row[2] == 0) value = ht_index(m->terms, (size_t) row[1]);
+            break;
+        case 4:
+            if (valid_index(row[1], at) && row[2] == 0) value = ht_lam(m->terms, roots[row[1]], row[5]);
+            break;
+        case 5:
+            if (row[1] >= 0 && row[2] > 0 && (uint64_t) row[1] <= remaining && (uint64_t) row[2] <= remaining - (size_t) row[1]) {
+                size_t n = (size_t) row[2];
+                char *text = n < SIZE_MAX ? malloc(n + 1) : NULL;
+                if (!text) { fail(m, "V2 natural allocation failed"); break; }
+                int valid = 1;
+                for (size_t j = 0; j < n; ++j) {
+                    int64_t ch = digits[(size_t) row[1] + j];
+                    if (ch < '0' || ch > '9') valid = 0;
+                    text[j] = (char) ch;
+                }
+                text[n] = '\0';
+                if (valid && (n == 1 || text[0] != '0')) value = ht_nat(m->terms, text);
+                free(text);
+            }
+            break;
+        case 6:
+            if (!row[1] && !row[2]) value = ht_wildcard(m->terms);
+            break;
+        default:
+            break;
+    }
+    if (value == HT_NONE) {
+        const char *message = ht_error(m->terms);
+        fail(m, message && message[0] ? message : "Invalid V2 term template");
+    }
+    return value;
+}
+
+/* Reads one wordcode fragment. LOAD_CREATE and LOAD_EXTEND add it to the
+    * program; LOAD_QUERY builds it above the program, for one run. */
+static int load(HolV2Machine *m, const int64_t *code, size_t length, int mode)
+{
+    if (!code || length < 8 || code[0] != MAGIC || code[1] != 2) return fail(m, "Invalid V2 wordcode header");
+    for (size_t i = 2; i < 8; ++i) {
+        if (i == 6 && mode == LOAD_EXTEND) continue;
+        if (code[i] < 0 || (uint64_t) code[i] > SIZE_MAX) return fail(m, "Invalid V2 wordcode count");
+    }
+    size_t term_count = (size_t) code[2], symbol_total = (size_t) code[3], fact_count = (size_t) code[4], query_count = (size_t) code[5];
+    if (symbol_total < m->symbol_count) return fail(m, "V2 wordcode has fewer symbols than its machine");
+    if (mode == LOAD_EXTEND && (query_count || code[6] != -1)) return fail(m, "A V2 program fragment has a query");
+    if (mode == LOAD_QUERY && fact_count) return fail(m, "A V2 query fragment has clauses");
+    size_t symbol_count = symbol_total - m->symbol_count;
+    size_t remaining = length - 8;
+    if (query_count > remaining / 2) return fail(m, "Truncated V2 query table");
+    const int64_t *queries = code + 8;
+    remaining -= 2 * query_count;
+    if (symbol_count > remaining) return fail(m, "Truncated V2 symbol table");
+    const int64_t *roles = queries + 2 * query_count;
+    remaining -= symbol_count;
+    if (term_count > remaining / 6) return fail(m, "Truncated V2 template table");
+    const int64_t *templates = roles + symbol_count;
+    remaining -= term_count * 6;
+    if (fact_count > remaining / 2) return fail(m, "Truncated V2 clause table");
+    const int64_t *facts = templates + term_count * 6;
+    remaining -= fact_count * 2;
+    const int64_t *digits = facts + fact_count * 2;
+    if (mode != LOAD_EXTEND && !valid_index(code[6], term_count)) return fail(m, "Invalid V2 query root");
+    m->meta_count = (size_t) code[7];
+    if (!add_symbols(m, roles, symbol_total)) return 0;
+    if (mode == LOAD_CREATE) {
+        int has_true = 0, has_successor = 0;
+        for (size_t i = 0; i < m->symbol_count; ++i) {
+            if (m->roles[i] == HV2_TRUE) has_true = 1;
+            if (m->roles[i] == HV2_SUCCESSOR) has_successor = 1;
+        }
+        if (!has_true || !has_successor) return fail(m, "V2 requires true and successor symbols");
+        m->truth = true_term(m);
+        if (!term_ok(m, m->truth)) return 0;
+    }
+    if (query_count > SIZE_MAX / sizeof(*m->query)) return fail(m, "V2 query allocation overflow");
+    m->query = query_count ? calloc(query_count, sizeof(*m->query)) : NULL;
+    if (query_count && !m->query) return fail(m, "V2 query allocation failed");
+    for (size_t i = 0; i < query_count; ++i) {
+        if ((queries[2 * i] != 0 && queries[2 * i] != 1) || !valid_meta(queries[2 * i + 1], m->meta_count)) return fail(m, "Invalid V2 query descriptor");
+        m->query[i] = ht_var(m->terms, 0, (int) queries[2 * i], queries[2 * i + 1]);
+        m->query_count = i + 1;
+        if (!term_ok(m, m->query[i])) return 0;
+    }
+    HTerm *roots = term_count <= SIZE_MAX / sizeof(*roots) ? malloc((term_count ? term_count : 1) * sizeof(*roots)) : NULL;
+    if (!roots) return fail(m, "V2 template allocation failed");
+    for (size_t i = 0; !m->error[0] && i < term_count; ++i) roots[i] = template_term(m, templates + 6 * i, i, roots, digits, remaining);
+    if (!m->error[0] && fact_count) {
+        if (fact_count > SIZE_MAX - m->fact_count) fail(m, "V2 fact allocation overflow");
+        else if (reserve(m, (void **) &m->facts, &m->fact_capacity, m->fact_count + fact_count, sizeof(*m->facts))) grow_predicates(m, m->symbol_count);
+    }
+    for (size_t i = 0; !m->error[0] && i < fact_count; ++i) {
+        int64_t symbol = facts[2 * i], root = facts[2 * i + 1];
+        if ((symbol != -1 && !valid_index(symbol, m->symbol_count)) || !valid_index(root, term_count)) fail(m, "Invalid V2 fact descriptor");
+        else {
+            m->facts[m->fact_count] = (Fact) { symbol, roots[root], NONE, NONE, HT_NONE, HT_NONE, HT_NONE, 0, 0 };
+            index_fact(m, m->fact_count++);
+        }
+    }
+    if (!m->error[0] && mode != LOAD_EXTEND) {
+        Frame initial = { roots[code[6]], NONE, 0, NONE, 0, 0, 0 };
+        m->work_head = push_frame(m, initial);
+        m->current = initial;
+        m->exhausted = 0;
+    }
+    if (mode != LOAD_QUERY) {
+        m->permanent = ht_heap_count(m->terms);
+        m->idle_uid = ht_next_uid(m->terms);
+        m->program_symbols = m->symbol_count;
+        m->program_meta = m->meta_count;
+        if (!m->error[0]) ht_seal(m->terms);
+    }
+    hol_v2_set_collection_step(m, 65536);
+    free(roots);
+    return !m->error[0];
+}
+
 HolV2Machine *hol_v2_create(const int64_t *code, size_t length)
 {
-    static _Atomic uint64_t next_origin = 1;
     HolV2Machine *m = calloc(1, sizeof(*m));
     if (!m) return NULL;
     m->work_head = NONE;
     m->dynamic_first = NONE;
+    m->dynamic_last = NONE;
     m->truth = HT_NONE;
     m->next_call = 1;
     m->origin = atomic_fetch_add(&next_origin, 1);
     if (!m->origin) { fail(m, "V2 runtime identity exhausted"); return m; }
     m->terms = ht_create();
     if (!m->terms) { fail(m, "V2 term store allocation failed"); return m; }
-    if (!code || length < 8 || code[0] != MAGIC || code[1] != 2) {
-        fail(m, "Invalid V2 wordcode header");
-        return m;
-    }
-    for (size_t i = 2; i < 8; ++i) {
-        if (code[i] < 0 || (uint64_t) code[i] > SIZE_MAX) {
-            fail(m, "Invalid V2 wordcode count");
-            return m;
-        }
-    }
-    size_t term_count = (size_t) code[2];
-    m->symbol_count = (size_t) code[3];
-    m->fact_count = (size_t) code[4];
-    m->query_count = (size_t) code[5];
-    m->meta_count = (size_t) code[7];
-    size_t remaining = length - 8;
-    if (m->query_count > remaining / 2) { fail(m, "Truncated V2 query table"); return m; }
-    const int64_t *queries = code + 8;
-    remaining -= 2 * m->query_count;
-    if (m->symbol_count > remaining) { fail(m, "Truncated V2 symbol table"); return m; }
-    const int64_t *roles = queries + 2 * m->query_count;
-    remaining -= m->symbol_count;
-    if (term_count > remaining / 6) { fail(m, "Truncated V2 template table"); return m; }
-    const int64_t *templates = roles + m->symbol_count;
-    remaining -= term_count * 6;
-    if (m->fact_count > remaining / 2) { fail(m, "Truncated V2 clause table"); return m; }
-    const int64_t *facts = templates + term_count * 6;
-    remaining -= m->fact_count * 2;
-    const int64_t *digits = facts + m->fact_count * 2;
-    if (!valid_index(code[6], term_count)) { fail(m, "Invalid V2 query root"); return m; }
-    m->roles = copy_array(roles, m->symbol_count, sizeof(*m->roles));
-    if (m->symbol_count && !m->roles) { fail(m, "V2 symbol allocation failed"); return m; }
-    int has_true = 0, has_successor = 0;
-    for (size_t i = 0; i < m->symbol_count; ++i) {
-        if (roles[i] < HV2_ORDINARY || roles[i] > HV2_SUCCESSOR) { fail(m, "Invalid V2 symbol role"); return m; }
-        if (roles[i] == HV2_TRUE) has_true = 1;
-        if (roles[i] == HV2_PRESBURGER && !ht_set_opaque_symbol(m->terms, i)) { fail(m, ht_error(m->terms)); return m; }
-        if (roles[i] == HV2_SUCCESSOR) { ht_set_successor(m->terms, i); has_successor = 1; }
-    }
-    if (!has_true || !has_successor) { fail(m, "V2 requires true and successor symbols"); return m; }
-    m->truth = true_term(m);
-    if (!term_ok(m, m->truth)) return m;
-    if (m->query_count > SIZE_MAX / sizeof(*m->query)) { fail(m, "V2 query allocation overflow"); return m; }
-    m->query = m->query_count ? calloc(m->query_count, sizeof(*m->query)) : NULL;
-    if (m->query_count && !m->query) { fail(m, "V2 query allocation failed"); return m; }
-    for (size_t i = 0; i < m->query_count; ++i) {
-        if ((queries[2 * i] != 0 && queries[2 * i] != 1) || !valid_meta(queries[2 * i + 1], m->meta_count)) {
-            fail(m, "Invalid V2 query descriptor");
-            return m;
-        }
-        m->query[i] = ht_var(m->terms, 0, (int) queries[2 * i], queries[2 * i + 1]);
-        if (!term_ok(m, m->query[i])) return m;
-    }
-    HTerm *roots = term_count <= SIZE_MAX / sizeof(*roots) ? malloc(term_count * sizeof(*roots)) : NULL;
-    if (!roots) { fail(m, "V2 template allocation failed"); return m; }
-    for (size_t i = 0; i < term_count; ++i) {
-        const int64_t *row = templates + 6 * i;
-        HTerm value = HT_NONE;
-        if (row[3] || row[4] || !valid_meta(row[5], m->meta_count)) {
-            fail(m, "Invalid V2 template metadata or reserved operand");
-            break;
-        }
-        switch (row[0]) {
-            case 0:
-                if (valid_index(row[1], m->query_count) && row[2] == 0) value = m->query[row[1]];
-                break;
-            case 1:
-                if (valid_index(row[1], m->symbol_count) && row[2] == 0) value = ht_constant(m->terms, (size_t) row[1], row[5]);
-                break;
-            case 2:
-                if (valid_index(row[1], i) && valid_index(row[2], i)) value = ht_app(m->terms, roots[row[1]], roots[row[2]], row[5]);
-                break;
-            case 3:
-                if (row[1] >= 0 && (uint64_t) row[1] <= SIZE_MAX && row[2] == 0) value = ht_index(m->terms, (size_t) row[1]);
-                break;
-            case 4:
-                if (valid_index(row[1], i) && row[2] == 0) value = ht_lam(m->terms, roots[row[1]], row[5]);
-                break;
-            case 5:
-                if (row[1] >= 0 && row[2] > 0 && (uint64_t) row[1] <= remaining && (uint64_t) row[2] <= remaining - (size_t) row[1]) {
-                    size_t n = (size_t) row[2];
-                    char *text = n < SIZE_MAX ? malloc(n + 1) : NULL;
-                    if (!text) { fail(m, "V2 natural allocation failed"); break; }
-                    int valid = 1;
-                    for (size_t j = 0; j < n; ++j) {
-                        int64_t ch = digits[(size_t) row[1] + j];
-                        if (ch < '0' || ch > '9') valid = 0;
-                        text[j] = (char) ch;
-                    }
-                    text[n] = '\0';
-                    if (valid && (n == 1 || text[0] != '0')) value = ht_nat(m->terms, text);
-                    free(text);
-                }
-                break;
-            case 6:
-                if (!row[1] && !row[2]) value = ht_wildcard(m->terms);
-                break;
-            default:
-                break;
-        }
-        if (value == HT_NONE) {
-            const char *message = ht_error(m->terms);
-            fail(m, message && message[0] ? message : "Invalid V2 term template");
-            break;
-        }
-        roots[i] = value;
-    }
-    if (!m->error[0]) {
-        if (m->fact_count > SIZE_MAX / sizeof(*m->facts)) fail(m, "V2 fact allocation overflow");
-        else {
-            m->facts = m->fact_count ? calloc(m->fact_count, sizeof(*m->facts)) : NULL;
-            if (m->fact_count && !m->facts) fail(m, "V2 fact allocation failed");
-        }
-    }
-    for (size_t i = 0; !m->error[0] && i < m->fact_count; ++i) {
-        int64_t symbol = facts[2 * i], root = facts[2 * i + 1];
-        if ((symbol != -1 && !valid_index(symbol, m->symbol_count)) || !valid_index(root, term_count)) fail(m, "Invalid V2 fact descriptor");
-        else m->facts[i] = (Fact) { symbol, roots[root], NONE };
-    }
-    if (!m->error[0]) {
-        m->fact_symbols = m->symbol_count;
-        m->first_facts = m->fact_symbols <= SIZE_MAX / sizeof(*m->first_facts)
-            ? malloc(m->fact_symbols * sizeof(*m->first_facts)) : NULL;
-        if (!m->first_facts) fail(m, "V2 predicate index allocation failed");
-        else {
-            for (size_t i = 0; i < m->fact_symbols; ++i) m->first_facts[i] = NONE;
-            for (size_t i = m->fact_count; i > 0; --i) {
-                Fact *fact = &m->facts[i - 1];
-                size_t *first = fact->symbol < 0 ? &m->dynamic_first : &m->first_facts[fact->symbol];
-                fact->next = *first;
-                *first = i - 1;
-            }
-        }
-    }
-    if (!m->error[0]) {
-        Frame initial = { roots[code[6]], NONE, 0, NONE, 0, 0, 0 };
-        m->work_head = push_frame(m, initial);
-        m->current = initial;
-    }
-    m->permanent = ht_heap_count(m->terms);
-    hol_v2_set_collection_step(m, 65536);
-    free(roots);
+    load(m, code, length, LOAD_CREATE);
     return m;
+}
+
+static void release_spare(void **data, size_t *capacity, size_t limit)
+{
+    if (*capacity > limit) {
+        free(*data);
+        *data = NULL;
+        *capacity = 0;
+    }
+}
+
+/* Leaves the run. The program stays; everything else is as a machine created
+    * from that program alone would have it, so the next run numbers its
+    * variables, calls and host states from the same origin. A snapshot of the
+    * run that was left can no longer be restored. */
+static int leave_run(HolV2Machine *m)
+{
+    if (m->error[0]) return 0;
+    if (!ht_reset(m->terms, m->permanent, m->idle_uid, m->program_symbols)) return fail(m, ht_error(m->terms));
+    m->symbol_count = m->program_symbols;
+    m->meta_count = m->program_meta;
+    for (size_t i = 0; i < m->assignment_count; ++i) free(m->assignments[i].wire);
+    m->assignment_count = 0;
+    free(m->query);
+    m->query = NULL;
+    m->query_count = 0;
+    m->work_count = 0;
+    m->hyp_count = 0;
+    m->choice_count = 0;
+    m->buffer_count = 0;
+    m->work_head = NONE;
+    memset(&m->search, 0, sizeof(m->search));
+    memset(&m->search_checkpoint, 0, sizeof(m->search_checkpoint));
+    memset(&m->current, 0, sizeof(m->current));
+    m->batch = 0;
+    m->collections = 0;
+    m->host_state = 0;
+    m->next_call = 1;
+    m->action = ACTION_NEXT;
+    m->debugging = 0;
+    m->assignment_failed = 0;
+    m->exhausted = 1;
+    m->answer_ready = 0;
+    m->resume_answer = 0;
+    m->end_debugged = 0;
+    m->event_kind = 0;
+    m->event_continuation = 0;
+    m->event_aux = 0;
+    m->event_term = HT_NONE;
+    m->api_error = NULL;
+    m->origin = atomic_fetch_add(&next_origin, 1);
+    if (!m->origin) return fail(m, "V2 runtime identity exhausted");
+    release_spare((void **) &m->work, &m->work_capacity, 4096);
+    release_spare((void **) &m->hyps, &m->hyp_capacity, 4096);
+    release_spare((void **) &m->choices, &m->choice_capacity, 4096);
+    release_spare((void **) &m->buffer, &m->buffer_capacity, 4096);
+    release_spare((void **) &m->assignments, &m->assignment_capacity, 4096);
+    hol_v2_set_collection_step(m, 65536);
+    return 1;
+}
+
+int hol_v2_extend(HolV2Machine *m, const int64_t *code, size_t length)
+{
+    return m && leave_run(m) && load(m, code, length, LOAD_EXTEND) ? 1 : -1;
+}
+
+int hol_v2_query(HolV2Machine *m, const int64_t *code, size_t length)
+{
+    return m && leave_run(m) && load(m, code, length, LOAD_QUERY) ? 1 : -1;
+}
+
+int hol_v2_idle(HolV2Machine *m)
+{
+    return m && leave_run(m) ? 1 : -1;
 }
 
 typedef struct {
@@ -886,6 +1284,7 @@ static void collect_mark(HTCollection *terms, void *context)
 {
     Collection *c = context;
     HolV2Machine *m = c->machine;
+    for (size_t i = 0; i < m->query_count; ++i) ht_collect_mark(terms, m->query[i]);
     for (size_t i = 0; i < m->work_count; ++i) if (c->frames[i]) ht_collect_mark(terms, m->work[i].goal);
     for (size_t i = 0; i < m->hyp_count; ++i) {
         if (!c->hyps[i]) continue;
@@ -909,6 +1308,7 @@ static void collect_relocate(const HTCollection *terms, void *context)
 {
     Collection *c = context;
     HolV2Machine *m = c->machine;
+    for (size_t i = 0; i < m->query_count; ++i) m->query[i] = ht_collect_term(terms, m->query[i]);
     for (size_t i = 0; i < m->work_count; ++i) {
         if (!c->frames[i]) continue;
         Frame frame = m->work[i];
@@ -1125,10 +1525,10 @@ size_t hol_v2_state_size(HolV2Machine *m)
 {
     if (!m || m->error[0]) return 0;
     m->buffer_count = 0;
-    size_t heap = ht_heap_count(m->terms), variables = 0;
-    for (size_t i = 0; i < heap; ++i) if (ht_view(m->terms, i).tag == HT_VAR) ++variables;
+    size_t heap = ht_heap_count(m->terms), first = ht_sealed(m->terms), variables = 0;
+    for (size_t i = first; i < heap; ++i) if (ht_view(m->terms, i).tag == HT_VAR) ++variables;
     if (!push_word(m, (int64_t) variables)) return 0;
-    for (size_t i = 0; i < heap; ++i) {
+    for (size_t i = first; i < heap; ++i) {
         HTView variable = ht_view(m->terms, i);
         if (variable.tag != HT_VAR) continue;
         ht_pin(m->terms, i);
@@ -1178,7 +1578,7 @@ size_t hol_v2_pending_count(const HolV2Machine *m)
 
 uint64_t hol_v2_uid_frontier(const HolV2Machine *m)
 {
-    return m ? ht_next_uid(m->terms) : 0;
+    return m && m->terms ? ht_next_uid(m->terms) : 0;
 }
 
 size_t hol_v2_event_size(HolV2Machine *m)
@@ -1320,7 +1720,7 @@ int hol_v2_resume(HolV2Machine *m, int result, uint64_t host_state, uint64_t pre
             success = enter_implication(m, premises);
             break;
         case CONTINUE_EQUALITY:
-            success = begin_search(m, result);
+            success = begin_search(m, result, NULL);
             break;
         case CONTINUE_DEBUG:
             m->action = ACTION_EXECUTE;
@@ -1346,10 +1746,11 @@ void hol_v2_set_debugging(HolV2Machine *m, int enabled)
 int hol_v2_ensure_symbol(HolV2Machine *m, size_t symbol, int operation)
 {
     if (!m || m->error[0]) return -1;
-    if (operation < HV2_ORDINARY || operation > HV2_SUCCESSOR || symbol >= INT64_MAX || symbol >= SIZE_MAX / sizeof(*m->roles)) return fail(m, "Invalid V2 dynamic symbol") ? 1 : -1;
+    if (operation < HV2_ORDINARY || operation > HV2_NATURAL || symbol >= INT64_MAX || symbol >= SIZE_MAX / sizeof(*m->roles)) return fail(m, "Invalid V2 dynamic symbol") ? 1 : -1;
     if (symbol < m->symbol_count) {
         if (m->roles[symbol] != operation) { fail(m, "V2 dynamic symbol role conflict"); return -1; }
         if (operation == HV2_PRESBURGER && !ht_set_opaque_symbol(m->terms, symbol)) { fail(m, ht_error(m->terms)); return -1; }
+        if (operation == HV2_ARITHMETIC && !ht_set_arithmetic_symbol(m->terms, symbol)) { fail(m, ht_error(m->terms)); return -1; }
         return 1;
     }
     int64_t *roles = realloc(m->roles, (symbol + 1) * sizeof(*m->roles));
@@ -1359,6 +1760,7 @@ int hol_v2_ensure_symbol(HolV2Machine *m, size_t symbol, int operation)
     m->roles[symbol] = operation;
     if (operation == HV2_SUCCESSOR) ht_set_successor(m->terms, symbol);
     if (operation == HV2_PRESBURGER && !ht_set_opaque_symbol(m->terms, symbol)) { fail(m, ht_error(m->terms)); return -1; }
+    if (operation == HV2_ARITHMETIC && !ht_set_arithmetic_symbol(m->terms, symbol)) { fail(m, ht_error(m->terms)); return -1; }
     return 1;
 }
 
@@ -1375,7 +1777,8 @@ static void release_fields(HolV2Machine *m)
     ht_destroy(m->terms);
     free(m->roles);
     free(m->facts);
-    free(m->first_facts);
+    free(m->predicates);
+    free(m->buckets);
     free(m->query);
     free(m->work);
     free(m->hyps);
@@ -1407,18 +1810,20 @@ HolV2Machine *hol_v2_clone(const HolV2Machine *source)
     copy->terms = ht_clone(source->terms);
     copy->roles = copy_array(source->roles, source->symbol_count, sizeof(*source->roles));
     copy->facts = copy_array(source->facts, source->fact_count, sizeof(*source->facts));
-    copy->first_facts = copy_array(source->first_facts, source->fact_symbols, sizeof(*source->first_facts));
+    copy->predicates = copy_array(source->predicates, source->predicate_count, sizeof(*source->predicates));
+    copy->buckets = copy_array(source->buckets, source->bucket_capacity, sizeof(*source->buckets));
     copy->query = copy_array(source->query, source->query_count, sizeof(*source->query));
     copy->work = copy_array(source->work, source->work_count, sizeof(*source->work));
     copy->hyps = copy_array(source->hyps, source->hyp_count, sizeof(*source->hyps));
     copy->choices = copy_array(source->choices, source->choice_count, sizeof(*source->choices));
     copy->buffer = copy_array(source->buffer, source->buffer_count, sizeof(*source->buffer));
+    copy->fact_capacity = copy->fact_count;
     copy->work_capacity = copy->work_count;
     copy->hyp_capacity = copy->hyp_count;
     copy->choice_capacity = copy->choice_count;
     copy->buffer_capacity = copy->buffer_count;
     if (!copy->terms || (source->assignment_count && !copy->assignments) || (copy->symbol_count && !copy->roles) || (copy->fact_count && !copy->facts)
-        || (copy->fact_symbols && !copy->first_facts)
+        || (copy->predicate_count && !copy->predicates) || (copy->bucket_capacity && !copy->buckets)
         || (copy->query_count && !copy->query) || (copy->work_count && !copy->work)
         || (copy->hyp_count && !copy->hyps) || (copy->choice_count && !copy->choices)
         || (copy->buffer_count && !copy->buffer)) {

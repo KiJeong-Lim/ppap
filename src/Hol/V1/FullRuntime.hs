@@ -22,6 +22,7 @@ import Hol.BETA.HOPU
 import Hol.BETA.Runtime hiding (Snapshot, snapshot, restore)
 import Hol.BETA.TermNode
 import Hol.V1.FullBytecode
+import Hol.V1.FullCompiler
 import qualified Hol.V1.Services as Services
 import qualified X.HigherMachine as Native
 import Z.Utils
@@ -73,20 +74,84 @@ createSession :: RuntimeEnv -> IORef Bool -> FullProgram -> IO Session
 createSession env debugging program = do
     either (ioError . userError) return (validateFullBytecode program)
     bracketOnError (Native.createMachine (fullWords program)) Native.closeMachine $ \machine -> do
-        let labeling = Labeling IntMap.empty IntMap.empty IntMap.empty IntMap.empty (Map.fromList [(name, ty) | (LV_Named name, ty) <- Map.toList (_TypeInfo env)]) IntMap.empty (_ProgramTypeEnv env)
-            variables = Map.fromList (zip [0 ..] (fullVariables program))
-            slots = case fullSections (fullWords program) of
+        let slots = case fullSections (fullWords program) of
                 Right (_, rows, _, _, _, _) -> rows
                 Left _ -> []
-            wires = Map.fromList [(variable, [0, fromIntegral uid, 0, isType, meta]) | (uid, (variable, [isType, meta])) <- zip [0 :: Int ..] (zip (fullVariables program) slots)]
             indices = Map.fromList [(symbolIdentity symbol, index) | (index, symbol) <- IntMap.toList (fullSymbols program)]
-            querySlotCount = fromIntegral (length (fullVariables program))
-            bridge = Bridge variables wires Map.empty Map.empty (fullSymbols program) indices (labelingWithRuntimeTypes env labeling) Map.empty Map.empty Map.empty querySlotCount querySlotCount False
-            protected = env
-                { _PrintPrimitive = \ctx term -> _PrintPrimitive env ctx term `onException` Native.closeMachine machine
-                , _ReadPrimitive = \ctx term -> _ReadPrimitive env ctx term `onException` Native.closeMachine machine
-                }
-        Session machine program protected debugging <$> newIORef bridge <*> newIORef (Map.singleton 0 []) <*> newIORef (Map.singleton 0 emptyArithStore) <*> newIORef 1 <*> newIORef False
+        openSession env debugging machine program slots indices 0
+
+-- The machine runs the query of `program`. Its query variables have the
+-- identities from `base` on, and `indices` finds a symbol by its identity.
+openSession :: RuntimeEnv -> IORef Bool -> Native.Machine -> FullProgram -> [[Int64]] -> Map.Map String Int -> Word64 -> IO Session
+openSession env debugging machine program slots indices base = do
+    let labeling = Labeling IntMap.empty IntMap.empty IntMap.empty IntMap.empty (Map.fromList [(name, ty) | (LV_Named name, ty) <- Map.toList (_TypeInfo env)]) IntMap.empty (_ProgramTypeEnv env)
+        variables = Map.fromList (zip [base ..] (fullVariables program))
+        wires = Map.fromList [(variable, [0, fromIntegral uid, 0, isType, meta]) | (uid, (variable, [isType, meta])) <- zip [base ..] (zip (fullVariables program) slots)]
+        frontier = base + fromIntegral (length (fullVariables program))
+        bridge = Bridge variables wires Map.empty Map.empty (fullSymbols program) indices (labelingWithRuntimeTypes env labeling) Map.empty Map.empty Map.empty frontier frontier False
+        protected = env
+            { _PrintPrimitive = \ctx term -> _PrintPrimitive env ctx term `onException` Native.closeMachine machine
+            , _ReadPrimitive = \ctx term -> _ReadPrimitive env ctx term `onException` Native.closeMachine machine
+            }
+    Session machine program protected debugging <$> newIORef bridge <*> newIORef (Map.singleton 0 []) <*> newIORef (Map.singleton 0 emptyArithStore) <*> newIORef 1 <*> newIORef False
+
+-- A machine that keeps its program: the facts given to it stay loaded, and
+-- every query runs on them. It is used by one caller at a time.
+data Engine
+    = Engine
+        { engineMachine :: Native.Machine
+        , engineProgram :: IORef LoadedTables
+        }
+    deriving ()
+
+createEngine :: PreparedProgram -> IO (Either String Engine)
+createEngine prepared = case loadPreparedProgram prepared >>= \loaded -> validateFullBytecode (fst loaded) >> return loaded of
+    Left message -> return (Left message)
+    Right (program, tables) -> bracketOnError (Native.createMachine (fullWords program)) Native.closeMachine $ \machine -> do
+        ready <- Native.leaveRun machine
+        case ready of
+            Left message -> Native.closeMachine machine >> return (Left message)
+            Right () -> Right . Engine machine <$> newIORef tables
+
+closeEngine :: Engine -> IO ()
+closeEngine = Native.closeMachine . engineMachine
+
+-- The facts have no logic variable. A failure of the machine leaves the engine
+-- unusable; a fact that does not compile leaves it as it was.
+extendEngine :: Engine -> [TermNode] -> IO (Either String ())
+extendEngine engine facts = do
+    tables <- readIORef (engineProgram engine)
+    case extendLoadedProgram tables facts >>= \extended -> validateLoadedFragment tables (fst extended) >> return extended of
+        Left message -> return (Left message)
+        Right (program, next) -> do
+            loaded <- Native.extendProgram (engineMachine engine) (fullWords program)
+            either (return . Left) (\() -> Right () <$ writeIORef (engineProgram engine) next) loaded
+
+-- Runs a query on the program of the engine. The session is valid inside the
+-- action only: the next query, extension or leaveEngine ends its run.
+withQuery :: RuntimeEnv -> IORef Bool -> Engine -> Map.Map LogicVar (MonoType Int) -> TermNode -> (Session -> IO a) -> IO (Either String a)
+withQuery env debugging engine queryTypes query action = do
+    tables <- readIORef (engineProgram engine)
+    case queryLoadedProgram tables queryTypes query >>= \program -> validateLoadedFragment tables program >> return program of
+        Left message -> return (Left message)
+        Right program -> do
+            started <- Native.startQuery machine (fullWords program)
+            frontier <- Native.uidFrontier machine
+            case started >> frontier of
+                Left message -> return (Left message)
+                Right next -> do
+                    let count = length (fullVariables program)
+                    session <- openSession env debugging machine program (pairs (take (2 * count) (drop 8 (fullWords program)))) (fragmentIndices tables program) (next - fromIntegral count)
+                    Right <$> action session
+    where
+        machine = engineMachine engine
+        pairs (isType : meta : rest) = [isType, meta] : pairs rest
+        pairs _ = []
+
+-- Ends the run of the last query and releases what it allocated. A failure
+-- means that the engine is unusable.
+leaveEngine :: Engine -> IO (Either String ())
+leaveEngine = Native.leaveRun . engineMachine
 
 closeSession :: Session -> IO ()
 closeSession = Native.closeMachine . sessionMachine
@@ -459,7 +524,7 @@ decodeVariable session uid scope isType meta = do
             (LV_ty_var unique, Just (TyMTV original)) -> Map.insert original unique (bridgeTypeBinders bridge)
             _ -> bridgeTypeBinders bridge
         label
-            | isType && uid < fromIntegral (length (fullVariables (sessionProgram session))) = bridgeLabeling bridge
+            | isType && uid < bridgeQuerySlots bridge = bridgeLabeling bridge
             | otherwise = enrollLabel variable scope (bridgeLabeling bridge)
         withType = case (variable, fmap (instantiateMetadataType binders) (unLamType (nodeType (metadata session meta)))) of
             (LV_Named _, _) -> label

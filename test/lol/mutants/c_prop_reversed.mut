@@ -1,0 +1,5 @@
+# [C-Prop] reversed: Type@{l} <= Prop.
+- sub_whnf prop (typ L) :- !.
++ sub_whnf (typ L) prop :- !.
+kills pts "Type@{0} : Prop"
+kills pts "C-Prop: a proposition at Type@{0}"

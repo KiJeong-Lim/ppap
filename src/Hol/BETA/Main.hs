@@ -534,6 +534,7 @@ theInitialTypeDecls = Map.fromList
     , (DC_Named "presburger", Forall [] (mkTyList mkTyChr `mkTyArrow` mkTyO))
     , (DC_Named "print", Forall ["A"] (TyVar 0 `mkTyArrow` mkTyO))
     , (DC_Named "read", Forall ["A"] (TyVar 0 `mkTyArrow` mkTyO))
+    , (DC_Named "flex", Forall ["A"] (TyVar 0 `mkTyArrow` mkTyO))
     ]
 
 theInitialFactDecls :: [TermNode]

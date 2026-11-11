@@ -109,11 +109,43 @@ logical roles and predicate calls over instantiated graphs. Quantifier scopes,
 local clauses and continuations are native state, not Haskell AST evaluation.
 src/X/higher_machine.h and src/X/term.h specify the C ABI and prefix term wire.
 
+A machine keeps its program across runs, and wordcode can be given to it in
+fragments (hol_v2_extend, hol_v2_query). A fragment has the same header and
+the same sections, read against the machine that receives it: symbolCount is
+the total after the fragment, and the symbol section holds the roles of the
+symbols that the machine does not have yet. Templates, facts and the literal
+payload are the fragment's own and are numbered from zero. A fragment that
+extends the program has no query slot and the queryRoot -1; its symbols and
+facts join the program, after the ones already there. A fragment with a query
+has no fact; its symbols and its query last for one run. A whole program is
+the fragment of a machine that has no symbol yet.
+
+`flex` (HolBETA 3.6) is symbol role 22. The EXEC loop decides it itself: it
+brings the argument to head normal form, skips the leading abstractions and
+looks at the head. It raises no host event and binds nothing. A program that
+mentions `flex` is compiled for version 2.
+
+Symbol roles 23 and 24 only describe constants. Role 23 marks the functions
+that the host evaluates (`+`, `-`, `*` and `/`), and role 24 the type `nat`.
+The search treats both as ordinary constants. The EXEC loop reads them to
+decide whether an equality needs the host (see the next section).
+
 General search and host services
 -------------------------------
-Version 2 indexes global facts by their dense predicate-symbol IDs. Each call
-merges its symbol chain with the dynamically classified (-1) chain in original
-source order. Local hypotheses retain their lexical order; a conservative
+Version 2 indexes global facts by their dense predicate-symbol IDs, and
+within a predicate by the first argument. A fact whose head is literally the
+predicate applied to arguments has a key when its first argument is a natural
+literal or has an ordinary constant as its rigid head. A call whose own first
+argument has a key of that kind takes the facts with the same key and the
+facts without a key. A call whose first argument is a nominal takes the facts
+without a key, when the keyed ones have constants. Every other call takes
+all the facts of its predicate, and so does every call of a predicate whose
+keyed facts have keys of both kinds or differ in arity. The index leaves out
+only facts that the exclusion described below would skip, so no answer and no
+order depends on it: it saves the visit, which makes a lookup in a table of
+facts independent of the size of the table. Each call merges its chains with
+the dynamically classified (-1) chain in original source order.
+Local hypotheses retain their lexical order; a conservative
 rigid-head hint skips unrelated heads before instantiation. Flexible,
 computational or unrecognized heads still take the ordinary matching path.
 This local filter avoids unnecessary instantiation but still scans the local
@@ -123,23 +155,58 @@ Ordinary calls search global clauses before local hypotheses. Equality keeps
 its distinct local-first policy: once a local head matches, failure of its
 body does not enable the arithmetic/global fallback. Choices are omitted only
 when the remaining search phases have no candidate. Cut barriers, snapshots
-and answer order retain these rules. Equality still uses its host decision
-service and ordered clause search; it is not replaced by unconditional native
-unification.
+and answer order retain these rules. Equality is always decided by its ordered
+clause search, never by unconditional native unification. Its host decision
+service is consulted only for an equality that may mention arithmetic.
 
 A candidate is excluded without a trial when its head is certain not to match:
 the clause has the literal shape `pi x\ ... head :- body`, the call is a rigid
 application, and either the two predicates differ or some argument pair has
-different rigid heads (two distinct ordinary constants or nominals). Naturals,
-successor terms, opaque formulas, logical operators, flexible terms and
-lambdas never exclude a clause, so the unifier still decides every other case. Excluded candidates are skipped before
-the current one is tried, in the state of the search checkpoint; a call whose
-remaining candidates are all excluded leaves no choice point. Each skipped
-candidate consumes the scheduler batch like a failed trial. A clause of the
-literal shape with at most 32 leading binders receives all its variables in
-one instantiation of its head, and its body is instantiated only after the
-head has unified. Any other clause keeps the binder-by-binder path. Identities are created in the same
-order as before, but a skipped trial no longer consumes any.
+different rigid heads (two distinct ordinary constants or nominals) or is a
+pair of different natural literals. A natural against a successor term,
+opaque formulas, logical operators, flexible terms and lambdas never exclude
+a clause, so the unifier still decides every other case. Excluded candidates
+are skipped before the current one is tried, in the state of the search
+checkpoint; a call whose remaining candidates are all excluded leaves no
+choice point. Each skipped candidate consumes the scheduler batch like a
+failed trial; a fact that the index left out is no candidate and consumes
+nothing. The shape of a global fact that has the literal shape and a rigid
+head is read once, when the fact is loaded, because no binding can change
+it; its head is then known to be that rigid application without being
+normalized at each trial. A local hypothesis, and a fact whose head was
+flexible when it was loaded, are read at every trial as before. A call
+starts its search from the spine that the EXEC loop has already taken of the
+goal. A clause of the literal shape with at most 32 leading binders
+receives all its variables in one instantiation of its head, and its body is
+instantiated only after the head has unified. Any other clause keeps the
+binder-by-binder path. Identities are created in the same order as before,
+but a skipped trial no longer consumes any.
+
+Two kinds of goal raise no host event at all, because the host would answer
+them without consulting any state:
+
+    equality that mentions no arithmetic
+        The host would answer "unknown" (4). The machine starts the equality
+        search with that answer.
+    implication whose antecedent can carry no premise
+        The host would add nothing to the premises. The machine enters the
+        implication with the premises it has.
+
+The machine decides "mentions no arithmetic" as follows. The type argument,
+in head normal form, is not the constant of role 24, and neither side, as it
+is bound at that moment, contains the successor, a constant of role 23 or an
+opaque formula symbol. The sides are not normalized for this test, so the
+test can only err towards the host: an equality that it sends to the host may
+turn out to be free of arithmetic there, and the host then answers as before.
+
+An antecedent can carry no premise when, below its conjunctions, every
+conjunct is an atom or a clause (`:-`) whose head is an ordinary constant or
+a nominal. A conjunct that is quantified (`pi`), a comparison, an equality, a
+Presburger formula or anything else is sent to the host, as before.
+
+A kernel written in Hol whose terms contain no arithmetic therefore runs
+without a single host stop until it prints or answers. Such a run exports
+nothing, so the collector is free to reclaim every variable of it.
 
 A host stop exports only what its reply can consult:
 
@@ -151,6 +218,9 @@ A host stop exports only what its reply can consult:
                                   the host holds no constraint and no
                                   disagreement is pending
     debugger stop                 the complete state and frames
+
+An equality reaches the host without arithmetic only when the machine's test
+above erred towards the host.
 
 Every remaining stop exports the complete variable-binding state, the pending
 disagreements and the compact declarations of pending frames, as before: a
@@ -185,15 +255,58 @@ Unique ranges for unseen native UID gaps instead of allocating a host map entry
 for every skipped UID. The built-in UniqueT reserves a range in constant time;
 observed identities retain native creation order and their existing mapping.
 
-Immutable, already-normal constructor trees can be reused during normalization,
-substitution and binding. The cache excludes variables, nominal constants,
-indices, lambdas, wildcards and opaque formula symbols; changing successor or
-opaque-symbol configuration refreshes it. In particular, binding a variable
-does not turn a term that contains that variable into an immutable cached tree.
-Equality and export traverse list tails iteratively. Native tests cover a
-10,000-element ground list without copying each suffix during binding.
-This does not remove recursive limits for raw term-wire import or every
-nonground traversal; large service payloads can still require substantial work.
+Every node of the term store carries a summary of the term below it. A node
+is stable when no variable, wildcard or opaque formula symbol occurs below
+it: no binding can change such a term. For a stable node the store knows
+whether the term is beta-normal, whether it is eta-normal, whether it
+mentions arithmetic, the largest scope of its nominal constants, and one more
+than its largest loose bound index. The summary is computed from the
+summaries of the children when the node is created, and all summaries are
+computed again when the successor, an opaque symbol or an arithmetic symbol
+is configured.
+
+Normalization, eta-reduction, substitution, the occurs check, scope lowering
+and equality leave a stable subterm unvisited whenever its summary answers
+their question. Binding a variable to a stable term whose nominals are within
+the scope of the variable shares the term: nothing is copied and nothing is
+visited. A term with nominal constants, abstractions and bound indices is
+thus handled like a ground one. The cost of a term operation follows the part
+of its arguments that still contains variables, and the part that a
+substitution or an abstraction really changes.
+
+Binding a variable does not make the terms that contain it stable. A value is
+stable from the moment it is built from stable parts: when a variable is
+bound to a term whose variables are all bound, the value is built again
+without them. This is what happens when a program binds an output after its
+components (`N = app M2 N2` after M2 and N2 are known). A term whose inner
+variables are bound later, such as a list built from its head towards its
+tail, keeps its variable links and is still visited at every use.
+
+Unification normalizes its two terms once. It then compares the arguments of
+a rigid term without normalizing or comparing each pair again, unless a
+binding was made in between, and it solves the last argument and the body of
+an abstraction iteratively, so that a long list does not nest.
+
+Native tests cover a 10,000-element ground list and a 10,000-element list of
+nominal constants without copying or visiting each suffix during binding.
+
+The depth of a term is bounded by memory, not by the C stack. Substitution,
+normalization, eta-reduction, the abstraction of a value over the parameters
+of its variable, the occurs and scope checks, equality and the arithmetic
+test keep their pending steps in an array of the term store. Native tests
+substitute into, abstract, normalize, search and compare a chain of 200,000
+applications. The import and the export of a term wire and the unification
+of two rigid terms work the same way: a wire is read and written through the
+frames, and the argument pairs of a rigid term wait in an array while the
+pairs before them are solved. Native tests write, read and unify a pair
+nested 200,000 times in its first component and a constant applied to
+200,000 arguments. Large service payloads can still require substantial work.
+
+The full normal form of an application visits its function part once. The
+weak head normal form that is found first is a spine without a redex at its
+head, so only the arguments along that spine remain to be normalized, and a
+head normal form needs nothing more. (Normalizing the function part again
+from its start made an application with n arguments cost n squared.)
 
 Embedding API
 -------------
@@ -204,6 +317,43 @@ src/Hol/V1/FullCompiler.hs
 Input is the existing typed, converted representation. Use the existing
 module loader/type checker first. The compiler preserves clause order and
 lambda structure; it does not execute the query during compilation.
+
+    prepareFullProgram :: KindEnv -> TypeEnv -> [TermNode]
+        -> Either String PreparedProgram
+    compilePreparedProgram :: PreparedProgram -> Map LogicVar (MonoType Int)
+        -> [TermNode] -> TermNode -> Either String FullProgram
+
+A host that asks many queries of the same program compiles the facts of that
+program once. `compilePreparedProgram (prepareFullProgram kinds types facts0)
+queryTypes facts1 query` runs like `withRuntimeMetadata kinds types queryTypes`
+applied to `compileFullProgram (facts0 ++ facts1) query`: the same clauses in
+the same order, with the symbols of the two environments attached. Only the
+numbering of symbols and templates differs. The prepared facts must contain
+no logic variable. The result is not validated by the compiler; createSession
+validates every program it runs.
+
+The compilers intern every template, symbol and annotation in a map whose
+size gives the next index, so compiling n templates costs n log n. (Counting
+the tables instead made it quadratic.)
+
+    loadPreparedProgram :: PreparedProgram
+        -> Either String (FullProgram, LoadedTables)
+    extendLoadedProgram :: LoadedTables -> [TermNode]
+        -> Either String (FullProgram, LoadedTables)
+    queryLoadedProgram :: LoadedTables -> Map LogicVar (MonoType Int)
+        -> TermNode -> Either String FullProgram
+    validateLoadedFragment :: LoadedTables -> FullProgram -> Either String ()
+
+A host that keeps one machine for many queries compiles fragments (see the
+wordcode above). loadPreparedProgram gives the prepared program with the
+query `true`, from which the machine is created, and the tables of its
+symbols and annotations. extendLoadedProgram compiles more facts, which must
+contain no logic variable, and gives the tables after them.
+queryLoadedProgram compiles a query; what it adds to the tables lasts for
+its run, so the tables are not returned. A fragment shares no template with
+an earlier one: the tables are all that the host keeps, and their size does
+not grow with the number of facts. validateLoadedFragment is
+validateFullBytecode for a fragment: it examines what the fragment adds.
 
 src/Hol/V1/FullBytecode.hs
 
@@ -233,6 +383,22 @@ src/Hol/V1/FullRuntime.hs
 
 nextSolution returns one answer or exhaustion and uses RuntimeEnv services;
 runFullProgram additionally drives the _Answer callback/continuation protocol.
+
+    createEngine :: PreparedProgram -> IO (Either String Engine)
+    extendEngine :: Engine -> [TermNode] -> IO (Either String ())
+    withQuery :: RuntimeEnv -> IORef Bool -> Engine
+        -> Map LogicVar (MonoType Int) -> TermNode -> (Session -> IO a)
+        -> IO (Either String a)
+    leaveEngine :: Engine -> IO (Either String ())
+    closeEngine :: Engine -> IO ()
+
+An Engine is a machine that keeps its program. extendEngine adds facts to
+it, and withQuery runs one query on the facts given so far: inside the action
+the session is used like one from withSession, and it answers as a session
+on a new machine with the same facts does. The session ends with the action;
+leaveEngine releases what the run allocated. One caller uses an engine at a
+time. An engine whose machine reports an error is unusable: every later call
+returns that error, and the host builds another engine.
 The Context of an answer binds the query variables. It also binds every other
 native variable only when the complete state was exported: with a residual
 constraint or disagreement, while debugging, or after the type fallback above.
@@ -302,10 +468,10 @@ handlers. Cancellation regressions are compiled with -O2.
 The general term engine's normalization/unification/import/export also have a
 per-operation work bound:
 5,000,000 node visits by default, configurable with a positive setWorkLimit.
-Nested operations share the bound. Remaining recursive term traversals,
-including raw term-wire import, limit recursion to 8192 levels. Topological
-template loading and iterative ground-list equality/export do not impose that
-limit on list length. A single term operation remains atomic; batch cancellation
+Nested operations share the bound. No term operation limits the depth of a
+term. The reduction of an ill-typed raw term that has no normal form
+therefore ends at the work bound. A single term operation remains atomic;
+batch cancellation
 does not promise a fixed Ctrl-C wall-clock latency for every possible term.
 Exceeding a resource bound is an explicit execution error, not logical failure;
 a caller may raise the work limit and restore an earlier snapshot to retry.
@@ -320,13 +486,36 @@ point, every disagreement, and every variable or nominal that has been
 exported to or imported from the host. Compaction preserves order, so each
 choice point still restores a prefix of the same state; a trailed binding is
 kept exactly when its variable is still reachable. An unreachable identity is
-retired like one discarded by backtracking. Identities known to the host are
-never collected, and the host's identity tables still grow with them: a loop
-that passes a fresh unbound variable to a host service in every iteration
-keeps that variable. A stop that exports the complete state pins every
-variable alive at that stop. The first-order engine is unchanged. Snapshots
-copy state rather than using persistent sharing. These are memory/performance
-limits, not a reason to silently switch interpreters.
+retired like one discarded by backtracking; a collection retires all the
+identities it frees in one pass over the retired intervals. Identities known
+to the host are never collected, and the host's identity tables still grow
+with them: a loop that passes a fresh unbound variable to a host service in
+every iteration keeps that variable. A stop that exports the complete state
+pins every variable alive at that stop. The first-order engine is unchanged.
+Snapshots copy state rather than using persistent sharing. These are
+memory/performance limits, not a reason to silently switch interpreters.
+
+A machine that keeps its program leaves a run before it reads the next
+fragment, and on leaveEngine. Leaving undoes every binding and drops the heap
+above the program, the continuations, the choice points, the persistent
+assignments, the symbols and annotations that the query added, and the
+identities of the run. The work limit, the collection step and debugging
+return to their defaults. The next run therefore numbers its variables, calls
+and host states as a run on a new machine with the same program does. Arrays
+that the run grew large are released. A snapshot taken in a run cannot be
+restored once that run was left. A fragment that the machine rejects, like
+any store error, leaves the machine in error. The program only grows: a fact
+that was loaded is not removed, and a host that needs an older program builds
+another machine.
+
+The nodes of a program that precede its first variable are sealed when the
+program is loaded. No binding can make them refer to a younger node, so a
+collection neither visits nor moves them, and a complete-state export does
+not scan them. A program without a variable is sealed as a whole, which is
+the case of every program given in fragments: the cost of a collection then
+depends on the run alone. The table of identities keeps the size that the
+identities needed since the previous collection, so a run that creates as
+many again does not grow it again.
 
 Validation
 ----------
@@ -343,14 +532,37 @@ It removes backend banners and debugger inspection screens: the latter expose
 the intentionally different native continuation/choice-point representation.
 Separate API tests check the snapshot and assignment behavior behind that UI.
 
-Focused native regressions cover static/dynamic fact order, flexible and nominal
-local heads, equality fallback, cancellation during failed search and backtracking,
-and snapshots taken during a yielded search. Compact frame metadata is compared
-with the full bridge, including allocation failures. Identity tests distinguish
-retired UIDs from unused gaps and exercise authorized revival, hash deletion and
-snapshot restoration. Ground-term tests retain scope, opaque-term and rollback
-checks. Artifact tests reject overflowing nested metadata while preserving
+Focused native regressions cover static/dynamic fact order, flexible and
+nominal local heads, equality fallback, exclusion by natural literals,
+cancellation during failed search and backtracking, and snapshots taken
+during a yielded search. They count the host events of equalities and
+implications of every kind named above, and run a list built from nominal
+constants under a budget of 256 node visits for each term operation. Compact
+frame metadata is compared with the full bridge, including allocation
+failures. Identity tests distinguish retired UIDs from unused gaps and
+exercise authorized revival, hash deletion, snapshot restoration and
+retirement by a collection. Term tests cover ground and stable terms with
+their scope, opaque-term and rollback checks, and terms 200,000 applications
+deep. Artifact tests reject overflowing nested metadata while preserving
 arbitrary-precision natural and Presburger values.
+
+Every native fixture whose clauses mention no query variable also runs in
+fragments: a seed with the built-in symbols, its clauses in two additions,
+and its query three times, once after a run that was left early. The answers
+are those of the whole program each time, leaving the last run gives back
+the heap and the identities, and a snapshot of a run that was left is
+refused. Malformed fragments and allocation failures while a fragment is
+read are covered. Two tables of 6000 facts, keyed by naturals and by
+constants, answer a call for their last row in the first scheduler step.
+The compiler test decodes the fragments of each of its programs and compares
+them with the whole program. The runtime test runs an engine against new
+machines before and after its program grows.
+
+test/v1/probe.sh runs the conversion checker of doc/LoL_plan.md, Appendix A,
+and a normal form 16384 applications deep on the LoL kernel, each under a
+wall-clock budget of about ten times its time on 2026-11-11 and a limit of
+2 GiB on its address space. It catches a return of quadratic time or of
+unbounded memory, not a small slowdown.
 
 Local performance (2026-11-10)
 ------------------------------

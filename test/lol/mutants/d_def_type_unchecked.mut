@@ -1,0 +1,4 @@
+# [D-Def] without the check that the declared type is a type.
+- admit_def A T :- sort_of "D-Def" A _, check T A.
++ admit_def A T :- check T A.
+kills pts "D-Def: not a type"

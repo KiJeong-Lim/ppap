@@ -248,7 +248,7 @@ emitGoal code next = case code of
         emit (Choice left right)
 
 callable :: Constant -> Bool
-callable (DC (DC_Named name)) = name /= "read" && name /= "print"
+callable (DC (DC_Named name)) = name /= "read" && name /= "print" && name /= "flex"
 callable _ = False
 
 knownNonNatType :: TermNode -> Bool
@@ -293,7 +293,7 @@ compileTerm term = case term of
     _ -> unsupportedLocal "lambda terms, suspensions, and Presburger goals require the general V1 runtime"
 
 plainConstant :: Constant -> Bool
-plainConstant (DC (DC_Named name)) = name /= "read" && name /= "print"
+plainConstant (DC (DC_Named name)) = name /= "read" && name /= "print" && name /= "flex"
 plainConstant (DC DC_Nil) = True
 plainConstant (DC DC_Cons) = True
 plainConstant (DC (DC_ChrL _)) = True
@@ -338,13 +338,13 @@ internTerm term = do
     case Map.lookup term (termIndices state) of
         Just index -> return index
         Nothing -> do
-            let index = IntMap.size (terms state)
+            let index = Map.size (termIndices state)
             put state { terms = IntMap.insert index term (terms state), termIndices = Map.insert term index (termIndices state) }
             return index
 
 emit :: Instruction -> Compile Int
 emit instruction = do
-    index <- gets (IntMap.size . instructions)
+    index <- gets (maybe 0 ((+ 1) . fst) . IntMap.lookupMax . instructions)
     modify (\s -> s { instructions = IntMap.insert index instruction (instructions s) })
     return index
 

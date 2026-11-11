@@ -1,0 +1,4 @@
+# max(l + 1, 0) = 0.
+- lmax (ls L) lz M :- !, M = ls L.
++ lmax (ls L) lz M :- !, M = lz.
+kills pts "P-Max: not the codomain level"

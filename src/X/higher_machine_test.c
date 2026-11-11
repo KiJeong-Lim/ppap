@@ -13,6 +13,9 @@ typedef struct {
     const int64_t *answers;
     const size_t *sizes;
     size_t count;
+    /* The same program in fragments: a seed, two additions and the query.
+        * Empty when a clause of the program mentions a query variable. */
+    struct { const int64_t *code; size_t length; } pieces[4];
 } TestCase;
 
 #include "higher_machine_test_fixtures.h"
@@ -60,16 +63,16 @@ static int next_answer(HolV2Machine *machine)
     return -1;
 }
 
-static int check(const TestCase *test, int injected)
+/* 1 when the machine gave every answer and then none; 0 otherwise, which only
+    * an injected failure may cause. */
+static int answers(const TestCase *test, HolV2Machine *machine, int injected)
 {
-    HolV2Machine *machine = create(test);
-    if (!machine) { assert(injected); return 0; }
     size_t answer = 0, offset = 0;
     int status;
     while ((status = next_answer(machine)) == 1) {
         size_t count = hol_v2_answer_size(machine);
         int64_t *words = malloc((count ? count : 1) * sizeof(*words));
-        if (!words) { assert(injected); hol_v2_destroy(machine); return 0; }
+        if (!words) { assert(injected); return 0; }
         if (hol_v2_answer(machine, words, count) < 0) { free(words); status = -1; break; }
         if (!injected) {
             if (answer >= test->count || test->sizes[answer] != count || memcmp(words, test->answers + offset, count * sizeof(*words))) {
@@ -87,8 +90,103 @@ static int check(const TestCase *test, int injected)
         if (status < 0) fprintf(stderr, "%s: %s\n", test->name, hol_v2_error(machine));
         assert(status == 0 && answer == test->count);
     }
-    hol_v2_destroy(machine);
     return status == 0;
+}
+
+static int check(const TestCase *test, int injected)
+{
+    HolV2Machine *machine = create(test);
+    if (!machine) { assert(injected); return 0; }
+    int complete = answers(test, machine, injected);
+    hol_v2_destroy(machine);
+    return complete;
+}
+
+/* A program given in fragments answers as the whole program does, every time
+    * its query runs: after a complete run, and after a run that was left early.
+    * Leaving a run gives back its heap and its identities, and ends the life
+    * of its snapshots. */
+static int fragments(const TestCase *test, int injected)
+{
+    if (!test->pieces[3].length) return 1;
+    HolV2Machine *machine = hol_v2_create(test->pieces[0].code, test->pieces[0].length);
+    if (!machine) { assert(injected); return 0; }
+    int complete = hol_v2_extend(machine, test->pieces[1].code, test->pieces[1].length) == 1
+        && hol_v2_extend(machine, test->pieces[2].code, test->pieces[2].length) == 1;
+    size_t heap = hol_v2_heap_count(machine);
+    uint64_t frontier = hol_v2_uid_frontier(machine);
+    if (complete) assert(hol_v2_next(machine) == 0);
+    for (int round = 0; complete && round < (collect_always ? 1 : 3); ++round) {
+        complete = hol_v2_query(machine, test->pieces[3].code, test->pieces[3].length) == 1;
+        if (complete && round == 1) {
+            hol_v2_next(machine);
+            HolV2Machine *during = hol_v2_clone(machine);
+            complete = hol_v2_query(machine, test->pieces[3].code, test->pieces[3].length) == 1;
+            if (during && complete) assert(hol_v2_restore(machine, during) < 0);
+            hol_v2_destroy(during);
+        }
+        if (complete && collect_always) hol_v2_set_collection_step(machine, 0);
+        complete = complete && answers(test, machine, injected);
+    }
+    complete = complete && hol_v2_idle(machine) == 1;
+    if (complete) assert(hol_v2_heap_count(machine) == heap && hol_v2_uid_frontier(machine) == frontier && hol_v2_next(machine) == 0);
+    if (!injected && !complete) {
+        fprintf(stderr, "%s in fragments: %s\n", test->name, hol_v2_error(machine));
+        abort();
+    }
+    hol_v2_destroy(machine);
+    return complete;
+}
+
+/* A machine created with a query keeps the variables of that query in its
+    * program: a later query numbers its own after them, every time. */
+static void later_query(const TestCase *test)
+{
+    HolV2Machine *machine = create(test);
+    uint64_t own = (uint64_t) test->code[5];
+    assert(machine && own && test->pieces[3].length && answers(test, machine, 0));
+    for (int round = 0; round < 2; ++round) {
+        assert(hol_v2_query(machine, test->pieces[3].code, test->pieces[3].length) == 1 && hol_v2_uid_frontier(machine) == 2 * own);
+        if (collect_always) hol_v2_set_collection_step(machine, 0);
+        assert(answers(test, machine, 0));
+    }
+    assert(hol_v2_idle(machine) == 1 && hol_v2_uid_frontier(machine) == own);
+    hol_v2_destroy(machine);
+}
+
+/* A fragment that does not fit its machine leaves the machine in error. */
+static void malformed_fragments(const TestCase *test)
+{
+    assert(test->pieces[3].length);
+    for (int piece = 1; piece < 4; ++piece) {
+        for (size_t position = 2; position < 8; ++position) {
+            if (position == 7) continue;
+            HolV2Machine *machine = hol_v2_create(test->pieces[0].code, test->pieces[0].length);
+            assert(machine);
+            if (piece == 3) assert(hol_v2_extend(machine, test->pieces[1].code, test->pieces[1].length) == 1 && hol_v2_extend(machine, test->pieces[2].code, test->pieces[2].length) == 1);
+            size_t length = test->pieces[piece].length;
+            int64_t *code = malloc(length * sizeof(*code));
+            assert(code);
+            memcpy(code, test->pieces[piece].code, length * sizeof(*code));
+            code[position] = position == 6 && piece < 3 ? 0 : position == 3 ? 0 : code[position] + 1;
+            int loaded = piece == 3 ? hol_v2_query(machine, code, length) : hol_v2_extend(machine, code, length);
+            if (loaded != -1 || !hol_v2_error(machine)[0] || hol_v2_next(machine) != -1 || hol_v2_idle(machine) != -1) {
+                fprintf(stderr, "%s: fragment %d with word %zu changed was accepted\n", test->name, piece, position);
+                abort();
+            }
+            hol_v2_destroy(machine);
+            free(code);
+        }
+    }
+}
+
+/* The goal is the last row of a long table: the first step answers, where a
+    * scan of the table would have yielded first. */
+static void indexed_table(const TestCase *test)
+{
+    HolV2Machine *machine = create(test);
+    assert(machine && hol_v2_next(machine) == 1 && next_answer(machine) == 0);
+    hol_v2_destroy(machine);
 }
 
 static void snapshots(const TestCase *test)
@@ -151,11 +249,12 @@ static void snapshot_stale_uid(const TestCase *test)
     HolV2Machine *before = hol_v2_clone(machine);
     assert(before && next_answer(machine) == 1);
     assert(hol_v2_restore(machine, before) == 1);
+    hol_v2_set_debugging(machine, 1);
     int status;
     do { status = hol_v2_next(machine); } while (status == 2);
     assert(status == 3);
     int64_t stale[] = { 1, 0, 1, 0, 1, -1, 0, 1, 0, 1, -1 };
-    assert(hol_v2_resume(machine, 4, 0, 0, stale, sizeof(stale) / sizeof(*stale)) < 0);
+    assert(hol_v2_resume(machine, 1, 0, 0, stale, sizeof(stale) / sizeof(*stale)) < 0);
     assert(strstr(hol_v2_error(machine), "expired identity"));
     hol_v2_destroy(before);
     hol_v2_destroy(machine);
@@ -258,15 +357,10 @@ static void snapshot_allocations(const TestCase *test)
     printf("PASS snapshot allocation cleanup (%zu failure points)\n", allocations);
 }
 
-static void yielded_search(const TestCase *test, int equality)
+static void yielded_search(const TestCase *test)
 {
     HolV2Machine *machine = create(test);
     assert(machine);
-    if (equality) {
-        assert(hol_v2_next(machine) == 3);
-        int64_t empty[] = { 0 };
-        assert(hol_v2_resume(machine, 4, 0, 0, empty, 1) == 1);
-    }
     assert(hol_v2_next(machine) == 2);
     HolV2Machine *during = hol_v2_clone(machine);
     assert(during);
@@ -294,6 +388,65 @@ static void yielded_backtracking(const TestCase *test)
     assert(hol_v2_restore(machine, during) == 1);
     assert(next_answer(machine) == 0);
     hol_v2_destroy(during);
+    hol_v2_destroy(machine);
+}
+
+/* The machine decides an equality without arithmetic and an implication whose
+    * antecedent gives the host no premise; every other one raises its event. */
+static const struct { const char *name; int kind; size_t count; } host_events[] = {
+    { "plain_equality", HV2_EVENT_EQUALITY, 0 },
+    { "natural_equality", HV2_EVENT_EQUALITY, 1 },
+    { "arithmetic_equality", HV2_EVENT_EQUALITY, 1 },
+    { "successor_equality", HV2_EVENT_EQUALITY, 1 },
+    { "bound_arithmetic_equality", HV2_EVENT_EQUALITY, 2 },
+    { "opaque_equality", HV2_EVENT_EQUALITY, 1 },
+    { "local_equality_precedence", HV2_EVENT_EQUALITY, 0 },
+    { "local_equality_precedence", HV2_EVENT_IMPLY, 1 },
+    { "stable_bottom_up_list", HV2_EVENT_EQUALITY, 0 },
+    { "plain_antecedent", HV2_EVENT_IMPLY, 0 },
+    { "quantified_antecedent", HV2_EVENT_IMPLY, 1 },
+    { "comparison_antecedent", HV2_EVENT_IMPLY, 1 },
+};
+
+static void raised_events(const TestCase *test)
+{
+    for (size_t i = 0; i < sizeof(host_events) / sizeof(*host_events); ++i) {
+        if (strcmp(test->name, host_events[i].name)) continue;
+        HolV2Machine *machine = create(test);
+        assert(machine);
+        size_t count = 0;
+        for (;;) {
+            int status = hol_v2_next(machine);
+            if (status == 1 || status == 2) continue;
+            if (status != 3) { assert(status == 0); break; }
+            int64_t info[6], empty[] = { 0 };
+            assert(hol_v2_event_info(machine, info, 6) == 1);
+            if (info[0] == host_events[i].kind) ++count;
+            assert(hol_v2_resume(machine, info[0] == HV2_EVENT_EQUALITY ? 4 : 1, 0, 0, empty, 1) == 1);
+        }
+        if (count != host_events[i].count) {
+            fprintf(stderr, "%s: %zu events of kind %d\n", test->name, count, host_events[i].kind);
+            abort();
+        }
+        hol_v2_destroy(machine);
+    }
+}
+
+static void bounded_work(const TestCase *test)
+{
+    HolV2Machine *machine = create(test);
+    assert(machine && hol_v2_set_work_limit(machine, 256) == 1);
+    assert(next_answer(machine) == 1 && next_answer(machine) == 0);
+    hol_v2_destroy(machine);
+}
+
+static void excluded_natural(const TestCase *test)
+{
+    HolV2Machine *machine = create(test);
+    assert(machine);
+    uint64_t before = hol_v2_uid_frontier(machine);
+    assert(next_answer(machine) == 1 && hol_v2_uid_frontier(machine) == before + 1);
+    assert(next_answer(machine) == 0 && hol_v2_uid_frontier(machine) == before + 1);
     hol_v2_destroy(machine);
 }
 
@@ -426,9 +579,17 @@ static void scenarios(void)
     size_t count = sizeof(cases) / sizeof(*cases);
     for (size_t i = 0; i < count; ++i) {
         check(&cases[i], 0);
-        if (!strcmp(cases[i].name, "yielded_clause_search")) yielded_search(&cases[i], 0);
-        if (!strcmp(cases[i].name, "yielded_equality_resume")) yielded_search(&cases[i], 1);
+        /* The walk keeps a choice point for each of its 5000 levels: with a
+            * collection before each goal one run of it is enough. */
+        if (!collect_always || strcmp(cases[i].name, "yield_failed_backtracking")) fragments(&cases[i], 0);
+        raised_events(&cases[i]);
+        if (!strcmp(cases[i].name, "indexed_natural_table")) indexed_table(&cases[i]);
+        if (!strcmp(cases[i].name, "indexed_constant_table")) indexed_table(&cases[i]);
+        if (!strcmp(cases[i].name, "yielded_clause_search")) yielded_search(&cases[i]);
+        if (!strcmp(cases[i].name, "yielded_equality_resume")) yielded_search(&cases[i]);
         if (!strcmp(cases[i].name, "yield_failed_backtracking")) yielded_backtracking(&cases[i]);
+        if (!strcmp(cases[i].name, "stable_bottom_up_list")) bounded_work(&cases[i]);
+        if (!strcmp(cases[i].name, "excluded_natural_clause")) excluded_natural(&cases[i]);
         if (!strcmp(cases[i].name, "excluded_clause_choice")) excluded_choice(&cases[i]);
         if (!strcmp(cases[i].name, "collected_descent")) collected_descent(&cases[i]);
         if (!strcmp(cases[i].name, "compact_frame_declarations")) compact_declarations(&cases[i]);
@@ -453,6 +614,21 @@ static void scenarios(void)
     }
     fail_at = 0;
     printf("PASS native allocation cleanup (%zu failure points)\n", allocations);
+    const TestCase *split = NULL;
+    for (size_t i = 0; i < count; ++i) if (!strcmp(cases[i].name, "predicate_cut")) split = &cases[i];
+    assert(split);
+    malformed_fragments(split);
+    later_query(split);
+    allocation_count = 0;
+    fragments(split, 0);
+    allocations = allocation_count;
+    for (size_t i = 1; i <= allocations; ++i) {
+        allocation_count = 0;
+        fail_at = i;
+        fragments(split, 1);
+    }
+    fail_at = 0;
+    printf("PASS native fragments: malformed ones, allocation cleanup (%zu failure points)\n", allocations);
 }
 
 int main(void)

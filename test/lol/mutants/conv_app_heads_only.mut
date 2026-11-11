@@ -1,0 +1,5 @@
+# Compatibility for applications compares the heads only.
+- conv_whnf (app M1 N1) (app M2 N2) :- !, conv_whnf M1 M2, conv N1 N2.
++ conv_whnf (app M1 N1) (app M2 N2) :- !, conv_whnf M1 M2.
+kills pts "different sorts are not convertible"
+kills church "2 is not 4"

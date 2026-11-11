@@ -4,6 +4,7 @@ import qualified Calc.Presburger.Internal as P
 import Control.Monad
 import Data.Int
 import qualified Data.IntMap.Strict as IntMap
+import qualified Data.IntSet as IntSet
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as Set
@@ -400,18 +401,36 @@ symbolRole (ConstantSymbol constant) = case constant of
     DC (DC_Named "read") -> 18
     DC (DC_Named "print") -> 19
     DC DC_Succ -> 21
+    DC (DC_Named "flex") -> 22
+    DC DC_plus -> 23
+    DC DC_minus -> 23
+    DC DC_mul -> 23
+    DC DC_div -> 23
+    TC (TC_Named "nat") -> 24
     _ -> 0
 
 fullSections :: [Int64] -> Either String ([Int64], [[Int64]], [Int64], [[Int64]], [[Int64]], [Int64])
-fullSections words = case splitAt 8 words of
+fullSections words = case take 8 words of
+    [magic, version, _, _, _, _, entry, _]
+        | magic == 0x484f4c31 && version == 2 && entry < 0 -> Left "negative full bytecode count"
+    _ -> fragmentSections 0 words
+
+-- A fragment is loaded on a machine that has `known` symbols already: its
+-- symbol count is the total after it, and its symbol section has the roles of
+-- the new ones. Its templates, clauses and digits are numbered from zero. A
+-- fragment that only extends the program has no query slot and the entry -1.
+fragmentSections :: Int -> [Int64] -> Either String ([Int64], [[Int64]], [Int64], [[Int64]], [[Int64]], [Int64])
+fragmentSections known words = case splitAt 8 words of
     (header@[magic, version, terms, symbols, facts, slots, entry, metadata], rest) -> do
         unless (magic == 0x484f4c31 && version == 2) (Left "unsupported full bytecode magic or version")
-        unless (all (>= 0) [terms, symbols, facts, slots, entry, metadata]) (Left "negative full bytecode count")
-        let fixed = 2 * toInteger slots + toInteger symbols + 6 * toInteger terms + 2 * toInteger facts
+        unless (all (>= 0) [terms, symbols, facts, slots, metadata] && entry >= -1) (Left "negative full bytecode count")
+        unless (toInteger known <= toInteger symbols) (Left "a full bytecode fragment has fewer symbols than its program")
+        unless (entry >= 0 || slots == 0) (Left "a full bytecode fragment has query slots and no query")
+        let fixed = 2 * toInteger slots + (toInteger symbols - toInteger known) + 6 * toInteger terms + 2 * toInteger facts
         unless (fixed <= toInteger (length rest)) (Left "truncated full bytecode sections")
         unless (entry < terms) (Left "invalid full bytecode query entry")
         let (slotWords, afterSlots) = splitAt (2 * fromIntegral slots) rest
-            (roleWords, afterRoles) = splitAt (fromIntegral symbols) afterSlots
+            (roleWords, afterRoles) = splitAt (fromIntegral symbols - known) afterSlots
             (termWords, afterTerms) = splitAt (6 * fromIntegral terms) afterRoles
             (factWords, payload) = splitAt (2 * fromIntegral facts) afterTerms
         return (header, chunks 2 slotWords, roleWords, chunks 6 termWords, chunks 2 factWords, payload)
@@ -421,25 +440,37 @@ fullSections words = case splitAt 8 words of
         chunks count values = take count values : chunks count (drop count values)
 
 validateFullBytecode :: FullProgram -> Either String ()
-validateFullBytecode program = do
-    (header, slots, roles, terms, facts, payload) <- fullSections (fullWords program)
+validateFullBytecode program = fullSections (fullWords program) >>= validateSections (const False) 0 0 program
+
+-- The tables of `program` are those of the program its fragment is loaded on,
+-- with what the fragment adds. The first `knownSymbols` symbols, which have the
+-- identities `known`, and the first `knownMetadata` annotations were validated
+-- with an earlier fragment: only the additions are examined.
+validateFullFragment :: (String -> Bool) -> Int -> Int -> FullProgram -> Either String ()
+validateFullFragment known knownSymbols knownMetadata program = fragmentSections knownSymbols (fullWords program) >>= validateSections known knownSymbols knownMetadata program
+
+validateSections :: (String -> Bool) -> Int -> Int -> FullProgram -> ([Int64], [[Int64]], [Int64], [[Int64]], [[Int64]], [Int64]) -> Either String ()
+validateSections known knownSymbols knownMetadata program (header, slots, roles, terms, facts, payload) = do
+    let (_, newSymbols) = IntMap.split (knownSymbols - 1) (fullSymbols program)
+        (_, newMetadata) = IntMap.split (knownMetadata - 1) (fullMetadata program)
+        identities = map symbolIdentity (IntMap.elems newSymbols)
     case header of
         [_, _, termCount, symbolCount, _, slotCount, entry, metadataCount] -> do
-            unless (IntMap.keys (fullSymbols program) == [0 .. fromIntegral symbolCount - 1]) (Left "full symbol metadata count mismatch")
-            unless (Set.size (Set.fromList (map symbolIdentity (IntMap.elems (fullSymbols program)))) == IntMap.size (fullSymbols program)) (Left "duplicate full symbol identity")
-            unless (IntMap.keys (fullMetadata program) == [0 .. fromIntegral metadataCount - 1]) (Left "full annotation metadata count mismatch")
+            unless (IntMap.keys newSymbols == [knownSymbols .. fromIntegral symbolCount - 1]) (Left "full symbol metadata count mismatch")
+            unless (Set.size (Set.fromList identities) == length identities && not (any known identities)) (Left "duplicate full symbol identity")
+            unless (IntMap.keys newMetadata == [knownMetadata .. fromIntegral metadataCount - 1]) (Left "full annotation metadata count mismatch")
             unless (toInteger (length (fullVariables program)) == toInteger slotCount) (Left "full query variable count mismatch")
             unless (Set.size (Set.fromList (fullVariables program)) == length (fullVariables program)) (Left "duplicate full query variable")
-            unless (roles == map (fromIntegral . symbolRole) (IntMap.elems (fullSymbols program))) (Left "symbol roles do not match metadata")
+            unless (roles == map (fromIntegral . symbolRole) (IntMap.elems newSymbols)) (Left "symbol roles do not match metadata")
             unless (all (\digit -> digit >= 48 && digit <= 57) payload) (Left "invalid natural literal payload")
-            mapM_ (restoreSymbol . storeSymbol) (IntMap.elems (fullSymbols program))
-            mapM_ (restoreMetadata . storeMetadata) (IntMap.elems (fullMetadata program))
+            mapM_ (restoreSymbol . storeSymbol) (IntMap.elems newSymbols)
+            mapM_ (restoreMetadata . storeMetadata) (IntMap.elems newMetadata)
             mapM_ (restoreVar . storeVar) (fullVariables program)
             mapM_ (checkSlot metadataCount) (zip slots (fullVariables program))
-            mapM_ (checkTerm termCount symbolCount slotCount metadataCount payload) (zip [0 ..] terms)
+            mapM_ (checkTerm termCount symbolCount slotCount metadataCount (length payload, IntSet.fromDistinctAscList [offset | (offset, 48) <- zip [0 ..] payload])) (zip [0 ..] terms)
             mapM_ (checkFact termCount symbolCount) facts
             let depths = foldl depthOf IntMap.empty (zip [0 ..] terms)
-            unless (IntMap.lookup (fromIntegral entry) depths == Just 0) (Left "unbound de Bruijn index in full query")
+            unless (entry == -1 || IntMap.lookup (fromIntegral entry) depths == Just 0) (Left "unbound de Bruijn index in full query")
             forM_ facts $ \row -> case row of
                 [_, root] -> unless (IntMap.lookup (fromIntegral root) depths == Just 0) (Left "unbound de Bruijn index in full clause")
                 _ -> Left "invalid full clause"
@@ -453,7 +484,7 @@ validateFullBytecode program = do
         checkSlot _ _ = Left "invalid query slot"
         isTypeVariable (LV_ty_var _) = True
         isTypeVariable _ = False
-        checkTerm _ symbols slots metadata payload (index, [tag, a, b, c, d, meta]) = do
+        checkTerm _ symbols slots metadata (digitCount, zeroDigits) (index, [tag, a, b, c, d, meta]) = do
             checkMeta metadata meta
             unless (c == 0 && d == 0) (Left "invalid reserved template operand")
             case tag of
@@ -463,8 +494,8 @@ validateFullBytecode program = do
                 3 -> unless (a >= 0) (Left "negative de Bruijn index") >> zero b
                 4 -> checkIndex index a >> zero b
                 5 -> do
-                    unless (a >= 0 && b > 0 && toInteger a + toInteger b <= toInteger (length payload)) (Left "invalid natural payload reference")
-                    unless (b == 1 || payload !! fromIntegral a /= 48) (Left "noncanonical natural literal")
+                    unless (a >= 0 && b > 0 && toInteger a + toInteger b <= toInteger digitCount) (Left "invalid natural payload reference")
+                    unless (b == 1 || IntSet.notMember (fromIntegral a) zeroDigits) (Left "noncanonical natural literal")
                 6 -> zero a >> zero b
                 _ -> Left "unknown full bytecode term tag"
         checkTerm _ _ _ _ _ _ = Left "invalid full bytecode term"
@@ -538,10 +569,17 @@ data TemplateValue
 fullSourceTerms :: FullProgram -> Either String ([TermNode], TermNode)
 fullSourceTerms program = do
     validateFullBytecode program
-    (header, _, _, rows, facts, payload) <- fullSections (fullWords program)
+    (clauses, goal) <- fragmentSourceTerms 0 program
+    maybe (Left "missing full query") (\query -> return (clauses, query)) goal
+
+-- The clauses and the query of a validated fragment that is loaded on a program
+-- with `known` symbols. A fragment that only extends the program has no query.
+fragmentSourceTerms :: Int -> FullProgram -> Either String ([TermNode], Maybe TermNode)
+fragmentSourceTerms known program = do
+    (header, _, _, rows, facts, payload) <- fragmentSections known (fullWords program)
     table <- foldM (decodeTemplate payload) IntMap.empty (zip [0 ..] rows)
     clauses <- mapM (fact table) facts
-    goal <- lookupTerm table (header !! 6) >>= finish
+    goal <- if header !! 6 < 0 then return Nothing else Just <$> (lookupTerm table (header !! 6) >>= finish)
     return (clauses, goal)
     where
         fact table [_, root] = lookupTerm table root >>= finish

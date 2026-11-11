@@ -1,0 +1,5 @@
+# [T-App] without the check of the argument.
+-     expect (W = prod A B) (rep "T-App" (M :: TM :: [])),
+-     check N A,
++     expect (W = prod A B) (rep "T-App" (M :: TM :: [])),
+kills pts "T-App: the argument has another type"

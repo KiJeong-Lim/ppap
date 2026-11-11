@@ -1,0 +1,129 @@
+% test/lol/kernel/leibniz.hol
+%
+% Leibniz equality: definitions whose checking needs [R-Delta], [R-Beta] and
+% impredicative `Prop` together.
+%
+%   eq    : forall a : Type@{0}, a -> a -> Prop
+%        := fun a x y => forall q : a -> Prop, q x -> q y
+%   refl  : forall a x, eq a x x := fun a x q h => h
+%   sym   : forall a x y, eq a x y -> eq a y x
+%        := fun a x y e => e (fun z => eq a z x) (refl a x)
+%   trans : forall a x y z, eq a x y -> eq a y z -> eq a x z
+%        := fun a x y z e1 e2 => e2 (fun w => eq a x w) e1
+%   congr : forall a b (f : a -> b) x y, eq a x y -> eq b (f x) (f y)
+%        := fun a b f x y e => e (fun z => eq b (f x) (f z)) (refl b (f x))
+%   badsym: the type of sym, with the body `fun a x y e => e`
+
+import lol.hol.kernel.
+
+type test (string -> o).
+
+% decl N: the kernel admits declaration N of this module as a definition.
+% ax N: the kernel admits declaration N of this module as an axiom.
+type decl (nat -> o).
+type ax (nat -> o).
+
+decl N :- cst_type N A, cst_body N T, admit_def A T.
+ax N :- cst_type N A, admit_ax A.
+
+% 0: eq
+cst_type 0 (prod (typ lz) (a\ prod a (h1\ prod a (h2\ prop)))).
+cst_body 0
+    (lam (typ lz) (a\
+        lam a (x\
+            lam a (y\
+                prod (prod a (h6\ prop)) (q\ prod (app q x) (h7\ app q y)))))).
+
+% 1: refl
+cst_type 1 (prod (typ lz) (a\ prod a (x\ app (app (app (cst 0) a) x) x))).
+cst_body 1
+    (lam (typ lz) (a\
+        lam a (x\ lam (prod a (h2\ prop)) (q\ lam (app q x) (h\ h))))).
+
+% 2: sym
+cst_type 2
+    (prod (typ lz) (a\
+        prod a (x\
+            prod a (y\
+                prod (app (app (app (cst 0) a) x) y) (h5\
+                    app (app (app (cst 0) a) y) x))))).
+cst_body 2
+    (lam (typ lz) (a\
+        lam a (x\
+            lam a (y\
+                lam (app (app (app (cst 0) a) x) y) (e\
+                    app (app e
+                        (lam a (z\ app (app (app (cst 0) a) z) x)))
+                        (app (app (cst 1) a) x)))))).
+
+% 3: trans
+cst_type 3
+    (prod (typ lz) (a\
+        prod a (x\
+            prod a (y\
+                prod a (z\
+                    prod (app (app (app (cst 0) a) x) y) (h6\
+                        prod (app (app (app (cst 0) a) y) z) (h8\
+                            app (app (app (cst 0) a) x) z))))))).
+cst_body 3
+    (lam (typ lz) (a\
+        lam a (x\
+            lam a (y\
+                lam a (z\
+                    lam (app (app (app (cst 0) a) x) y) (e1\
+                        lam (app (app (app (cst 0) a) y) z) (e2\
+                            app (app e2
+                                (lam a (w\ app (app (app (cst 0) a) x) w)))
+                                e1))))))).
+
+% 4: congr
+cst_type 4
+    (prod (typ lz) (a\
+        prod (typ lz) (b\
+            prod (prod a (h4\ b)) (f\
+                prod a (x\
+                    prod a (y\
+                        prod (app (app (app (cst 0) a) x) y) (h8\
+                            app (app (app (cst 0) b) (app f x)) (app f y)))))))).
+cst_body 4
+    (lam (typ lz) (a\
+        lam (typ lz) (b\
+            lam (prod a (h12\ b)) (f\
+                lam a (x\
+                    lam a (y\
+                        lam (app (app (app (cst 0) a) x) y) (e\
+                            app (app e
+                                (lam a (z\
+                                    app (app (app (cst 0)
+                                        b)
+                                        (app f x))
+                                        (app f z))))
+                                (app (app (cst 1) b) (app f x))))))))).
+
+% 5: badsym
+cst_type 5
+    (prod (typ lz) (a\
+        prod a (x\
+            prod a (y\
+                prod (app (app (app (cst 0) a) x) y) (h5\
+                    app (app (app (cst 0) a) y) x))))).
+cst_body 5
+    (lam (typ lz) (a\
+        lam a (x\ lam a (y\ lam (app (app (app (cst 0) a) x) y) (e\ e))))).
+%! admit
+test "eq" :- decl 0.
+
+%! admit
+test "refl" :- decl 1.
+
+%! admit
+test "sym" :- decl 2.
+
+%! admit
+test "trans" :- decl 3.
+
+%! admit
+test "congr" :- decl 4.
+
+%! reject T-Conv
+test "a wrong proof of symmetry" :- decl 5.

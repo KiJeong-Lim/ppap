@@ -26,10 +26,13 @@ typedef struct {
     size_t heap, trail, pending, pending_head;
 } HTCheckpoint;
 
+/* A few arguments are kept in the spine itself, so a spine is not copied:
+    * args may point into it. */
 typedef struct {
     HTerm head;
     HTerm *args;
     size_t count;
+    HTerm few[6];
 } HTSpine;
 
 HolTermStore *ht_create(void);
@@ -39,6 +42,16 @@ const char *ht_error(const HolTermStore *store);
 size_t ht_heap_count(const HolTermStore *store);
 HTCheckpoint ht_checkpoint(const HolTermStore *store);
 int ht_restore(HolTermStore *store, HTCheckpoint checkpoint);
+/* The state between two runs: the first heap nodes stay, every binding is
+    * undone, no disagreement is pending, and the identities from next_uid on, the
+    * marks of the symbols from symbols on and the work limit are forgotten. The
+    * caller keeps no node and no identity above those bounds. 0: store error. */
+int ht_reset(HolTermStore *store, size_t heap, uint64_t next_uid, size_t symbols);
+/* Seals the nodes that precede the first variable: no binding can make them
+    * refer to a younger node, so a collection that keeps them neither visits nor
+    * moves them. Returns their number; ht_sealed reads it. */
+size_t ht_seal(HolTermStore *store);
+size_t ht_sealed(const HolTermStore *store);
 uint64_t ht_next_uid(const HolTermStore *store);
 /* Advancing the fresh-UID frontier does not retire never-materialized gaps. */
 int ht_advance_uid(HolTermStore *store, uint64_t next_uid);
@@ -46,6 +59,11 @@ int ht_advance_uid(HolTermStore *store, uint64_t next_uid);
 int ht_preserve_identity_history(HolTermStore *restored, const HolTermStore *live);
 void ht_set_successor(HolTermStore *store, size_t symbol);
 int ht_set_opaque_symbol(HolTermStore *store, size_t symbol);
+/* An arithmetic symbol is one that the host evaluates. ht_mentions_arithmetic
+    * is 1 when the term, as bound now, contains such a symbol, the successor or
+    * an opaque symbol; 0 when it contains none; -1 on a store error. */
+int ht_set_arithmetic_symbol(HolTermStore *store, size_t symbol);
+int ht_mentions_arithmetic(HolTermStore *store, HTerm term);
 /* Positive per-operation node-visit bound; nested operations share the budget. */
 int ht_set_work_limit(HolTermStore *store, uint64_t visits);
 uint64_t ht_work_limit(const HolTermStore *store);
@@ -95,7 +113,7 @@ void ht_pin(HolTermStore *store, HTerm term);
 
 /* Order-preserving compaction. The first keep nodes, pinned identities, every
     * disagreement and whatever mark names stay; a trailed binding stays with its
-    * variable. relocate then rewrites the caller's terms and checkpoint
+    * variable. The cost does not depend on the sealed nodes among the first keep. relocate then rewrites the caller's terms and checkpoint
     * positions before the old numbering is dropped. An unreachable identity is
     * retired. 0 means that nothing was changed: temporary memory was missing. */
 typedef struct HTCollection HTCollection;

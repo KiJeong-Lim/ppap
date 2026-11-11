@@ -1,0 +1,6 @@
+# [T-Conv] removed: `check` accepts any inferred type.
+- check M A :- infer M B, expect (sub B A) (rep "T-Conv" (M :: B :: A :: [])).
++ check M A :- infer M B.
+kills pts "Type@{0} : Type@{0}"
+kills pts "T-Lam: the body has another type"
+kills leibniz "a wrong proof of symmetry"

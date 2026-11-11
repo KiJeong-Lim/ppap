@@ -1,0 +1,274 @@
+% lol/hol/kernel.hol
+%
+% The kernel of LoL: the judgments of doc/LoLCore.txt as a Hol program.
+%
+% Part I (LoLCore, Chapters 2, 3, 4 and 8): sorts, products, abstraction,
+% application, let, constants, reduction, conversion and cumulativity.
+%
+% The dialect is that of doc/LoLALPHA1.txt, 5.4. A comment before each clause
+% names the rule of LoLCore that the clause implements. `flex M`, a builtin of
+% Hol, holds when M is a hole: a term whose head is an unbound logic variable.
+
+% ------------------------------------------------------------------------------
+% Core terms (LoLALPHA1, 5.1)
+% ------------------------------------------------------------------------------
+
+kind tm type.
+kind lvl type.
+
+type lz lvl.
+type ls (lvl -> lvl).
+
+type prop tm.
+type typ (lvl -> tm).
+type cst (nat -> tm).
+type prod (tm -> (tm -> tm) -> tm).
+type lam (tm -> (tm -> tm) -> tm).
+type letin (tm -> tm -> (tm -> tm) -> tm).
+type app (tm -> tm -> tm).
+
+% ------------------------------------------------------------------------------
+% The environment (LoLALPHA1, 5.2) and the local context (K5)
+% ------------------------------------------------------------------------------
+
+% cst_type N A: constant N is declared with type A.
+% cst_body N T: constant N is a `Definition` with body T.
+type cst_type (nat -> tm -> o).
+type cst_body (nat -> tm -> o).
+
+% var_type X A: (X : A) or (X := T : A) is in the context.
+% var_body X T: (X := T : A) is in the context.
+type var_type (tm -> tm -> o).
+type var_body (tm -> tm -> o).
+
+% ------------------------------------------------------------------------------
+% Reports (LoLALPHA1, 5.5)
+% ------------------------------------------------------------------------------
+
+kind report type.
+
+% rep L Ts: the rule labelled L of LoLCore rejects; Ts are the terms involved.
+type rep (string -> list tm -> report).
+
+type expect (o -> report -> o).
+
+expect G R :- G, !.
+expect G R :- print R, fail.
+
+% ------------------------------------------------------------------------------
+% Judgments
+% ------------------------------------------------------------------------------
+
+type infer (tm -> tm -> o).
+type check (tm -> tm -> o).
+type sort_of (string -> tm -> tm -> o).
+type is_sort (tm -> o).
+type prod_sort (tm -> tm -> tm -> o).
+type lle (lvl -> lvl -> o).
+type lmax (lvl -> lvl -> lvl -> o).
+type whnf (tm -> tm -> o).
+type whnf_app (tm -> tm -> tm -> o).
+type whnf_cst (nat -> tm -> o).
+type conv (tm -> tm -> o).
+type conv_whnf (tm -> tm -> o).
+type sub (tm -> tm -> o).
+type sub_whnf (tm -> tm -> o).
+type norm (tm -> tm -> o).
+type norm_whnf (tm -> tm -> o).
+type admit_ax (tm -> o).
+type admit_def (tm -> tm -> o).
+
+% ------------------------------------------------------------------------------
+% Levels (LoLCore, Chapter 2)
+% ------------------------------------------------------------------------------
+
+% l <= l'
+lle lz L :- !.
+lle (ls L1) (ls L2) :- lle L1 L2.
+
+% max(l1, l2)
+lmax lz L M :- !, M = L.
+lmax (ls L) lz M :- !, M = ls L.
+lmax (ls L1) (ls L2) (ls M) :- lmax L1 L2 M.
+
+% ------------------------------------------------------------------------------
+% Sorts (LoLCore, Chapter 2)
+% ------------------------------------------------------------------------------
+
+% s is a sort
+is_sort prop :- !.
+is_sort (typ L).
+
+% [P-Prop]
+prod_sort S prop R :- !, R = prop.
+% [P-Type]
+prod_sort prop (typ L) R :- !, R = typ L.
+% [P-Max]
+prod_sort (typ L1) (typ L2) (typ L) :- lmax L1 L2 L.
+
+% E; G |- A : s, as a premise of the rule labelled R. The type of A is reduced
+% to weak head normal form (LoLCore, 3.3).
+sort_of R A S :-
+    infer A T, whnf T W,
+    expect (is_sort W) (rep R (A :: T :: [])),
+    S = W.
+
+% ------------------------------------------------------------------------------
+% Typing (LoLCore, Chapter 3)
+% ------------------------------------------------------------------------------
+
+% (K4)
+infer M A :- flex M, !, fail.
+% [T-Sort] with [S-Prop]
+infer prop A :- !, A = typ (ls lz).
+% [T-Sort] with [S-Type]
+infer (typ L) A :- !, A = typ (ls L).
+% [T-Const]
+infer (cst N) A :- !, expect (cst_type N A) (rep "T-Const" (cst N :: [])).
+% [T-Pi]
+infer (prod A B) S :- !,
+    sort_of "T-Pi" A S1,
+    (pi x\ var_type x A => sort_of "T-Pi" (B x) S2),
+    prod_sort S1 S2 S.
+% [T-Lam]
+infer (lam A F) T :- !,
+    sort_of "T-Lam" A _,
+    (pi x\ var_type x A => infer (F x) (G x)),
+    T = prod A G.
+% [T-App]
+infer (app M N) T :- !,
+    infer M TM, whnf TM W,
+    expect (W = prod A B) (rep "T-App" (M :: TM :: [])),
+    check N A,
+    T = B N.
+% [T-Let]
+infer (letin T A U) R :- !,
+    sort_of "T-Let" A _,
+    check T A,
+    (pi x\ var_type x A => var_body x T => infer (U x) (B x)),
+    R = B T.
+% [T-Var]
+infer X A :- expect (var_type X A) (rep "T-Var" (X :: [])).
+
+% (K4)
+check M A :- flex M, !, fail.
+% [T-Conv], as `check` uses it (LoLCore, 3.3)
+check M A :- infer M B, expect (sub B A) (rep "T-Conv" (M :: B :: A :: [])).
+
+% ------------------------------------------------------------------------------
+% Reduction to weak head normal form (LoLCore, 4.1)
+% ------------------------------------------------------------------------------
+
+% (K4)
+whnf M W :- flex M, !, W = M.
+% an application: reduce the head, then [R-Beta]
+whnf (app M N) W :- !, whnf M F, whnf_app F N W.
+% [R-Zeta]
+whnf (letin T A U) W :- !, whnf (U T) W.
+% a constant: [R-Delta]
+whnf (cst N) W :- !, whnf_cst N W.
+% sorts, products and abstractions are weak head normal
+whnf prop W :- !, W = prop.
+whnf (typ L) W :- !, W = typ L.
+whnf (prod A B) W :- !, W = prod A B.
+whnf (lam A F) W :- !, W = lam A F.
+% [R-Local]
+whnf X W :- var_body X T, !, whnf T W.
+% a variable without a definition is weak head normal
+whnf X X.
+
+% (K4)
+whnf_app F N W :- flex F, !, W = app F N.
+% [R-Beta]
+whnf_app (lam A F) N W :- !, whnf (F N) W.
+% an application whose head is not an abstraction is weak head normal
+whnf_app F N (app F N).
+
+% [R-Delta]
+whnf_cst N W :- cst_body N T, !, whnf T W.
+% a constant declared by `Axiom` or `Theorem` does not reduce
+whnf_cst N (cst N).
+
+% ------------------------------------------------------------------------------
+% Conversion (LoLCore, 4.2 and 4.4)
+% ------------------------------------------------------------------------------
+
+% (K4)
+conv M N :- flex M, !, M = N.
+conv M N :- flex N, !, M = N.
+% reflexivity, tried first (LoLCore, 4.4)
+conv M M :- !.
+% [Eq-Red]: compare the weak head normal forms
+conv M N :- whnf M M1, whnf N N1, conv_whnf M1 N1.
+
+% (K4)
+conv_whnf M N :- flex M, !, M = N.
+conv_whnf M N :- flex N, !, M = N.
+% compatibility: sorts
+conv_whnf prop prop :- !.
+conv_whnf (typ L) (typ L) :- !.
+% compatibility: products
+conv_whnf (prod A1 B1) (prod A2 B2) :- !,
+    conv A1 A2, pi x\ conv (B1 x) (B2 x).
+% compatibility: abstractions. [Eq-Eta] makes the domains irrelevant, and on
+% well-typed terms they agree; they are compared as Rocq compares them.
+conv_whnf (lam A1 F1) (lam A2 F2) :- !,
+    conv A1 A2, pi x\ conv (F1 x) (F2 x).
+% [Eq-Eta]
+conv_whnf (lam A F) N :- !, pi x\ conv (F x) (app N x).
+% [Eq-Eta]
+conv_whnf M (lam A F) :- !, pi x\ conv (app M x) (F x).
+% compatibility: applications whose heads do not reduce
+conv_whnf (app M1 N1) (app M2 N2) :- !, conv_whnf M1 M2, conv N1 N2.
+% reflexivity: the same variable, or the same constant without a body
+conv_whnf M M.
+
+% ------------------------------------------------------------------------------
+% Cumulativity (LoLCore, 4.3)
+% ------------------------------------------------------------------------------
+
+% (K4)
+sub A B :- flex A, !, A = B.
+sub A B :- flex B, !, A = B.
+% [C-Conv] by reflexivity, tried first (LoLCore, 4.4)
+sub A A :- !.
+% compare the weak head normal forms
+sub A B :- whnf A A1, whnf B B1, sub_whnf A1 B1.
+
+% (K4)
+sub_whnf A B :- flex A, !, A = B.
+sub_whnf A B :- flex B, !, A = B.
+% [C-Sort] with [C-Prop]
+sub_whnf prop prop :- !.
+sub_whnf prop (typ L) :- !.
+% [C-Sort] with [C-Type]
+sub_whnf (typ L1) (typ L2) :- !, lle L1 L2.
+% [C-Pi]
+sub_whnf (prod A1 B1) (prod A2 B2) :- !,
+    conv A1 A2, pi x\ sub (B1 x) (B2 x).
+% [C-Conv]
+sub_whnf A B :- conv_whnf A B.
+
+% ------------------------------------------------------------------------------
+% Normal forms, for `Compute` (LoLALPHA1, 5.3)
+% ------------------------------------------------------------------------------
+
+% reduce to weak head normal form, then normalise below the head
+norm M N :- whnf M W, norm_whnf W N.
+
+norm_whnf (prod A B) N :- !,
+    norm A A1, (pi x\ norm (B x) (B1 x)), N = prod A1 B1.
+norm_whnf (lam A F) N :- !,
+    norm A A1, (pi x\ norm (F x) (F1 x)), N = lam A1 F1.
+norm_whnf (app M1 N1) N :- !,
+    norm_whnf M1 M2, norm N1 N2, N = app M2 N2.
+norm_whnf W W.
+
+% ------------------------------------------------------------------------------
+% Declarations (LoLCore, Chapter 8)
+% ------------------------------------------------------------------------------
+
+% [D-Ax]
+admit_ax A :- sort_of "D-Ax" A _.
+% [D-Def] and [D-Thm]
+admit_def A T :- sort_of "D-Def" A _, check T A.

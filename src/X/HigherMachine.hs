@@ -7,6 +7,9 @@ module X.HigherMachine
     , createMachine
     , closeMachine
     , withMachine
+    , extendProgram
+    , startQuery
+    , leaveRun
     , nextStep
     , nextStepForHost
     , nextEvent
@@ -80,6 +83,9 @@ data NativeStep
 foreign import ccall safe "hol_v2_create" c_create :: Ptr Int64 -> CSize -> IO (Ptr CMachine)
 foreign import ccall safe "hol_v2_destroy" c_destroyNow :: Ptr CMachine -> IO ()
 foreign import ccall "&hol_v2_destroy" c_destroy :: FinalizerPtr CMachine
+foreign import ccall safe "hol_v2_extend" c_extend :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
+foreign import ccall safe "hol_v2_query" c_query :: Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt
+foreign import ccall safe "hol_v2_idle" c_idle :: Ptr CMachine -> IO CInt
 foreign import ccall safe "hol_v2_error" c_error :: Ptr CMachine -> IO (Ptr CChar)
 foreign import ccall safe "hol_v2_next" c_next :: Ptr CMachine -> IO CInt
 foreign import ccall safe "hol_v2_answer_size" c_answerSize :: Ptr CMachine -> IO CSize
@@ -130,6 +136,27 @@ closeMachine (Machine _ state) = closeState state
 
 withMachine :: [Int64] -> (Machine -> IO a) -> IO a
 withMachine code = bracket (createMachine code) closeMachine
+
+-- A machine keeps its program across runs. `extendProgram` adds the symbols and
+-- clauses of a fragment to it, `startQuery` starts a run of a fragment's query,
+-- and `leaveRun` ends the run and releases what it allocated. The first two
+-- leave the current run first. A failure leaves the machine in error.
+extendProgram :: Machine -> [Int64] -> IO (Either String ())
+extendProgram = loadFragment c_extend
+
+startQuery :: Machine -> [Int64] -> IO (Either String ())
+startQuery = loadFragment c_query
+
+loadFragment :: (Ptr CMachine -> Ptr Int64 -> CSize -> IO CInt) -> Machine -> [Int64] -> IO (Either String ())
+loadFragment load (Machine _ state) code = withPointer state $ \pointer ->
+    withArrayLen code $ \count words -> do
+        status <- load pointer words (fromIntegral count)
+        if status < 0 then Left <$> readError pointer else return (Right ())
+
+leaveRun :: Machine -> IO (Either String ())
+leaveRun (Machine _ state) = withPointer state $ \pointer -> do
+    status <- c_idle pointer
+    if status < 0 then Left <$> readError pointer else return (Right ())
 
 withPointer :: MVar (Maybe (ForeignPtr CMachine)) -> (Ptr CMachine -> IO (Either String a)) -> IO (Either String a)
 withPointer state action = withMVar state $ \current -> case current of
